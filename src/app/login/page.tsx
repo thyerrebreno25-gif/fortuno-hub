@@ -142,7 +142,7 @@ export default function LoginPage() {
           <header className={styles.convertNowHeader}>
             <div className={styles.convertNowLogo}>
               <Image
-                src="/fortuno-emblem.png"
+                src="/fortuno-logo-v2.png"
                 alt="Fortuno"
                 width={56}
                 height={56}

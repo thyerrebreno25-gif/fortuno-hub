@@ -193,7 +193,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
         <div className={styles.sidebarHeader}>
           <div className={styles.logoMark}>
             <Image
-              src="/fortuno-emblem.png"
+              src="/fortuno-logo-v2.png"
               alt="Fortuno"
               width={44}
               height={44}
