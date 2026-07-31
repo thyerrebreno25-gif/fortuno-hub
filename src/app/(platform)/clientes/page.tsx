@@ -1,0 +1,1265 @@
+"use client";
+
+import type { Route } from "next";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Divider,
+  Group,
+  Loader,
+  Modal,
+  Pagination,
+  Paper,
+  Progress,
+  Select,
+  SimpleGrid,
+  Stack,
+  Stepper,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import {
+  IconBuilding,
+  IconChevronLeft,
+  IconChevronRight,
+  IconPencil,
+  IconPlus,
+  IconRefresh,
+  IconSearch,
+  IconTrash,
+} from "@tabler/icons-react";
+
+type ReceiptRule =
+  | "WITHOUT_ADVANCE"
+  | "AUTOMATIC_ADVANCE"
+  | "OCCASIONAL_ADVANCE";
+
+type CategoryMappingType =
+  | "SALES_REVENUE"
+  | "MDR_FEES"
+  | "ADVANCE_FEES"
+  | "MACHINE_RENTAL_ADJUSTMENTS"
+  | "SALE_CANCELLATION"
+  | "REFUNDS_CREDITS";
+
+type ClientAcquirer = {
+  id: string;
+  name: string;
+  receiptRule: ReceiptRule;
+  active: boolean;
+};
+
+type ClientCategoryMapping = {
+  id: string;
+  mappingType: CategoryMappingType;
+  category: {
+    id: string;
+    name: string;
+  };
+  subcategory: {
+    id: string;
+    name: string;
+  } | null;
+};
+
+type Client = {
+  id: string;
+  name: string;
+  document: string;
+  active: boolean;
+  createdAt: string;
+  acquirers: ClientAcquirer[];
+  categoryMappings: ClientCategoryMapping[];
+  banks: Array<{ id: string; active: boolean }>;
+  cards: Array<{ id: string; active: boolean }>;
+  _count: {
+    imports: number;
+  };
+};
+
+type ClientsResponse = {
+  data: Client[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    hasPreviousPage: boolean;
+    hasNextPage: boolean;
+  };
+};
+
+type StatusFilter = "active" | "inactive" | "all";
+
+type NewAcquirer = {
+  id: string;
+  name: string;
+  receiptRule: ReceiptRule;
+};
+
+type NewCategoryMapping = {
+  mappingType: CategoryMappingType;
+  label: string;
+  category: string;
+  subcategory: string;
+};
+
+const RECEIPT_RULE_OPTIONS = [
+  {
+    value: "WITHOUT_ADVANCE",
+    label: "Sem antecipação",
+  },
+  {
+    value: "AUTOMATIC_ADVANCE",
+    label: "Antecipação automática",
+  },
+  {
+    value: "OCCASIONAL_ADVANCE",
+    label: "Antecipação eventual",
+  },
+];
+
+const INITIAL_CATEGORY_MAPPINGS: NewCategoryMapping[] = [
+  {
+    mappingType: "SALES_REVENUE",
+    label: "Receita de vendas",
+    category: "",
+    subcategory: "",
+  },
+  {
+    mappingType: "MDR_FEES",
+    label: "Taxas MDR",
+    category: "",
+    subcategory: "",
+  },
+  {
+    mappingType: "ADVANCE_FEES",
+    label: "Taxas de antecipação",
+    category: "",
+    subcategory: "",
+  },
+  {
+    mappingType: "MACHINE_RENTAL_ADJUSTMENTS",
+    label: "Aluguel de máquina e ajustes",
+    category: "",
+    subcategory: "",
+  },
+  {
+    mappingType: "SALE_CANCELLATION",
+    label: "Cancelamentos de vendas",
+    category: "",
+    subcategory: "",
+  },
+  {
+    mappingType: "REFUNDS_CREDITS",
+    label: "Estornos e créditos",
+    category: "",
+    subcategory: "",
+  },
+];
+
+function createAcquirer(): NewAcquirer {
+  return {
+    id: crypto.randomUUID(),
+    name: "",
+    receiptRule: "WITHOUT_ADVANCE",
+  };
+}
+
+function cleanDocument(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 14);
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+function formatCnpj(value: string): string {
+  const numbers = cleanDocument(value);
+
+  return numbers
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+}
+
+function isValidCnpj(value: string): boolean {
+  const cnpj = cleanDocument(value);
+
+  if (cnpj.length !== 14) {
+    return false;
+  }
+
+  if (/^(\d)\1{13}$/.test(cnpj)) {
+    return false;
+  }
+
+  function calculateDigit(base: string, weights: number[]) {
+    const total = base.split("").reduce((sum, digit, index) => {
+      return sum + Number(digit) * weights[index];
+    }, 0);
+
+    const remainder = total % 11;
+
+    return remainder < 2 ? 0 : 11 - remainder;
+  }
+
+  const firstDigit = calculateDigit(
+    cnpj.slice(0, 12),
+    [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
+  );
+
+  const secondDigit = calculateDigit(
+    cnpj.slice(0, 12) + firstDigit,
+    [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
+  );
+
+  return cnpj.endsWith(`${firstDigit}${secondDigit}`);
+}
+
+type SetupStatus = {
+  percentage: number;
+  label: "Pendente" | "Parcial" | "Configurado";
+  color: "red" | "yellow" | "green";
+};
+
+function getClientSetupStatus(client: Client): SetupStatus {
+  const generalCompleted =
+    client.name.trim().length >= 3 &&
+    cleanDocument(client.document).length === 14;
+
+  const acquirersCompleted = client.acquirers.length > 0;
+  const categoryProgress = Math.min(
+    client.categoryMappings.length / 6,
+    1,
+  );
+  const banksCompleted = client.banks.length > 0;
+  const cardsCompleted = client.cards.length > 0;
+
+  const percentage = Math.round(
+    (generalCompleted ? 15 : 0) +
+      (acquirersCompleted ? 20 : 0) +
+      categoryProgress * 35 +
+      (banksCompleted ? 15 : 0) +
+      (cardsCompleted ? 15 : 0),
+  );
+
+  if (percentage === 100) {
+    return { percentage, label: "Configurado", color: "green" };
+  }
+
+  if (percentage >= 40) {
+    return { percentage, label: "Parcial", color: "yellow" };
+  }
+
+  return { percentage, label: "Pendente", color: "red" };
+}
+
+export default function ClientesPage() {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] =
+    useState<StatusFilter>("active");
+
+  const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
+
+  const [modalOpened, setModalOpened] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  const [clientName, setClientName] = useState("");
+  const [document, setDocument] = useState("");
+  const [acquirers, setAcquirers] = useState<NewAcquirer[]>([
+    createAcquirer(),
+  ]);
+
+  const [categoryMappings, setCategoryMappings] = useState<
+    NewCategoryMapping[]
+  >(INITIAL_CATEGORY_MAPPINGS.map((item) => ({ ...item })));
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadClients() {
+      try {
+        setLoading(true);
+        setListError("");
+
+        const params = new URLSearchParams({
+          page: String(page),
+          pageSize: "10",
+          status,
+        });
+
+        if (search) {
+          params.set("search", search);
+        }
+
+        const response = await fetch(
+          `/api/clients?${params.toString()}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        const result = (await response.json()) as
+          | ClientsResponse
+          | { error?: string };
+
+        if (!response.ok) {
+          throw new Error(
+            "error" in result && result.error
+              ? result.error
+              : "Não foi possível carregar os clientes.",
+          );
+        }
+
+        const responseData = result as ClientsResponse;
+
+        setClients(responseData.data);
+        setPagination(responseData.pagination);
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setClients([]);
+        setListError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível carregar os clientes.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadClients();
+
+    return () => controller.abort();
+  }, [page, reloadKey, search, status]);
+
+  const displayedClients = useMemo(() => {
+    const normalizedSearch = normalizeSearchText(searchInput);
+    const documentSearch = searchInput.replace(/\D/g, "");
+
+    if (!normalizedSearch && !documentSearch) {
+      return clients;
+    }
+
+    return clients.filter((client) => {
+      const normalizedName = normalizeSearchText(client.name ?? "");
+      const normalizedDocument = (client.document ?? "").replace(/\D/g, "");
+
+      return (
+        normalizedName.includes(normalizedSearch) ||
+        (documentSearch.length > 0 && normalizedDocument.includes(documentSearch))
+      );
+    });
+  }, [clients, searchInput]);
+
+  const indicators = useMemo(() => {
+    return {
+      active: clients.filter((client) => client.active).length,
+      acquirers: clients.reduce(
+        (total, client) => total + client.acquirers.length,
+        0,
+      ),
+      imports: clients.reduce(
+        (total, client) => total + client._count.imports,
+        0,
+      ),
+    };
+  }, [clients]);
+
+  function resetForm() {
+    setActiveStep(0);
+    setFormError("");
+    setClientName("");
+    setDocument("");
+    setAcquirers([createAcquirer()]);
+    setCategoryMappings(
+      INITIAL_CATEGORY_MAPPINGS.map((item) => ({
+        ...item,
+      })),
+    );
+  }
+
+  function openNewClientModal() {
+    resetForm();
+    setModalOpened(true);
+  }
+
+  function closeModal() {
+    if (saving) {
+      return;
+    }
+
+    setModalOpened(false);
+    resetForm();
+  }
+
+  function updateAcquirer(
+    id: string,
+    field: "name" | "receiptRule",
+    value: string,
+  ) {
+    setAcquirers((current) =>
+      current.map((acquirer) =>
+        acquirer.id === id
+          ? {
+              ...acquirer,
+              [field]: value,
+            }
+          : acquirer,
+      ),
+    );
+  }
+
+  function addAcquirer() {
+    setAcquirers((current) => [
+      ...current,
+      createAcquirer(),
+    ]);
+  }
+
+  function removeAcquirer(id: string) {
+    setAcquirers((current) => {
+      if (current.length === 1) {
+        return current;
+      }
+
+      return current.filter(
+        (acquirer) => acquirer.id !== id,
+      );
+    });
+  }
+
+  function updateCategoryMapping(
+    mappingType: CategoryMappingType,
+    field: "category" | "subcategory",
+    value: string,
+  ) {
+    setCategoryMappings((current) =>
+      current.map((mapping) =>
+        mapping.mappingType === mappingType
+          ? {
+              ...mapping,
+              [field]: value,
+            }
+          : mapping,
+      ),
+    );
+  }
+
+  function validateCurrentStep(): boolean {
+    setFormError("");
+
+    if (activeStep === 0) {
+      if (clientName.trim().length < 3) {
+        setFormError(
+          "Informe um nome com pelo menos 3 caracteres.",
+        );
+        return false;
+      }
+
+      if (!isValidCnpj(document)) {
+        setFormError("Informe um CNPJ válido.");
+        return false;
+      }
+    }
+
+    if (activeStep === 1) {
+      if (acquirers.length === 0) {
+        setFormError(
+          "Adicione pelo menos uma adquirente.",
+        );
+        return false;
+      }
+
+      const invalidAcquirer = acquirers.find(
+        (acquirer) => acquirer.name.trim().length < 2,
+      );
+
+      if (invalidAcquirer) {
+        setFormError(
+          "Informe o nome de todas as adquirentes.",
+        );
+        return false;
+      }
+
+      const normalizedNames = acquirers.map((acquirer) =>
+        acquirer.name.trim().toLowerCase(),
+      );
+
+      if (
+        new Set(normalizedNames).size !==
+        normalizedNames.length
+      ) {
+        setFormError(
+          "A mesma adquirente não pode ser adicionada duas vezes.",
+        );
+        return false;
+      }
+    }
+
+    if (activeStep === 2) {
+      const invalidMapping = categoryMappings.find(
+        (mapping) => mapping.category.trim().length < 2,
+      );
+
+      if (invalidMapping) {
+        setFormError(
+          `Informe a categoria de "${invalidMapping.label}".`,
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function nextStep() {
+    if (!validateCurrentStep()) {
+      return;
+    }
+
+    setActiveStep((current) =>
+      Math.min(current + 1, 3),
+    );
+  }
+
+  function previousStep() {
+    setFormError("");
+    setActiveStep((current) =>
+      Math.max(current - 1, 0),
+    );
+  }
+
+  async function saveClient() {
+    if (!validateCurrentStep()) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setFormError("");
+
+      const payload = {
+        name: clientName.trim(),
+        document: cleanDocument(document),
+
+        acquirers: acquirers.map((acquirer) => ({
+          name: acquirer.name.trim(),
+          receiptRule: acquirer.receiptRule,
+        })),
+
+        categoryMappings: categoryMappings.map(
+          (mapping) => ({
+            mappingType: mapping.mappingType,
+            category: mapping.category.trim(),
+            subcategory:
+              mapping.subcategory.trim() || null,
+          }),
+        ),
+      };
+
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = (await response.json()) as {
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            "Não foi possível cadastrar o cliente.",
+        );
+      }
+
+      notifications.show({
+        color: "green",
+        title: "Cliente cadastrado",
+        message:
+          result.message ||
+          "O cliente foi cadastrado com sucesso.",
+      });
+
+      setModalOpened(false);
+      resetForm();
+      setPage(1);
+      setReloadKey((current) => current + 1);
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível cadastrar o cliente.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Stack gap="xl">
+        <Group
+          justify="space-between"
+          align="flex-end"
+          gap="lg"
+        >
+          <Stack gap={4}>
+            <Text
+              size="xs"
+              fw={800}
+              c="blue"
+              tt="uppercase"
+            >
+              Cadastros
+            </Text>
+
+            <Title order={2}>Clientes</Title>
+
+            <Text c="dimmed">
+              Cadastre e configure os clientes utilizados nos
+              processamentos do ConvertNow.
+            </Text>
+          </Stack>
+
+          <Button
+            leftSection={<IconPlus size={18} />}
+            onClick={openNewClientModal}
+          >
+            Novo cliente
+          </Button>
+        </Group>
+
+        <SimpleGrid
+          cols={{
+            base: 1,
+            sm: 2,
+            xl: 4,
+          }}
+        >
+          <Paper withBorder radius="lg" p="lg">
+            <Text size="sm" c="dimmed">
+              Clientes encontrados
+            </Text>
+
+            <Text fw={800} fz={28}>
+              {pagination.total}
+            </Text>
+          </Paper>
+
+          <Paper withBorder radius="lg" p="lg">
+            <Text size="sm" c="dimmed">
+              Ativos nesta página
+            </Text>
+
+            <Text fw={800} fz={28}>
+              {indicators.active}
+            </Text>
+          </Paper>
+
+          <Paper withBorder radius="lg" p="lg">
+            <Text size="sm" c="dimmed">
+              Adquirentes configuradas
+            </Text>
+
+            <Text fw={800} fz={28}>
+              {indicators.acquirers}
+            </Text>
+          </Paper>
+
+          <Paper withBorder radius="lg" p="lg">
+            <Text size="sm" c="dimmed">
+              Importações
+            </Text>
+
+            <Text fw={800} fz={28}>
+              {indicators.imports}
+            </Text>
+          </Paper>
+        </SimpleGrid>
+
+        <Paper withBorder radius="lg">
+          <Group
+            justify="space-between"
+            p="lg"
+            gap="md"
+          >
+            <TextInput
+              value={searchInput}
+              onChange={(event) =>
+                setSearchInput(event.currentTarget.value)
+              }
+              placeholder="Pesquisar por nome ou CNPJ..."
+              leftSection={<IconSearch size={17} />}
+              style={{
+                flex: 1,
+                minWidth: 260,
+              }}
+            />
+
+            <Group>
+              <Select
+                value={status}
+                onChange={(value) => {
+                  setStatus(
+                    (value as StatusFilter | null) ??
+                      "active",
+                  );
+                  setPage(1);
+                }}
+                data={[
+                  {
+                    value: "active",
+                    label: "Clientes ativos",
+                  },
+                  {
+                    value: "inactive",
+                    label: "Clientes inativos",
+                  },
+                  {
+                    value: "all",
+                    label: "Todos os clientes",
+                  },
+                ]}
+                allowDeselect={false}
+                w={200}
+              />
+
+              <ActionIcon
+                variant="default"
+                size={36}
+                onClick={() =>
+                  setReloadKey((current) => current + 1)
+                }
+                aria-label="Atualizar clientes"
+              >
+                <IconRefresh size={18} />
+              </ActionIcon>
+            </Group>
+          </Group>
+
+          {listError && (
+            <Alert color="red" mx="lg" mb="lg">
+              {listError}
+            </Alert>
+          )}
+
+          {loading ? (
+            <Group justify="center" py={70}>
+              <Loader />
+              <Text c="dimmed">
+                Carregando clientes...
+              </Text>
+            </Group>
+          ) : displayedClients.length === 0 ? (
+            <Stack align="center" py={70}>
+              <IconBuilding size={44} stroke={1.5} />
+
+              <Text fw={700} fz="lg">
+                Nenhum cliente cadastrado
+              </Text>
+
+              <Text c="dimmed" ta="center">
+                Cadastre o primeiro cliente para começar a
+                utilizar os módulos do ConvertNow.
+              </Text>
+
+              <Button
+                leftSection={<IconPlus size={18} />}
+                onClick={openNewClientModal}
+              >
+                Cadastrar cliente
+              </Button>
+            </Stack>
+          ) : (
+            <>
+              <Table.ScrollContainer minWidth={900}>
+                <Table
+                  highlightOnHover
+                  verticalSpacing="md"
+                  horizontalSpacing="lg"
+                >
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Cliente</Table.Th>
+                      <Table.Th>Adquirentes</Table.Th>
+                      <Table.Th>Categorias</Table.Th>
+                      <Table.Th>Importações</Table.Th>
+                      <Table.Th>Implantação</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th ta="right">Ações</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+
+                  <Table.Tbody>
+                    {displayedClients.map((client) => {
+                      const setup = getClientSetupStatus(client);
+
+                      return (
+                      <Table.Tr key={client.id}>
+                        <Table.Td>
+                          <Stack gap={2}>
+                            <Text fw={700}>
+                              {client.name}
+                            </Text>
+
+                            <Text size="xs" c="dimmed">
+                              {formatCnpj(client.document)}
+                            </Text>
+                          </Stack>
+                        </Table.Td>
+
+                        <Table.Td>
+                          <Group gap={6}>
+                            {client.acquirers.length === 0 ? (
+                              <Text size="sm" c="dimmed">
+                                Não configuradas
+                              </Text>
+                            ) : (
+                              client.acquirers.map(
+                                (acquirer) => (
+                                  <Badge
+                                    key={acquirer.id}
+                                    variant="light"
+                                  >
+                                    {acquirer.name}
+                                  </Badge>
+                                ),
+                              )
+                            )}
+                          </Group>
+                        </Table.Td>
+
+                        <Table.Td>
+                          {client.categoryMappings.length}
+                        </Table.Td>
+
+                        <Table.Td>
+                          {client._count.imports}
+                        </Table.Td>
+
+                        <Table.Td>
+                          <Stack gap={6} miw={150}>
+                            <Group justify="space-between" gap="xs">
+                              <Badge color={setup.color} variant="light">
+                                {setup.label}
+                              </Badge>
+
+                              <Text size="xs" fw={700}>
+                                {setup.percentage}%
+                              </Text>
+                            </Group>
+
+                            <Progress
+                              value={setup.percentage}
+                              color={setup.color}
+                              size="sm"
+                              radius="xl"
+                            />
+                          </Stack>
+                        </Table.Td>
+
+                        <Table.Td>
+                          <Badge
+                            color={client.active ? "green" : "gray"}
+                            variant="light"
+                          >
+                            {client.active ? "Ativo" : "Inativo"}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Button
+                            component={Link}
+                            href={`/clientes/${client.id}` as Route}
+                            variant="light"
+                            size="xs"
+                            leftSection={<IconPencil size={15} />}
+                          >
+                            Editar
+                          </Button>
+                        </Table.Td>
+                      </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+
+              <Group
+                justify="space-between"
+                p="lg"
+                style={{
+                  borderTop:
+                    "1px solid var(--mantine-color-gray-2)",
+                }}
+              >
+                <Text size="sm" c="dimmed">
+                  {pagination.total} cliente(s)
+                </Text>
+
+                <Pagination
+                  value={page}
+                  onChange={setPage}
+                  total={pagination.totalPages}
+                />
+              </Group>
+            </>
+          )}
+        </Paper>
+      </Stack>
+
+      <Modal
+        opened={modalOpened}
+        onClose={closeModal}
+        title="Novo cliente"
+        size="xl"
+        centered
+        closeOnClickOutside={!saving}
+        closeOnEscape={!saving}
+      >
+        <Stack gap="xl">
+          <Stepper
+            active={activeStep}
+            onStepClick={(step) => {
+              if (step < activeStep) {
+                setActiveStep(step);
+                setFormError("");
+              }
+            }}
+          >
+            <Stepper.Step label="Dados gerais" />
+
+            <Stepper.Step label="Adquirentes" />
+
+            <Stepper.Step label="Categorias" />
+
+            <Stepper.Step label="Revisão" />
+          </Stepper>
+
+          <Divider />
+
+          {formError && (
+            <Alert color="red">{formError}</Alert>
+          )}
+
+          {activeStep === 0 && (
+            <Stack>
+              <TextInput
+                label="Nome do cliente"
+                placeholder="Ex.: Empresa Exemplo Ltda."
+                value={clientName}
+                onChange={(event) =>
+                  setClientName(event.currentTarget.value)
+                }
+                required
+              />
+
+              <TextInput
+                label="CNPJ"
+                placeholder="00.000.000/0000-00"
+                value={document}
+                onChange={(event) =>
+                  setDocument(
+                    formatCnpj(event.currentTarget.value),
+                  )
+                }
+                required
+              />
+            </Stack>
+          )}
+
+          {activeStep === 1 && (
+            <Stack>
+              <Group justify="space-between">
+                <Stack gap={0}>
+                  <Text fw={700}>
+                    Adquirentes do cliente
+                  </Text>
+
+                  <Text size="sm" c="dimmed">
+                    Informe as adquirentes e a regra de
+                    recebimento utilizada.
+                  </Text>
+                </Stack>
+
+                <Button
+                  variant="light"
+                  leftSection={<IconPlus size={16} />}
+                  onClick={addAcquirer}
+                >
+                  Adicionar adquirente
+                </Button>
+              </Group>
+
+              {acquirers.map((acquirer, index) => (
+                <Paper
+                  key={acquirer.id}
+                  withBorder
+                  radius="md"
+                  p="md"
+                >
+                  <Group align="flex-end">
+                    <TextInput
+                      label={`Adquirente ${index + 1}`}
+                      placeholder="Cielo, Rede, Stone..."
+                      value={acquirer.name}
+                      onChange={(event) =>
+                        updateAcquirer(
+                          acquirer.id,
+                          "name",
+                          event.currentTarget.value,
+                        )
+                      }
+                      style={{ flex: 1 }}
+                    />
+
+                    <Select
+                      label="Regra de recebimento"
+                      value={acquirer.receiptRule}
+                      data={RECEIPT_RULE_OPTIONS}
+                      onChange={(value) =>
+                        updateAcquirer(
+                          acquirer.id,
+                          "receiptRule",
+                          value || "WITHOUT_ADVANCE",
+                        )
+                      }
+                      allowDeselect={false}
+                      w={250}
+                    />
+
+                    <ActionIcon
+                      color="red"
+                      variant="light"
+                      size={36}
+                      disabled={acquirers.length === 1}
+                      onClick={() =>
+                        removeAcquirer(acquirer.id)
+                      }
+                      aria-label="Remover adquirente"
+                    >
+                      <IconTrash size={17} />
+                    </ActionIcon>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+
+          {activeStep === 2 && (
+            <Stack>
+              <Stack gap={0}>
+                <Text fw={700}>
+                  Categorias do Conta Azul
+                </Text>
+
+                <Text size="sm" c="dimmed">
+                  Defina onde cada tipo de movimentação será
+                  classificado.
+                </Text>
+              </Stack>
+
+              {categoryMappings.map((mapping) => (
+                <Paper
+                  key={mapping.mappingType}
+                  withBorder
+                  radius="md"
+                  p="md"
+                >
+                  <Text fw={700} mb="sm">
+                    {mapping.label}
+                  </Text>
+
+                  <SimpleGrid
+                    cols={{
+                      base: 1,
+                      sm: 2,
+                    }}
+                  >
+                    <TextInput
+                      label="Categoria"
+                      placeholder="Ex.: Receita de vendas"
+                      value={mapping.category}
+                      onChange={(event) =>
+                        updateCategoryMapping(
+                          mapping.mappingType,
+                          "category",
+                          event.currentTarget.value,
+                        )
+                      }
+                      required
+                    />
+
+                    <TextInput
+                      label="Subcategoria"
+                      placeholder="Opcional"
+                      value={mapping.subcategory}
+                      onChange={(event) =>
+                        updateCategoryMapping(
+                          mapping.mappingType,
+                          "subcategory",
+                          event.currentTarget.value,
+                        )
+                      }
+                    />
+                  </SimpleGrid>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+
+          {activeStep === 3 && (
+            <Stack>
+              <Title order={4}>Revisão do cadastro</Title>
+
+              <Paper withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text>
+                    <strong>Cliente:</strong>{" "}
+                    {clientName}
+                  </Text>
+
+                  <Text>
+                    <strong>CNPJ:</strong>{" "}
+                    {formatCnpj(document)}
+                  </Text>
+
+                  <Text>
+                    <strong>Adquirentes:</strong>{" "}
+                    {acquirers
+                      .map((acquirer) => acquirer.name)
+                      .join(", ")}
+                  </Text>
+
+                  <Text>
+                    <strong>Categorias:</strong>{" "}
+                    {categoryMappings.length} mapeamentos
+                  </Text>
+                </Stack>
+              </Paper>
+
+              <Stack gap="xs">
+                {acquirers.map((acquirer) => (
+                  <Paper
+                    key={acquirer.id}
+                    withBorder
+                    radius="md"
+                    p="sm"
+                  >
+                    <Group justify="space-between">
+                      <Text fw={600}>
+                        {acquirer.name}
+                      </Text>
+
+                      <Badge variant="light">
+                        {
+                          RECEIPT_RULE_OPTIONS.find(
+                            (option) =>
+                              option.value ===
+                              acquirer.receiptRule,
+                          )?.label
+                        }
+                      </Badge>
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            </Stack>
+          )}
+
+          <Divider />
+
+          <Group justify="space-between">
+            <Button
+              variant="default"
+              onClick={
+                activeStep === 0
+                  ? closeModal
+                  : previousStep
+              }
+              leftSection={
+                activeStep > 0 ? (
+                  <IconChevronLeft size={17} />
+                ) : undefined
+              }
+              disabled={saving}
+            >
+              {activeStep === 0 ? "Cancelar" : "Voltar"}
+            </Button>
+
+            {activeStep < 3 ? (
+              <Button
+                onClick={nextStep}
+                rightSection={
+                  <IconChevronRight size={17} />
+                }
+              >
+                Continuar
+              </Button>
+            ) : (
+              <Button
+                onClick={saveClient}
+                loading={saving}
+              >
+                Salvar cliente
+              </Button>
+            )}
+          </Group>
+        </Stack>
+      </Modal>
+    </>
+  );
+}

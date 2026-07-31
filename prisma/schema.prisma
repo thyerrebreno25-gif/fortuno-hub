@@ -1,0 +1,685 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  MASTER
+  ADMIN
+  MANAGER
+  OPERATOR
+  CLIENT
+}
+
+enum ImportModule {
+  EXCHANGE
+  BANK_STATEMENT
+  ACQUIRER
+  CREDIT_CARD_INVOICE
+  BRASILMED_RECONCILIATION
+}
+
+enum ImportStatus {
+  UPLOADED
+  PROCESSING
+  REVIEW
+  VALIDATED
+  EXPORTED
+  FAILED
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum ParserKind {
+  BANK_STATEMENT
+  CREDIT_CARD_INVOICE
+  ACQUIRER
+  PAYROLL_RECONCILIATION
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum AcquirerReceiptRule {
+  WITHOUT_ADVANCE
+  AUTOMATIC_ADVANCE
+  OCCASIONAL_ADVANCE
+}
+
+enum AcquirerTransactionType {
+  DEBIT
+  CREDIT
+  PIX
+  VOUCHER
+  OTHER
+}
+
+enum CategoryMappingType {
+  SALES_REVENUE
+  MDR_FEES
+  ADVANCE_FEES
+  MACHINE_RENTAL_ADJUSTMENTS
+  SALE_CANCELLATION
+  REFUNDS_CREDITS
+}
+
+enum OnboardingStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum OnboardingRisk {
+  ON_TIME
+  AT_RISK
+  OVERDUE
+}
+
+enum OnboardingTaskStatus {
+  PENDING
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  NOT_APPLICABLE
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  document  String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members             OrganizationMember[]
+  clients             Client[]
+  categories          Category[]
+  imports             ImportJob[]
+  tickets             SupportTicket[]
+  onboardingTemplates OnboardingTemplate[]
+  onboardings         Onboarding[]
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships           OrganizationMember[]
+  imports               ImportJob[]
+  auditLogs             AuditLog[]
+  tickets               SupportTicket[]
+  onboardingOwned       Onboarding[]          @relation("OnboardingOwner")
+  onboardingCreated     Onboarding[]          @relation("OnboardingCreator")
+  onboardingTasks       OnboardingTask[]      @relation("OnboardingTaskResponsible")
+  onboardingComments    OnboardingComment[]
+  onboardingTimeEntries OnboardingTimeEntry[]
+  onboardingHistory     OnboardingHistory[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           UserRole @default(OPERATOR)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  normalizedName String
+  document       String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  imports          ImportJob[]
+  employees        Employee[]
+  categoryRules    CategoryRule[]
+  costCenters      CostCenter[]
+  acquirers        ClientAcquirer[]
+  banks            ClientBank[]
+  cards            ClientCard[]
+  categoryMappings ClientCategoryMapping[]
+  onboardings      Onboarding[]
+
+  @@unique([organizationId, normalizedName])
+  @@unique([organizationId, document])
+  @@index([organizationId])
+  @@index([organizationId, active])
+}
+
+
+model ClientBank {
+  id          String   @id @default(cuid())
+  clientId    String
+  bankName    String
+  bankCode    String?
+  agency      String?
+  account     String
+  accountType String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, active])
+}
+
+model ClientCard {
+  id        String   @id @default(cuid())
+  clientId  String
+  brand     String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, brand])
+  @@index([clientId, active])
+}
+
+model ClientAcquirer {
+  id             String              @id @default(cuid())
+  clientId       String
+  name           String
+  normalizedName String
+  receiptRule    AcquirerReceiptRule @default(WITHOUT_ADVANCE)
+  active         Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  rates  ClientAcquirerRate[]
+
+  @@unique([clientId, normalizedName])
+  @@index([clientId, active])
+}
+
+model ClientAcquirerRate {
+  id               String                  @id @default(cuid())
+  clientAcquirerId String
+  transactionType  AcquirerTransactionType
+  installments     Int                     @default(1)
+  brand            String?
+  normalizedBrand  String?
+  expectedRate     Decimal                 @db.Decimal(7, 4)
+  tolerance        Decimal                 @default(0.01) @db.Decimal(7, 4)
+  active           Boolean                 @default(true)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  clientAcquirer ClientAcquirer @relation(fields: [clientAcquirerId], references: [id], onDelete: Cascade)
+
+  @@unique([clientAcquirerId, transactionType, installments, normalizedBrand])
+  @@index([clientAcquirerId, active])
+}
+
+model Category {
+  id             String   @id @default(cuid())
+  organizationId String
+  parentId       String?
+  name           String
+  normalizedName String
+  code           String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent              Category?               @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children            Category[]              @relation("CategoryHierarchy")
+  categoryMappings    ClientCategoryMapping[] @relation("MappedCategory")
+  subcategoryMappings ClientCategoryMapping[] @relation("MappedSubcategory")
+
+  @@unique([organizationId, parentId, normalizedName])
+  @@index([organizationId, active])
+  @@index([parentId])
+}
+
+model ImportJob {
+  id             String       @id @default(cuid())
+  organizationId String
+  clientId       String?
+  userId         String
+  module         ImportModule
+  status         ImportStatus @default(UPLOADED)
+  originalName   String
+  storagePath    String?
+  parserId       String?
+  parserVersion  String?
+  confidence     Decimal?     @db.Decimal(5, 2)
+  expectedTotal  Decimal?     @db.Decimal(18, 2)
+  parsedTotal    Decimal?     @db.Decimal(18, 2)
+  difference     Decimal?     @db.Decimal(18, 2)
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization  Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client        Client?                      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user          User                         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions  ParsedTransaction[]
+  parserRun     ParserRun?
+  brasilmedRows BrasilmedReconciliationRow[]
+
+  @@index([organizationId, module, createdAt])
+  @@index([clientId])
+}
+
+model ParsedTransaction {
+  id          String          @id @default(cuid())
+  importJobId String
+  date        DateTime
+  description String
+  amount      Decimal         @db.Decimal(18, 2)
+  type        TransactionType
+  document    String?
+  category    String?
+  costCenter  String?
+  sourcePage  Int?
+  sourceLine  String?
+  selected    Boolean         @default(true)
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId, date])
+}
+
+model ParserDefinition {
+  id           String      @id
+  name         String
+  kind         ParserKind
+  institution  String
+  layout       String
+  version      String
+  active       Boolean     @default(true)
+  priority     Int         @default(100)
+  fingerprints Json
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  runs         ParserRun[]
+
+  @@unique([institution, layout, version])
+}
+
+model ParserRun {
+  id                 String           @id @default(cuid())
+  importJobId        String           @unique
+  parserDefinitionId String
+  confidence         Decimal          @db.Decimal(5, 2)
+  linesFound         Int              @default(0)
+  linesIgnored       Int              @default(0)
+  warnings           Json?
+  diagnostics        Json?
+  createdAt          DateTime         @default(now())
+  importJob          ImportJob        @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  parser             ParserDefinition @relation(fields: [parserDefinitionId], references: [id], onDelete: Restrict)
+}
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  currency  String
+  rateDate  DateTime
+  buyRate   Decimal  @db.Decimal(18, 8)
+  sellRate  Decimal  @db.Decimal(18, 8)
+  source    String   @default("BCB_PTAX")
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@unique([currency, rateDate, source])
+  @@index([rateDate])
+}
+
+model CostCenter {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  code      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, name])
+}
+
+model CategoryRule {
+  id                    String       @id @default(cuid())
+  clientId              String
+  module                ImportModule
+  normalizedDescription String
+  category              String
+  costCenter            String?
+  confidence            Decimal      @default(100) @db.Decimal(5, 2)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  client                Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, module, normalizedDescription])
+}
+
+model ClientCategoryMapping {
+  id            String              @id @default(cuid())
+  clientId      String
+  mappingType   CategoryMappingType
+  categoryId    String
+  subcategoryId String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  client        Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  category      Category            @relation("MappedCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  subcategory   Category?           @relation("MappedSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, mappingType])
+  @@index([categoryId])
+  @@index([subcategoryId])
+}
+
+model Employee {
+  id                    String                       @id @default(cuid())
+  clientId              String
+  name                  String
+  normalizedName        String
+  cpf                   String?
+  registration          String?
+  section               String?
+  role                  String?
+  defaultCostCenter     String?
+  defaultExpenseType    String?
+  defaultCategory       String?
+  contaAzulSupplierName String?
+  active                Boolean                      @default(true)
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  client                Client                       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reconciliationRows    BrasilmedReconciliationRow[]
+
+  @@unique([clientId, normalizedName])
+  @@index([clientId, cpf])
+}
+
+model BrasilmedReconciliationRow {
+  id          String    @id @default(cuid())
+  importJobId String
+  employeeId  String?
+  name        String
+  section     String?
+  role        String?
+  bankName    String?
+  bankCode    String?
+  account     String?
+  cpf         String?
+  pixKey      String?
+  netAmount   Decimal   @db.Decimal(18, 2)
+  costCenter  String?
+  expenseType String?
+  category    String?
+  competence  String?
+  paymentDate DateTime?
+  selected    Boolean   @default(true)
+  sourcePage  Int?
+  sourceText  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  importJob   ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([importJobId])
+  @@index([employeeId])
+}
+
+model SupportTicket {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  subject        String
+  description    String
+  priority       String       @default("MEDIUM")
+  status         TicketStatus @default(OPEN)
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entity     String
+  entityId   String?
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+}
+
+model OnboardingTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  slaDays        Int      @default(30)
+  active         Boolean  @default(true)
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories   OnboardingTemplateCategory[]
+  onboardings  Onboarding[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, active])
+}
+
+model OnboardingTemplateCategory {
+  id          String   @id @default(cuid())
+  templateId  String
+  name        String
+  description String?
+  position    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template   OnboardingTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  activities OnboardingTemplateActivity[]
+
+  @@unique([templateId, position])
+  @@index([templateId])
+}
+
+model OnboardingTemplateActivity {
+  id          String   @id @default(cuid())
+  categoryId  String
+  name        String
+  description String?
+  position    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category OnboardingTemplateCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tasks    OnboardingTaskTemplate[]
+
+  @@unique([categoryId, position])
+  @@index([categoryId])
+}
+
+model OnboardingTaskTemplate {
+  id                     String   @id @default(cuid())
+  activityId             String
+  subcategory            String
+  title                  String
+  description            String?
+  defaultResponsibleRole String?
+  mandatory              Boolean  @default(true)
+  estimatedMinutes       Int      @default(0)
+  tip                    String?
+  isNotionReminder       Boolean  @default(false)
+  position               Int
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  activity OnboardingTemplateActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  tasks    OnboardingTask[]
+
+  @@unique([activityId, position])
+  @@index([activityId])
+}
+
+model Onboarding {
+  id              String           @id @default(cuid())
+  organizationId  String
+  clientId        String?
+  templateId      String?
+  responsibleId   String?
+  createdById     String
+  status          OnboardingStatus @default(OPEN)
+  risk            OnboardingRisk   @default(ON_TIME)
+  startDate       DateTime
+  expectedEndDate DateTime
+  completedAt     DateTime?
+  notes           String?
+  companyName     String?
+  tradeName       String?
+  cnpj            String?
+  contactName     String?
+  contactPhone    String?
+  contactEmail    String?
+  supervisor      String?
+  analystLead     String?
+  team            String?
+  responsibleName String?
+  projectData     Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  template     OnboardingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  responsible  User?               @relation("OnboardingOwner", fields: [responsibleId], references: [id], onDelete: SetNull)
+  createdBy    User                @relation("OnboardingCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tasks        OnboardingTask[]
+  history      OnboardingHistory[]
+
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@index([responsibleId])
+  @@index([expectedEndDate])
+}
+
+model OnboardingTask {
+  id               String               @id @default(cuid())
+  onboardingId     String
+  templateTaskId   String?
+  responsibleId    String?
+  categoryName     String
+  activityName     String
+  subcategory      String
+  title            String
+  description      String?
+  status           OnboardingTaskStatus @default(PENDING)
+  mandatory        Boolean              @default(true)
+  estimatedMinutes Int                  @default(0)
+  tip              String?
+  isNotionReminder Boolean              @default(false)
+  position         Int
+  startedAt        DateTime?
+  completedAt      DateTime?
+  blockedAt        DateTime?
+  blockedReason    String?
+  waitingFor       String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  onboarding   Onboarding              @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  templateTask OnboardingTaskTemplate? @relation(fields: [templateTaskId], references: [id], onDelete: SetNull)
+  responsible  User?                   @relation("OnboardingTaskResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  comments     OnboardingComment[]
+  timeEntries  OnboardingTimeEntry[]
+
+  @@index([onboardingId, position])
+  @@index([responsibleId, status])
+  @@index([status])
+}
+
+model OnboardingComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task OnboardingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, createdAt])
+}
+
+model OnboardingTimeEntry {
+  id          String    @id @default(cuid())
+  taskId      String
+  userId      String
+  startedAt   DateTime
+  endedAt     DateTime?
+  seconds     Int       @default(0)
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  task OnboardingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, startedAt])
+  @@index([userId, startedAt])
+}
+
+model OnboardingHistory {
+  id           String   @id @default(cuid())
+  onboardingId String
+  userId       String
+  action       String
+  entity       String
+  entityId     String?
+  beforeData   Json?
+  afterData    Json?
+  createdAt    DateTime @default(now())
+
+  onboarding Onboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([onboardingId, createdAt])
+}

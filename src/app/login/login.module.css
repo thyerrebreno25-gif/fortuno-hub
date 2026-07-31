@@ -1,0 +1,575 @@
+.page {
+  --navy-950: #06162f;
+  --navy-900: #09234d;
+  --navy-800: #113c7a;
+  --blue-700: #0753c7;
+  --blue-600: #0b63e5;
+  --blue-500: #1678ef;
+  --orange-500: #f5a13a;
+  --text: #071a3a;
+  --muted: #70809c;
+  --border: #dbe3ef;
+
+  display: grid;
+  grid-template-columns: minmax(520px, 1.25fr) minmax(460px, 0.75fr);
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--navy-950);
+}
+
+.brandPanel {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 78% 62%,
+      rgba(17, 101, 239, 0.82) 0%,
+      rgba(14, 81, 187, 0.34) 28%,
+      transparent 53%
+    ),
+    radial-gradient(
+      circle at 10% 8%,
+      rgba(238, 148, 66, 0.13),
+      transparent 22%
+    ),
+    linear-gradient(
+      125deg,
+      #05152e 0%,
+      #072657 48%,
+      #0a49a1 100%
+    );
+}
+
+.backgroundGrid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.1;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, black, transparent 93%);
+}
+
+.backgroundGlow {
+  position: absolute;
+  right: 5%;
+  bottom: -10%;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: rgba(12, 102, 239, 0.25);
+  filter: blur(100px);
+}
+
+.decorativeCircles {
+  position: absolute;
+  bottom: -220px;
+  left: -270px;
+  width: 600px;
+  height: 600px;
+  border: 1px solid rgba(120, 171, 233, 0.13);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 65px rgba(120, 171, 233, 0.055),
+    0 0 0 130px rgba(120, 171, 233, 0.04),
+    0 0 0 195px rgba(120, 171, 233, 0.025);
+}
+
+.brandContent {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 100vh;
+  padding: 54px clamp(48px, 6vw, 96px);
+  flex-direction: column;
+  justify-content: center;
+}
+
+.fortunoBrand {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin: auto 0;
+  flex-direction: column;
+  align-items: center;
+}
+
+.fortunoWord {
+  display: flex;
+  align-items: center;
+  color: #ffffff;
+  font-size: clamp(54px, 5vw, 88px);
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.fortunoWord > span {
+  display: inline-block;
+}
+
+.fortunoO {
+  width: 1.67em;
+  height: 0.88em;
+  margin: 0 0.035em 0 -0.025em;
+  overflow: visible;
+  flex: none;
+}
+
+.fortunoSubtitle {
+  margin-top: 20px;
+  margin-left: 22px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(11px, 1vw, 16px);
+  font-weight: 300;
+  letter-spacing: 0.43em;
+  white-space: nowrap;
+}
+
+.securityStatus {
+  display: flex;
+  align-items: center;
+  margin-top: auto;
+  margin-right: auto;
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  gap: 12px;
+}
+
+.shieldIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 39px;
+  color: var(--orange-500);
+}
+
+.shieldIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.loginSide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 34px;
+  background:
+    radial-gradient(
+      circle at 80% 10%,
+      rgba(27, 112, 228, 0.07),
+      transparent 30%
+    ),
+    linear-gradient(145deg, #f8faff 0%, #eef3fa 100%);
+}
+
+.loginCard {
+  width: 100%;
+  max-width: 540px;
+  padding: 42px 46px;
+  border: 1px solid rgba(209, 220, 235, 0.8);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 22px 55px rgba(5, 28, 67, 0.1),
+    0 4px 12px rgba(5, 28, 67, 0.04);
+}
+
+.convertNowHeader {
+  display: flex;
+  align-items: center;
+  margin-bottom: 42px;
+  gap: 14px;
+}
+
+.convertNowLogo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 15px;
+  color: white;
+  background: linear-gradient(135deg, #164477 0%, #0f75e9 100%);
+  font-size: 19px;
+  font-weight: 850;
+  box-shadow: 0 12px 26px rgba(10, 92, 197, 0.22);
+}
+
+.convertNowHeader > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.convertNowHeader strong {
+  color: #071a3a;
+  font-size: 23px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.convertNowHeader span {
+  color: #677895;
+  font-size: 13px;
+}
+
+.welcome {
+  margin-bottom: 30px;
+}
+
+.welcome > span {
+  display: block;
+  margin-bottom: 14px;
+  color: #075bd8;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+}
+
+.welcome h1 {
+  margin: 0 0 12px;
+  color: #071a3a;
+  font-size: clamp(32px, 3vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.welcome p {
+  margin: 0;
+  color: #6f7f99;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 19px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.field label {
+  color: #071a3a;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.inputContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputContainer > svg {
+  position: absolute;
+  left: 17px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  color: #8292ae;
+  pointer-events: none;
+}
+
+.inputContainer input {
+  width: 100%;
+  height: 52px;
+  padding: 0 54px 0 49px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  color: #071a3a;
+  background: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.inputContainer input::placeholder {
+  color: #94a2b8;
+}
+
+.inputContainer input:focus {
+  border-color: #1678ef;
+  box-shadow: 0 0 0 4px rgba(22, 120, 239, 0.1);
+}
+
+.eyeButton {
+  position: absolute;
+  right: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  color: #7f90ad;
+  background: transparent;
+  cursor: pointer;
+}
+
+.eyeButton svg {
+  width: 20px;
+  height: 20px;
+}
+
+.options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.checkbox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: #172744;
+  font-size: 12px;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.checkbox input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.customCheckbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border: 1px solid #b8c4d6;
+  border-radius: 5px;
+  color: white;
+  background: white;
+  font-size: 12px;
+  font-weight: 900;
+  transition: 150ms ease;
+}
+
+.checkbox input:checked + .customCheckbox {
+  border-color: #0864df;
+  background: #0864df;
+  box-shadow: 0 4px 10px rgba(8, 100, 223, 0.2);
+}
+
+.forgotPassword {
+  padding: 0;
+  border: 0;
+  color: #075bd8;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.forgotPassword:hover {
+  text-decoration: underline;
+}
+
+.errorMessage {
+  display: flex;
+  padding: 13px 15px;
+  border: 1px solid #f0c2c2;
+  border-radius: 10px;
+  color: #992b2b;
+  background: #fff2f2;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.submitButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 53px;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: linear-gradient(110deg, #0753c7, #106ced);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 12px 25px rgba(8, 93, 212, 0.22);
+  cursor: pointer;
+  gap: 15px;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.submitButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(8, 93, 212, 0.28);
+  filter: brightness(1.04);
+}
+
+.submitButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.arrow {
+  font-size: 21px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.spinner {
+  width: 17px;
+  height: 17px;
+  border: 2px solid rgba(255, 255, 255, 0.42);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 29px;
+  padding-top: 21px;
+  border-top: 1px solid #e6ebf2;
+  color: #8391a8;
+  font-size: 11px;
+  gap: 11px;
+}
+
+.footerDot {
+  color: #9ba7b9;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .page {
+    grid-template-columns: minmax(470px, 1fr) minmax(470px, 0.9fr);
+  }
+
+  .brandContent {
+    padding-right: 44px;
+    padding-left: 44px;
+  }
+
+  .fortunoWord {
+    font-size: 58px;
+  }
+
+  .fortunoSubtitle {
+    font-size: 11px;
+  }
+
+  .loginCard {
+    max-width: 510px;
+    padding: 38px 40px;
+  }
+}
+
+@media (max-width: 920px) {
+  .page {
+    display: block;
+    overflow: auto;
+    background: #f4f7fc;
+  }
+
+  .brandPanel {
+    display: none;
+  }
+
+  .loginSide {
+    min-height: 100vh;
+    padding: 22px;
+  }
+
+  .loginCard {
+    max-width: 520px;
+  }
+}
+
+@media (max-width: 560px) {
+  .loginSide {
+    padding: 0;
+    background: white;
+  }
+
+  .loginCard {
+    min-height: 100vh;
+    max-width: none;
+    padding: 32px 22px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .convertNowHeader {
+    margin-bottom: 44px;
+  }
+
+  .convertNowLogo {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    font-size: 18px;
+  }
+
+  .convertNowHeader strong {
+    font-size: 22px;
+  }
+
+  .welcome h1 {
+    font-size: 34px;
+  }
+
+  .options {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 13px;
+  }
+
+  .footer {
+    flex-wrap: wrap;
+  }
+}
+
+.convertNowLogo {
+  overflow: hidden;
+  padding: 0;
+  background: #123f7b;
+}
+
+.convertNowLogo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
