@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Badge, Card, Group, Paper, Progress, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Card, Group, Paper, Progress, ScrollArea, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
 import { buildAuditDashboard, type AuditDashboardLine } from "../core/audit-dashboard";
 
 const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -63,21 +63,100 @@ export function AcquirerAuditDashboard({ lines }: { lines: AuditDashboardLine[] 
         </Paper>
       </SimpleGrid>
 
-      <SimpleGrid cols={{ base: 1, lg: 2 }}>
-        <Paper withBorder radius="lg" p="lg">
-          <Group justify="space-between" mb="md"><Title order={5}>Maiores divergências</Title><Badge color={data.divergent ? "red" : "green"}>{data.divergent}</Badge></Group>
-          {data.divergences.length === 0 ? <Text size="sm" c="dimmed">Nenhuma divergência encontrada.</Text> : (
-            <Table>
-              <Table.Thead><Table.Tr><Table.Th>Operação</Table.Th><Table.Th>Cobrada</Table.Th><Table.Th>Contratada</Table.Th><Table.Th ta="right">Impacto</Table.Th></Table.Tr></Table.Thead>
-              <Table.Tbody>{data.divergences.slice(0, 10).map((item) => <Table.Tr key={item.id}><Table.Td>{item.cardBrand || "—"} • {item.transactionType}</Table.Td><Table.Td>{percent(item.chargedRate ?? 0)}</Table.Td><Table.Td>{percent(item.contractedRate ?? 0)}</Table.Td><Table.Td ta="right" c={item.impact > 0 ? "red" : "green"}>{money(item.impact)}</Table.Td></Table.Tr>)}</Table.Tbody>
-            </Table>
+      <SimpleGrid
+        cols={{ base: 1, lg: 2 }}
+        style={{ alignItems: "stretch" }}
+      >
+        <Paper
+          withBorder
+          radius="lg"
+          p="lg"
+          style={{ minWidth: 0, overflow: "hidden" }}
+        >
+          <Group justify="space-between" mb="md">
+            <Title order={5}>Maiores divergências</Title>
+            <Badge color={data.divergent ? "red" : "green"}>
+              {data.divergent}
+            </Badge>
+          </Group>
+
+          {data.divergences.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              Nenhuma divergência encontrada.
+            </Text>
+          ) : (
+            <ScrollArea type="auto" offsetScrollbars>
+              <Table
+                miw={660}
+                verticalSpacing="sm"
+                horizontalSpacing="md"
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Operação</Table.Th>
+                    <Table.Th>Cobrada</Table.Th>
+                    <Table.Th>Contratada</Table.Th>
+                    <Table.Th ta="right">Impacto</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+
+                <Table.Tbody>
+                  {data.divergences.slice(0, 10).map((item) => (
+                    <Table.Tr key={item.id}>
+                      <Table.Td>
+                        <Text fw={600} style={{ whiteSpace: "nowrap" }}>
+                          {item.cardBrand || "—"} • {item.transactionType}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td style={{ whiteSpace: "nowrap" }}>
+                        {percent(item.chargedRate ?? 0)}
+                      </Table.Td>
+                      <Table.Td style={{ whiteSpace: "nowrap" }}>
+                        {percent(item.contractedRate ?? 0)}
+                      </Table.Td>
+                      <Table.Td
+                        ta="right"
+                        c={item.impact > 0 ? "red" : "green"}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        {money(item.impact)}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </ScrollArea>
           )}
         </Paper>
 
-        <Paper withBorder radius="lg" p="lg">
-          <Group justify="space-between" mb="md"><Title order={5}>Regras pendentes</Title><Badge color={data.notConfigured ? "orange" : "green"}>{data.notConfigured}</Badge></Group>
-          {data.pendingRules.length === 0 ? <Text size="sm" c="dimmed">Todas as modalidades encontradas possuem regra cadastrada.</Text> : (
-            <Stack gap="xs">{data.pendingRules.map((rule) => <Card key={rule.key} withBorder padding="sm"><Group justify="space-between"><Text fw={700}>{rule.modality}</Text><Badge variant="outline">{rule.brand}</Badge></Group></Card>)}</Stack>
+        <Paper
+          withBorder
+          radius="lg"
+          p="lg"
+          style={{ minWidth: 0, overflow: "hidden" }}
+        >
+          <Group justify="space-between" mb="md">
+            <Title order={5}>Regras pendentes</Title>
+            <Badge color={data.notConfigured ? "orange" : "green"}>
+              {data.notConfigured}
+            </Badge>
+          </Group>
+
+          {data.pendingRules.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              Todas as modalidades encontradas possuem regra cadastrada.
+            </Text>
+          ) : (
+            <Stack gap="xs">
+              {data.pendingRules.map((rule) => (
+                <Card key={rule.key} withBorder padding="sm">
+                  <Group justify="space-between">
+                    <Text fw={700}>{rule.modality}</Text>
+                    <Badge variant="outline">{rule.brand}</Badge>
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
           )}
         </Paper>
       </SimpleGrid>
