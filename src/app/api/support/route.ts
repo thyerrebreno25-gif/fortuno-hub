@@ -8,6 +8,7 @@ import {
   parseSupportMetadata,
   type SupportAttachment,
 } from "@/modules/support/types/support.types";
+import { sendNewSupportTicketEmail } from "@/modules/notifications/email/support-email";
 
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
@@ -261,11 +262,39 @@ export async function POST(request: Request) {
       return ticket;
     });
 
+    const ticketCode = `SUP-${created.id.slice(-6).toUpperCase()}`;
+
+    const emailResult = await sendNewSupportTicketEmail({
+      ticketId: created.id,
+      ticketCode,
+      subject,
+      description,
+      priority,
+      category,
+      module,
+      requesterName: member.user.name || member.user.email,
+      requesterEmail: member.user.email,
+      createdAt: created.createdAt,
+    });
+
+    if (!emailResult.sent) {
+      console.warn("Chamado criado, mas a notificação por e-mail não foi enviada:", {
+        ticketId: created.id,
+        reason: emailResult.reason,
+      });
+    }
+
     return NextResponse.json(
       {
         id: created.id,
-        code: `SUP-${created.id.slice(-6).toUpperCase()}`,
-        message: "Chamado criado com sucesso.",
+        code: ticketCode,
+        message: emailResult.sent
+          ? "Chamado criado e suporte notificado por e-mail."
+          : "Chamado criado com sucesso. A notificação por e-mail ficou pendente.",
+        emailNotification: {
+          sent: emailResult.sent,
+          reason: emailResult.sent ? undefined : emailResult.reason,
+        },
       },
       { status: 201 },
     );
