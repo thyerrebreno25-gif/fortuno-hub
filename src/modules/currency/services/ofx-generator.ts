@@ -41,13 +41,22 @@ export function generateCurrencyOfx(
           ? -Math.abs(transaction.convertedAmount ?? 0)
           : Math.abs(transaction.convertedAmount ?? 0);
 
-      const memo = `${transaction.description} | ${transaction.currency} ${transaction.originalAmount.toFixed(2)} | PTAX ${transaction.rate?.toFixed(8)} | cotação ${transaction.rateDate}`;
+      const sourcePrefix =
+        transaction.source === "MANUAL"
+          ? "[MANUAL] "
+          : transaction.source === "PDF"
+            ? "[PDF] "
+            : transaction.source === "SPREADSHEET"
+              ? "[PLANILHA] "
+              : "";
+
+      const memo = `${sourcePrefix}${transaction.description} | ${transaction.currency} ${transaction.originalAmount.toFixed(2)} | PTAX ${transaction.rate?.toFixed(8)} | cotação ${transaction.rateDate}`;
 
       return `<STMTTRN>
 <TRNTYPE>${transaction.type === "DEBIT" ? "DEBIT" : "CREDIT"}
 <DTPOSTED>${ofxDate(transaction.date)}
 <TRNAMT>${signedAmount.toFixed(2)}
-<FITID>CN-CAMBIO-${transaction.id}
+<FITID>FORTUNO-CAMBIO-${transaction.id}
 <MEMO>${escapeOfx(memo)}
 </STMTTRN>`;
     })
@@ -76,7 +85,7 @@ NEWFILEUID:NONE
 </SIGNONMSGSRSV1>
 <BANKMSGSRSV1>
 <STMTTRNRS>
-<TRNUID>CONVERTNOW-${Date.now()}
+<TRNUID>FORTUNO-HUB-${Date.now()}
 <STATUS>
 <CODE>0
 <SEVERITY>INFO
@@ -85,7 +94,7 @@ NEWFILEUID:NONE
 <CURDEF>BRL
 <BANKACCTFROM>
 <BANKID>${escapeOfx(options.bankId || "000")}
-<ACCTID>${escapeOfx(options.accountId || "CONVERTNOW")}
+<ACCTID>${escapeOfx(options.accountId || "FORTUNOHUB")}
 <ACCTTYPE>${options.accountType}
 </BANKACCTFROM>
 <BANKTRANLIST>

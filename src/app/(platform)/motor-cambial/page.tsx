@@ -30,6 +30,7 @@ import {
   IconCoins,
   IconDownload,
   IconFileSpreadsheet,
+  IconPlus,
   IconRefresh,
   IconScale,
   IconTrash,
@@ -225,10 +226,14 @@ export default function CurrencyConversionPage() {
         );
       }
 
+      const source =
+        extension === "pdf" ? "PDF" : "SPREADSHEET";
+
       setTransactions(
         parsed.map((item) => ({
           ...item,
           currency: item.currency || currency,
+          source: item.source ?? source,
         })),
       );
       setStep(1);
@@ -420,6 +425,56 @@ export default function CurrencyConversionPage() {
 
   function removeTransaction(id: string) {
     setTransactions((current) => current.filter((item) => item.id !== id));
+  }
+
+  function addManualTransaction(options?: {
+    amount?: number;
+    type?: "CREDIT" | "DEBIT";
+    description?: string;
+  }) {
+    const latestDate =
+      transactions
+        .map((item) => item.date)
+        .filter(Boolean)
+        .sort((a, b) => b.localeCompare(a))[0] ??
+      new Date().toISOString().slice(0, 10);
+
+    const transaction: CurrencyTransaction = {
+      id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: latestDate,
+      description: options?.description ?? "Lançamento manual",
+      originalAmount: Math.abs(options?.amount ?? 0),
+      currency,
+      rate: null,
+      rateDate: null,
+      rateSource: null,
+      convertedAmount: null,
+      type: options?.type ?? "DEBIT",
+      status: "PENDING",
+      source: "MANUAL",
+    };
+
+    setTransactions((current) => [transaction, ...current]);
+    setClosingBalanceRate(null);
+    setClosingBalanceRateDate(null);
+    setStep(1);
+
+    notifications.show({
+      color: "blue",
+      title: "Lançamento manual adicionado",
+      message:
+        "Preencha os dados da nova linha e depois busque a PTAX novamente.",
+    });
+  }
+
+  function addBalanceAdjustment() {
+    if (balanceDifference === null || balanceMatches) return;
+
+    addManualTransaction({
+      amount: Math.abs(balanceDifference),
+      type: balanceDifference > 0 ? "DEBIT" : "CREDIT",
+      description: "Ajuste manual para fechamento do saldo",
+    });
   }
 
   function exportOfx() {
@@ -755,9 +810,34 @@ export default function CurrencyConversionPage() {
 
             {balanceDifference !== null && (
               <Alert color={balanceMatches ? "green" : "red"}>
-                {balanceMatches
-                  ? `Saldo validado. O saldo calculado confere com o saldo final do extrato.`
-                  : `Saldo não confere. Diferença líquida de ${Math.abs(balanceDifference).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${currency}. Isso normalmente indica lançamento ausente, duplicado ou classificado com o tipo incorreto.`}
+                <Group justify="space-between" align="center">
+                  <Text size="sm">
+                    {balanceMatches
+                      ? "Saldo validado. O saldo calculado confere com o saldo final do extrato."
+                      : `Saldo não confere. Diferença líquida de ${Math.abs(
+                          balanceDifference,
+                        ).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                        })} ${currency}. Isso normalmente indica lançamento ausente, duplicado ou classificado com o tipo incorreto.`}
+                  </Text>
+
+                  {!balanceMatches && (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="red"
+                      leftSection={<IconPlus size={15} />}
+                      onClick={addBalanceAdjustment}
+                    >
+                      Adicionar ajuste de {Math.abs(
+                        balanceDifference,
+                      ).toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      {currency}
+                    </Button>
+                  )}
+                </Group>
               </Alert>
             )}
 
@@ -840,6 +920,14 @@ export default function CurrencyConversionPage() {
             </Stack>
 
             <Group>
+              <Button
+                variant="light"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => addManualTransaction()}
+              >
+                Adicionar lançamento
+              </Button>
+
               {pendingCount > 0 && (
                 <Badge color="yellow" variant="light">
                   {pendingCount} pendente(s)
@@ -872,10 +960,11 @@ export default function CurrencyConversionPage() {
             </Stack>
           )}
 
-          <Table.ScrollContainer minWidth={1250}>
+          <Table.ScrollContainer minWidth={1370}>
             <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
+                  <Table.Th>Origem</Table.Th>
                   <Table.Th>Data</Table.Th>
                   <Table.Th>Observação</Table.Th>
                   <Table.Th>Tipo</Table.Th>
@@ -892,6 +981,25 @@ export default function CurrencyConversionPage() {
               <Table.Tbody>
                 {transactions.map((transaction) => (
                   <Table.Tr key={transaction.id}>
+                    <Table.Td>
+                      <Badge
+                        color={
+                          transaction.source === "MANUAL"
+                            ? "blue"
+                            : transaction.source === "PDF"
+                              ? "grape"
+                              : "gray"
+                        }
+                        variant="light"
+                      >
+                        {transaction.source === "MANUAL"
+                          ? "Manual"
+                          : transaction.source === "PDF"
+                            ? "PDF"
+                            : "Planilha"}
+                      </Badge>
+                    </Table.Td>
+
                     <Table.Td>
                       <TextInput
                         type="date"

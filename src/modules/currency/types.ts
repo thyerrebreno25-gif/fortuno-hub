@@ -17,6 +17,7 @@ export type CurrencyTransaction = {
   type: "CREDIT" | "DEBIT";
   status: "PENDING" | "CONVERTED" | "ERROR";
   warning?: string;
+  source?: "PDF" | "SPREADSHEET" | "MANUAL";
 };
 
 export type ExchangeRateResponse = {
