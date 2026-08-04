@@ -125,6 +125,7 @@ export default function FaturasPage() {
   const [items, setItems] = useState<InvoiceItem[]>(exampleItems);
   const [search, setSearch] = useState("");
   const [selectedItem, setSelectedItem] = useState<InvoiceItem | null>(null);
+  const [editModalOpened, setEditModalOpened] = useState(false);
   const [applyToSimilar, setApplyToSimilar] = useState(true);
   const [learnForClient, setLearnForClient] = useState(true);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
@@ -299,6 +300,7 @@ export default function FaturasPage() {
     setFile(null);
     setItems(exampleItems);
     setSelectedItem(null);
+    setEditModalOpened(false);
     setSearch("");
     setApplyToSimilar(true);
     setLearnForClient(true);
@@ -310,13 +312,20 @@ export default function FaturasPage() {
 
     if (selectedItem?.id === id) {
       setSelectedItem(null);
+      setEditModalOpened(false);
     }
+  }
+
+  function closeEditModal() {
+    setEditModalOpened(false);
+    setSelectedItem(null);
   }
 
   function openEdit(item: InvoiceItem) {
     setSelectedItem({ ...item });
     setApplyToSimilar(true);
     setLearnForClient(true);
+    setEditModalOpened(true);
   }
 
   async function createCategory() {
@@ -405,7 +414,7 @@ export default function FaturasPage() {
       }),
     );
 
-    setSelectedItem(null);
+    closeEditModal();
   }
 
   async function exportContaAzul() {
@@ -1069,107 +1078,86 @@ export default function FaturasPage() {
             </ScrollArea>
           </Paper>
 
-          {selectedItem && (
-            <Paper withBorder radius="lg" p="lg">
+          <Modal
+            opened={editModalOpened}
+            onClose={closeEditModal}
+            title="Categorizar lançamento"
+            centered
+            size="lg"
+            closeOnClickOutside={!categoryModalOpened}
+            closeOnEscape={!categoryModalOpened}
+          >
+            {selectedItem && (
               <Stack gap="lg">
-                <Group justify="space-between">
-                  <Stack gap={2}>
-                    <Title order={4}>Categorizar lançamento</Title>
-                    <Text size="sm" c="dimmed">
-                      A regra poderá ser salva somente para{" "}
-                      {selectedClient?.label}.
+                <Paper
+                  radius="md"
+                  p="md"
+                  bg="var(--mantine-color-gray-0)"
+                >
+                  <Group justify="space-between" align="flex-start" wrap="nowrap">
+                    <Stack gap={3} style={{ minWidth: 0 }}>
+                      <Text fw={800} lineClamp={2}>
+                        {selectedItem.description}
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        {formatDate(selectedItem.date)}
+                        {selectedItem.installment
+                          ? ` · Parcela ${selectedItem.installment}`
+                          : ""}
+                      </Text>
+                    </Stack>
+
+                    <Text fw={800} fz="lg" style={{ whiteSpace: "nowrap" }}>
+                      {formatMoney(selectedItem.amount)}
                     </Text>
-                  </Stack>
+                  </Group>
+                </Paper>
 
-                  <ActionIcon
-                    variant="subtle"
-                    onClick={() => setSelectedItem(null)}
-                    aria-label="Fechar edição"
-                  >
-                    <IconX size={18} />
-                  </ActionIcon>
-                </Group>
-
-                <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }}>
-                  <TextInput
-                    label="Data"
-                    type="date"
-                    value={selectedItem.date}
-                    onChange={(event) =>
-                      setSelectedItem({
-                        ...selectedItem,
-                        date: event.currentTarget.value,
-                      })
+                <Stack gap={6}>
+                  <Select
+                    label="Categoria"
+                    description={`A regra será exclusiva de ${
+                      selectedClient?.label ?? "este cliente"
+                    }.`}
+                    placeholder={
+                      categoryLoading
+                        ? "Carregando categorias..."
+                        : "Buscar ou selecionar categoria"
                     }
-                  />
-
-                  <TextInput
-                    label="Descrição"
-                    value={selectedItem.description}
-                    onChange={(event) =>
-                      setSelectedItem({
-                        ...selectedItem,
-                        description: event.currentTarget.value,
-                      })
-                    }
-                  />
-
-                  <NumberInput
-                    label="Valor"
-                    value={selectedItem.amount}
+                    data={categoryOptions}
+                    searchable
+                    clearable
+                    disabled={categoryLoading}
+                    value={selectedItem.category}
                     onChange={(value) =>
-                      setSelectedItem({
-                        ...selectedItem,
-                        amount: Number(value) || 0,
-                      })
+                      setSelectedItem((current) =>
+                        current ? { ...current, category: value } : current,
+                      )
                     }
-                    prefix="R$ "
-                    decimalScale={2}
-                    fixedDecimalScale
-                    thousandSeparator="."
-                    decimalSeparator=","
+                    leftSection={<IconTag size={17} />}
+                    nothingFoundMessage="Nenhuma categoria encontrada"
+                    required
+                    comboboxProps={{ withinPortal: true }}
                   />
 
-                  <Stack gap={6}>
-                    <Select
-                      label="Categoria"
-                      placeholder={
-                        categoryLoading
-                          ? "Carregando categorias..."
-                          : "Selecione a categoria"
-                      }
-                      data={categoryOptions}
-                      searchable
-                      disabled={categoryLoading}
-                      value={selectedItem.category}
-                      onChange={(value) =>
-                        setSelectedItem({
-                          ...selectedItem,
-                          category: value,
-                        })
-                      }
-                      leftSection={<IconTag size={17} />}
-                      required
-                    />
-                    <Button
-                      variant="subtle"
-                      size="compact-sm"
-                      leftSection={<IconPlus size={15} />}
-                      onClick={() => setCategoryModalOpened(true)}
-                      style={{ alignSelf: "flex-start" }}
-                    >
-                      Criar nova categoria
-                    </Button>
-                  </Stack>
-                </SimpleGrid>
+                  <Button
+                    variant="subtle"
+                    size="compact-sm"
+                    leftSection={<IconPlus size={15} />}
+                    onClick={() => setCategoryModalOpened(true)}
+                    style={{ alignSelf: "flex-start" }}
+                  >
+                    Criar nova categoria
+                  </Button>
+                </Stack>
 
-                <SimpleGrid cols={{ base: 1, md: 2 }}>
+                <Stack gap="sm">
                   <Checkbox
                     checked={applyToSimilar}
                     onChange={(event) =>
                       setApplyToSimilar(event.currentTarget.checked)
                     }
-                    label="Aplicar esta categoria a todas as ocorrências iguais nesta fatura"
+                    label="Aplicar esta categoria às ocorrências semelhantes desta fatura"
                   />
 
                   <Checkbox
@@ -1181,13 +1169,10 @@ export default function FaturasPage() {
                       selectedClient?.label ?? "este cliente"
                     }`}
                   />
-                </SimpleGrid>
+                </Stack>
 
                 <Group justify="flex-end">
-                  <Button
-                    variant="default"
-                    onClick={() => setSelectedItem(null)}
-                  >
+                  <Button variant="default" onClick={closeEditModal}>
                     Cancelar
                   </Button>
 
@@ -1196,12 +1181,12 @@ export default function FaturasPage() {
                     leftSection={<IconCheck size={17} />}
                     onClick={saveItem}
                   >
-                    Salvar e aprender
+                    {learnForClient ? "Salvar e aprender" : "Salvar categoria"}
                   </Button>
                 </Group>
               </Stack>
-            </Paper>
-          )}
+            )}
+          </Modal>
 
           <Modal
             opened={categoryModalOpened}
