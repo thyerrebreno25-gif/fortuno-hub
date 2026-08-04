@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { parseRedeWorkbook, type ContractedRate } from "@/modules/acquirers/rede-workbook-parser";
+import {
+  parseRedeWorkbook,
+  type ContractedRate,
+  type FeeCategory,
+} from "@/modules/acquirers/rede-workbook-parser";
 import { exportAcquirerToContaAzul } from "@/modules/acquirers/conta-azul-exporter";
 import { AcquirerAuditDashboard } from "@/modules/acquirers/components/acquirer-audit-dashboard";
 import { trackImport } from "@/modules/imports/import-tracker";
@@ -77,6 +81,7 @@ type ConvertedLine = {
   transactionType?: "DEBIT" | "CREDIT" | "PIX" | "VOUCHER" | "OTHER";
   cardBrand?: string;
   installments?: number;
+  feeCategory?: FeeCategory;
 };
 
 type ClientOption = {
@@ -134,6 +139,41 @@ function eventColor(type: EventType) {
     ANTICIPATION: "yellow",
   }[type];
 }
+
+
+function feeCategoryLabel(type?: FeeCategory) {
+  return {
+    SALE_FEE: "Taxas de venda (MDR)",
+    ANTICIPATION: "Antecipações",
+    EQUIPMENT: "Maquininhas e equipamentos",
+    ADJUSTMENT: "Ajustes financeiros",
+    CHARGEBACK: "Chargebacks",
+    CANCELLATION: "Cancelamentos",
+    OTHER: "Outras tarifas",
+  }[type ?? "OTHER"];
+}
+
+function feeCategoryColor(type?: FeeCategory) {
+  return {
+    SALE_FEE: "red",
+    ANTICIPATION: "yellow",
+    EQUIPMENT: "blue",
+    ADJUSTMENT: "cyan",
+    CHARGEBACK: "grape",
+    CANCELLATION: "orange",
+    OTHER: "gray",
+  }[type ?? "OTHER"];
+}
+
+const feeCategoryOrder: FeeCategory[] = [
+  "SALE_FEE",
+  "ANTICIPATION",
+  "EQUIPMENT",
+  "ADJUSTMENT",
+  "CHARGEBACK",
+  "CANCELLATION",
+  "OTHER",
+];
 
 function transactionTypeLabel(type?: ConvertedLine["transactionType"]) {
   return {
@@ -377,6 +417,42 @@ export default function AdquirentesPage() {
       (audit) => audit.validation === "NOT_CONFIGURED",
     ).length;
 
+    const costLines = lines.filter(
+      (line) => line.eventType !== "SALE" && line.amount < 0,
+    );
+
+    const feeBreakdown = feeCategoryOrder.map((feeCategory) => {
+      const categoryLines = costLines.filter(
+        (line) => (line.feeCategory ?? "OTHER") === feeCategory,
+      );
+
+      return {
+        feeCategory,
+        label: feeCategoryLabel(feeCategory),
+        amount: categoryLines.reduce(
+          (sum, line) => sum + Math.abs(line.amount),
+          0,
+        ),
+        count: categoryLines.length,
+        lines: categoryLines,
+      };
+    });
+
+    const totalCosts = feeBreakdown.reduce(
+      (sum, category) => sum + category.amount,
+      0,
+    );
+
+    const saleFees = feeBreakdown.find(
+      (category) => category.feeCategory === "SALE_FEE",
+    )?.amount ?? 0;
+    const anticipationFees = feeBreakdown.find(
+      (category) => category.feeCategory === "ANTICIPATION",
+    )?.amount ?? 0;
+    const equipmentFees = feeBreakdown.find(
+      (category) => category.feeCategory === "EQUIPMENT",
+    )?.amount ?? 0;
+
     return {
       gross,
       fees,
@@ -390,6 +466,11 @@ export default function AdquirentesPage() {
       divergentSales,
       matchedSales,
       unconfiguredSales,
+      feeBreakdown,
+      totalCosts,
+      saleFees,
+      anticipationFees,
+      equipmentFees,
     };
   }, [lines]);
 
@@ -463,6 +544,15 @@ export default function AdquirentesPage() {
           sheets: processedSheets,
           gross: totals.gross,
           fees: totals.fees,
+          totalCosts: totals.totalCosts,
+          saleFees: totals.saleFees,
+          anticipationFees: totals.anticipationFees,
+          equipmentFees: totals.equipmentFees,
+          feeBreakdown: totals.feeBreakdown.map((item) => ({
+            feeCategory: item.feeCategory,
+            amount: item.amount,
+            count: item.count,
+          })),
           adjustments: totals.adjustments,
           cancellations: totals.cancellations,
           divergentSales: totals.divergentSales,
@@ -474,7 +564,11 @@ export default function AdquirentesPage() {
           amount: Math.abs(line.amount),
           type: line.amount >= 0 ? "CREDIT" : "DEBIT",
           category: line.category,
-          metadata: { eventType: line.eventType, sourceSheet: line.sourceSheet },
+          metadata: {
+            eventType: line.eventType,
+            feeCategory: line.feeCategory ?? null,
+            sourceSheet: line.sourceSheet,
+          },
         })),
       });
     } catch (error) {
@@ -571,8 +665,8 @@ export default function AdquirentesPage() {
               <Text fw={800} fz={20}>{formatMoney(totals.gross)}</Text>
             </Card>
             <Card withBorder radius="lg">
-              <Text size="xs" c="dimmed">Tarifas/Ajustes</Text>
-              <Text fw={800} fz={20} c="red">-{formatMoney(totals.fees)}</Text>
+              <Text size="xs" c="dimmed">Custos e descontos</Text>
+              <Text fw={800} fz={20} c="red">-{formatMoney(totals.totalCosts)}</Text>
             </Card>
             <Card withBorder radius="lg">
               <Text size="xs" c="dimmed">Líquido esperado</Text>
@@ -613,6 +707,168 @@ export default function AdquirentesPage() {
               </Text>
             </Card>
           </SimpleGrid>
+
+          <Paper withBorder radius="lg" p="lg">
+            <Stack gap="lg">
+              <Group justify="space-between" align="flex-start">
+                <Stack gap={2}>
+                  <Title order={4}>Composição dos custos e descontos</Title>
+                  <Text size="sm" c="dimmed">
+                    Separe taxas de venda, antecipações, equipamentos e demais
+                    descontos para entender onde está o custo da operação.
+                  </Text>
+                </Stack>
+                <Stack gap={0} align="flex-end">
+                  <Text size="xs" c="dimmed">TOTAL IDENTIFICADO</Text>
+                  <Text fw={800} fz={24} c="red">
+                    -{formatMoney(totals.totalCosts)}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {totals.gross > 0
+                      ? `${((totals.totalCosts / totals.gross) * 100).toLocaleString(
+                          "pt-BR",
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          },
+                        )}% das vendas brutas`
+                      : "Sem vendas brutas para comparação"}
+                  </Text>
+                </Stack>
+              </Group>
+
+              <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }}>
+                {totals.feeBreakdown
+                  .filter((item) => item.amount > 0)
+                  .map((item) => (
+                    <Card key={item.feeCategory} withBorder radius="lg">
+                      <Stack gap={5}>
+                        <Group justify="space-between" wrap="nowrap">
+                          <Badge
+                            color={feeCategoryColor(item.feeCategory)}
+                            variant="light"
+                          >
+                            {item.label}
+                          </Badge>
+                          <Text size="xs" c="dimmed">
+                            {item.count} item(ns)
+                          </Text>
+                        </Group>
+                        <Text fw={800} fz={22}>
+                          {formatMoney(item.amount)}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {totals.totalCosts > 0
+                            ? `${((item.amount / totals.totalCosts) * 100).toLocaleString(
+                                "pt-BR",
+                                {
+                                  minimumFractionDigits: 1,
+                                  maximumFractionDigits: 1,
+                                },
+                              )}% do total de custos`
+                            : "0% do total"}
+                        </Text>
+                        <Progress
+                          value={
+                            totals.totalCosts > 0
+                              ? (item.amount / totals.totalCosts) * 100
+                              : 0
+                          }
+                          color={feeCategoryColor(item.feeCategory)}
+                          radius="xl"
+                        />
+                      </Stack>
+                    </Card>
+                  ))}
+              </SimpleGrid>
+
+              {totals.feeBreakdown.some((item) => item.amount > 0) ? (
+                <Accordion variant="separated" radius="md">
+                  {totals.feeBreakdown
+                    .filter((item) => item.amount > 0)
+                    .map((item) => (
+                      <Accordion.Item
+                        key={item.feeCategory}
+                        value={`fee-${item.feeCategory}`}
+                      >
+                        <Accordion.Control>
+                          <Group justify="space-between" pr="md">
+                            <Group gap="sm">
+                              <Badge
+                                color={feeCategoryColor(item.feeCategory)}
+                                variant="light"
+                              >
+                                {item.label}
+                              </Badge>
+                              <Text size="sm" c="dimmed">
+                                {item.count} lançamento(s)
+                              </Text>
+                            </Group>
+                            <Text fw={800}>{formatMoney(item.amount)}</Text>
+                          </Group>
+                        </Accordion.Control>
+                        <Accordion.Panel>
+                          <ScrollArea>
+                            <Table
+                              miw={760}
+                              verticalSpacing="sm"
+                              horizontalSpacing="md"
+                            >
+                              <Table.Thead>
+                                <Table.Tr>
+                                  <Table.Th>Data</Table.Th>
+                                  <Table.Th>Descrição original</Table.Th>
+                                  <Table.Th>Origem</Table.Th>
+                                  <Table.Th>Categoria Conta Azul</Table.Th>
+                                  <Table.Th ta="right">Valor</Table.Th>
+                                </Table.Tr>
+                              </Table.Thead>
+                              <Table.Tbody>
+                                {item.lines.map((line) => (
+                                  <Table.Tr key={`cost-${line.id}`}>
+                                    <Table.Td>
+                                      {formatDate(
+                                        line.paymentDate ||
+                                          line.dueDate ||
+                                          line.saleDate,
+                                      )}
+                                    </Table.Td>
+                                    <Table.Td>
+                                      <Text fw={600}>{line.description}</Text>
+                                    </Table.Td>
+                                    <Table.Td>
+                                      <Stack gap={0}>
+                                        <Text size="sm">{line.sourceSheet}</Text>
+                                        <Text size="xs" c="dimmed">
+                                          Linha {line.sourceRow}
+                                        </Text>
+                                      </Stack>
+                                    </Table.Td>
+                                    <Table.Td>
+                                      <Badge variant="outline" color="gray">
+                                        {line.category}
+                                      </Badge>
+                                    </Table.Td>
+                                    <Table.Td ta="right" fw={800} c="red">
+                                      -{formatMoney(Math.abs(line.amount))}
+                                    </Table.Td>
+                                  </Table.Tr>
+                                ))}
+                              </Table.Tbody>
+                            </Table>
+                          </ScrollArea>
+                        </Accordion.Panel>
+                      </Accordion.Item>
+                    ))}
+                </Accordion>
+              ) : (
+                <Alert color="blue" icon={<IconReceipt size={18} />}>
+                  Nenhum custo ou desconto negativo foi identificado nesta
+                  importação.
+                </Alert>
+              )}
+            </Stack>
+          </Paper>
 
           <Paper withBorder radius="lg" p="lg">
             <Stack gap="xs">
@@ -683,7 +939,7 @@ export default function AdquirentesPage() {
                     </Accordion.Control>
                     <Accordion.Panel>
                       <ScrollArea>
-                        <Table miw={1900} verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
+                        <Table miw={2100} verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
                           <Table.Thead>
                             <Table.Tr>
                               <Table.Th>Tipo</Table.Th>
@@ -831,7 +1087,7 @@ export default function AdquirentesPage() {
               <SimpleGrid cols={{ base: 2, md: 4 }}>
                 <Stack gap={0}><Text size="xs" c="dimmed">Linhas de saída</Text><Text fw={800} fz={20}>{lines.length}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Venda bruta</Text><Text fw={800} fz={20} c="green">{formatMoney(totals.gross)}</Text></Stack>
-                <Stack gap={0}><Text size="xs" c="dimmed">Total de taxas</Text><Text fw={800} fz={20} c="red">-{formatMoney(totals.fees)}</Text></Stack>
+                <Stack gap={0}><Text size="xs" c="dimmed">Custos e descontos</Text><Text fw={800} fz={20} c="red">-{formatMoney(totals.totalCosts)}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Líquido conferido</Text><Text fw={800} fz={20}>{formatMoney(totals.expectedNet)}</Text></Stack>
               </SimpleGrid>
               <Button leftSection={<IconDownload size={18} />} size="md" disabled={lines.length === 0} onClick={exportContaAzul}>Exportar planilha Conta Azul</Button>

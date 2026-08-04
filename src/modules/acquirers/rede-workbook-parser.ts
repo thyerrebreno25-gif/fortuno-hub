@@ -8,6 +8,15 @@ export type AcquirerEventType =
   | "CHARGEBACK"
   | "ANTICIPATION";
 
+export type FeeCategory =
+  | "SALE_FEE"
+  | "ANTICIPATION"
+  | "EQUIPMENT"
+  | "ADJUSTMENT"
+  | "CHARGEBACK"
+  | "CANCELLATION"
+  | "OTHER";
+
 export type ContractedRate = {
   modality: string;
   installments: number | null;
@@ -36,6 +45,7 @@ export type ParsedAcquirerLine = {
   transactionType?: "DEBIT" | "CREDIT" | "PIX" | "VOUCHER" | "OTHER";
   cardBrand?: string;
   installments?: number;
+  feeCategory?: FeeCategory;
 };
 
 type Categories = {
@@ -123,6 +133,55 @@ function normalizeModality(value: unknown): "DEBIT" | "CREDIT" | "PIX" | "VOUCHE
 
 function normalizeBrand(value: unknown) {
   return normalize(value).replace(/[^a-z0-9]/g, "").toUpperCase();
+}
+
+
+function classifyFeeCategory(
+  eventType: AcquirerEventType,
+  description: string,
+  sourceSheet: string,
+): FeeCategory | undefined {
+  if (eventType === "SALE") return undefined;
+  if (eventType === "FEE") return "SALE_FEE";
+  if (eventType === "ANTICIPATION") return "ANTICIPATION";
+  if (eventType === "CHARGEBACK") return "CHARGEBACK";
+  if (eventType === "CANCELLATION") return "CANCELLATION";
+
+  const content = normalize(`${description} ${sourceSheet}`);
+
+  if (
+    /antecip|cessao|cessão|desagendamento|recebimento antecipado|custo financeiro/.test(
+      content,
+    )
+  ) {
+    return "ANTICIPATION";
+  }
+
+  if (
+    /aluguel|maquin|maquininha|terminal|pos\b|smart pos|mensalidade|conectividade|equipamento|manutencao|manutenção/.test(
+      content,
+    )
+  ) {
+    return "EQUIPMENT";
+  }
+
+  if (/chargeback|contestacao|contestação/.test(content)) {
+    return "CHARGEBACK";
+  }
+
+  if (/cancelamento|cancelada|cancelado/.test(content)) {
+    return "CANCELLATION";
+  }
+
+  if (
+    /ajuste|bloqueio|retencao|retenção|penhora|cobranca|cobrança|devolucao|devolução|credito|crédito|debito|débito/.test(
+      content,
+    )
+  ) {
+    return "ADJUSTMENT";
+  }
+
+  return "OTHER";
 }
 
 
@@ -317,7 +376,14 @@ export async function parseRedeWorkbook(
     });
   }
 
-  const push = (line: Omit<ParsedAcquirerLine, "id">) => lines.push({ id: id++, ...line });
+  const push = (line: Omit<ParsedAcquirerLine, "id">) =>
+    lines.push({
+      id: id++,
+      ...line,
+      feeCategory:
+        line.feeCategory ??
+        classifyFeeCategory(line.eventType, line.description, line.sourceSheet),
+    });
 
   for (const sheetName of workbook.SheetNames) {
     if (normalize(sheetName) === "capa") continue;
