@@ -166,10 +166,13 @@ export async function POST(request: Request) {
     const subject = typeof body.subject === "string" ? body.subject.trim() : "";
     const description =
       typeof body.description === "string" ? body.description.trim() : "";
-    const priority =
-      typeof body.priority === "string" && VALID_PRIORITIES.has(body.priority)
-        ? body.priority
-        : "MEDIUM";
+    type SupportPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+const priority: SupportPriority =
+  typeof body.priority === "string" &&
+  VALID_PRIORITIES.has(body.priority)
+    ? (body.priority as SupportPriority)
+    : "MEDIUM";
     const category =
       typeof body.category === "string" ? body.category.trim() : "Outro";
     const module = typeof body.module === "string" ? body.module.trim() : "Geral";
