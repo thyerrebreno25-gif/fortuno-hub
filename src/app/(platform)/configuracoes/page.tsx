@@ -37,6 +37,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { PermissionsManager } from "@/components/permissions/permissions-manager";
 
 type UserRole = "MASTER" | "ADMIN" | "MANAGER" | "OPERATOR" | "CLIENT";
 
@@ -114,15 +115,7 @@ const roleOptions = [
   { value: "CLIENT", label: "Cliente" },
 ];
 
-const permissionRows = [
-  ["Dashboard", "Sim", "Sim", "Operacional", "Resumido"],
-  ["Clientes", "Total", "Total", "Operacional", "Próprios dados"],
-  ["Importações", "Total", "Total", "Executar", "Não"],
-  ["Onboarding", "Total", "Gerenciar", "Executar tarefas", "Não"],
-  ["Relatórios", "Total", "Total", "Operacionais", "Não"],
-  ["Suporte", "Total", "Gerenciar", "Próprios chamados", "Próprios chamados"],
-  ["Configurações", "Total", "Total", "Não", "Não"],
-];
+
 
 function formatDocument(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 14);
@@ -622,51 +615,7 @@ export default function ConfiguracoesPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="permissions" pt="lg">
-          <Paper withBorder radius="lg" p="lg">
-            <Stack gap="lg">
-              <Stack gap={2}>
-                <Title order={4}>Perfis de acesso</Title>
-                <Text size="sm" c="dimmed">
-                  Referência dos níveis aplicados pelos módulos do sistema.
-                </Text>
-              </Stack>
-
-              <ScrollArea>
-                <Table miw={820} verticalSpacing="sm">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Módulo</Table.Th>
-                      <Table.Th>Master/Admin</Table.Th>
-                      <Table.Th>Gestor</Table.Th>
-                      <Table.Th>Operador</Table.Th>
-                      <Table.Th>Cliente</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {permissionRows.map((row) => (
-                      <Table.Tr key={row[0]}>
-                        {row.map((value, index) => (
-                          <Table.Td key={`${row[0]}-${index}`}>
-                            {index === 0 ? (
-                              <Text fw={600}>{value}</Text>
-                            ) : (
-                              <Text size="sm">{value}</Text>
-                            )}
-                          </Table.Td>
-                        ))}
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </ScrollArea>
-
-              <Alert color="blue">
-                Esta matriz representa os perfis atuais do Prisma. Permissões
-                personalizadas por módulo exigiriam uma tabela própria e uma
-                migration futura.
-              </Alert>
-            </Stack>
-          </Paper>
+          <PermissionsManager />
         </Tabs.Panel>
 
         <Tabs.Panel value="security" pt="lg">

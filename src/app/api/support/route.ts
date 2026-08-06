@@ -281,11 +281,9 @@ const priority: SupportPriority =
     });
 
     if (!emailResult.sent) {
-      console.warn("Chamado criado, mas a notificação por e-mail não foi enviada:", {
-        ticketId: created.id,
-        reason: emailResult.reason,
-      });
-    }
+  console.error("ERRO RESEND:");
+  console.error(emailResult.reason);
+}
 
     return NextResponse.json(
       {

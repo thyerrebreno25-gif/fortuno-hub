@@ -41,6 +41,13 @@ function normalizeText(value: string): string {
     .toUpperCase();
 }
 
+function cleanLastFourDigits(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  return digits || null;
+}
+
 export async function PUT(request: Request, context: RouteContext) {
   try {
     const member = await getMember();
@@ -108,11 +115,29 @@ export async function PUT(request: Request, context: RouteContext) {
     const parsed = body.cards.map((item, index) => {
       const row = item as Record<string, unknown>;
 
+      const bankName =
+        typeof row.bankName === "string" ? row.bankName.trim() : "";
+
+      const normalizedBankName = normalizeText(bankName);
+
       const brand =
         typeof row.brand === "string" ? normalizeText(row.brand) : "";
 
+      const lastFourDigits = cleanLastFourDigits(row.lastFourDigits);
+
+      const nickname =
+        typeof row.nickname === "string" && row.nickname.trim()
+          ? row.nickname.trim()
+          : null;
+
       const active =
         typeof row.active === "boolean" ? row.active : true;
+
+      if (bankName.length < 2) {
+        throw new Error(
+          `Informe o banco do cartão ${index + 1}.`,
+        );
+      }
 
       if (brand.length < 2) {
         throw new Error(
@@ -120,20 +145,40 @@ export async function PUT(request: Request, context: RouteContext) {
         );
       }
 
+      if (
+        typeof row.lastFourDigits === "string" &&
+        row.lastFourDigits.trim() &&
+        lastFourDigits?.length !== 4
+      ) {
+        throw new Error(
+          `Informe exatamente os 4 últimos dígitos do cartão ${index + 1}.`,
+        );
+      }
+
       return {
         clientId,
+        bankName,
+        normalizedBankName,
         brand,
+        lastFourDigits,
+        nickname,
         active,
       };
     });
 
-    const identities = parsed.map((card) => card.brand);
+    const identities = parsed.map((card) =>
+      [
+        card.normalizedBankName,
+        card.brand,
+        card.lastFourDigits ?? "",
+      ].join("|"),
+    );
 
     if (new Set(identities).size !== identities.length) {
       return NextResponse.json(
         {
           error:
-            "Existe mais de um cartão com a mesma bandeira para este cliente.",
+            "Existe mais de um cartão com o mesmo banco, bandeira e final para este cliente.",
         },
         {
           status: 409,
@@ -158,9 +203,14 @@ export async function PUT(request: Request, context: RouteContext) {
         where: {
           clientId,
         },
-        orderBy: {
-          brand: "asc",
-        },
+        orderBy: [
+          {
+            bankName: "asc",
+          },
+          {
+            brand: "asc",
+          },
+        ],
       });
     });
 

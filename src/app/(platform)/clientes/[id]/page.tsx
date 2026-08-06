@@ -100,6 +100,9 @@ type Client = {
   name: string;
   document: string | null;
   active: boolean;
+  operationalEmail: string | null;
+  operationalEmailCc: string | null;
+  cluster: "A" | "B" | "C";
   acquirers: ClientAcquirer[];
   categoryMappings: ClientCategoryMapping[];
   banks: ClientBank[];
@@ -133,6 +136,9 @@ export default function EditarClientePage() {
   const [name, setName] = useState("");
   const [document, setDocument] = useState("");
   const [active, setActive] = useState(true);
+  const [operationalEmail, setOperationalEmail] = useState("");
+  const [operationalEmailCc, setOperationalEmailCc] = useState("");
+  const [cluster, setCluster] = useState<"A" | "B" | "C">("C");
 
   const [acquirers, setAcquirers] = useState<EditableAcquirer[]>([]);
   const [mappings, setMappings] =
@@ -287,6 +293,9 @@ export default function EditarClientePage() {
         setName(loaded.name);
         setDocument(formatCnpj(loaded.document || ""));
         setActive(loaded.active);
+        setOperationalEmail(loaded.operationalEmail ?? "");
+        setOperationalEmailCc(loaded.operationalEmailCc ?? "");
+        setCluster(loaded.cluster ?? "C");
 
         setAcquirers(
           loaded.acquirers.map((item) => ({
@@ -406,6 +415,9 @@ export default function EditarClientePage() {
           name: name.trim(),
           document: cleanDocument(document),
           active,
+          operationalEmail,
+          operationalEmailCc,
+          cluster,
         }),
       });
 
@@ -425,6 +437,9 @@ export default function EditarClientePage() {
       setName(result.client.name);
       setDocument(formatCnpj(result.client.document || ""));
       setActive(result.client.active);
+      setOperationalEmail(result.client.operationalEmail ?? "");
+      setOperationalEmailCc(result.client.operationalEmailCc ?? "");
+      setCluster(result.client.cluster ?? "C");
 
       notifications.show({
         color: "green",
@@ -839,6 +854,12 @@ export default function EditarClientePage() {
                 setDocument(formatCnpj(value))
               }
               onActiveChange={setActive}
+              operationalEmail={operationalEmail}
+              operationalEmailCc={operationalEmailCc}
+              cluster={cluster}
+              onOperationalEmailChange={setOperationalEmail}
+              onOperationalEmailCcChange={setOperationalEmailCc}
+              onClusterChange={setCluster}
               onSave={saveGeneralData}
             />
           </Tabs.Panel>

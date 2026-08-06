@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { getOperationMember } from "@/modules/operations/auth";
+import { generateFutureActivities } from "@/modules/operations/recurrence";
+export async function GET(request:Request){const url=new URL(request.url);const days=Math.min(365,Math.max(1,Number(url.searchParams.get("days")||90)));const secret=process.env.CRON_SECRET?.trim();if(secret&&request.headers.get("authorization")===`Bearer ${secret}`)return NextResponse.json(await generateFutureActivities(days));const member=await getOperationMember();if(!member)return NextResponse.json({error:"Não autorizado."},{status:401});return NextResponse.json(await generateFutureActivities(days,member.organizationId,member.userId));}
+export async function POST(request:Request){const member=await getOperationMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});const body=await request.json().catch(()=>({})) as {days?:number};return NextResponse.json(await generateFutureActivities(Math.min(365,Math.max(1,Number(body.days||90))),member.organizationId,member.userId));}

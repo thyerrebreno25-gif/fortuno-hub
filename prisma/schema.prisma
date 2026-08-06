@@ -95,6 +95,61 @@ enum OnboardingTaskStatus {
   NOT_APPLICABLE
 }
 
+enum OperationActivityStatus {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  DISREGARDED
+}
+
+enum OperationEventType {
+  CREATED
+  ASSIGNED
+  STARTED
+  PAUSED
+  RESUMED
+  CHECKLIST_COMPLETED
+  CHECKLIST_REOPENED
+  COMMENT_ADDED
+  ATTACHMENT_ADDED
+  STATUS_CHANGED
+  BLOCKED
+  DISREGARDED
+  COMPLETED
+  EMAIL_SENT
+  EMAIL_FAILED
+  TIME_ADJUSTED
+}
+
+enum OperationRecurrenceType {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum OperationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ClientCluster {
+  A
+  B
+  C
+}
+
+enum OperationHolidayBehavior {
+  KEEP
+  PREVIOUS_BUSINESS_DAY
+  NEXT_BUSINESS_DAY
+  SKIP
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -102,13 +157,17 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members             OrganizationMember[]
-  clients             Client[]
-  categories          Category[]
-  imports             ImportJob[]
-  tickets             SupportTicket[]
-  onboardingTemplates OnboardingTemplate[]
-  onboardings         Onboarding[]
+  members               OrganizationMember[]
+  clients               Client[]
+  categories            Category[]
+  imports               ImportJob[]
+  tickets               SupportTicket[]
+  onboardingTemplates   OnboardingTemplate[]
+  onboardings           Onboarding[]
+  operationProcesses    OperationProcess[]
+  operationActivities   OperationActivity[]
+  operationHolidays     OperationHoliday[]
+  roleModulePermissions RoleModulePermission[]
 }
 
 model User {
@@ -118,16 +177,22 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships           OrganizationMember[]
-  imports               ImportJob[]
-  auditLogs             AuditLog[]
-  tickets               SupportTicket[]
-  onboardingOwned       Onboarding[]          @relation("OnboardingOwner")
-  onboardingCreated     Onboarding[]          @relation("OnboardingCreator")
-  onboardingTasks       OnboardingTask[]      @relation("OnboardingTaskResponsible")
-  onboardingComments    OnboardingComment[]
-  onboardingTimeEntries OnboardingTimeEntry[]
-  onboardingHistory     OnboardingHistory[]
+  memberships              OrganizationMember[]
+  imports                  ImportJob[]
+  auditLogs                AuditLog[]
+  tickets                  SupportTicket[]
+  onboardingOwned          Onboarding[]             @relation("OnboardingOwner")
+  onboardingCreated        Onboarding[]             @relation("OnboardingCreator")
+  onboardingTasks          OnboardingTask[]         @relation("OnboardingTaskResponsible")
+  onboardingComments       OnboardingComment[]
+  onboardingTimeEntries    OnboardingTimeEntry[]
+  onboardingHistory        OnboardingHistory[]
+  operationActivities      OperationActivity[]      @relation("OperationResponsible")
+  operationTimeEntries     OperationTimeEntry[]
+  operationComments        OperationComment[]
+  operationEvents          OperationEvent[]
+  operationClientProcesses OperationClientProcess[]
+  operationLedClients      Client[]                 @relation("OperationClientLeader")
 }
 
 model OrganizationMember {
@@ -145,33 +210,41 @@ model OrganizationMember {
 }
 
 model Client {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  normalizedName String
-  document       String?
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String        @id @default(cuid())
+  organizationId     String
+  name               String
+  normalizedName     String
+  document           String?
+  active             Boolean       @default(true)
+  operationalEmail   String?
+  operationalEmailCc String?
+  cluster            ClientCluster @default(C)
+  operationLeaderId  String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operationLeader User?        @relation("OperationClientLeader", fields: [operationLeaderId], references: [id], onDelete: SetNull)
 
-  imports          ImportJob[]
-  employees        Employee[]
-  categoryRules    CategoryRule[]
-  costCenters      CostCenter[]
-  acquirers        ClientAcquirer[]
-  banks            ClientBank[]
-  cards            ClientCard[]
-  categoryMappings ClientCategoryMapping[]
-  onboardings      Onboarding[]
+  imports                 ImportJob[]
+  employees               Employee[]
+  categoryRules           CategoryRule[]
+  costCenters             CostCenter[]
+  acquirers               ClientAcquirer[]
+  banks                   ClientBank[]
+  cards                   ClientCard[]
+  categoryMappings        ClientCategoryMapping[]
+  onboardings             Onboarding[]
+  operationConfigurations OperationClientProcess[]
+  operationActivities     OperationActivity[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
   @@index([organizationId])
   @@index([organizationId, active])
+  @@index([operationLeaderId])
+  @@index([cluster])
 }
-
 
 model ClientBank {
   id          String   @id @default(cuid())
@@ -191,16 +264,20 @@ model ClientBank {
 }
 
 model ClientCard {
-  id        String   @id @default(cuid())
-  clientId  String
-  brand     String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  clientId           String
+  bankName           String
+  normalizedBankName String
+  brand              String
+  lastFourDigits     String?
+  nickname           String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@unique([clientId, brand])
+  @@unique([clientId, normalizedBankName, brand, lastFourDigits])
   @@index([clientId, active])
 }
 
@@ -214,7 +291,7 @@ model ClientAcquirer {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
   rates  ClientAcquirerRate[]
 
   @@unique([clientId, normalizedName])
@@ -682,4 +759,243 @@ model OnboardingHistory {
   user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([onboardingId, createdAt])
+}
+
+model OperationHoliday {
+  id             String   @id @default(cuid())
+  organizationId String
+  date           DateTime
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, date])
+  @@index([organizationId, date])
+}
+
+model OperationProcess {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  name               String
+  normalizedName     String
+  department         String
+  description        String?
+  subjectToFine      Boolean           @default(false)
+  requiresAttachment Boolean           @default(false)
+  allowedFileTypes   String[]          @default([])
+  notifyClient       Boolean           @default(true)
+  defaultPriority    OperationPriority @default(MEDIUM)
+  active             Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  checklistTemplates   OperationChecklistTemplate[]
+  clientConfigurations OperationClientProcess[]
+  activities           OperationActivity[]
+
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId, active])
+}
+
+model OperationChecklistTemplate {
+  id                 String   @id @default(cuid())
+  processId          String
+  title              String
+  description        String?
+  mandatory          Boolean  @default(true)
+  requiresComment    Boolean  @default(false)
+  requiresAttachment Boolean  @default(false)
+  allowedFileTypes   String[] @default([])
+  position           Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  process       OperationProcess         @relation(fields: [processId], references: [id], onDelete: Cascade)
+  activityItems OperationChecklistItem[]
+
+  @@unique([processId, position])
+  @@index([processId])
+}
+
+model OperationClientProcess {
+  id                  String                  @id @default(cuid())
+  clientId            String
+  processId           String
+  responsibleId       String?
+  team                String?
+  recurrenceType      OperationRecurrenceType @default(ONCE)
+  recurrenceData      Json?
+  notifyClient        Boolean                 @default(true)
+  priority            OperationPriority       @default(MEDIUM)
+  auditEnabled        Boolean                 @default(false)
+  auditRecurrenceData Json?
+  active              Boolean                 @default(true)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  process     OperationProcess    @relation(fields: [processId], references: [id], onDelete: Cascade)
+  responsible User?               @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  activities  OperationActivity[]
+
+  @@unique([clientId, processId])
+  @@index([responsibleId, active])
+}
+
+model OperationActivity {
+  id                String                  @id @default(cuid())
+  organizationId    String
+  clientId          String
+  processId         String
+  clientProcessId   String?
+  responsibleId     String?
+  team              String?
+  scheduledDate     DateTime?
+  title             String
+  department        String
+  description       String?
+  status            OperationActivityStatus @default(OPEN)
+  dueAt             DateTime?
+  legalDate         DateTime?
+  competence        String?
+  subjectToFine     Boolean                 @default(false)
+  priority          OperationPriority       @default(MEDIUM)
+  clientCluster     ClientCluster           @default(C)
+  blockedReason     String?
+  disregardedReason String?
+  completedAt       DateTime?
+  completionNote    String?
+  emailStatus       String?
+  emailSentAt       DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  process        OperationProcess         @relation(fields: [processId], references: [id], onDelete: Restrict)
+  clientProcess  OperationClientProcess?  @relation(fields: [clientProcessId], references: [id], onDelete: SetNull)
+  responsible    User?                    @relation("OperationResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  checklistItems OperationChecklistItem[]
+  timeEntries    OperationTimeEntry[]
+  comments       OperationComment[]
+  attachments    OperationAttachment[]
+  events         OperationEvent[]
+
+  @@unique([clientProcessId, scheduledDate])
+  @@index([organizationId, status, dueAt])
+  @@index([clientId, createdAt])
+  @@index([responsibleId, status])
+  @@index([processId, createdAt])
+  @@index([clientProcessId, scheduledDate])
+}
+
+model OperationChecklistItem {
+  id                 String    @id @default(cuid())
+  activityId         String
+  templateId         String?
+  title              String
+  description        String?
+  mandatory          Boolean   @default(true)
+  requiresComment    Boolean   @default(false)
+  requiresAttachment Boolean   @default(false)
+  allowedFileTypes   String[]  @default([])
+  position           Int
+  completed          Boolean   @default(false)
+  completedAt        DateTime?
+  completedById      String?
+  comment            String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  activity OperationActivity           @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  template OperationChecklistTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([activityId, position])
+}
+
+model OperationTimeEntry {
+  id          String    @id @default(cuid())
+  activityId  String
+  userId      String
+  startedAt   DateTime
+  endedAt     DateTime?
+  seconds     Int       @default(0)
+  source      String    @default("TIMER")
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  activity OperationActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([activityId, startedAt])
+  @@index([userId, endedAt])
+}
+
+model OperationComment {
+  id         String   @id @default(cuid())
+  activityId String
+  userId     String
+  content    String
+  createdAt  DateTime @default(now())
+
+  activity OperationActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([activityId, createdAt])
+}
+
+model OperationAttachment {
+  id              String   @id @default(cuid())
+  activityId      String
+  checklistItemId String?
+  uploadedById    String
+  name            String
+  mimeType        String
+  size            Int
+  storagePath     String
+  createdAt       DateTime @default(now())
+
+  activity OperationActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId, createdAt])
+}
+
+model OperationEvent {
+  id         String             @id @default(cuid())
+  activityId String
+  userId     String
+  type       OperationEventType
+  message    String
+  metadata   Json?
+  createdAt  DateTime           @default(now())
+
+  activity OperationActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([activityId, createdAt])
+}
+
+model RoleModulePermission {
+  id             String   @id @default(cuid())
+  organizationId String
+  role           UserRole
+  moduleCode     String
+  canView        Boolean  @default(false)
+  canCreate      Boolean  @default(false)
+  canEdit        Boolean  @default(false)
+  canDelete      Boolean  @default(false)
+  canImport      Boolean  @default(false)
+  canExport      Boolean  @default(false)
+  canManage      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, role, moduleCode])
+  @@index([organizationId, role])
 }

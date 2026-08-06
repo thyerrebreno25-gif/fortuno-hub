@@ -1,10 +1,8 @@
 "use client";
 
-import type { Route } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "@/app/dashboard.module.css";
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar";
 
@@ -14,6 +12,7 @@ type MenuItem = {
   icon: React.ReactNode;
   section?: string;
   expandable?: boolean;
+  moduleCode: string;
 };
 
 const icons = {
@@ -38,6 +37,10 @@ const icons = {
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M7 8h4M7 12h2M13 12h4M7 16h4M15 16h2" />
     </svg>
+  ),
+
+  operations: (
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3z"/><path d="m8 12 2 2 5-5M8 18h8"/></svg>
   ),
 
   activity: (
@@ -111,11 +114,13 @@ const menuItems: MenuItem[] = [
   {
   label: "Dashboard",
   href: "/dashboard",
+    moduleCode: "DASHBOARD",
   icon: icons.dashboard,
 },
   {
     label: "Extratos",
     href: "/extratos",
+    moduleCode: "IMPORTS",
     icon: icons.bank,
     section: "IMPORTAÇÕES",
     expandable: true,
@@ -123,53 +128,76 @@ const menuItems: MenuItem[] = [
   {
     label: "Faturas",
     href: "/faturas",
+    moduleCode: "IMPORTS",
     icon: icons.card,
     expandable: true,
   },
   {
     label: "Adquirentes",
     href: "/adquirentes",
+    moduleCode: "IMPORTS",
     icon: icons.activity,
     expandable: true,
   },
-    {
+  {
+    label: "BrasilMed",
+    href: "/conciliacao-brasilmed",
+    moduleCode: "IMPORTS",
+    icon: icons.document,
+    expandable: true,
+  },
+  {
     label: "Clientes",
     href: "/clientes",
+    moduleCode: "CLIENTS",
     icon: icons.users,
     section: "CADASTROS",
   },
   {
   label: "Motor Cambial",
   href: "/motor-cambial",
+    moduleCode: "MOTOR_EXCHANGE",
   icon: icons.currency,
   section: "CONVERSÕES",
 },
   {
+    label: "Operações",
+    href: "/operacoes",
+    moduleCode: "OPERATIONS",
+    icon: icons.operations,
+    section: "OPERAÇÃO",
+  },
+  {
     label: "Onboarding",
     href: "/onboarding",
+    moduleCode: "ONBOARDING",
     icon: icons.rocket,
     section: "IMPLANTAÇÃO",
   },
   {
     label: "Relatórios",
     href: "/relatorios",
+    moduleCode: "REPORTS",
     icon: icons.report,
     section: "RELATÓRIOS",
   },
   {
     label: "Histórico",
     href: "/historico",
+    moduleCode: "HISTORY",
     icon: icons.history,
   },
   {
     label: "Suporte",
     href: "/suporte",
+    moduleCode: "SUPPORT",
     icon: icons.support,
     section: "SUPORTE",
   },
   {
     label: "Configurações",
     href: "/configuracoes",
+    moduleCode: "SETTINGS",
     icon: icons.settings,
     section: "SISTEMA",
   },
@@ -182,6 +210,33 @@ function isRouteActive(pathname: string, href: string): boolean {
 export function PlatformShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [permissions, setPermissions] = useState<Record<string, { canView: boolean }> | null>(null);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/permissions/me", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Permissões indisponíveis.");
+        if (active) setPermissions(payload.permissions ?? {});
+      })
+      .catch(() => {
+        if (active) setPermissions({});
+      })
+      .finally(() => {
+        if (active) setPermissionsLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const visibleItems = useMemo(
+    () => menuItems.filter((item) => permissions?.[item.moduleCode]?.canView !== false),
+    [permissions],
+  );
+
+  const currentItem = menuItems.find((item) => isRouteActive(pathname, item.href));
+  const currentAllowed = !currentItem || permissions?.[currentItem.moduleCode]?.canView !== false;
 
   return (
     <div
@@ -191,19 +246,11 @@ export function PlatformShell({ children }: { children: ReactNode }) {
     >
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
-          <div className={styles.logoMark}>
-            <Image
-              src="/fortuno-logo-v2.png"
-              alt="Fortuno"
-              width={44}
-              height={44}
-              priority
-            />
-          </div>
+          <div className={styles.logoMark}>CN</div>
 
           <div className={styles.logoText}>
-            <strong>Fortuno Hub</strong>
-            <span>Automação e gestão operacional</span>
+            <strong>ConvertNow</strong>
+            <span>Financial Intelligence</span>
           </div>
 
           <button
@@ -223,7 +270,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className={styles.navigation}>
-          {menuItems.map((item) => {
+          {visibleItems.map((item) => {
             const active = isRouteActive(pathname, item.href);
 
             return (
@@ -235,12 +282,12 @@ export function PlatformShell({ children }: { children: ReactNode }) {
                 )}
 
                 <Link
-  href={item.href as Route}
-                  className={`${styles.menuItem} ${
-                    active ? styles.menuItemActive : ""
-                  }`}
-                  aria-current={active ? "page" : undefined}
-                >
+  href={item.href as any}
+  className={`${styles.menuItem} ${
+    active ? styles.menuItemActive : ""
+  }`}
+  aria-current={active ? "page" : undefined}
+>
                   <span className={styles.menuIcon}>
                     {item.icon}
                   </span>
@@ -274,7 +321,17 @@ export function PlatformShell({ children }: { children: ReactNode }) {
         <DashboardTopbar />
 
         <section className={styles.content}>
-          {children}
+          {!permissionsLoaded ? (
+            <div style={{ padding: 32 }}>Carregando permissões...</div>
+          ) : currentAllowed ? (
+            children
+          ) : (
+            <div style={{ maxWidth: 720, margin: "48px auto", padding: 32, border: "1px solid #dce3ec", borderRadius: 16, background: "white" }}>
+              <h2 style={{ marginTop: 0 }}>Acesso não autorizado</h2>
+              <p>Seu perfil não possui acesso a este módulo. Solicite a liberação a um administrador.</p>
+              <Link href="/clientes">Voltar para Clientes</Link>
+            </div>
+          )}
         </section>
       </main>
     </div>

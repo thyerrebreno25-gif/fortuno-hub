@@ -184,6 +184,9 @@ export async function PATCH(
       name?: unknown;
       document?: unknown;
       active?: unknown;
+      operationalEmail?: unknown;
+      operationalEmailCc?: unknown;
+      cluster?: unknown;
     };
 
     const name =
@@ -194,6 +197,9 @@ export async function PATCH(
         : "";
     const active =
       typeof body.active === "boolean" ? body.active : true;
+    const operationalEmail = typeof body.operationalEmail === "string" ? body.operationalEmail.trim() || null : null;
+    const operationalEmailCc = typeof body.operationalEmailCc === "string" ? body.operationalEmailCc.trim() || null : null;
+    const cluster = ["A", "B", "C"].includes(String(body.cluster)) ? String(body.cluster) as "A" | "B" | "C" : "C";
 
     if (name.length < 3) {
       return NextResponse.json(
@@ -252,6 +258,9 @@ export async function PATCH(
         normalizedName,
         document,
         active,
+        operationalEmail,
+        operationalEmailCc,
+        cluster,
       },
       include: {
         acquirers: true,
