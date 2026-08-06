@@ -3,11 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { getOperationMember } from "@/modules/operations/auth";
 import { activityInclude, createEvent } from "@/modules/operations/activity";
 
+function parseLocalDate(value:string,endOfDay=false){
+ const [year,month,day]=value.split("-").map(Number);
+ return new Date(
+  year,
+  month-1,
+  day,
+  endOfDay?23:0,
+  endOfDay?59:0,
+  endOfDay?59:0,
+  endOfDay?999:0,
+ );
+}
+
 export async function GET(request:Request){
  const member=await getOperationMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
  const u=new URL(request.url);const where:any={organizationId:member.organizationId};
  const from=u.searchParams.get("from"),to=u.searchParams.get("to"),status=u.searchParams.get("status"),clientId=u.searchParams.get("clientId"),responsibleId=u.searchParams.get("responsibleId"),processId=u.searchParams.get("processId"),team=u.searchParams.get("team"),priority=u.searchParams.get("priority"),cluster=u.searchParams.get("cluster");
- if(from||to)where.scheduledDate={...(from?{gte:new Date(`${from}T00:00:00`)}:{}),...(to?{lte:new Date(`${to}T23:59:59`)}:{})};if(status)where.status=status;if(clientId)where.clientId=clientId;if(responsibleId)where.responsibleId=responsibleId;if(processId)where.processId=processId;if(team)where.team=team;if(priority)where.priority=priority;if(cluster)where.clientCluster=cluster;
+ if(from||to)where.scheduledDate={...(from?{gte:parseLocalDate(from)}:{}),...(to?{lte:parseLocalDate(to,true)}:{})};if(status)where.status=status;if(clientId)where.clientId=clientId;if(responsibleId)where.responsibleId=responsibleId;if(processId)where.processId=processId;if(team)where.team=team;if(priority)where.priority=priority;if(cluster)where.clientCluster=cluster;
  const [activities,clients,processes,members,configurations]=await Promise.all([
   prisma.operationActivity.findMany({where,orderBy:[{priority:"desc"},{subjectToFine:"desc"},{dueAt:"asc"},{createdAt:"desc"}],include:activityInclude,take:1500}),
   prisma.client.findMany({where:{organizationId:member.organizationId,active:true},orderBy:{name:"asc"},select:{id:true,name:true,operationalEmail:true,cluster:true,operationLeaderId:true}}),

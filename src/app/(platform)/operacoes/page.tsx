@@ -4,8 +4,19 @@ import { ActionIcon,Alert,Badge,Button,Checkbox,Divider,Drawer,Group,Modal,Multi
 import { IconChartBar,IconCheck,IconClock,IconFilter,IconListCheck,IconPlayerPause,IconPlayerPlay,IconPlus,IconRefresh,IconTimeline,IconUser } from "@tabler/icons-react";
 
 type Any=Record<string,any>;
-const today=()=>new Date().toISOString().slice(0,10);
-const addDays=(value:string,n:number)=>{const d=new Date(`${value}T12:00:00`);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const formatLocalDate=(date:Date)=>{
+ const year=date.getFullYear();
+ const month=String(date.getMonth()+1).padStart(2,"0");
+ const day=String(date.getDate()).padStart(2,"0");
+ return `${year}-${month}-${day}`;
+};
+const today=()=>formatLocalDate(new Date());
+const addDays=(value:string,n:number)=>{
+ const [year,month,day]=value.split("-").map(Number);
+ const date=new Date(year,month-1,day,12,0,0,0);
+ date.setDate(date.getDate()+n);
+ return formatLocalDate(date);
+};
 const duration=(s=0)=>`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const statusLabel:Any={OPEN:"Aberta",IN_PROGRESS:"Em andamento",BLOCKED:"Impedida",COMPLETED:"Concluída",DISREGARDED:"Desconsiderada"};
 const priorityLabel:Any={LOW:"Baixa",MEDIUM:"Média",HIGH:"Alta",CRITICAL:"Crítica"};
@@ -33,7 +44,7 @@ export default function OperationsPage(){
   {error&&<Alert color="red" withCloseButton onClose={()=>setError("")}>{error}</Alert>}
   <Tabs value={tab} onChange={setTab}><Tabs.List><Tabs.Tab value="activities" leftSection={<IconListCheck size={16}/>}>Atividades</Tabs.Tab><Tabs.Tab value="routines" leftSection={<IconClock size={16}/>}>Rotinas configuradas</Tabs.Tab><Tabs.Tab value="reports" leftSection={<IconChartBar size={16}/>}>Relatórios analíticos</Tabs.Tab></Tabs.List>
    <Tabs.Panel value="activities" pt="md"><Stack>
-    <Paper withBorder p="md"><Stack gap="sm"><Group><Button size="xs" variant={mine?"filled":"light"} leftSection={<IconUser size={15}/>} onClick={()=>setMine(v=>!v)}>Minhas atividades</Button><Button size="xs" variant="light" onClick={()=>{setFrom(today());setTo(today())}}>Hoje</Button><Button size="xs" variant="light" onClick={()=>{setFrom(addDays(today(),1));setTo(addDays(today(),1))}}>Amanhã</Button><Button size="xs" variant="light" onClick={()=>{setFrom(today());setTo(addDays(today(),7))}}>Próximos 7 dias</Button></Group>
+    <Paper withBorder p="md"><Stack gap="sm"><Group><Button size="xs" variant={mine?"filled":"light"} leftSection={<IconUser size={15}/>} onClick={()=>setMine(v=>!v)}>Minhas atividades</Button><Button size="xs" variant="light" onClick={()=>{setFrom(today());setTo(today())}}>Hoje</Button><Button size="xs" variant="light" onClick={()=>{setFrom(addDays(today(),1));setTo(addDays(today(),1))}}>Amanhã</Button><Button size="xs" variant="light" onClick={()=>{setFrom(today());setTo(addDays(today(),6))}}>Próximos 7 dias</Button></Group>
      <SimpleGrid cols={{base:1,sm:2,lg:4}}><TextInput type="date" label="De" value={from} onChange={e=>setFrom(e.currentTarget.value)}/><TextInput type="date" label="Até" value={to} onChange={e=>setTo(e.currentTarget.value)}/><TextInput label="Buscar" placeholder="Cliente ou atividade" value={filters.search} onChange={e=>setFilters({...filters,search:e.currentTarget.value})}/><Select label="Colaborador" clearable searchable disabled={mine} data={data.members.map((m:Any)=>({value:m.id,label:m.name||m.email}))} value={filters.responsibleId||null} onChange={v=>setFilters({...filters,responsibleId:v||""})}/></SimpleGrid>
      <SimpleGrid cols={{base:2,lg:6}}><Select label="Cliente" clearable searchable data={data.clients.map((x:Any)=>({value:x.id,label:x.name}))} value={filters.clientId||null} onChange={v=>setFilters({...filters,clientId:v||""})}/><Select label="Processo" clearable searchable data={data.processes.map((x:Any)=>({value:x.id,label:x.name}))} value={filters.processId||null} onChange={v=>setFilters({...filters,processId:v||""})}/><Select label="Status" clearable data={Object.entries(statusLabel).map(([value,label])=>({value,label:String(label)}))} value={filters.status||null} onChange={v=>setFilters({...filters,status:v||""})}/><Select label="Equipe" clearable data={teams} value={filters.team||null} onChange={v=>setFilters({...filters,team:v||""})}/><Select label="Prioridade" clearable data={Object.entries(priorityLabel).map(([value,label])=>({value,label:String(label)}))} value={filters.priority||null} onChange={v=>setFilters({...filters,priority:v||""})}/><Select label="Cluster" clearable data={["A","B","C"]} value={filters.cluster||null} onChange={v=>setFilters({...filters,cluster:v||""})}/></SimpleGrid>
     </Stack></Paper>
