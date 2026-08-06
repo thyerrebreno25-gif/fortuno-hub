@@ -3,84 +3,32 @@ import { prisma } from "@/lib/prisma";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toUpperCase();
+type Item={title:string;mandatory?:boolean;requiresAttachment?:boolean;allowDisregard?:boolean;requiresComment?:boolean;allowedFileTypes?:string[]};
+const item=(title:string,extra:Partial<Item>={}):Item=>({title,mandatory:true,...extra});
 
-const templates = [
-  {
-    name: "Conciliação de Recebimentos",
-    department: "BPO | Recebimentos",
-    description: "Conciliação diária dos recebimentos, validação de divergências e saldos.",
-    subjectToFine: false,
-    notifyClient: true,
-    checklist: [
-      "Acessar os extratos bancários e o sistema financeiro referentes ao período.",
-      "Comparar as transações do extrato bancário com os lançamentos existentes no sistema.",
-      "Identificar recebimentos que já possuam lançamentos registrados anteriormente.",
-      "Verificar se valores, datas e centavos correspondem corretamente entre banco e sistema.",
-      "Identificar recebimentos ausentes, duplicados ou registrados com valores incorretos.",
-      "Buscar informações complementares no histórico de e-mails, WhatsApp e documentos do cliente.",
-      "Registrar e encaminhar ao cliente possíveis dúvidas ou movimentações não identificadas.",
-      "Verificar se os saldos inicial e final coincidem entre o extrato bancário e o sistema.",
-      "Validar tarifas bancárias, rendimentos, estornos, devoluções e transferências internas.",
-      "Confirmar que todas as movimentações do período foram conciliadas ou justificadas.",
-    ],
-  },
-  {
-    name: "Agenda de Pagamentos",
-    department: "BPO | Pagamentos",
-    description: "Preparação, validação, agendamento e comunicação da janela de pagamentos.",
-    subjectToFine: true,
-    notifyClient: true,
-    checklist: [
-      "Realizar conciliação, caso ainda não tenha sido feita.",
-      "Verificar e-mail para aprovações e instruções.",
-      "Verificar WhatsApp para aprovações e instruções.",
-      "Confirmar se todas as solicitações recebidas foram lançadas no sistema.",
-      "Exportar a relação de aprovações pendentes no banco.",
-      "Validar novas despesas recebidas via DDA, e-mail ou mensagem do cliente.",
-      "Verificar lançamentos de pagamentos previstos no sistema.",
-      "Lançar os pagamentos no banco.",
-      "Exportar a relação de pagamentos do ERP.",
-      "Exportar a relação de aprovações pendentes no banco.",
-      "Enviar as relações ao cliente com a mensagem padrão da agenda de pagamentos.",
-      "Informar ao cliente eventual necessidade de transferência de valores.",
-      "Conferir fatura e limite do cartão de crédito.",
-    ],
-  },
+const templates:{name:string;department:string;description:string;subjectToFine:boolean;notifyClient:boolean;checklist:Item[]}[]=[
+ {name:"Conciliação de Recebimentos",department:"BPO | Recebimentos",description:"Conciliação diária dos recebimentos, validação de divergências e saldos.",subjectToFine:false,notifyClient:true,checklist:[
+  item("Acessar os extratos bancários e o sistema financeiro referentes ao período."),item("Comparar as transações do extrato bancário com os lançamentos existentes no sistema."),item("Identificar recebimentos que já possuam lançamentos registrados anteriormente."),item("Verificar se valores, datas e centavos correspondem corretamente entre banco e sistema."),item("Identificar recebimentos ausentes, duplicados ou registrados com valores incorretos."),item("Buscar informações complementares no histórico de e-mails, WhatsApp e documentos do cliente."),item("Registrar e encaminhar ao cliente possíveis dúvidas ou movimentações não identificadas."),item("Verificar se os saldos inicial e final coincidem entre o extrato bancário e o sistema."),item("Validar tarifas bancárias, rendimentos, estornos, devoluções e transferências internas."),item("Confirmar que todas as movimentações do período foram conciliadas ou justificadas.")]},
+ {name:"Conciliação de Pagamentos",department:"BPO | Pagamentos",description:"Conciliação dos pagamentos entre extratos bancários e sistema financeiro.",subjectToFine:false,notifyClient:true,checklist:[
+  item("Acessar os extratos bancários e o sistema financeiro referentes ao período."),item("Comparar os débitos bancários com os pagamentos registrados no sistema."),item("Identificar pagamentos sem baixa, duplicados ou com valores divergentes."),item("Conferir datas, favorecidos, valores e documentos dos pagamentos."),item("Validar tarifas, juros, multas, estornos e transferências internas."),item("Buscar informações complementares em e-mails, WhatsApp e documentos do cliente."),item("Registrar e encaminhar dúvidas ou pagamentos não identificados."),item("Confirmar que todos os pagamentos do período foram conciliados ou justificados."),item("Verificar se os saldos inicial e final coincidem entre banco e sistema.")]},
+ {name:"Agenda de Pagamentos",department:"BPO | Pagamentos",description:"Preparação, validação, agendamento e comunicação da janela de pagamentos.",subjectToFine:true,notifyClient:true,checklist:[
+  item("Realizar conciliação, caso ainda não tenha sido feita."),item("Verificar e-mail para aprovações e instruções."),item("Verificar WhatsApp para aprovações e instruções."),item("Confirmar se todas as solicitações recebidas foram lançadas no sistema."),item("Exportar a relação de aprovações pendentes no banco."),item("Validar novas despesas recebidas via DDA, e-mail ou mensagem do cliente."),item("Verificar lançamentos de pagamentos previstos no sistema."),item("Lançar os pagamentos no banco."),item("Exportar a relação de pagamentos do ERP."),item("Exportar a relação de aprovações pendentes no banco."),item("Enviar as relações ao cliente com a mensagem padrão da agenda de pagamentos."),item("Informar ao cliente eventual necessidade de transferência de valores."),item("Conferir fatura e limite do cartão de crédito."),
+  item("Pagamentos registrados no Conta Azul",{requiresAttachment:true,allowDisregard:true}),item("Pagamentos pendentes de aprovação",{requiresAttachment:true,allowDisregard:true}),item("Relação de pagamentos em atraso",{requiresAttachment:true,allowDisregard:true}),item("Relação mensal de contas a pagar",{requiresAttachment:true,allowDisregard:true})]},
+ {name:"Lançamento e Relação de Recebimentos",department:"BPO | Recebimentos",description:"Lançamento, emissão e geração dos relatórios de contas a receber.",subjectToFine:false,notifyClient:true,checklist:[
+  item("Lançamento de vendas ou contratos, se houver."),item("Emissão de notas fiscais, se houver."),item("Verificar disparo de boletos, se houver."),item("Imprimir relação de contas a receber dessa semana no Conta Azul."),item("Imprimir relação de contas a receber desse mês no Conta Azul."),item("Imprimir relatório de recebimentos em atraso da tela inicial do Conta Azul, se houver."),
+  item("Relatório semanal de contas a receber",{requiresAttachment:true,allowDisregard:true}),item("Relatório mensal de contas a receber",{requiresAttachment:true,allowDisregard:true}),item("Relatório de inadimplência",{requiresAttachment:true,allowDisregard:true})]},
+ {name:"Conciliar Faturas de Cartão de Crédito",department:"BPO | Conciliações",description:"Conciliação das faturas de cartão de crédito do cliente.",subjectToFine:false,notifyClient:false,checklist:[]},
+ {name:"Lançar Rendimentos de Aplicação",department:"BPO | Recebimentos",description:"Lançamento mensal dos rendimentos de aplicações financeiras.",subjectToFine:false,notifyClient:false,checklist:[]},
 ];
 
-export async function POST() {
-  const member = await getOperationMember();
-  if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  if (!canManageOperations(member.role)) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-
-  const result = [];
-  for (const template of templates) {
-    const process = await prisma.operationProcess.upsert({
-      where: { organizationId_normalizedName: { organizationId: member.organizationId, normalizedName: normalize(template.name) } },
-      create: {
-        organizationId: member.organizationId,
-        name: template.name,
-        normalizedName: normalize(template.name),
-        department: template.department,
-        description: template.description,
-        subjectToFine: template.subjectToFine,
-        notifyClient: template.notifyClient,
-        checklistTemplates: { create: template.checklist.map((title, position) => ({ title, mandatory: true, position })) },
-      },
-      update: {
-        department: template.department,
-        description: template.description,
-        subjectToFine: template.subjectToFine,
-        notifyClient: template.notifyClient,
-      },
-      include: { checklistTemplates: { orderBy: { position: "asc" } } },
-    });
-    if (!process.checklistTemplates.length) {
-      await prisma.operationChecklistTemplate.createMany({
-        data: template.checklist.map((title, position) => ({ processId: process.id, title, mandatory: true, position })),
-      });
-    }
-    result.push(process.name);
-  }
-  return NextResponse.json({ created: result });
+export async function POST(){
+ const member=await getOperationMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
+ if(!canManageOperations(member.role))return NextResponse.json({error:"Sem permissão."},{status:403});
+ const result:string[]=[];
+ for(const template of templates){
+  const process=await prisma.operationProcess.upsert({where:{organizationId_normalizedName:{organizationId:member.organizationId,normalizedName:normalize(template.name)}},create:{organizationId:member.organizationId,name:template.name,normalizedName:normalize(template.name),department:template.department,description:template.description,subjectToFine:template.subjectToFine,notifyClient:template.notifyClient},update:{department:template.department,description:template.description,subjectToFine:template.subjectToFine,notifyClient:template.notifyClient}});
+  await prisma.$transaction([prisma.operationChecklistTemplate.deleteMany({where:{processId:process.id}}),prisma.operationChecklistTemplate.createMany({data:template.checklist.map((x,position)=>({processId:process.id,title:x.title,mandatory:x.mandatory!==false,requiresComment:Boolean(x.requiresComment),requiresAttachment:Boolean(x.requiresAttachment),allowDisregard:Boolean(x.allowDisregard),allowedFileTypes:x.allowedFileTypes||[],position}))})]);
+  result.push(process.name);
+ }
+ return NextResponse.json({created:result});
 }

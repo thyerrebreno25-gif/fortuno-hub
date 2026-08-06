@@ -120,6 +120,8 @@ enum OperationEventType {
   EMAIL_SENT
   EMAIL_FAILED
   TIME_ADJUSTED
+  CHECKLIST_DISREGARDED
+  ACTIVITY_DELETED
 }
 
 enum OperationRecurrenceType {
@@ -809,6 +811,7 @@ model OperationChecklistTemplate {
   requiresComment    Boolean  @default(false)
   requiresAttachment Boolean  @default(false)
   allowedFileTypes   String[] @default([])
+  allowDisregard     Boolean  @default(false)
   position           Int
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -870,6 +873,9 @@ model OperationActivity {
   completionNote    String?
   emailStatus       String?
   emailSentAt       DateTime?
+  deletedAt         DateTime?
+  deletedById       String?
+  deletionReason    String?
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
@@ -902,6 +908,10 @@ model OperationChecklistItem {
   requiresComment    Boolean   @default(false)
   requiresAttachment Boolean   @default(false)
   allowedFileTypes   String[]  @default([])
+  allowDisregard     Boolean   @default(false)
+  disregardedAt      DateTime?
+  disregardedById    String?
+  disregardReason    String?
   position           Int
   completed          Boolean   @default(false)
   completedAt        DateTime?

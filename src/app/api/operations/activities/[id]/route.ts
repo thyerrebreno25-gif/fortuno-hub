@@ -13,14 +13,14 @@ async function finalizeActivity(id: string, member: Member, note?: string | null
   if (!current) return { error: "Atividade não encontrada.", status: 404 } as const;
   if (current.status === "COMPLETED") return { activity: current } as const;
 
-  const missing = current.checklistItems.filter((item) => item.mandatory && !item.completed);
+  const missing = current.checklistItems.filter((item) => item.mandatory && !item.completed && !item.disregardedAt);
   if (missing.length) {
     return { error: `Conclua os itens obrigatórios: ${missing.map((item) => item.title).join(", ")}`, status: 400 } as const;
   }
   if (current.process.requiresAttachment && !current.attachments.length) {
     return { error: "Esta atividade exige pelo menos um anexo.", status: 400 } as const;
   }
-  const missingChecklistFiles = current.checklistItems.filter((item) => item.mandatory && item.requiresAttachment && !current.attachments.some((file) => file.checklistItemId === item.id));
+  const missingChecklistFiles = current.checklistItems.filter((item) => item.mandatory && item.requiresAttachment && !item.disregardedAt && !current.attachments.some((file) => file.checklistItemId === item.id));
   if (missingChecklistFiles.length) {
     return { error: `Anexe os arquivos obrigatórios: ${missingChecklistFiles.map((item) => item.title).join(", ")}`, status: 400 } as const;
   }
@@ -83,7 +83,7 @@ export async function GET(_: Request, context: Context) {
   const member = await getOperationMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   const { id } = await context.params;
-  const activity = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId }, include: activityInclude });
+  const activity = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId, deletedAt: null }, include: activityInclude });
   return activity ? NextResponse.json({ activity }) : NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
 }
 
@@ -92,7 +92,7 @@ export async function PATCH(request: Request, context: Context) {
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   const { id } = await context.params;
   const body = (await request.json()) as Record<string, unknown>;
-  const current = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId }, include: activityInclude });
+  const current = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId, deletedAt: null }, include: activityInclude });
   if (!current) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
 
   if (body.action === "checklist") {
@@ -112,13 +112,29 @@ export async function PATCH(request: Request, context: Context) {
 
     if (completed) {
       const fresh = await prisma.operationActivity.findUnique({ where: { id }, include: activityInclude });
-      const allMandatoryDone = fresh?.checklistItems.filter((row) => row.mandatory).every((row) => row.completed);
+      const allMandatoryDone = fresh?.checklistItems.filter((row) => row.mandatory).every((row) => row.completed || Boolean(row.disregardedAt));
       if (fresh && allMandatoryDone && fresh.status !== "COMPLETED") {
         const result = await finalizeActivity(id, member, fresh.completionNote);
         if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
         return NextResponse.json({ activity: result.activity, autoCompleted: true });
       }
     }
+  } else if (body.action === "disregardChecklist") {
+    const item = current.checklistItems.find((row) => row.id === body.itemId);
+    if (!item) return NextResponse.json({ error: "Item não encontrado." }, { status: 404 });
+    if (!item.allowDisregard) return NextResponse.json({ error: "Este documento não pode ser desconsiderado." }, { status: 400 });
+    const reason = String(body.reason || "").trim();
+    if (!reason) return NextResponse.json({ error: "Informe a justificativa para desconsiderar o documento." }, { status: 400 });
+    await prisma.operationChecklistItem.update({
+      where: { id: item.id },
+      data: { completed: false, completedAt: null, completedById: null, disregardedAt: new Date(), disregardedById: member.userId, disregardReason: reason },
+    });
+    await createEvent(id, member.userId, "CHECKLIST_DISREGARDED", `${member.user.name || member.user.email} desconsiderou o documento “${item.title}”.`, { reason, itemId: item.id });
+  } else if (body.action === "restoreChecklist") {
+    const item = current.checklistItems.find((row) => row.id === body.itemId);
+    if (!item) return NextResponse.json({ error: "Item não encontrado." }, { status: 404 });
+    await prisma.operationChecklistItem.update({ where: { id: item.id }, data: { disregardedAt: null, disregardedById: null, disregardReason: null } });
+    await createEvent(id, member.userId, "CHECKLIST_REOPENED", `${member.user.name || member.user.email} reabriu o documento “${item.title}”.`);
   } else if (body.action === "comment") {
     const content = String(body.content || "").trim();
     if (!content) return NextResponse.json({ error: "Escreva um comentário." }, { status: 400 });
@@ -147,4 +163,27 @@ export async function PATCH(request: Request, context: Context) {
   }
 
   return NextResponse.json({ activity: await prisma.operationActivity.findUnique({ where: { id }, include: activityInclude }) });
+}
+
+
+export async function DELETE(request: Request, context: Context) {
+  const member = await getOperationMember();
+  if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  if (member.role !== "MASTER") return NextResponse.json({ error: "Somente o perfil MASTER pode excluir atividades." }, { status: 403 });
+  const { id } = await context.params;
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const reason = String(body.reason || "").trim();
+  if (reason.length < 5) return NextResponse.json({ error: "Informe uma justificativa com pelo menos 5 caracteres." }, { status: 400 });
+  const activity = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId, deletedAt: null } });
+  if (!activity) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const openEntries = await tx.operationTimeEntry.findMany({ where: { activityId: id, endedAt: null } });
+    for (const entry of openEntries) {
+      await tx.operationTimeEntry.update({ where: { id: entry.id }, data: { endedAt: now, seconds: Math.max(1, Math.floor((now.getTime() - entry.startedAt.getTime()) / 1000)) } });
+    }
+    await tx.operationEvent.create({ data: { activityId: id, userId: member.userId, type: "ACTIVITY_DELETED", message: `${member.user.name || member.user.email} excluiu a atividade.`, metadata: { reason } } });
+    await tx.operationActivity.update({ where: { id }, data: { deletedAt: now, deletedById: member.userId, deletionReason: reason } });
+  });
+  return NextResponse.json({ message: "Atividade excluída com sucesso." });
 }
