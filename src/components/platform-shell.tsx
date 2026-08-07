@@ -246,7 +246,13 @@ export function PlatformShell({ children }: { children: ReactNode }) {
     >
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
-          <div className={styles.logoMark}>FH</div>
+          <div className={styles.logoMark}>
+  <img
+    src="/fortuno-emblema.png"
+    alt="Fortuno"
+    className={styles.logoImage}
+  />
+</div>
 
           <div className={styles.logoText}>
             <strong>Fortuno Hub</strong>

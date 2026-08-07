@@ -50,17 +50,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  overflow: hidden;
-  border-radius: 11px;
-  color: #ffffff;
-  background: linear-gradient(145deg, #164987, #0d376c);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  overflow: visible;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.logoImage {
+  display: block;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
 }
 
 .logoText {
@@ -273,9 +277,14 @@
 }
 
 .sidebarCollapsed .logoMark {
-  width: 46px;
-  height: 46px;
-  flex-basis: 46px;
+  width: 54px;
+  height: 54px;
+  flex-basis: 54px;
+}
+
+.sidebarCollapsed .logoImage {
+  width: 54px;
+  height: 54px;
 }
 
 .sidebarCollapsed .logoText,
