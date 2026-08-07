@@ -246,11 +246,11 @@ export function PlatformShell({ children }: { children: ReactNode }) {
     >
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
-          <div className={styles.logoMark}>CN</div>
+          <div className={styles.logoMark}>FH</div>
 
           <div className={styles.logoText}>
-            <strong>ConvertNow</strong>
-            <span>Financial Intelligence</span>
+            <strong>Fortuno Hub</strong>
+            <span>Gestão Operacional</span>
           </div>
 
           <button
@@ -309,8 +309,8 @@ export function PlatformShell({ children }: { children: ReactNode }) {
           <div className={styles.organizationAvatar}>N</div>
 
           <div className={styles.organizationText}>
-            <strong>Ambiente corporativo</strong>
-            <span>Organização ativa</span>
+            <strong>Fortuno Gestão Financeira</strong>
+            <span>Ambiente operacional</span>
           </div>
 
           <span className={styles.organizationArrow}>›</span>
