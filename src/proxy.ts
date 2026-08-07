@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const PUBLIC_ROUTES = [
+  "/login",
+  "/ativar-acesso",
+];
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request,
@@ -24,9 +29,15 @@ export async function proxy(request: NextRequest) {
             request,
           });
 
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
+          cookiesToSet.forEach(
+            ({ name, value, options }) => {
+              response.cookies.set(
+                name,
+                value,
+                options,
+              );
+            },
+          );
         },
       },
     },
@@ -37,15 +48,36 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+
+  const isPublicRoute = PUBLIC_ROUTES.some(
+    (route) =>
+      pathname === route ||
+      pathname.startsWith(`${route}/`),
+  );
+
   const isLoginPage = pathname === "/login";
 
-  if (!user && !isLoginPage) {
+  /*
+   * Usuário não autenticado:
+   * permite Login e Ativação de Acesso.
+   * Qualquer outra página vai para /login.
+   */
+  if (!user && !isPublicRoute) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
 
     return NextResponse.redirect(loginUrl);
   }
 
+  /*
+   * Usuário já autenticado tentando abrir o login:
+   * manda para a plataforma.
+   *
+   * IMPORTANTE:
+   * não fazemos isso em /ativar-acesso,
+   * porque o convite do Supabase pode criar uma
+   * sessão temporária antes da definição da senha.
+   */
   if (user && isLoginPage) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = "/";
