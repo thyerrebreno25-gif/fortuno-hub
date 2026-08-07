@@ -264,29 +264,25 @@ function extractItems(
   const result: ParsedInvoiceItem[] = [];
 
   /*
-   * Tesseract normalmente preserva cada movimento em uma linha.
+   * O layout Sicoob reconhecido pelo OCR já preserva cada movimento
+   * em uma linha. Não combinamos linhas vizinhas, porque isso fazia:
+   *
+   * 01/07 ... 76,31 + 17/03 ... 36,33
+   *
+   * virar um lançamento único com descrição concatenada e valor 36,33,
+   * além de duplicar praticamente toda a fatura.
    */
   for (const line of rawLines) {
+    /*
+     * Uma linha válida de movimento deve começar por DD/MM.
+     * Isso evita interpretar TOTAL, resumo, limites e linhas auxiliares.
+     */
+    if (!/^\d{1,2}\/\d{1,2}\b/.test(line)) {
+      continue;
+    }
+
     const item = parseMovementLine(
       line,
-      dueDate,
-      result.length + 1,
-    );
-
-    if (item) {
-      result.push(item);
-    }
-  }
-
-  /*
-   * Fallback: quando OCR quebra uma linha visual em duas,
-   * tentamos combinar cada linha com a próxima.
-   */
-  for (let i = 0; i < rawLines.length - 1; i += 1) {
-    const combined = `${rawLines[i]} ${rawLines[i + 1]}`;
-
-    const item = parseMovementLine(
-      combined,
       dueDate,
       result.length + 1,
     );
