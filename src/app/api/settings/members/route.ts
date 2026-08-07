@@ -135,7 +135,7 @@ export async function POST(request: Request) {
 
     const appUrl = getAppUrl();
     const redirectTo = appUrl
-      ? `${appUrl}/login`
+      ? `${appUrl}/ativar-acesso`
       : undefined;
 
     const {
