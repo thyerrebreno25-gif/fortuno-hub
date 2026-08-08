@@ -50,21 +50,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
-  flex: 0 0 52px;
-  overflow: visible;
+  width: 56px;
+  height: 46px;
+  flex: 0 0 56px;
   background: transparent;
-  border: none;
+  border: 0;
   border-radius: 0;
   box-shadow: none;
+  overflow: visible;
 }
 
 .logoImage {
   display: block;
-  width: 52px;
-  height: 52px;
-  object-fit: contain;
+  width: 54px;
+  height: 40px;
 }
 
 .logoText {
@@ -278,13 +277,13 @@
 
 .sidebarCollapsed .logoMark {
   width: 54px;
-  height: 54px;
-  flex-basis: 54px;
+  height: 46px;
+  flex-basis: 46px;
 }
 
 .sidebarCollapsed .logoImage {
-  width: 54px;
-  height: 54px;
+  width: 50px;
+  height: 38px;
 }
 
 .sidebarCollapsed .logoText,
