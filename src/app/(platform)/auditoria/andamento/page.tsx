@@ -20,7 +20,7 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconRefresh, IconSearch } from "@tabler/icons-react";
+import { IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
 
 type Interaction = { id: string; action: string; note?: string | null; user?: { name?: string | null; email?: string | null } | null };
 type Finding = {
@@ -90,6 +90,10 @@ export default function AuditoriasEmAndamentoPage() {
   const [status, setStatus] = useState<string | null>("OPEN");
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<{ finding: Finding; action: "VALIDATE" | "RETURN"; note: string } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    audit: Audit;
+    confirmation: string;
+  } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -112,6 +116,30 @@ export default function AuditoriasEmAndamentoPage() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  async function deleteAudit(audit: Audit) {
+    const response = await fetch(`/api/audit/${audit.id}`, {
+      method: "DELETE",
+    });
+
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        payload.error || "Não foi possível excluir a auditoria.",
+      );
+    }
+
+    setAudits((current) =>
+      current.filter((item) => item.id !== audit.id),
+    );
+
+    notifications.show({
+      color: "green",
+      title: "Auditoria excluída",
+      message: `${audit.client.name} foi removida das auditorias.`,
+    });
+  }
 
   async function findingAction(id: string, action: "VALIDATE" | "RETURN", note?: string) {
     const response = await fetch(`/api/audit/findings/${id}`, {
@@ -208,6 +236,26 @@ export default function AuditoriasEmAndamentoPage() {
                 </Accordion.Control>
                 <Accordion.Panel>
                   <Stack gap="lg">
+                    <Group justify="space-between" align="center">
+                      <Text size="xs" c="dimmed">
+                        Auditoria criada em {formatDate(audit.createdAt)}
+                      </Text>
+
+                      <Button
+                        size="xs"
+                        color="red"
+                        variant="light"
+                        leftSection={<IconTrash size={14} />}
+                        onClick={() =>
+                          setDeleteModal({
+                            audit,
+                            confirmation: "",
+                          })
+                        }
+                      >
+                        Excluir auditoria
+                      </Button>
+                    </Group>
                     {validation.length > 0 && <Section title="Aguardando sua validação">{validation.map((f) => <FindingCard key={f.id} finding={f} onValidate={() => setModal({ finding: f, action: "VALIDATE", note: "" })} onReturn={() => setModal({ finding: f, action: "RETURN", note: "" })} />)}</Section>}
                     {withOperator.length > 0 && <Section title="Pendente com operador">{withOperator.map((f) => <FindingCard key={f.id} finding={f} />)}</Section>}
                     {identified.length > 0 && <Section title="Ainda não direcionados">{identified.map((f) => <FindingCard key={f.id} finding={f} />)}</Section>}
@@ -218,6 +266,76 @@ export default function AuditoriasEmAndamentoPage() {
           })}
         </Accordion>
       )}
+
+      <Modal
+        opened={!!deleteModal}
+        onClose={() => setDeleteModal(null)}
+        title="Excluir auditoria"
+        centered
+      >
+        {deleteModal && (
+          <Stack>
+            <Alert color="red" title="Esta ação é permanente">
+              Ao excluir esta auditoria, os reports, checklist, histórico de
+              interações e pendências enviadas aos operadores também serão
+              removidos.
+            </Alert>
+
+            <Paper withBorder radius="md" p="md">
+              <Text fw={700}>{deleteModal.audit.client.name}</Text>
+              <Text size="sm" c="dimmed">
+                {deleteModal.audit.referenceLabel ||
+                  `${formatDate(deleteModal.audit.periodStart)} → ${formatDate(
+                    deleteModal.audit.periodEnd,
+                  )}`}
+              </Text>
+            </Paper>
+
+            <TextInput
+              label='Digite "EXCLUIR" para confirmar'
+              value={deleteModal.confirmation}
+              onChange={(event) =>
+                setDeleteModal({
+                  ...deleteModal,
+                  confirmation: event.currentTarget.value,
+                })
+              }
+            />
+
+            <Group justify="flex-end">
+              <Button
+                variant="default"
+                onClick={() => setDeleteModal(null)}
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                color="red"
+                leftSection={<IconTrash size={15} />}
+                disabled={deleteModal.confirmation.trim().toUpperCase() !== "EXCLUIR"}
+                onClick={async () => {
+                  try {
+                    await deleteAudit(deleteModal.audit);
+                    setDeleteModal(null);
+                  } catch (error) {
+                    notifications.show({
+                      color: "red",
+                      title: "Excluir auditoria",
+                      message:
+                        error instanceof Error
+                          ? error.message
+                          : "Não foi possível excluir a auditoria.",
+                    });
+                  }
+                }}
+              >
+                Excluir definitivamente
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
 
       <Modal opened={!!modal} onClose={() => setModal(null)} title={modal?.action === "VALIDATE" ? "Validar correção" : "Devolver ao operador"} centered>
         {modal && <Stack>
