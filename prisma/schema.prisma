@@ -152,6 +152,57 @@ enum OperationHolidayBehavior {
   SKIP
 }
 
+enum AuditStatus {
+  DRAFT
+  ANALYZED
+  IN_REVIEW
+  SENT_TO_CORRECTION
+  PENDING_VALIDATION
+  COMPLETED
+  CANCELLED
+}
+
+enum AuditFileType {
+  MOVEMENTS
+  DRE
+  REVENUE_ANALYSIS
+  CASH_FLOW
+  RECEIVABLES
+  PAYABLES
+  BANK_STATEMENT
+  ACQUIRER
+  CARD_INVOICE
+  OTHER
+}
+
+enum AuditFindingSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum AuditFindingStatus {
+  IDENTIFIED
+  DISMISSED
+  SENT
+  IN_PROGRESS
+  PENDING_VALIDATION
+  VALIDATED
+  RETURNED
+}
+
+enum AuditFindingSource {
+  AUTOMATIC
+  SUPERVISOR_CHECKLIST
+}
+
+enum AuditChecklistStatus {
+  PENDING
+  COMPLIANT
+  NON_COMPLIANT
+  NOT_APPLICABLE
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -170,6 +221,7 @@ model Organization {
   operationActivities   OperationActivity[]
   operationHolidays     OperationHoliday[]
   roleModulePermissions RoleModulePermission[]
+  audits                Audit[]
 }
 
 model User {
@@ -195,6 +247,10 @@ model User {
   operationEvents          OperationEvent[]
   operationClientProcesses OperationClientProcess[]
   operationLedClients      Client[]                 @relation("OperationClientLeader")
+  auditsSupervised         Audit[]                  @relation("AuditSupervisor")
+  auditFindingsAssigned    AuditFinding[]           @relation("AuditFindingOperator")
+  auditInteractions        AuditInteraction[]
+  auditChecklistReviewed   AuditChecklistItem[]     @relation("AuditChecklistReviewer")
 }
 
 model OrganizationMember {
@@ -239,6 +295,7 @@ model Client {
   onboardings             Onboarding[]
   operationConfigurations OperationClientProcess[]
   operationActivities     OperationActivity[]
+  audits                  Audit[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -1008,4 +1065,119 @@ model RoleModulePermission {
 
   @@unique([organizationId, role, moduleCode])
   @@index([organizationId, role])
+}
+
+model Audit {
+  id             String      @id @default(cuid())
+  organizationId String
+  clientId       String
+  supervisorId   String
+  status         AuditStatus @default(DRAFT)
+  referenceLabel String?
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  healthScore    Int         @default(100)
+  totalChecks    Int         @default(0)
+  passedChecks   Int         @default(0)
+  summary        Json?
+  completedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  supervisor   User                 @relation("AuditSupervisor", fields: [supervisorId], references: [id], onDelete: Restrict)
+  files        AuditFile[]
+  findings     AuditFinding[]
+  checklist    AuditChecklistItem[]
+
+  @@index([organizationId, status, createdAt])
+  @@index([clientId, createdAt])
+  @@index([supervisorId, status])
+}
+
+model AuditFile {
+  id            String        @id @default(cuid())
+  auditId       String
+  type          AuditFileType
+  name          String
+  mimeType      String?
+  size          Int?
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  parsedSummary Json?
+  createdAt     DateTime      @default(now())
+
+  audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([auditId, type])
+}
+
+model AuditFinding {
+  id             String               @id @default(cuid())
+  auditId        String
+  source         AuditFindingSource   @default(AUTOMATIC)
+  ruleCode       String?
+  title          String
+  description    String
+  severity       AuditFindingSeverity
+  status         AuditFindingStatus   @default(IDENTIFIED)
+  subject        String?
+  category       String?
+  competence     String?
+  amount         Decimal?             @db.Decimal(18, 2)
+  evidence       Json?
+  operatorId     String?
+  supervisorNote String?
+  dueAt          DateTime?
+  sentAt         DateTime?
+  completedAt    DateTime?
+  validatedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  audit        Audit              @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  operator     User?              @relation("AuditFindingOperator", fields: [operatorId], references: [id], onDelete: SetNull)
+  interactions AuditInteraction[]
+
+  @@index([auditId, status, severity])
+  @@index([operatorId, status, dueAt])
+}
+
+model AuditInteraction {
+  id        String   @id @default(cuid())
+  findingId String
+  userId    String
+  action    String
+  note      String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  finding AuditFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([findingId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AuditChecklistItem {
+  id           String               @id @default(cuid())
+  auditId      String
+  category     String
+  title        String
+  description  String?
+  mandatory    Boolean              @default(true)
+  status       AuditChecklistStatus @default(PENDING)
+  note         String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  position     Int
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  audit      Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("AuditChecklistReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([auditId, position])
+  @@index([auditId, status])
 }

@@ -16,6 +16,15 @@ type MenuItem = {
 };
 
 const icons = {
+  audit: (
+  <svg viewBox="0 0 24 24">
+    <path d="M9 11l2 2 4-4" />
+    <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+    <path d="M9 7h6" />
+    <path d="M9 17h6" />
+  </svg>
+),
+
   dashboard: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -173,6 +182,13 @@ const menuItems: MenuItem[] = [
     moduleCode: "ONBOARDING",
     icon: icons.rocket,
     section: "IMPLANTAÇÃO",
+  },
+  {
+  label: "Auditoria",
+  href: "/auditoria",
+  moduleCode: "AUDIT",
+  icon: icons.audit,
+  section: "GESTÃO",
   },
   {
     label: "Relatórios",

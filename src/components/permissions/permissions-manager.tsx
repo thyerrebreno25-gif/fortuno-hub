@@ -21,6 +21,7 @@ const modules = [
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
   ["OPERATIONS", "Operações"],
+  ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],
   ["ONBOARDING", "Onboarding"],
   ["REPORTS", "Relatórios"],
@@ -213,14 +214,19 @@ export function PermissionsManager() {
 
       const nextRole = Object.fromEntries(
         modules.map(([moduleCode]) => {
-          const isAllowed = moduleCode === "DASHBOARD" || moduleCode === "CLIENTS";
+          const isAllowed =
+            moduleCode === "DASHBOARD" ||
+            moduleCode === "CLIENTS" ||
+            moduleCode === "AUDIT";
 
           return [
             moduleCode,
             {
               canView: isAllowed,
               canCreate: moduleCode === "CLIENTS",
-              canEdit: moduleCode === "CLIENTS",
+              canEdit:
+                moduleCode === "CLIENTS" ||
+                moduleCode === "AUDIT",
               canDelete: false,
               canImport: false,
               canExport: false,
@@ -237,7 +243,9 @@ export function PermissionsManager() {
     });
 
     setMsgColor("blue");
-    setMsg("Padrão de operador aplicado. Clique em Salvar permissões.");
+    setMsg(
+      "Padrão de operador aplicado. Dashboard, Clientes e Auditoria foram liberados. Clique em Salvar permissões.",
+    );
   }
 
   async function save() {
