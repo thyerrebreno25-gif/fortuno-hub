@@ -215,8 +215,42 @@ export async function POST(request: Request) {
     const created =
       await prisma.$transaction(
         async (transaction) => {
-          const user =
-            await transaction.user.upsert({
+          const existingUserByEmail =
+            await transaction.user.findUnique({
+              where: {
+                email,
+              },
+              select: {
+                id: true,
+              },
+            });
+
+          let user;
+
+          if (
+            existingUserByEmail &&
+            existingUserByEmail.id !== authUser!.id
+          ) {
+            /*
+             * Reconvite:
+             * o e-mail já existia na tabela public.User,
+             * mas o usuário do Supabase Auth recebeu um novo UID.
+             *
+             * Atualizamos o ID do registro existente em vez de
+             * tentar criar outro User com o mesmo e-mail.
+             */
+            user = await transaction.user.update({
+              where: {
+                email,
+              },
+              data: {
+                id: authUser!.id,
+                email,
+                name,
+              },
+            });
+          } else {
+            user = await transaction.user.upsert({
               where: {
                 id: authUser!.id,
               },
@@ -230,6 +264,7 @@ export async function POST(request: Request) {
                 name,
               },
             });
+          }
 
           const membership =
             await transaction.organizationMember.create(
@@ -305,10 +340,14 @@ export async function POST(request: Request) {
       error,
     );
 
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Não foi possível convidar o usuário.";
+
     return NextResponse.json(
       {
-        error:
-          "Não foi possível convidar o usuário.",
+        error: message,
       },
       { status: 500 },
     );
