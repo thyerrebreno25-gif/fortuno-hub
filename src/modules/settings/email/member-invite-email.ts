@@ -201,7 +201,7 @@ export async function sendMemberInviteEmail(
     process.env.MEMBERS_FROM_EMAIL?.trim() ||
     process.env.SUPPORT_FROM_EMAIL?.trim() ||
     process.env.OPERATIONS_FROM_EMAIL?.trim() ||
-    "Fortuno Hub <onboarding@resend.dev>";
+    "Fortuno Hub <notificacoes@hubsuporte.shop>";
 
   try {
     const response = await fetch("https://api.resend.com/emails", {

@@ -352,7 +352,7 @@ export async function sendOperationCompletionEmail(input: CompletionInput): Prom
   const from =
     process.env.OPERATIONS_FROM_EMAIL?.trim() ||
     process.env.SUPPORT_FROM_EMAIL?.trim() ||
-    "Fortuno Hub <onboarding@resend.dev>";
+    "Fortuno Hub <notificacoes@hubsuporte.shop>";
 
   const recipients = input.to.map((email) => email.trim()).filter(Boolean);
   if (!recipients.length) return { sent: false, reason: "Cliente sem e-mail operacional cadastrado." };
