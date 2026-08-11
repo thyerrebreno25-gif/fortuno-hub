@@ -169,7 +169,12 @@ export async function PATCH(request: Request, context: Context) {
 export async function DELETE(request: Request, context: Context) {
   const member = await getOperationMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  if (member.role !== "MASTER") return NextResponse.json({ error: "Somente o perfil MASTER pode excluir atividades." }, { status: 403 });
+  if (!["MASTER", "ADMIN", "MANAGER"].includes(member.role)) {
+    return NextResponse.json(
+      { error: "Seu perfil não possui permissão para excluir atividades." },
+      { status: 403 },
+    );
+  }
   const { id } = await context.params;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const reason = String(body.reason || "").trim();
