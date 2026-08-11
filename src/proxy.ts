@@ -80,7 +80,7 @@ export async function proxy(request: NextRequest) {
    */
   if (user && isLoginPage) {
     const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/";
+    dashboardUrl.pathname = "/inicio";
 
     return NextResponse.redirect(dashboardUrl);
   }

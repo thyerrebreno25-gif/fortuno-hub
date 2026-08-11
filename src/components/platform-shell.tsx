@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "@/app/dashboard.module.css";
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar";
+import { SessionTimeout } from "@/components/session/session-timeout";
 
 type MenuItem = {
   label: string;
@@ -16,6 +17,14 @@ type MenuItem = {
 };
 
 const icons = {
+  home: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5.5 10.5V20h13v-9.5" />
+      <path d="M9.5 20v-6h5v6" />
+    </svg>
+  ),
+
   audit: (
   <svg viewBox="0 0 24 24">
     <path d="M9 11l2 2 4-4" />
@@ -120,6 +129,12 @@ const icons = {
 };
 
 const menuItems: MenuItem[] = [
+  {
+    label: "Início",
+    href: "/inicio",
+    moduleCode: "__HOME__",
+    icon: icons.home,
+  },
   {
   label: "Dashboard",
   href: "/dashboard",
@@ -247,12 +262,20 @@ export function PlatformShell({ children }: { children: ReactNode }) {
   }, []);
 
   const visibleItems = useMemo(
-    () => menuItems.filter((item) => permissions?.[item.moduleCode]?.canView !== false),
+    () =>
+      menuItems.filter(
+        (item) =>
+          item.moduleCode === "__HOME__" ||
+          permissions?.[item.moduleCode]?.canView !== false,
+      ),
     [permissions],
   );
 
   const currentItem = menuItems.find((item) => isRouteActive(pathname, item.href));
-  const currentAllowed = !currentItem || permissions?.[currentItem.moduleCode]?.canView !== false;
+  const currentAllowed =
+    !currentItem ||
+    currentItem.moduleCode === "__HOME__" ||
+    permissions?.[currentItem.moduleCode]?.canView !== false;
 
   return (
     <div
@@ -260,6 +283,8 @@ export function PlatformShell({ children }: { children: ReactNode }) {
         sidebarCollapsed ? styles.sidebarCollapsed : ""
       }`}
     >
+      <SessionTimeout />
+
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
           <div className={styles.logoMark} aria-label="Fortuno">
@@ -389,7 +414,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
             <div style={{ maxWidth: 720, margin: "48px auto", padding: 32, border: "1px solid #dce3ec", borderRadius: 16, background: "white" }}>
               <h2 style={{ marginTop: 0 }}>Acesso não autorizado</h2>
               <p>Seu perfil não possui acesso a este módulo. Solicite a liberação a um administrador.</p>
-              <Link href="/clientes">Voltar para Clientes</Link>
+              <Link href="/inicio">Voltar para Início</Link>
             </div>
           )}
         </section>
