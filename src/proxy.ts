@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_ROUTES = [
   "/login",
   "/ativar-acesso",
+  "/api/atendimento/gmail/webhook",
 ];
 
 export async function proxy(request: NextRequest) {
