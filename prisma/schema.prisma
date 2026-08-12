@@ -152,6 +152,7 @@ enum OperationHolidayBehavior {
   SKIP
 }
 
+
 enum ServiceTicketStatus {
   NEW
   IN_PROGRESS
@@ -1211,17 +1212,21 @@ model AuditChecklistItem {
 }
 
 model EmailConnection {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   organizationId String
-  provider       String    @default("GMAIL")
+  provider       String   @default("GMAIL")
   email          String
-  externalId     String?
-  active         Boolean   @default(true)
-  lastSyncAt     DateTime?
-  watchExpiresAt DateTime?
-  metadata       Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  externalId            String?
+  active                Boolean  @default(true)
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  tokenExpiresAt        DateTime?
+  scopes                String[] @default([])
+  lastSyncAt            DateTime?
+  watchExpiresAt        DateTime?
+  metadata               Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1276,11 +1281,11 @@ model ServiceTicket {
   messages ServiceMessage[]
   history  ServiceTicketHistory[]
 
-  @@unique([organizationId, externalThreadId])
   @@index([organizationId, status, updatedAt])
   @@index([assignedToId, status, updatedAt])
   @@index([clientId, updatedAt])
   @@index([senderEmail])
+  @@unique([organizationId, externalThreadId])
 }
 
 model ServiceMessage {
@@ -1301,8 +1306,8 @@ model ServiceMessage {
   ticket      ServiceTicket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   attachments ServiceAttachment[]
 
-  @@unique([ticketId, externalMessageId])
   @@index([ticketId, receivedAt])
+  @@unique([ticketId, externalMessageId])
 }
 
 model ServiceAttachment {

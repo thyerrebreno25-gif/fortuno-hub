@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getServiceCenterMember,getServiceCenterPermission } from "@/modules/atendimento/auth";
+import { decryptSecret } from "@/modules/atendimento/gmail/crypto";
+import { revokeGoogleToken } from "@/modules/atendimento/gmail/oauth";
+export async function POST(){const m=await getServiceCenterMember();if(!m)return NextResponse.json({error:"Sessão inválida."},{status:401});const p=await getServiceCenterPermission(m.organizationId,m.role);if(!p.canManage)return NextResponse.json({error:"Sem permissão."},{status:403});const c=await prisma.emailConnection.findFirst({where:{organizationId:m.organizationId,provider:"GMAIL",active:true},orderBy:{updatedAt:"desc"}});if(!c)return NextResponse.json({message:"Nenhuma conta Gmail conectada."});const encrypted=c.encryptedRefreshToken||c.encryptedAccessToken;if(encrypted){try{await revokeGoogleToken(decryptSecret(encrypted))}catch(e){console.warn("Falha ao revogar token:",e)}}await prisma.emailConnection.update({where:{id:c.id},data:{active:false,encryptedAccessToken:null,encryptedRefreshToken:null,tokenExpiresAt:null,watchExpiresAt:null}});return NextResponse.json({message:"Conta Gmail desconectada."});}

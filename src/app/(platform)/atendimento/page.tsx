@@ -40,6 +40,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { GmailConnectionCard } from "@/modules/atendimento/components/gmail-connection-card";
 import styles from "./atendimento.module.css";
 
 type Any = Record<string, any>;
@@ -301,7 +302,7 @@ export default function AtendimentoPage() {
 
         <Group>
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
-            V1 · Gmail na próxima etapa
+            V2 · Gmail OAuth
           </Badge>
 
           {bootstrap.permission?.canCreate && (
@@ -320,6 +321,8 @@ export default function AtendimentoPage() {
           {error}
         </Alert>
       )}
+
+      <GmailConnectionCard />
 
       <div className={styles.layout}>
         <aside className={styles.sidebar}>

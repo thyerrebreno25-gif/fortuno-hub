@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getServiceCenterMember,getServiceCenterPermission } from "@/modules/atendimento/auth";
+export async function GET(){const m=await getServiceCenterMember();if(!m)return NextResponse.json({error:"Sessão inválida."},{status:401});const p=await getServiceCenterPermission(m.organizationId,m.role);if(!p.canView)return NextResponse.json({error:"Sem permissão."},{status:403});const connection=await prisma.emailConnection.findFirst({where:{organizationId:m.organizationId,provider:"GMAIL",active:true},orderBy:{updatedAt:"desc"},select:{id:true,email:true,active:true,externalId:true,lastSyncAt:true,tokenExpiresAt:true,watchExpiresAt:true,createdAt:true,updatedAt:true}});return NextResponse.json({connected:Boolean(connection),connection,canManage:p.canManage});}
