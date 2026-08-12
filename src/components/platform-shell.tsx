@@ -192,6 +192,13 @@ const menuItems: MenuItem[] = [
     section: "OPERAÇÃO",
   },
   {
+    label: "Atendimento",
+    href: "/atendimento",
+    moduleCode: "SERVICE_CENTER",
+    icon: icons.support,
+    section: "ATENDIMENTO",
+  },
+  {
     label: "Onboarding",
     href: "/onboarding",
     moduleCode: "ONBOARDING",

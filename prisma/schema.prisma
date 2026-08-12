@@ -152,6 +152,28 @@ enum OperationHolidayBehavior {
   SKIP
 }
 
+enum ServiceTicketStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  WAITING_INTERNAL
+  RESOLVED
+  SPAM
+}
+
+enum ServiceTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ServiceMessageDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
 enum AuditStatus {
   DRAFT
   ANALYZED
@@ -222,6 +244,8 @@ model Organization {
   operationHolidays     OperationHoliday[]
   roleModulePermissions RoleModulePermission[]
   audits                Audit[]
+  emailConnections      EmailConnection[]
+  serviceTickets        ServiceTicket[]
 }
 
 model User {
@@ -251,6 +275,8 @@ model User {
   auditFindingsAssigned    AuditFinding[]           @relation("AuditFindingOperator")
   auditInteractions        AuditInteraction[]
   auditChecklistReviewed   AuditChecklistItem[]     @relation("AuditChecklistReviewer")
+  assignedServiceTickets   ServiceTicket[]          @relation("ServiceTicketAssignee")
+  serviceTicketHistory     ServiceTicketHistory[]   @relation("ServiceTicketHistoryUser")
 }
 
 model OrganizationMember {
@@ -296,6 +322,8 @@ model Client {
   operationConfigurations OperationClientProcess[]
   operationActivities     OperationActivity[]
   audits                  Audit[]
+  serviceTickets          ServiceTicket[]
+  emailIdentities         ClientEmailIdentity[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -1180,4 +1208,130 @@ model AuditChecklistItem {
 
   @@unique([auditId, position])
   @@index([auditId, status])
+}
+
+model EmailConnection {
+  id             String    @id @default(cuid())
+  organizationId String
+  provider       String    @default("GMAIL")
+  email          String
+  externalId     String?
+  active         Boolean   @default(true)
+  lastSyncAt     DateTime?
+  watchExpiresAt DateTime?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider, email])
+  @@index([organizationId, active])
+}
+
+model ClientEmailIdentity {
+  id              String   @id @default(cuid())
+  clientId        String
+  email           String
+  normalizedEmail String
+  label           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, normalizedEmail])
+  @@index([normalizedEmail, active])
+}
+
+model ServiceTicket {
+  id               String                @id @default(cuid())
+  organizationId   String
+  clientId         String?
+  assignedToId     String?
+  externalThreadId String?
+  source           String                @default("MANUAL")
+  subject          String
+  senderName       String?
+  senderEmail      String
+  recipientEmail   String?
+  snippet          String?
+  status           ServiceTicketStatus   @default(NEW)
+  priority         ServiceTicketPriority @default(MEDIUM)
+  isSpam           Boolean               @default(false)
+  spamScore        Int?
+  assignedAt       DateTime?
+  receivedAt       DateTime              @default(now())
+  resolvedAt       DateTime?
+  firstResponseAt  DateTime?
+  lastMessageAt    DateTime              @default(now())
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  assignedTo   User?        @relation("ServiceTicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  messages ServiceMessage[]
+  history  ServiceTicketHistory[]
+
+  @@unique([organizationId, externalThreadId])
+  @@index([organizationId, status, updatedAt])
+  @@index([assignedToId, status, updatedAt])
+  @@index([clientId, updatedAt])
+  @@index([senderEmail])
+}
+
+model ServiceMessage {
+  id                String                  @id @default(cuid())
+  ticketId          String
+  externalMessageId String?
+  direction         ServiceMessageDirection @default(INBOUND)
+  fromName          String?
+  fromEmail         String
+  toEmails          String[]                @default([])
+  ccEmails          String[]                @default([])
+  subject           String?
+  textBody          String?
+  htmlBody          String?
+  receivedAt        DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+
+  ticket      ServiceTicket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  attachments ServiceAttachment[]
+
+  @@unique([ticketId, externalMessageId])
+  @@index([ticketId, receivedAt])
+}
+
+model ServiceAttachment {
+  id                   String   @id @default(cuid())
+  messageId            String
+  externalAttachmentId String?
+  name                 String
+  mimeType             String?
+  size                 Int?
+  storagePath          String?
+  createdAt            DateTime @default(now())
+
+  message ServiceMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model ServiceTicketHistory {
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String?
+  type      String
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  ticket ServiceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?         @relation("ServiceTicketHistoryUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([userId, createdAt])
 }

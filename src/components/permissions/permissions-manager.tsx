@@ -21,6 +21,7 @@ const modules = [
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
   ["OPERATIONS", "Operações"],
+  ["SERVICE_CENTER", "Atendimento"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],
   ["ONBOARDING", "Onboarding"],
