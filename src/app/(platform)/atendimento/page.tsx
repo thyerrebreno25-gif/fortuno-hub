@@ -4,12 +4,9 @@ import {
   Alert,
   Badge,
   Button,
-  Divider,
-  Drawer,
   Group,
   Loader,
   Modal,
-  Paper,
   ScrollArea,
   Select,
   Stack,
@@ -20,15 +17,11 @@ import {
   Title,
 } from "@mantine/core";
 import {
-  IconAlertTriangle,
-  IconArrowBackUp,
   IconCircleCheck,
   IconClock,
   IconInbox,
   IconMail,
-  IconMessage,
   IconSearch,
-  IconSend,
   IconSparkles,
   IconTrash,
   IconUser,
@@ -41,6 +34,7 @@ import {
   useState,
 } from "react";
 import { GmailConnectionCard } from "@/modules/atendimento/components/gmail-connection-card";
+import { EmailTicketDrawer } from "@/modules/atendimento/components/email-ticket-drawer";
 import styles from "./atendimento.module.css";
 
 type Any = Record<string, any>;
@@ -96,7 +90,6 @@ export default function AtendimentoPage() {
   const [newOpen, setNewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
-  const [narrow, setNarrow] = useState(false);
 
   const [form, setForm] = useState({
     subject: "",
@@ -109,12 +102,6 @@ export default function AtendimentoPage() {
     priority: "MEDIUM",
   });
 
-  useEffect(() => {
-    const update = () => setNarrow(window.innerWidth <= 1180);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
 
   const loadBootstrap = useCallback(async () => {
     const response = await fetch("/api/atendimento/bootstrap", {
@@ -274,18 +261,6 @@ export default function AtendimentoPage() {
     return <Alert color="red">{error || "Central indisponível."}</Alert>;
   }
 
-  const detail = selected ? (
-    <TicketDetail
-      ticket={selected}
-      bootstrap={bootstrap}
-      saving={saving}
-      note={note}
-      setNote={setNote}
-      updateTicket={updateTicket}
-      memberOptions={memberOptions}
-      clientOptions={clientOptions}
-    />
-  ) : null;
 
   return (
     <Stack gap="lg">
@@ -435,39 +410,24 @@ export default function AtendimentoPage() {
           </ScrollArea>
         </section>
 
-        <section className={styles.detail}>
-          {!selectedId ? (
-            <Stack align="center" justify="center" h="100%" gap="sm" px="xl">
-              <ThemeIcon size={60} radius="xl" variant="light">
-                <IconMessage size={28} />
-              </ThemeIcon>
-              <Text fw={800}>Selecione um chamado</Text>
-              <Text size="sm" c="dimmed" ta="center">
-                Abra uma mensagem para acompanhar atendimento, responsável e histórico.
-              </Text>
-            </Stack>
-          ) : detailLoading ? (
-            <Group justify="center" py={80}>
-              <Loader />
-            </Group>
-          ) : (
-            detail
-          )}
-        </section>
       </div>
 
-      <Drawer
-        opened={narrow && Boolean(selected)}
+      <EmailTicketDrawer
+        opened={Boolean(selectedId)}
+        loading={detailLoading}
+        ticket={selected}
+        bootstrap={bootstrap}
+        saving={saving}
+        note={note}
+        setNote={setNote}
+        updateTicket={updateTicket}
+        memberOptions={memberOptions}
+        clientOptions={clientOptions}
         onClose={() => {
           setSelected(null);
           setSelectedId(null);
         }}
-        position="right"
-        size="xl"
-        title={selected?.subject}
-      >
-        {detail}
-      </Drawer>
+      />
 
       <Modal
         opened={newOpen}
@@ -554,264 +514,3 @@ export default function AtendimentoPage() {
   );
 }
 
-function TicketDetail({
-  ticket,
-  bootstrap,
-  saving,
-  note,
-  setNote,
-  updateTicket,
-  memberOptions,
-  clientOptions,
-}: {
-  ticket: Any;
-  bootstrap: Any;
-  saving: boolean;
-  note: string;
-  setNote: (value: string) => void;
-  updateTicket: (action: string, payload?: Any) => Promise<boolean>;
-  memberOptions: Any[];
-  clientOptions: Any[];
-}) {
-  const canManage = bootstrap.currentUser.canManage;
-
-  return (
-    <ScrollArea h={660}>
-      <Stack p="lg" gap="lg">
-        <Stack gap={5}>
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Text size="xs" c="dimmed" fw={700}>
-                {ticket.senderName || ticket.senderEmail}
-              </Text>
-              <Title order={3} mt={3}>
-                {ticket.subject}
-              </Title>
-            </div>
-            <Badge size="lg" color={statusColors[ticket.status] || "gray"}>
-              {statusLabels[ticket.status] || ticket.status}
-            </Badge>
-          </Group>
-          <Text size="sm" c="dimmed">
-            De: {ticket.senderEmail} · Recebido em {formatDate(ticket.receivedAt)}
-          </Text>
-        </Stack>
-
-        <Paper withBorder radius="md" p="md">
-          <Stack gap="sm">
-            <Group grow align="flex-start">
-              <Select
-                label="Cliente"
-                clearable
-                searchable
-                disabled={!canManage}
-                data={clientOptions}
-                value={ticket.client?.id || null}
-                onChange={(value) =>
-                  void updateTicket("client", { clientId: value })
-                }
-              />
-              <Select
-                label="Responsável"
-                clearable
-                searchable
-                disabled={!canManage}
-                data={memberOptions}
-                value={ticket.assignedTo?.id || null}
-                onChange={(value) =>
-                  void updateTicket("assign", { assignedToId: value })
-                }
-              />
-            </Group>
-
-            <Select
-              label="Prioridade"
-              data={[
-                { value: "LOW", label: "Baixa" },
-                { value: "MEDIUM", label: "Média" },
-                { value: "HIGH", label: "Alta" },
-                { value: "CRITICAL", label: "Crítica" },
-              ]}
-              value={ticket.priority}
-              onChange={(value) =>
-                value && void updateTicket("priority", { priority: value })
-              }
-            />
-          </Stack>
-        </Paper>
-
-        {!ticket.assignedTo && (
-          <Button
-            variant="light"
-            leftSection={<IconUser size={16} />}
-            loading={saving}
-            onClick={() =>
-              void updateTicket("assign", {
-                assignedToId: bootstrap.currentUser.id,
-              })
-            }
-          >
-            Assumir chamado
-          </Button>
-        )}
-
-        <Divider label="Conversa" labelPosition="left" />
-
-        <Stack>
-          {ticket.messages?.map((message: Any) => (
-            <Paper
-              key={message.id}
-              withBorder
-              radius="lg"
-              p="md"
-              bg={message.direction === "INTERNAL" ? "yellow.0" : "gray.0"}
-            >
-              <Group justify="space-between" mb={8}>
-                <Text size="sm" fw={800}>
-                  {message.direction === "INTERNAL"
-                    ? "Observação interna"
-                    : message.fromName || message.fromEmail}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {formatDate(message.receivedAt)}
-                </Text>
-              </Group>
-              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-                {message.textBody || "Mensagem sem conteúdo em texto."}
-              </Text>
-            </Paper>
-          ))}
-        </Stack>
-
-        <Paper withBorder radius="md" p="md">
-          <Stack gap="sm">
-            <Textarea
-              label="Observação interna"
-              description="Ainda não envia resposta ao Gmail."
-              minRows={3}
-              value={note}
-              onChange={(event) => setNote(event.currentTarget.value)}
-            />
-            <Group justify="flex-end">
-              <Button
-                variant="light"
-                leftSection={<IconSend size={15} />}
-                disabled={!note.trim()}
-                loading={saving}
-                onClick={async () => {
-                  const ok = await updateTicket("note", { content: note });
-                  if (ok) setNote("");
-                }}
-              >
-                Registrar observação
-              </Button>
-            </Group>
-          </Stack>
-        </Paper>
-
-        <Divider label="Ações" labelPosition="left" />
-
-        <Group>
-          {ticket.status !== "IN_PROGRESS" &&
-            ticket.status !== "RESOLVED" &&
-            ticket.status !== "SPAM" && (
-              <Button
-                variant="light"
-                onClick={() =>
-                  void updateTicket("status", { status: "IN_PROGRESS" })
-                }
-              >
-                Em atendimento
-              </Button>
-            )}
-
-          <Button
-            variant="light"
-            color="yellow"
-            onClick={() =>
-              void updateTicket("status", { status: "WAITING_CUSTOMER" })
-            }
-          >
-            Aguardando cliente
-          </Button>
-
-          <Button
-            variant="light"
-            color="orange"
-            onClick={() =>
-              void updateTicket("status", { status: "WAITING_INTERNAL" })
-            }
-          >
-            Aguardando interno
-          </Button>
-
-          {ticket.status !== "RESOLVED" ? (
-            <Button
-              color="green"
-              leftSection={<IconCircleCheck size={16} />}
-              onClick={() =>
-                void updateTicket("status", { status: "RESOLVED" })
-              }
-            >
-              Resolver
-            </Button>
-          ) : (
-            <Button
-              variant="light"
-              leftSection={<IconArrowBackUp size={16} />}
-              onClick={() =>
-                void updateTicket("status", { status: "IN_PROGRESS" })
-              }
-            >
-              Reabrir
-            </Button>
-          )}
-
-          {ticket.status !== "SPAM" ? (
-            <Button
-              color="gray"
-              variant="outline"
-              leftSection={<IconAlertTriangle size={16} />}
-              onClick={() =>
-                void updateTicket("status", { status: "SPAM" })
-              }
-            >
-              Marcar como spam
-            </Button>
-          ) : (
-            <Button
-              variant="light"
-              onClick={() => void updateTicket("status", { status: "NEW" })}
-            >
-              Não é spam
-            </Button>
-          )}
-        </Group>
-
-        {ticket.history?.length > 0 && (
-          <>
-            <Divider label="Histórico" labelPosition="left" />
-            <Stack gap="xs">
-              {ticket.history.map((item: Any) => (
-                <Group key={item.id} align="flex-start" wrap="nowrap">
-                  <ThemeIcon size={28} radius="xl" variant="light">
-                    <IconClock size={14} />
-                  </ThemeIcon>
-                  <div>
-                    <Text size="sm" fw={600}>
-                      {item.message}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {item.user?.name || item.user?.email || "Sistema"} ·{" "}
-                      {formatDate(item.createdAt)}
-                    </Text>
-                  </div>
-                </Group>
-              ))}
-            </Stack>
-          </>
-        )}
-      </Stack>
-    </ScrollArea>
-  );
-}
