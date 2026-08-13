@@ -1,11 +1,14 @@
 "use client";
 
 import {
+  ActionIcon,
   Avatar,
   Badge,
   Button,
+  Checkbox,
   Divider,
   Drawer,
+  FileButton,
   Group,
   Loader,
   Paper,
@@ -16,17 +19,32 @@ import {
   Textarea,
   ThemeIcon,
   Title,
+  Tooltip,
 } from "@mantine/core";
 import {
   IconAlertTriangle,
   IconArrowBackUp,
+  IconBold,
   IconCircleCheck,
   IconClock,
+  IconItalic,
+  IconLink,
+  IconList,
   IconMail,
+  IconMessageReply,
   IconPaperclip,
   IconSend,
+  IconTrash,
+  IconUnderline,
   IconUser,
+  IconX,
 } from "@tabler/icons-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import styles from "@/app/(platform)/atendimento/atendimento.module.css";
 
 type Any = Record<string, any>;
@@ -61,6 +79,17 @@ function formatDate(value?: string) {
     : "—";
 }
 
+function htmlToText(value: string) {
+  if (typeof window === "undefined") return value;
+
+  const div = document.createElement("div");
+  div.innerHTML = value;
+
+  return (div.innerText || div.textContent || "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function EmailTicketDrawer({
   opened,
   loading,
@@ -89,12 +118,152 @@ export function EmailTicketDrawer({
   const canManage = bootstrap?.currentUser?.canManage;
   const messages = ticket?.messages || [];
 
+  const editorRef = useRef<HTMLDivElement | null>(null);
+
+  const [replyHtml, setReplyHtml] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [includeSignature, setIncludeSignature] = useState(true);
+  const [sendingReply, setSendingReply] = useState(false);
+  const [replyError, setReplyError] = useState("");
+  const [replySuccess, setReplySuccess] = useState("");
+
+  useEffect(() => {
+    setReplyHtml("");
+    setAttachments([]);
+    setReplyError("");
+    setReplySuccess("");
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = "";
+    }
+  }, [ticket?.id]);
+
+  const canReply = useMemo(
+    () =>
+      Boolean(
+        ticket?.source === "GMAIL" &&
+          ticket?.externalThreadId &&
+          messages.some(
+            (message: Any) =>
+              message.direction === "INBOUND" &&
+              message.externalMessageId,
+          ),
+      ),
+    [ticket, messages],
+  );
+
+  const replyText = useMemo(
+    () => htmlToText(replyHtml),
+    [replyHtml],
+  );
+
+  function applyFormat(
+    command:
+      | "bold"
+      | "italic"
+      | "underline"
+      | "insertUnorderedList",
+    value?: string,
+  ) {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    setReplyHtml(editorRef.current?.innerHTML || "");
+  }
+
+  function insertLink() {
+    const url = window.prompt("Cole o link:");
+    if (!url) return;
+
+    editorRef.current?.focus();
+    document.execCommand("createLink", false, url);
+    setReplyHtml(editorRef.current?.innerHTML || "");
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
+  }
+
+  async function sendReply() {
+    if (
+      !ticket?.id ||
+      !replyText ||
+      !canReply
+    ) {
+      return;
+    }
+
+    setSendingReply(true);
+    setReplyError("");
+    setReplySuccess("");
+
+    try {
+      const form = new FormData();
+
+      form.set("text", replyText);
+      form.set("html", replyHtml);
+      form.set(
+        "includeSignature",
+        includeSignature ? "true" : "false",
+      );
+
+      for (const file of attachments) {
+        form.append("attachments", file);
+      }
+
+      const response = await fetch(
+        `/api/atendimento/${ticket.id}/reply`,
+        {
+          method: "POST",
+          body: form,
+        },
+      );
+
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          body.error ||
+            "Não foi possível enviar a resposta.",
+        );
+      }
+
+      setReplyHtml("");
+      setAttachments([]);
+
+      if (editorRef.current) {
+        editorRef.current.innerHTML = "";
+      }
+
+      setReplySuccess(
+        attachments.length
+          ? "Resposta e anexos enviados pelo Gmail."
+          : "Resposta enviada pelo Gmail.",
+      );
+
+      // Recarrega o chamado usando a API existente.
+      // O status já é WAITING_CUSTOMER no endpoint de resposta.
+      await updateTicket("status", {
+        status: "WAITING_CUSTOMER",
+      });
+    } catch (error) {
+      setReplyError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a resposta.",
+      );
+    } finally {
+      setSendingReply(false);
+    }
+  }
+
   return (
     <Drawer
       opened={opened}
       onClose={onClose}
       position="right"
-      size="94%"
+      size="92%"
       padding={0}
       withCloseButton={false}
       classNames={{ body: styles.emailDrawerBody }}
@@ -106,27 +275,43 @@ export function EmailTicketDrawer({
       ) : !ticket ? null : (
         <div className={styles.emailView}>
           <header className={styles.emailTopbar}>
-            <Group gap="sm">
-              <ThemeIcon size={40} radius="xl" variant="light">
-                <IconMail size={20} />
+            <Group gap="sm" wrap="nowrap">
+              <ThemeIcon size={34} radius="xl" variant="light">
+                <IconMail size={17} />
               </ThemeIcon>
-              <div>
-                <Text size="xs" c="dimmed" fw={800} tt="uppercase">
-                  Chamado por e-mail
+
+              <div className={styles.topbarIdentity}>
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  fw={700}
+                  tt="uppercase"
+                >
+                  E-mail · atendimento
                 </Text>
-                <Text fw={800}>{ticket.client?.name || ticket.senderEmail}</Text>
+
+                <Text fw={700} size="sm" lineClamp={1}>
+                  {ticket.client?.name || ticket.senderEmail}
+                </Text>
               </div>
             </Group>
 
-            <Group gap="sm">
+            <Group gap="xs">
               <Badge
-                size="lg"
+                size="md"
                 variant="light"
                 color={statusColors[ticket.status] || "gray"}
               >
                 {statusLabels[ticket.status] || ticket.status}
               </Badge>
-              <Button variant="default" onClick={onClose}>
+
+              <Button
+                variant="subtle"
+                color="gray"
+                size="compact-sm"
+                leftSection={<IconX size={15} />}
+                onClick={onClose}
+              >
                 Fechar
               </Button>
             </Group>
@@ -134,303 +319,668 @@ export function EmailTicketDrawer({
 
           <div className={styles.emailContentGrid}>
             <main className={styles.emailMain}>
-              <ScrollArea h="calc(100vh - 72px)">
+              <ScrollArea h="calc(100vh - 58px)">
                 <div className={styles.emailMainInner}>
-                  <Stack gap={5} mb="xl">
-                    <Title order={2} className={styles.emailSubject}>
+                  <div className={styles.subjectBlock}>
+                    <Title
+                      order={2}
+                      className={styles.emailSubject}
+                    >
                       {ticket.subject}
                     </Title>
-                    <Group gap="xs">
-                      <Text size="sm" c="dimmed">
-                        Recebido em {formatDate(ticket.receivedAt)}
-                      </Text>
-                      <Text size="sm" c="dimmed">·</Text>
-                      <Text size="sm" c="dimmed">
-                        {messages.length} {messages.length === 1 ? "mensagem" : "mensagens"}
-                      </Text>
-                    </Group>
-                  </Stack>
 
-                  <Stack gap="lg">
-                    {messages.map((message: Any, index: number) => {
-                      const internal = message.direction === "INTERNAL";
-                      const attachments = message.attachments || [];
+                    <Text size="xs" c="dimmed" mt={4}>
+                      {messages.length}{" "}
+                      {messages.length === 1
+                        ? "mensagem"
+                        : "mensagens"}{" "}
+                      · recebido em {formatDate(ticket.receivedAt)}
+                    </Text>
+                  </div>
 
-                      return (
-                        <Paper
-                          key={message.id}
-                          withBorder
-                          radius="lg"
-                          className={internal ? styles.internalMessage : styles.emailMessage}
-                        >
-                          <div className={styles.messageHeader}>
-                            <Group gap="sm" wrap="nowrap">
-                              <Avatar radius="xl" size={42} color={internal ? "yellow" : "blue"}>
-                                {(internal
-                                  ? "F"
-                                  : message.fromName || message.fromEmail || "?")
-                                  .slice(0, 1)
-                                  .toUpperCase()}
-                              </Avatar>
-                              <div className={styles.messageIdentity}>
-                                <Group gap={7}>
-                                  <Text fw={800} size="sm">
-                                    {internal
-                                      ? "Observação interna"
-                                      : message.fromName || message.fromEmail}
-                                  </Text>
-                                  {index === 0 && !internal && (
-                                    <Badge size="xs" variant="light">
-                                      Mensagem inicial
-                                    </Badge>
+                  <Stack gap="md">
+                    {messages.map(
+                      (message: Any, index: number) => {
+                        const internal =
+                          message.direction === "INTERNAL";
+                        const outbound =
+                          message.direction === "OUTBOUND";
+                        const files =
+                          message.attachments || [];
+
+                        return (
+                          <Paper
+                            key={message.id}
+                            withBorder={!internal}
+                            radius="md"
+                            className={
+                              internal
+                                ? styles.internalMessage
+                                : outbound
+                                  ? styles.outboundMessage
+                                  : styles.emailMessage
+                            }
+                          >
+                            <div className={styles.messageHeader}>
+                              <Group gap="sm" wrap="nowrap">
+                                <Avatar
+                                  radius="xl"
+                                  size={34}
+                                  color={
+                                    internal
+                                      ? "yellow"
+                                      : outbound
+                                        ? "green"
+                                        : "blue"
+                                  }
+                                >
+                                  {(internal
+                                    ? "F"
+                                    : message.fromName ||
+                                      message.fromEmail ||
+                                      "?")
+                                    .slice(0, 1)
+                                    .toUpperCase()}
+                                </Avatar>
+
+                                <div className={styles.messageIdentity}>
+                                  <Group gap={6} wrap="nowrap">
+                                    <Text
+                                      fw={700}
+                                      size="sm"
+                                      lineClamp={1}
+                                    >
+                                      {internal
+                                        ? "Observação interna"
+                                        : outbound
+                                          ? message.fromName || "Fortuno"
+                                          : message.fromName ||
+                                            message.fromEmail}
+                                    </Text>
+
+                                    {index === 0 && !internal && (
+                                      <Badge
+                                        size="xs"
+                                        variant="light"
+                                      >
+                                        Inicial
+                                      </Badge>
+                                    )}
+
+                                    {outbound && (
+                                      <Badge
+                                        size="xs"
+                                        color="green"
+                                        variant="light"
+                                      >
+                                        Enviada
+                                      </Badge>
+                                    )}
+                                  </Group>
+
+                                  {!internal && (
+                                    <Text
+                                      size="xs"
+                                      c="dimmed"
+                                      lineClamp={1}
+                                    >
+                                      {message.fromEmail} →{" "}
+                                      {(message.toEmails || []).join(", ") ||
+                                        ticket.recipientEmail ||
+                                        "caixa conectada"}
+                                    </Text>
                                   )}
-                                </Group>
-                                {!internal && (
-                                  <Text size="xs" c="dimmed" lineClamp={1}>
-                                    &lt;{message.fromEmail}&gt; para{" "}
-                                    {(message.toEmails || []).join(", ") ||
-                                      ticket.recipientEmail ||
-                                      "caixa conectada"}
-                                  </Text>
-                                )}
-                              </div>
-                            </Group>
-                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-                              {formatDate(message.receivedAt)}
-                            </Text>
-                          </div>
+                                </div>
+                              </Group>
 
-                          <Divider />
-
-                          <div className={styles.messageBody}>
-                            {internal ? (
-                              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-                                {message.textBody || "Observação sem conteúdo."}
-                              </Text>
-                            ) : message.htmlBody ? (
-                              <iframe
-                                title={`Mensagem ${index + 1}`}
-                                sandbox=""
-                                srcDoc={message.htmlBody}
-                                className={styles.emailIframe}
-                              />
-                            ) : (
                               <Text
-                                size="sm"
-                                className={styles.plainTextEmail}
-                                style={{ whiteSpace: "pre-wrap" }}
+                                size="xs"
+                                c="dimmed"
+                                style={{ whiteSpace: "nowrap" }}
                               >
-                                {message.textBody ||
-                                  "Mensagem sem conteúdo disponível em texto."}
+                                {formatDate(message.receivedAt)}
                               </Text>
-                            )}
-                          </div>
+                            </div>
 
-                          {attachments.length > 0 && (
-                            <>
-                              <Divider />
-                              <div className={styles.attachments}>
-                                <Text size="xs" fw={800} c="dimmed" tt="uppercase">
-                                  Anexos
+                            <div className={styles.messageBody}>
+                              {internal ? (
+                                <Text
+                                  size="sm"
+                                  style={{ whiteSpace: "pre-wrap" }}
+                                >
+                                  {message.textBody ||
+                                    "Observação sem conteúdo."}
                                 </Text>
-                                <Group gap="xs" mt={8}>
-                                  {attachments.map((file: Any) => (
+                              ) : message.htmlBody && !outbound ? (
+                                <iframe
+                                  title={`Mensagem ${index + 1}`}
+                                  sandbox=""
+                                  srcDoc={message.htmlBody}
+                                  className={styles.emailIframe}
+                                />
+                              ) : message.htmlBody && outbound ? (
+                                <div
+                                  className={styles.sentHtml}
+                                  dangerouslySetInnerHTML={{
+                                    __html: message.htmlBody,
+                                  }}
+                                />
+                              ) : (
+                                <Text
+                                  size="sm"
+                                  className={styles.plainTextEmail}
+                                  style={{ whiteSpace: "pre-wrap" }}
+                                >
+                                  {message.textBody ||
+                                    "Mensagem sem conteúdo disponível em texto."}
+                                </Text>
+                              )}
+                            </div>
+
+                            {files.length > 0 && (
+                              <div className={styles.attachments}>
+                                <Group gap="xs">
+                                  {files.map((file: Any) => (
                                     <Paper
                                       key={file.id}
                                       withBorder
                                       radius="md"
                                       px="sm"
-                                      py={8}
+                                      py={7}
                                       className={styles.attachmentChip}
                                     >
-                                      <Group gap={7} wrap="nowrap">
-                                        <IconPaperclip size={15} />
-                                        <div>
-                                          <Text size="xs" fw={700} lineClamp={1}>
-                                            {file.name}
-                                          </Text>
-                                          {file.mimeType && (
-                                            <Text size="xs" c="dimmed">
-                                              {file.mimeType}
-                                            </Text>
-                                          )}
-                                        </div>
+                                      <Group gap={6} wrap="nowrap">
+                                        <IconPaperclip size={14} />
+
+                                        <Text
+                                          size="xs"
+                                          fw={600}
+                                          lineClamp={1}
+                                        >
+                                          {file.name}
+                                        </Text>
                                       </Group>
                                     </Paper>
                                   ))}
                                 </Group>
                               </div>
-                            </>
-                          )}
-                        </Paper>
-                      );
-                    })}
+                            )}
+                          </Paper>
+                        );
+                      },
+                    )}
                   </Stack>
 
-                  <Paper withBorder radius="lg" p="md" mt="xl">
-                    <Stack gap="sm">
-                      <Textarea
-                        label="Observação interna"
-                        description="Visível somente para a equipe da Fortuno."
-                        minRows={3}
-                        value={note}
-                        onChange={(event) => setNote(event.currentTarget.value)}
-                      />
-                      <Group justify="flex-end">
-                        <Button
-                          variant="light"
-                          leftSection={<IconSend size={15} />}
-                          disabled={!note.trim()}
-                          loading={saving}
-                          onClick={async () => {
-                            const ok = await updateTicket("note", { content: note });
-                            if (ok) setNote("");
-                          }}
-                        >
-                          Registrar observação
-                        </Button>
+                  <Paper
+                    withBorder
+                    radius="md"
+                    className={styles.replyComposer}
+                    mt="md"
+                  >
+                    <Group
+                      justify="space-between"
+                      align="center"
+                      mb={8}
+                    >
+                      <Group gap="xs">
+                        <IconMessageReply size={17} />
+
+                        <Text fw={700} size="sm">
+                          Responder
+                        </Text>
+
+                        <Text size="xs" c="dimmed">
+                          para {ticket.senderEmail}
+                        </Text>
                       </Group>
-                    </Stack>
+
+                      <Text size="xs" c="dimmed">
+                        via Gmail conectado
+                      </Text>
+                    </Group>
+
+                    <div className={styles.replyToolbar}>
+                      <Tooltip label="Negrito">
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => applyFormat("bold")}
+                        >
+                          <IconBold size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+
+                      <Tooltip label="Itálico">
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => applyFormat("italic")}
+                        >
+                          <IconItalic size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+
+                      <Tooltip label="Sublinhado">
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => applyFormat("underline")}
+                        >
+                          <IconUnderline size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+
+                      <Tooltip label="Lista">
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          onClick={() =>
+                            applyFormat("insertUnorderedList")
+                          }
+                        >
+                          <IconList size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+
+                      <Tooltip label="Inserir link">
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          onClick={insertLink}
+                        >
+                          <IconLink size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+
+                      <Divider orientation="vertical" />
+
+                      <FileButton
+                        multiple
+                        onChange={(files) => {
+                          const selected = files || [];
+
+                          setAttachments((current) => [
+                            ...current,
+                            ...selected,
+                          ]);
+                        }}
+                      >
+                        {(props) => (
+                          <Button
+                            {...props}
+                            variant="subtle"
+                            color="gray"
+                            size="compact-sm"
+                            leftSection={
+                              <IconPaperclip size={15} />
+                            }
+                          >
+                            Anexar
+                          </Button>
+                        )}
+                      </FileButton>
+                    </div>
+
+                    <div
+                      ref={editorRef}
+                      className={`${styles.richReplyEditor} ${
+                        !canReply
+                          ? styles.richReplyEditorDisabled
+                          : ""
+                      }`}
+                      contentEditable={canReply}
+                      suppressContentEditableWarning
+                      data-placeholder={
+                        canReply
+                          ? "Escreva sua resposta..."
+                          : "A resposta está disponível somente em chamados recebidos pelo Gmail."
+                      }
+                      onInput={(event) =>
+                        setReplyHtml(
+                          event.currentTarget.innerHTML,
+                        )
+                      }
+                    />
+
+                    {attachments.length > 0 && (
+                      <Stack gap={5} mt="sm">
+                        {attachments.map((file, index) => (
+                          <Group
+                            key={`${file.name}-${file.size}-${index}`}
+                            justify="space-between"
+                            className={styles.replyAttachment}
+                          >
+                            <Group gap="xs" wrap="nowrap">
+                              <IconPaperclip size={14} />
+
+                              <div>
+                                <Text size="xs" fw={600}>
+                                  {file.name}
+                                </Text>
+
+                                <Text size="xs" c="dimmed">
+                                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                                </Text>
+                              </div>
+                            </Group>
+
+                            <ActionIcon
+                              color="red"
+                              variant="subtle"
+                              onClick={() =>
+                                removeAttachment(index)
+                              }
+                            >
+                              <IconTrash size={14} />
+                            </ActionIcon>
+                          </Group>
+                        ))}
+                      </Stack>
+                    )}
+
+                    <Group
+                      justify="space-between"
+                      align="flex-end"
+                      mt="md"
+                    >
+                      <Stack gap={3}>
+                        <Checkbox
+                          size="xs"
+                          checked={includeSignature}
+                          onChange={(event) =>
+                            setIncludeSignature(
+                              event.currentTarget.checked,
+                            )
+                          }
+                          label="Incluir assinatura Fortuno"
+                        />
+
+                        <Text size="xs" c="dimmed">
+                          A resposta entra na mesma conversa do Gmail.
+                        </Text>
+                      </Stack>
+
+                      <Button
+                        size="sm"
+                        leftSection={<IconSend size={15} />}
+                        disabled={
+                          !canReply ||
+                          !replyText ||
+                          sendingReply
+                        }
+                        loading={sendingReply}
+                        onClick={() => void sendReply()}
+                      >
+                        Enviar
+                      </Button>
+                    </Group>
+
+                    {replyError && (
+                      <Text size="xs" c="red" mt="xs">
+                        {replyError}
+                      </Text>
+                    )}
+
+                    {replySuccess && (
+                      <Text size="xs" c="green" mt="xs">
+                        {replySuccess}
+                      </Text>
+                    )}
+                  </Paper>
+
+                  <Paper
+                    radius="md"
+                    className={styles.internalNoteBox}
+                    mt="sm"
+                  >
+                    <Group gap="xs" mb={8}>
+                      <Text
+                        size="xs"
+                        fw={800}
+                        c="dimmed"
+                        tt="uppercase"
+                      >
+                        Nota interna
+                      </Text>
+
+                      <Text size="xs" c="dimmed">
+                        · não é enviada ao cliente
+                      </Text>
+                    </Group>
+
+                    <Textarea
+                      variant="unstyled"
+                      minRows={2}
+                      autosize
+                      maxRows={6}
+                      placeholder="Adicionar observação para a equipe..."
+                      value={note}
+                      onChange={(event) =>
+                        setNote(event.currentTarget.value)
+                      }
+                    />
+
+                    <Group justify="flex-end" mt={6}>
+                      <Button
+                        variant="subtle"
+                        size="compact-sm"
+                        disabled={!note.trim()}
+                        loading={saving}
+                        onClick={async () => {
+                          const ok =
+                            await updateTicket("note", {
+                              content: note,
+                            });
+
+                          if (ok) {
+                            setNote("");
+                          }
+                        }}
+                      >
+                        Salvar nota
+                      </Button>
+                    </Group>
                   </Paper>
                 </div>
               </ScrollArea>
             </main>
 
             <aside className={styles.ticketPanel}>
-              <ScrollArea h="calc(100vh - 72px)">
-                <Stack p="lg" gap="lg">
+              <ScrollArea h="calc(100vh - 58px)">
+                <Stack p="md" gap="md">
                   <div>
-                    <Text size="xs" fw={800} c="dimmed" tt="uppercase">
+                    <Text
+                      size="xs"
+                      fw={800}
+                      c="dimmed"
+                      tt="uppercase"
+                    >
                       Atendimento
                     </Text>
-                    <Title order={4} mt={3}>
+
+                    <Text fw={700} mt={2}>
                       Dados do chamado
-                    </Title>
+                    </Text>
                   </div>
 
-                  <Paper withBorder radius="lg" p="md">
-                    <Stack gap="md">
-                      <Select
-                        label="Cliente"
-                        clearable
-                        searchable
-                        disabled={!canManage}
-                        data={clientOptions}
-                        value={ticket.client?.id || null}
-                        onChange={(value) =>
-                          void updateTicket("client", { clientId: value })
-                        }
-                      />
-                      <Select
-                        label="Responsável"
-                        clearable
-                        searchable
-                        disabled={!canManage}
-                        data={memberOptions}
-                        value={ticket.assignedTo?.id || null}
-                        onChange={(value) =>
-                          void updateTicket("assign", { assignedToId: value })
-                        }
-                      />
-                      <Select
-                        label="Prioridade"
-                        data={[
-                          { value: "LOW", label: "Baixa" },
-                          { value: "MEDIUM", label: "Média" },
-                          { value: "HIGH", label: "Alta" },
-                          { value: "CRITICAL", label: "Crítica" },
-                        ]}
-                        value={ticket.priority}
-                        onChange={(value) =>
-                          value && void updateTicket("priority", { priority: value })
-                        }
-                      />
-                    </Stack>
-                  </Paper>
+                  <Stack gap="sm">
+                    <Select
+                      label="Cliente"
+                      size="sm"
+                      clearable
+                      searchable
+                      disabled={!canManage}
+                      data={clientOptions}
+                      value={ticket.client?.id || null}
+                      onChange={(value) =>
+                        void updateTicket("client", {
+                          clientId: value,
+                        })
+                      }
+                    />
+
+                    <Select
+                      label="Responsável"
+                      size="sm"
+                      clearable
+                      searchable
+                      disabled={!canManage}
+                      data={memberOptions}
+                      value={ticket.assignedTo?.id || null}
+                      onChange={(value) =>
+                        void updateTicket("assign", {
+                          assignedToId: value,
+                        })
+                      }
+                    />
+
+                    <Select
+                      label="Prioridade"
+                      size="sm"
+                      data={[
+                        {
+                          value: "LOW",
+                          label: "Baixa",
+                        },
+                        {
+                          value: "MEDIUM",
+                          label: "Média",
+                        },
+                        {
+                          value: "HIGH",
+                          label: "Alta",
+                        },
+                        {
+                          value: "CRITICAL",
+                          label: "Crítica",
+                        },
+                      ]}
+                      value={ticket.priority}
+                      onChange={(value) =>
+                        value &&
+                        void updateTicket("priority", {
+                          priority: value,
+                        })
+                      }
+                    />
+                  </Stack>
 
                   {!ticket.assignedTo && (
                     <Button
                       variant="light"
-                      leftSection={<IconUser size={16} />}
+                      size="sm"
+                      leftSection={<IconUser size={15} />}
                       loading={saving}
                       onClick={() =>
                         void updateTicket("assign", {
-                          assignedToId: bootstrap.currentUser.id,
+                          assignedToId:
+                            bootstrap.currentUser.id,
                         })
                       }
                     >
-                      Assumir chamado
+                      Assumir
                     </Button>
                   )}
 
-                  <Stack gap="xs">
-                    <Text size="xs" fw={800} c="dimmed" tt="uppercase" mb={4}>
-                      Alterar status
+                  <Divider />
+
+                  <Stack gap={7}>
+                    <Text
+                      size="xs"
+                      fw={800}
+                      c="dimmed"
+                      tt="uppercase"
+                    >
+                      Status
                     </Text>
+
                     {ticket.status !== "IN_PROGRESS" &&
                       ticket.status !== "RESOLVED" &&
                       ticket.status !== "SPAM" && (
                         <Button
                           variant="light"
-                          fullWidth
+                          size="sm"
                           onClick={() =>
-                            void updateTicket("status", { status: "IN_PROGRESS" })
+                            void updateTicket("status", {
+                              status: "IN_PROGRESS",
+                            })
                           }
                         >
                           Em atendimento
                         </Button>
                       )}
+
                     <Button
                       variant="light"
                       color="yellow"
-                      fullWidth
+                      size="sm"
                       onClick={() =>
-                        void updateTicket("status", { status: "WAITING_CUSTOMER" })
+                        void updateTicket("status", {
+                          status: "WAITING_CUSTOMER",
+                        })
                       }
                     >
                       Aguardando cliente
                     </Button>
+
                     <Button
                       variant="light"
                       color="orange"
-                      fullWidth
+                      size="sm"
                       onClick={() =>
-                        void updateTicket("status", { status: "WAITING_INTERNAL" })
+                        void updateTicket("status", {
+                          status: "WAITING_INTERNAL",
+                        })
                       }
                     >
                       Aguardando interno
                     </Button>
+
                     {ticket.status !== "RESOLVED" ? (
                       <Button
                         color="green"
-                        fullWidth
-                        leftSection={<IconCircleCheck size={16} />}
+                        variant="light"
+                        size="sm"
+                        leftSection={
+                          <IconCircleCheck size={15} />
+                        }
                         onClick={() =>
-                          void updateTicket("status", { status: "RESOLVED" })
+                          void updateTicket("status", {
+                            status: "RESOLVED",
+                          })
                         }
                       >
-                        Resolver chamado
+                        Resolver
                       </Button>
                     ) : (
                       <Button
                         variant="light"
-                        fullWidth
-                        leftSection={<IconArrowBackUp size={16} />}
+                        size="sm"
+                        leftSection={
+                          <IconArrowBackUp size={15} />
+                        }
                         onClick={() =>
-                          void updateTicket("status", { status: "IN_PROGRESS" })
+                          void updateTicket("status", {
+                            status: "IN_PROGRESS",
+                          })
                         }
                       >
-                        Reabrir chamado
+                        Reabrir
                       </Button>
                     )}
+
                     {ticket.status !== "SPAM" ? (
                       <Button
                         color="gray"
-                        variant="outline"
-                        fullWidth
-                        leftSection={<IconAlertTriangle size={16} />}
+                        variant="subtle"
+                        size="sm"
+                        leftSection={
+                          <IconAlertTriangle size={15} />
+                        }
                         onClick={() =>
-                          void updateTicket("status", { status: "SPAM" })
+                          void updateTicket("status", {
+                            status: "SPAM",
+                          })
                         }
                       >
                         Marcar como spam
@@ -438,9 +988,11 @@ export function EmailTicketDrawer({
                     ) : (
                       <Button
                         variant="light"
-                        fullWidth
+                        size="sm"
                         onClick={() =>
-                          void updateTicket("status", { status: "NEW" })
+                          void updateTicket("status", {
+                            status: "NEW",
+                          })
                         }
                       >
                         Não é spam
@@ -451,27 +1003,47 @@ export function EmailTicketDrawer({
                   {ticket.history?.length > 0 && (
                     <>
                       <Divider />
+
                       <div>
-                        <Text size="xs" fw={800} c="dimmed" tt="uppercase" mb="sm">
+                        <Text
+                          size="xs"
+                          fw={800}
+                          c="dimmed"
+                          tt="uppercase"
+                          mb="xs"
+                        >
                           Histórico
                         </Text>
-                        <Stack gap="md">
-                          {ticket.history.slice(0, 8).map((item: Any) => (
-                            <Group key={item.id} align="flex-start" wrap="nowrap">
-                              <ThemeIcon size={28} radius="xl" variant="light">
-                                <IconClock size={14} />
-                              </ThemeIcon>
-                              <div>
-                                <Text size="xs" fw={700}>
-                                  {item.message}
-                                </Text>
-                                <Text size="xs" c="dimmed">
-                                  {item.user?.name || item.user?.email || "Sistema"} ·{" "}
-                                  {formatDate(item.createdAt)}
-                                </Text>
-                              </div>
-                            </Group>
-                          ))}
+
+                        <Stack gap="sm">
+                          {ticket.history
+                            .slice(0, 6)
+                            .map((item: Any) => (
+                              <Group
+                                key={item.id}
+                                gap="xs"
+                                align="flex-start"
+                                wrap="nowrap"
+                              >
+                                <ThemeIcon
+                                  size={24}
+                                  radius="xl"
+                                  variant="light"
+                                >
+                                  <IconClock size={12} />
+                                </ThemeIcon>
+
+                                <div>
+                                  <Text size="xs" fw={600}>
+                                    {item.message}
+                                  </Text>
+
+                                  <Text size="xs" c="dimmed">
+                                    {formatDate(item.createdAt)}
+                                  </Text>
+                                </div>
+                              </Group>
+                            ))}
                         </Stack>
                       </div>
                     </>

@@ -266,3 +266,69 @@
     min-height: 240px;
   }
 }
+
+
+.replyToolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  margin: 0 -4px 8px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.richReplyEditor {
+  min-height: 112px;
+  max-height: 280px;
+  overflow-y: auto;
+  outline: none;
+  padding: 9px 2px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--mantine-color-dark-8);
+}
+
+.richReplyEditor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--mantine-color-gray-5);
+  pointer-events: none;
+}
+
+.richReplyEditorDisabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.richReplyEditor a,
+.sentHtml a {
+  color: var(--mantine-color-blue-7);
+  text-decoration: underline;
+}
+
+.richReplyEditor ul {
+  margin: 7px 0;
+  padding-left: 22px;
+}
+
+.replyAttachment {
+  padding: 7px 9px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: 8px;
+  background: var(--mantine-color-gray-0);
+}
+
+.sentHtml {
+  padding: 18px 20px 22px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--mantine-color-dark-7);
+}
+
+.sentHtml p {
+  margin: 0 0 10px;
+}
+
+.sentHtml ul,
+.sentHtml ol {
+  padding-left: 22px;
+}
