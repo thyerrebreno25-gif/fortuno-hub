@@ -366,44 +366,70 @@ export default function AtendimentoPage() {
                   }`}
                   onClick={() => void openTicket(ticket.id)}
                 >
-                  <Group justify="space-between" wrap="nowrap" align="flex-start">
-                    <Text size="sm" fw={800} lineClamp={1}>
-                      {ticket.client?.name ||
-                        ticket.senderName ||
-                        ticket.senderEmail}
-                    </Text>
-                    <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-                      {formatDate(ticket.lastMessageAt)}
-                    </Text>
-                  </Group>
+                  <div className={styles.ticketMain}>
+                    <Group gap={8} wrap="nowrap">
+                      <Text size="sm" fw={800} lineClamp={1}>
+                        {ticket.client?.name ||
+                          ticket.senderName ||
+                          ticket.senderEmail}
+                      </Text>
 
-                  <Text size="sm" fw={600} mt={4} lineClamp={1}>
-                    {ticket.subject}
-                  </Text>
-
-                  <Text size="xs" c="dimmed" mt={3} lineClamp={2}>
-                    {ticket.snippet || ticket.senderEmail}
-                  </Text>
-
-                  <Group gap={6} mt={9}>
-                    <Badge
-                      size="xs"
-                      color={statusColors[ticket.status] || "gray"}
-                      variant="light"
-                    >
-                      {statusLabels[ticket.status] || ticket.status}
-                    </Badge>
-
-                    {!ticket.assignedTo ? (
-                      <Badge size="xs" color="orange" variant="light">
-                        Sem responsável
+                      <Badge
+                        size="xs"
+                        color={statusColors[ticket.status] || "gray"}
+                        variant="light"
+                        className={styles.rowStatus}
+                      >
+                        {statusLabels[ticket.status] || ticket.status}
                       </Badge>
-                    ) : (
-                      <Badge size="xs" variant="outline">
-                        {ticket.assignedTo.name || ticket.assignedTo.email}
-                      </Badge>
-                    )}
-                  </Group>
+
+                      {!ticket.assignedTo ? (
+                        <Badge
+                          size="xs"
+                          color="orange"
+                          variant="light"
+                          className={styles.rowAssignee}
+                        >
+                          Sem responsável
+                        </Badge>
+                      ) : (
+                        <Badge
+                          size="xs"
+                          variant="outline"
+                          className={styles.rowAssignee}
+                        >
+                          {ticket.assignedTo.name || ticket.assignedTo.email}
+                        </Badge>
+                      )}
+                    </Group>
+
+                    <Group gap={7} wrap="nowrap" mt={2}>
+                      <Text
+                        size="sm"
+                        fw={600}
+                        lineClamp={1}
+                        className={styles.ticketSubject}
+                      >
+                        {ticket.subject}
+                      </Text>
+                      <Text
+                        size="xs"
+                        c="dimmed"
+                        lineClamp={1}
+                        className={styles.ticketSnippet}
+                      >
+                        — {ticket.snippet || ticket.senderEmail}
+                      </Text>
+                    </Group>
+                  </div>
+
+                  <Text
+                    size="xs"
+                    c="dimmed"
+                    className={styles.ticketDate}
+                  >
+                    {formatDate(ticket.lastMessageAt)}
+                  </Text>
                 </div>
               ))
             )}

@@ -1,9 +1,9 @@
 .layout {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  min-height: 670px;
+  grid-template-columns: 176px minmax(0, 1fr);
+  min-height: 650px;
   border: 1px solid var(--mantine-color-gray-3);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
   background: var(--mantine-color-white);
 }
@@ -11,7 +11,7 @@
 .sidebar {
   border-right: 1px solid var(--mantine-color-gray-2);
   background: var(--mantine-color-gray-0);
-  padding: 12px;
+  padding: 10px;
 }
 
 .list {
@@ -20,7 +20,12 @@
 }
 
 .ticketRow {
-  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 9px 16px;
   border-bottom: 1px solid var(--mantine-color-gray-2);
   cursor: pointer;
   transition: background 120ms ease, box-shadow 120ms ease;
@@ -35,6 +40,30 @@
   background: var(--mantine-color-blue-0);
 }
 
+.ticketMain {
+  min-width: 0;
+}
+
+.ticketSubject {
+  flex: 0 1 auto;
+  max-width: 42%;
+}
+
+.ticketSnippet {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ticketDate {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rowStatus,
+.rowAssignee {
+  flex: 0 0 auto;
+}
+
 .emailDrawerBody {
   padding: 0 !important;
   height: 100vh;
@@ -43,64 +72,86 @@
 
 .emailView {
   height: 100vh;
-  background: var(--mantine-color-gray-0);
+  background: #f7f9fc;
 }
 
 .emailTopbar {
-  height: 72px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 24px;
+  gap: 14px;
+  padding: 0 18px;
   background: white;
   border-bottom: 1px solid var(--mantine-color-gray-2);
 }
 
+.topbarIdentity {
+  min-width: 0;
+}
+
 .emailContentGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
-  height: calc(100vh - 72px);
+  grid-template-columns: minmax(0, 1fr) 292px;
+  height: calc(100vh - 58px);
 }
 
 .emailMain {
   min-width: 0;
-  background: var(--mantine-color-gray-0);
   border-right: 1px solid var(--mantine-color-gray-2);
 }
 
 .emailMainInner {
-  max-width: 980px;
+  max-width: 940px;
   margin: 0 auto;
-  padding: 34px 32px 60px;
+  padding: 24px 26px 44px;
+}
+
+.subjectBlock {
+  margin-bottom: 18px;
 }
 
 .emailSubject {
-  font-size: clamp(24px, 2vw, 32px);
+  font-size: clamp(22px, 1.7vw, 29px);
   line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.3px;
 }
 
 .ticketPanel {
-  background: white;
   min-width: 0;
+  background: white;
 }
 
 .emailMessage,
-.internalMessage {
+.outboundMessage {
   overflow: hidden;
   background: white;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.02);
+}
+
+.outboundMessage {
+  border-left: 3px solid var(--mantine-color-green-5);
 }
 
 .internalMessage {
+  padding: 12px 14px;
   background: var(--mantine-color-yellow-0);
+  border: 1px solid var(--mantine-color-yellow-2);
 }
 
 .messageHeader {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  padding: 16px 18px;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.internalMessage .messageHeader {
+  padding: 0 0 8px;
+  border-bottom: 0;
 }
 
 .messageIdentity {
@@ -109,41 +160,65 @@
 
 .messageBody {
   background: white;
-  min-height: 120px;
 }
 
 .internalMessage .messageBody {
-  padding: 18px;
-  background: var(--mantine-color-yellow-0);
+  background: transparent;
 }
 
 .plainTextEmail {
-  padding: 24px;
-  line-height: 1.7;
+  padding: 18px 20px 22px;
+  line-height: 1.6;
   color: var(--mantine-color-dark-7);
 }
 
 .emailIframe {
   display: block;
   width: 100%;
-  min-height: 460px;
+  min-height: 260px;
   border: 0;
   background: white;
 }
 
 .attachments {
-  padding: 14px 18px 18px;
+  padding: 10px 14px 13px;
+  border-top: 1px solid var(--mantine-color-gray-2);
   background: white;
 }
 
 .attachmentChip {
-  max-width: 280px;
+  max-width: 260px;
   background: var(--mantine-color-gray-0);
+}
+
+.replyComposer {
+  padding: 14px 16px;
+  background: white;
+  border-color: var(--mantine-color-blue-2);
+}
+
+.replyInput {
+  padding: 6px 0 !important;
+  line-height: 1.55;
+}
+
+.internalNoteBox {
+  padding: 11px 14px;
+  background: var(--mantine-color-gray-0);
+  border: 1px dashed var(--mantine-color-gray-3);
 }
 
 @media (max-width: 1050px) {
   .emailContentGrid {
-    grid-template-columns: minmax(0, 1fr) 290px;
+    grid-template-columns: minmax(0, 1fr) 264px;
+  }
+
+  .ticketSubject {
+    max-width: 55%;
+  }
+
+  .rowAssignee {
+    display: none;
   }
 }
 
@@ -157,6 +232,19 @@
     border-bottom: 1px solid var(--mantine-color-gray-2);
   }
 
+  .ticketRow {
+    grid-template-columns: minmax(0, 1fr) 74px;
+  }
+
+  .ticketSnippet,
+  .rowAssignee {
+    display: none;
+  }
+
+  .ticketSubject {
+    max-width: 100%;
+  }
+
   .emailContentGrid {
     display: block;
     overflow: auto;
@@ -167,14 +255,14 @@
   }
 
   .emailMainInner {
-    padding: 24px 16px 40px;
+    padding: 18px 14px 32px;
   }
 
   .emailTopbar {
-    padding: 0 14px;
+    padding: 0 12px;
   }
 
   .emailIframe {
-    min-height: 360px;
+    min-height: 240px;
   }
 }
