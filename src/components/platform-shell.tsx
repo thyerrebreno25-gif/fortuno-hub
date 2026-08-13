@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -11,10 +12,24 @@ type MenuItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
-  section?: string;
-  expandable?: boolean;
+  group: MenuGroup;
   moduleCode: string;
 };
+
+type MenuGroup =
+  | "Visão geral"
+  | "Financeiro"
+  | "Operação"
+  | "Análises"
+  | "Administração";
+
+const menuGroups: MenuGroup[] = [
+  "Visão geral",
+  "Financeiro",
+  "Operação",
+  "Análises",
+  "Administração",
+];
 
 const icons = {
   home: (
@@ -134,110 +149,112 @@ const menuItems: MenuItem[] = [
     href: "/inicio",
     moduleCode: "__HOME__",
     icon: icons.home,
+    group: "Visão geral",
   },
   {
-  label: "Dashboard",
-  href: "/dashboard",
+    label: "Dashboard",
+    href: "/dashboard",
     moduleCode: "DASHBOARD",
-  icon: icons.dashboard,
-},
+    icon: icons.dashboard,
+    group: "Visão geral",
+  },
   {
     label: "Extratos",
     href: "/extratos",
     moduleCode: "IMPORTS",
     icon: icons.bank,
-    section: "IMPORTAÇÕES",
-    expandable: true,
+    group: "Financeiro",
   },
   {
     label: "Faturas",
     href: "/faturas",
     moduleCode: "IMPORTS",
     icon: icons.card,
-    expandable: true,
+    group: "Financeiro",
   },
   {
     label: "Adquirentes",
     href: "/adquirentes",
     moduleCode: "IMPORTS",
     icon: icons.activity,
-    expandable: true,
+    group: "Financeiro",
   },
   {
     label: "BrasilMed",
     href: "/conciliacao-brasilmed",
     moduleCode: "IMPORTS",
     icon: icons.document,
-    expandable: true,
+    group: "Financeiro",
   },
   {
     label: "Clientes",
     href: "/clientes",
     moduleCode: "CLIENTS",
     icon: icons.users,
-    section: "CADASTROS",
+    group: "Operação",
   },
   {
-  label: "Motor Cambial",
-  href: "/motor-cambial",
+    label: "Motor Cambial",
+    href: "/motor-cambial",
     moduleCode: "MOTOR_EXCHANGE",
-  icon: icons.currency,
-  section: "CONVERSÕES",
-},
+    icon: icons.currency,
+    group: "Financeiro",
+  },
   {
     label: "Operações",
     href: "/operacoes",
     moduleCode: "OPERATIONS",
     icon: icons.operations,
-    section: "OPERAÇÃO",
+    group: "Operação",
   },
   {
     label: "Atendimento",
     href: "/atendimento",
     moduleCode: "SERVICE_CENTER",
     icon: icons.support,
-    section: "ATENDIMENTO",
+    group: "Operação",
   },
   {
     label: "Onboarding",
     href: "/onboarding",
     moduleCode: "ONBOARDING",
     icon: icons.rocket,
-    section: "IMPLANTAÇÃO",
+    group: "Operação",
   },
   {
-  label: "Auditoria",
-  href: "/auditoria",
-  moduleCode: "AUDIT",
-  icon: icons.audit,
-  section: "GESTÃO",
+    label: "Auditoria",
+    href: "/auditoria",
+    moduleCode: "AUDIT",
+    icon: icons.audit,
+    group: "Operação",
   },
   {
     label: "Relatórios",
     href: "/relatorios",
     moduleCode: "REPORTS",
     icon: icons.report,
-    section: "RELATÓRIOS",
+    group: "Análises",
   },
   {
     label: "Histórico",
     href: "/historico",
     moduleCode: "HISTORY",
     icon: icons.history,
+    group: "Análises",
   },
   {
     label: "Suporte",
     href: "/suporte",
     moduleCode: "SUPPORT",
     icon: icons.support,
-    section: "SUPORTE",
+    group: "Administração",
   },
   {
     label: "Configurações",
     href: "/configuracoes",
     moduleCode: "SETTINGS",
     icon: icons.settings,
-    section: "SISTEMA",
+    group: "Administração",
   },
 ];
 
@@ -361,52 +378,42 @@ export function PlatformShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className={styles.navigation}>
-          {visibleItems.map((item) => {
-            const active = isRouteActive(pathname, item.href);
+        <nav className={styles.navigation} aria-label="Menu principal">
+          {menuGroups.map((group) => {
+            const groupItems = visibleItems.filter(
+              (item) => item.group === group,
+            );
+
+            if (groupItems.length === 0) return null;
 
             return (
-              <div key={item.href}>
-                {item.section && (
-                  <span className={styles.menuSection}>
-                    {item.section}
-                  </span>
-                )}
+              <section className={styles.menuGroup} key={group}>
+                <span className={styles.menuSection}>{group}</span>
 
-                <Link
-  href={item.href as any}
-  className={`${styles.menuItem} ${
-    active ? styles.menuItemActive : ""
-  }`}
-  aria-current={active ? "page" : undefined}
->
-                  <span className={styles.menuIcon}>
-                    {item.icon}
-                  </span>
+                <div className={styles.menuGroupItems}>
+                  {groupItems.map((item) => {
+                    const active = isRouteActive(pathname, item.href);
 
-                  <span className={styles.menuLabel}>
-                    {item.label}
-                  </span>
-
-                  {item.expandable && (
-                    <span className={styles.menuArrow}>›</span>
-                  )}
-                </Link>
-              </div>
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href as Route}
+                        className={`${styles.menuItem} ${
+                          active ? styles.menuItemActive : ""
+                        }`}
+                        aria-current={active ? "page" : undefined}
+                        title={sidebarCollapsed ? item.label : undefined}
+                      >
+                        <span className={styles.menuIcon}>{item.icon}</span>
+                        <span className={styles.menuLabel}>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </nav>
-
-        <div className={styles.organizationCard}>
-          <div className={styles.organizationAvatar}>N</div>
-
-          <div className={styles.organizationText}>
-            <strong>Fortuno Gestão Financeira</strong>
-            <span>Ambiente operacional</span>
-          </div>
-
-          <span className={styles.organizationArrow}>›</span>
-        </div>
       </aside>
 
       <main className={styles.main}>

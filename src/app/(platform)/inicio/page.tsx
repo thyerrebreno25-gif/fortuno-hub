@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -31,6 +32,7 @@ import {
   IconUsers,
   IconWorldDollar,
 } from "@tabler/icons-react";
+import styles from "./inicio.module.css";
 
 type Permission = {
   canView?: boolean;
@@ -58,7 +60,7 @@ const features: Feature[] = [
       "Acompanhe indicadores, visão operacional e informações consolidadas da plataforma.",
     href: "/dashboard",
     moduleCode: "DASHBOARD",
-    group: "Acompanhamento",
+    group: "Visão geral",
     icon: <IconChartBar size={24} />,
   },
   {
@@ -67,7 +69,7 @@ const features: Feature[] = [
       "Analise relatórios, identifique inconsistências e direcione correções para a operação.",
     href: "/auditoria",
     moduleCode: "AUDIT",
-    group: "Acompanhamento",
+    group: "Visão geral",
     icon: <IconClipboardCheck size={24} />,
     badge: "Gestão",
   },
@@ -122,8 +124,18 @@ const features: Feature[] = [
       "Consulte e mantenha cadastros, contas, cartões e configurações dos clientes.",
     href: "/clientes",
     moduleCode: "CLIENTS",
-    group: "Gestão",
+    group: "Atendimento e clientes",
     icon: <IconUsers size={24} />,
+  },
+  {
+    title: "Atendimento",
+    description:
+      "Organize a caixa de entrada, direcione e-mails para a equipe e acompanhe cada solicitação.",
+    href: "/atendimento",
+    moduleCode: "SERVICE_CENTER",
+    group: "Atendimento e clientes",
+    icon: <IconHeadset size={24} />,
+    badge: "Central",
   },
   {
     title: "Operações",
@@ -131,7 +143,7 @@ const features: Feature[] = [
       "Acompanhe as rotinas operacionais e organize atividades da equipe.",
     href: "/operacoes",
     moduleCode: "OPERATIONS",
-    group: "Gestão",
+    group: "Atendimento e clientes",
     icon: <IconFileAnalytics size={24} />,
   },
   {
@@ -140,7 +152,7 @@ const features: Feature[] = [
       "Conduza a implantação de novos clientes e acompanhe as etapas do processo.",
     href: "/onboarding",
     moduleCode: "ONBOARDING",
-    group: "Gestão",
+    group: "Atendimento e clientes",
     icon: <IconRocket size={24} />,
   },
   {
@@ -149,7 +161,7 @@ const features: Feature[] = [
       "Acesse relatórios e informações consolidadas para análise e tomada de decisão.",
     href: "/relatorios",
     moduleCode: "REPORTS",
-    group: "Informações",
+    group: "Análises",
     icon: <IconFileAnalytics size={24} />,
   },
   {
@@ -158,7 +170,7 @@ const features: Feature[] = [
       "Consulte registros anteriores e acompanhe o histórico das atividades realizadas.",
     href: "/historico",
     moduleCode: "HISTORY",
-    group: "Informações",
+    group: "Análises",
     icon: <IconHistory size={24} />,
   },
   {
@@ -182,10 +194,10 @@ const features: Feature[] = [
 ];
 
 const groupOrder = [
-  "Acompanhamento",
+  "Visão geral",
   "Operação financeira",
-  "Gestão",
-  "Informações",
+  "Atendimento e clientes",
+  "Análises",
   "Sistema",
 ];
 
@@ -286,16 +298,11 @@ export default function InicioPage() {
   }
 
   return (
-    <Stack gap={32}>
+    <Stack gap={28} className={styles.page}>
       <Paper
-        radius="xl"
-        p={{ base: "lg", md: 32 }}
-        style={{
-          border: "1px solid #e5eaf1",
-          background:
-            "linear-gradient(135deg, #ffffff 0%, #f7faff 65%, #fff9f1 100%)",
-          overflow: "hidden",
-        }}
+        radius="lg"
+        p={{ base: "lg", md: 28 }}
+        className={styles.hero}
       >
         <Stack gap="md">
           <div>
@@ -312,7 +319,7 @@ export default function InicioPage() {
             <Title
               order={1}
               mt={4}
-              style={{ letterSpacing: "-0.03em" }}
+              className={styles.heroTitle}
             >
               O que você deseja fazer hoje?
             </Title>
@@ -339,6 +346,7 @@ export default function InicioPage() {
               setSearch(event.currentTarget.value)
             }
             maw={620}
+            className={styles.search}
           />
         </Stack>
       </Paper>
@@ -355,13 +363,14 @@ export default function InicioPage() {
         }
 
         return (
-          <Stack key={group} gap="md">
+          <Stack key={group} gap={12} className={styles.featureSection}>
             <Text
               size="xs"
               fw={800}
               c="dimmed"
               tt="uppercase"
               lts={1}
+              className={styles.sectionTitle}
             >
               {group}
             </Text>
@@ -371,6 +380,7 @@ export default function InicioPage() {
                 base: 1,
                 sm: 2,
                 lg: 3,
+                xl: 4,
               }}
               spacing="md"
             >
@@ -378,27 +388,18 @@ export default function InicioPage() {
                 <Paper
                   key={`${feature.title}-${feature.href}`}
                   component={Link}
-                  href={feature.href as any}
+                  href={feature.href as Route}
                   withBorder
-                  radius="lg"
+                  radius="md"
                   p="lg"
-                  style={{
-                    textDecoration: "none",
-                    color: "inherit",
-                    minHeight: 190,
-                    display: "flex",
-                    flexDirection: "column",
-                    transition:
-                      "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
-                  }}
-                  className="fortuno-feature-card"
+                  className={styles.featureCard}
                 >
                   <Group
                     justify="space-between"
                     align="flex-start"
                   >
                     <ThemeIcon
-                      size={46}
+                      size={42}
                       radius="md"
                       variant="light"
                     >
@@ -412,7 +413,7 @@ export default function InicioPage() {
                     )}
                   </Group>
 
-                  <Title order={4} mt="lg">
+                  <Title order={4} mt="md" className={styles.cardTitle}>
                     {feature.title}
                   </Title>
 
@@ -420,15 +421,12 @@ export default function InicioPage() {
                     size="sm"
                     c="dimmed"
                     mt={6}
-                    style={{
-                      flex: 1,
-                      lineHeight: 1.55,
-                    }}
+                    className={styles.cardDescription}
                   >
                     {feature.description}
                   </Text>
 
-                  <Group gap={6} mt="lg">
+                  <Group gap={6} mt="md" className={styles.cardAction}>
                     <Text
                       size="sm"
                       fw={700}
@@ -461,14 +459,6 @@ export default function InicioPage() {
         </Paper>
       )}
 
-      <style jsx global>{`
-        .fortuno-feature-card:hover {
-          transform: translateY(-3px);
-          border-color: #bfd2ef !important;
-          box-shadow:
-            0 14px 34px rgba(37, 99, 235, 0.08);
-        }
-      `}</style>
     </Stack>
   );
 }

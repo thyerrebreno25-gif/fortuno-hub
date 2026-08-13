@@ -1,0 +1,86 @@
+.page {
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e1e7ef;
+  background:
+    radial-gradient(circle at 92% 18%, rgba(242, 165, 70, 0.11), transparent 26%),
+    radial-gradient(circle at 78% 84%, rgba(20, 109, 232, 0.09), transparent 32%),
+    #ffffff;
+  box-shadow: 0 8px 28px rgba(15, 35, 70, 0.035);
+}
+
+.heroTitle {
+  font-size: clamp(28px, 3vw, 36px);
+  line-height: 1.12;
+}
+
+.search {
+  width: min(620px, 100%);
+}
+
+.search :global(.mantine-Input-input) {
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.featureSection {
+  scroll-margin-top: 80px;
+}
+
+.sectionTitle {
+  padding-left: 2px;
+  color: #6f7d92;
+}
+
+.featureCard {
+  display: flex;
+  min-height: 172px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.94);
+  text-decoration: none;
+  flex-direction: column;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.featureCard:hover {
+  border-color: #b8cdeb;
+  box-shadow: 0 14px 32px rgba(27, 75, 145, 0.085);
+  transform: translateY(-2px);
+}
+
+.cardTitle {
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.cardDescription {
+  display: -webkit-box;
+  flex: 1;
+  overflow: hidden;
+  line-height: 1.52;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.cardAction {
+  width: fit-content;
+}
+
+@media (max-width: 620px) {
+  .heroTitle {
+    font-size: 27px;
+  }
+
+  .featureCard {
+    min-height: 160px;
+  }
+}

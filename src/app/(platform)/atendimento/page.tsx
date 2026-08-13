@@ -263,19 +263,25 @@ export default function AtendimentoPage() {
 
 
   return (
-    <Stack gap="lg">
-      <Group justify="space-between" align="flex-start">
+    <Stack gap="lg" className={styles.page}>
+      <Group
+        justify="space-between"
+        align="flex-start"
+        className={styles.pageHeader}
+      >
         <Stack gap={3}>
           <Text size="xs" fw={800} c="blue" tt="uppercase" lts={1}>
             Fortuno Hub
           </Text>
-          <Title order={2}>Central de Atendimento</Title>
-          <Text c="dimmed">
+          <Title order={2} className={styles.pageTitle}>
+            Central de Atendimento
+          </Title>
+          <Text c="dimmed" size="sm" className={styles.pageDescription}>
             Caixa geral, distribuição por colaborador e acompanhamento até a resolução.
           </Text>
         </Stack>
 
-        <Group>
+        <Group className={styles.headerActions}>
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
             V2 · Gmail OAuth
           </Badge>
@@ -297,7 +303,9 @@ export default function AtendimentoPage() {
         </Alert>
       )}
 
-      <GmailConnectionCard />
+      <div className={styles.gmailCard}>
+        <GmailConnectionCard />
+      </div>
 
       <div className={styles.layout}>
         <aside className={styles.sidebar}>
@@ -309,6 +317,7 @@ export default function AtendimentoPage() {
             {views.map(([value, label, stat, Icon]) => (
               <Button
                 key={value}
+                className={styles.viewButton}
                 variant={view === value ? "light" : "subtle"}
                 color={value === "SPAM" ? "gray" : "blue"}
                 justify="space-between"
@@ -332,12 +341,7 @@ export default function AtendimentoPage() {
         </aside>
 
         <section className={styles.list}>
-          <div
-            style={{
-              padding: 14,
-              borderBottom: "1px solid var(--mantine-color-gray-2)",
-            }}
-          >
+          <div className={styles.searchBar}>
             <TextInput
               placeholder="Buscar cliente, assunto ou remetente..."
               leftSection={<IconSearch size={16} />}
@@ -539,4 +543,3 @@ export default function AtendimentoPage() {
     </Stack>
   );
 }
-

@@ -9,6 +9,9 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 
+const appFontFamily =
+  '"Segoe UI Variable", "Inter Variable", Inter, "Segoe UI", Roboto, Arial, sans-serif';
+
 const theme = createTheme({
   primaryColor: "blue",
   defaultRadius: "md",
@@ -28,12 +31,11 @@ const theme = createTheme({
     ],
   },
 
-  fontFamily:
-    "Inter, Arial, Helvetica, sans-serif",
+  fontFamily: appFontFamily,
 
   headings: {
-    fontFamily:
-      "Inter, Arial, Helvetica, sans-serif",
+    fontFamily: appFontFamily,
+    fontWeight: "700",
   },
 });
 

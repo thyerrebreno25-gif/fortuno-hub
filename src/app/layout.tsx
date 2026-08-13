@@ -10,6 +10,7 @@ import "@mantine/dates/styles.layer.css";
 import "@mantine/dropzone/styles.layer.css";
 
 import "./globals.css";
+import "./design-foundation.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {

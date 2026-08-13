@@ -1,0 +1,64 @@
+:root {
+  --fortuno-font-sans: "Segoe UI Variable", "Inter Variable", Inter,
+    "Segoe UI", Roboto, Arial, sans-serif;
+  --fortuno-ink: #0b1933;
+  --fortuno-muted: #66748a;
+  --fortuno-line: #e1e7ef;
+  --fortuno-canvas: #f5f7fb;
+}
+
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: var(--fortuno-font-sans);
+  font-synthesis: none;
+}
+
+body {
+  color: var(--fortuno-ink);
+  background: var(--fortuno-canvas);
+  letter-spacing: -0.006em;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.mantine-Title-root {
+  color: var(--fortuno-ink);
+  letter-spacing: -0.026em;
+}
+
+.mantine-Text-root {
+  line-height: 1.48;
+}
+
+.mantine-Button-root,
+.mantine-Badge-root {
+  letter-spacing: 0;
+}
+
+.mantine-Input-input {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+}
+
+.mantine-Input-input::placeholder {
+  color: #8a96a8;
+  opacity: 1;
+}
+
+::selection {
+  color: #07152c;
+  background: #cfe4ff;
+}

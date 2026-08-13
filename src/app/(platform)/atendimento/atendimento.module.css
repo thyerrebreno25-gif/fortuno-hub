@@ -1,17 +1,55 @@
+.page {
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  padding: 2px 2px 0;
+}
+
+.pageTitle {
+  font-size: clamp(27px, 2.5vw, 34px);
+  line-height: 1.15;
+}
+
+.pageDescription {
+  max-width: 720px;
+  color: #68778d;
+}
+
+.headerActions {
+  padding-top: 3px;
+}
+
+.gmailCard :global(.mantine-Paper-root) {
+  border-color: #dfe6ee;
+  box-shadow: 0 6px 22px rgba(15, 35, 70, 0.035);
+}
+
 .layout {
   display: grid;
-  grid-template-columns: 176px minmax(0, 1fr);
+  grid-template-columns: 190px minmax(0, 1fr);
   min-height: 650px;
-  border: 1px solid var(--mantine-color-gray-3);
-  border-radius: 14px;
+  border: 1px solid #dfe6ee;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--mantine-color-white);
+  box-shadow: 0 8px 28px rgba(15, 35, 70, 0.04);
 }
 
 .sidebar {
   border-right: 1px solid var(--mantine-color-gray-2);
-  background: var(--mantine-color-gray-0);
-  padding: 10px;
+  background: #f8fafc;
+  padding: 11px 9px;
+}
+
+.viewButton {
+  min-height: 39px;
+  padding-inline: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .list {
@@ -19,25 +57,39 @@
   background: white;
 }
 
+.searchBar {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  background: #fbfcfe;
+}
+
+.searchBar :global(.mantine-Input-input) {
+  min-height: 40px;
+  background: white;
+}
+
 .ticketRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 82px;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   min-height: 64px;
-  padding: 9px 16px;
+  padding: 10px 17px;
   border-bottom: 1px solid var(--mantine-color-gray-2);
   cursor: pointer;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .ticketRow:hover {
-  background: var(--mantine-color-gray-0);
+  background: #f8fbff;
   box-shadow: inset 3px 0 0 var(--mantine-color-blue-5);
 }
 
 .ticketRowActive {
-  background: var(--mantine-color-blue-0);
+  background: #eef6ff;
+  box-shadow: inset 3px 0 0 var(--mantine-color-blue-6);
 }
 
 .ticketMain {
@@ -46,7 +98,7 @@
 
 .ticketSubject {
   flex: 0 1 auto;
-  max-width: 42%;
+  max-width: 48%;
 }
 
 .ticketSnippet {
@@ -223,6 +275,15 @@
 }
 
 @media (max-width: 820px) {
+  .pageHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
   .layout {
     display: block;
   }
