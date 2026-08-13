@@ -5,6 +5,7 @@ import type {
   ListClientsInput,
 } from "../types/client.types";
 import { normalizeText } from "../utils/client-normalizers";
+import { ClientValidationError } from "../validations/client.validation";
 
 export class ClientConflictError extends Error {
   constructor(message: string) {
@@ -57,6 +58,26 @@ export const clientService = {
     input: CreateClientInput,
   ) {
     ensureCreatePermission(member);
+
+    const requestedMemberIds = [
+      input.operationLeaderId,
+      input.payableResponsibleId,
+      input.receivableResponsibleId,
+      input.generalResponsibleId,
+    ].filter((id): id is string => Boolean(id));
+
+    const uniqueMemberIds = [...new Set(requestedMemberIds)];
+    const validMemberIds =
+      await clientRepository.findOperationalMemberIds(
+        member.organizationId,
+        uniqueMemberIds,
+      );
+
+    if (validMemberIds.length !== uniqueMemberIds.length) {
+      throw new ClientValidationError(
+        "Um dos responsáveis selecionados não pertence à equipe da organização.",
+      );
+    }
 
     const normalizedName = normalizeText(input.name);
 

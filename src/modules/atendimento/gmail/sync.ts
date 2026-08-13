@@ -3,6 +3,7 @@ import {
   getValidAccessToken,
   gmailFetch,
 } from "./client";
+import { classifyAndRouteEmail } from "../routing/classifier";
 
 type GmailHeader = {
   name: string;
@@ -141,73 +142,6 @@ function parseMessageBodies(root: GmailPart) {
   };
 }
 
-async function resolveRouting(
-  organizationId: string,
-  senderEmail: string,
-) {
-  const normalizedEmail = normalizeEmail(senderEmail);
-
-  const identity =
-    await prisma.clientEmailIdentity.findFirst({
-      where: {
-        normalizedEmail,
-        active: true,
-        client: {
-          organizationId,
-          active: true,
-        },
-      },
-      select: {
-        clientId: true,
-        client: {
-          select: {
-            operationLeaderId: true,
-          },
-        },
-      },
-    });
-
-  if (identity) {
-    return {
-      clientId: identity.clientId,
-      assignedToId:
-        identity.client.operationLeaderId,
-    };
-  }
-
-  const clients =
-    await prisma.client.findMany({
-      where: {
-        organizationId,
-        active: true,
-      },
-      select: {
-        id: true,
-        operationalEmail: true,
-        operationalEmailCc: true,
-        operationLeaderId: true,
-      },
-    });
-
-  const matchedClient =
-    clients.find((client) => {
-      const knownEmails = [
-        client.operationalEmail || "",
-        ...(client.operationalEmailCc || "").split(","),
-      ]
-        .map(normalizeEmail)
-        .filter(Boolean);
-
-      return knownEmails.includes(normalizedEmail);
-    });
-
-  return {
-    clientId: matchedClient?.id || null,
-    assignedToId:
-      matchedClient?.operationLeaderId || null,
-  };
-}
-
 async function ingestGmailMessage(
   connection: GmailConnectionLike,
   token: string,
@@ -247,10 +181,17 @@ async function ingestGmailMessage(
     ? new Date(Number(message.internalDate))
     : new Date();
 
-  const routing = await resolveRouting(
-    connection.organizationId,
-    from.email,
-  );
+  const routing = await classifyAndRouteEmail({
+    organizationId: connection.organizationId,
+    senderEmail: from.email,
+    subject,
+    textBody: parsed.text || "",
+    htmlBody: parsed.html || "",
+    attachmentNames: parsed.attachments.map(
+      (item) => item.name
+    ),
+    recipientEmails: [...to, ...cc],
+  });
 
   const existingTicket =
     await prisma.serviceTicket.findUnique({
@@ -273,8 +214,13 @@ async function ingestGmailMessage(
           organizationId:
             connection.organizationId,
           clientId: routing.clientId,
-          assignedToId:
-            routing.assignedToId,
+          routingArea: routing.area,
+          routingSquad: routing.squad,
+          routingConfidence: routing.confidence,
+          routingReason: routing.reason,
+          isSpam: routing.isSpam,
+          spamScore: routing.spamScore,
+          assignedToId: routing.assignedToId,
           assignedAt:
             routing.assignedToId
               ? receivedAt
@@ -293,7 +239,9 @@ async function ingestGmailMessage(
             ""
           ).slice(0, 220),
           status:
-            routing.assignedToId
+            routing.isSpam
+              ? "SPAM"
+              : routing.assignedToId
               ? "IN_PROGRESS"
               : "NEW",
           receivedAt,
@@ -305,7 +253,17 @@ async function ingestGmailMessage(
         data: {
           ticketId: ticket.id,
           type: "GMAIL_IMPORTED",
-          message: `E-mail recebido de ${from.email}.`,
+          message: routing.isSpam
+            ? `E-mail recebido de ${from.email} e movido para Spam (${routing.spamScore}%): ${routing.reason}`
+            : `E-mail recebido de ${from.email}. Classificação: ${routing.area} · ${routing.confidence}% · ${routing.reason}`,
+          metadata: {
+            routingArea: routing.area,
+            routingSquad: routing.squad,
+            routingConfidence: routing.confidence,
+            routingReason: routing.reason,
+            isSpam: routing.isSpam,
+            spamScore: routing.spamScore,
+          },
         },
       });
     } else {

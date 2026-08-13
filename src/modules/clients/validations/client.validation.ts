@@ -1,6 +1,7 @@
 import {
   type AcquirerReceiptRule,
   type CategoryMappingType,
+  type ClientSquad,
   type CreateClientInput,
 } from "../types/client.types";
 import {
@@ -23,6 +24,12 @@ const CATEGORY_MAPPING_TYPES: CategoryMappingType[] = [
   "SALE_CANCELLATION",
   "REFUNDS_CREDITS",
 ];
+
+function optionalId(value: unknown): string | null {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : null;
+}
 
 export class ClientValidationError extends Error {
   constructor(message: string) {
@@ -86,6 +93,33 @@ export function validateCreateClientPayload(
       : "";
 
   const document = cleanDocument(payload.document);
+
+  const rawServiceSquad = payload.serviceSquad;
+  const serviceSquad =
+    rawServiceSquad === "SQUAD_1" ||
+    rawServiceSquad === "SQUAD_2"
+      ? (rawServiceSquad as ClientSquad)
+      : null;
+
+  if (rawServiceSquad && !serviceSquad) {
+    throw new ClientValidationError("Selecione uma equipe válida.");
+  }
+
+  const operationLeaderId = optionalId(payload.operationLeaderId);
+  const payableResponsibleId = optionalId(
+    payload.payableResponsibleId,
+  );
+  const receivableResponsibleId = optionalId(
+    payload.receivableResponsibleId,
+  );
+  const generalResponsibleId = optionalId(
+    payload.generalResponsibleId,
+  );
+  const serviceAliases =
+    typeof payload.serviceAliases === "string" &&
+    payload.serviceAliases.trim()
+      ? payload.serviceAliases.trim()
+      : null;
 
   if (name.length < 3) {
     throw new ClientValidationError(
@@ -215,5 +249,11 @@ export function validateCreateClientPayload(
     document,
     acquirers,
     categoryMappings,
+    serviceSquad,
+    operationLeaderId,
+    payableResponsibleId,
+    receivableResponsibleId,
+    generalResponsibleId,
+    serviceAliases,
   };
 }

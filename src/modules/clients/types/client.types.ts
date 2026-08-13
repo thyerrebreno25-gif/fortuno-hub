@@ -11,6 +11,8 @@ export type CategoryMappingType =
   | "SALE_CANCELLATION"
   | "REFUNDS_CREDITS";
 
+export type ClientSquad = "SQUAD_1" | "SQUAD_2";
+
 export type ClientAcquirerInput = {
   name: string;
   receiptRule: AcquirerReceiptRule;
@@ -27,6 +29,12 @@ export type CreateClientInput = {
   document: string;
   acquirers: ClientAcquirerInput[];
   categoryMappings: ClientCategoryMappingInput[];
+  serviceSquad: ClientSquad | null;
+  operationLeaderId: string | null;
+  payableResponsibleId: string | null;
+  receivableResponsibleId: string | null;
+  generalResponsibleId: string | null;
+  serviceAliases: string | null;
 };
 
 export type ListClientsInput = {

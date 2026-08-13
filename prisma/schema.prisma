@@ -278,6 +278,9 @@ model User {
   auditChecklistReviewed   AuditChecklistItem[]     @relation("AuditChecklistReviewer")
   assignedServiceTickets   ServiceTicket[]          @relation("ServiceTicketAssignee")
   serviceTicketHistory     ServiceTicketHistory[]   @relation("ServiceTicketHistoryUser")
+  payableClients    Client[] @relation("ClientPayableResponsible")
+  receivableClients Client[] @relation("ClientReceivableResponsible")
+  generalServiceClients Client[] @relation("ClientGeneralResponsible")
 }
 
 model OrganizationMember {
@@ -305,11 +308,19 @@ model Client {
   operationalEmailCc String?
   cluster            ClientCluster @default(C)
   operationLeaderId  String?
+  serviceSquad        ClientSquad?
+  payableResponsibleId String?
+  receivableResponsibleId String?
+  generalResponsibleId String?
+  serviceAliases       String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   operationLeader User?        @relation("OperationClientLeader", fields: [operationLeaderId], references: [id], onDelete: SetNull)
+  payableResponsible User?     @relation("ClientPayableResponsible", fields: [payableResponsibleId], references: [id], onDelete: SetNull)
+  receivableResponsible User?  @relation("ClientReceivableResponsible", fields: [receivableResponsibleId], references: [id], onDelete: SetNull)
+  generalResponsible User?     @relation("ClientGeneralResponsible", fields: [generalResponsibleId], references: [id], onDelete: SetNull)
 
   imports                 ImportJob[]
   employees               Employee[]
@@ -331,6 +342,9 @@ model Client {
   @@index([organizationId])
   @@index([organizationId, active])
   @@index([operationLeaderId])
+  @@index([payableResponsibleId])
+  @@index([receivableResponsibleId])
+  @@index([generalResponsibleId])
   @@index([cluster])
 }
 
@@ -1254,6 +1268,10 @@ model ServiceTicket {
   id               String                @id @default(cuid())
   organizationId   String
   clientId         String?
+  routingArea       ServiceRoutingArea @default(UNKNOWN)
+  routingSquad      ClientSquad?
+  routingConfidence Int?
+  routingReason     String?
   assignedToId     String?
   externalThreadId String?
   source           String                @default("MANUAL")
@@ -1339,4 +1357,17 @@ model ServiceTicketHistory {
 
   @@index([ticketId, createdAt])
   @@index([userId, createdAt])
+}
+
+
+enum ClientSquad {
+  SQUAD_1
+  SQUAD_2
+}
+
+enum ServiceRoutingArea {
+  ACCOUNTS_PAYABLE
+  ACCOUNTS_RECEIVABLE
+  GENERAL
+  UNKNOWN
 }

@@ -22,6 +22,7 @@ import {
   Table,
   Text,
   TextInput,
+  Textarea,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -32,6 +33,7 @@ import {
   IconPencil,
   IconPlus,
   IconRefresh,
+  IconRoute,
   IconSearch,
   IconTrash,
 } from "@tabler/icons-react";
@@ -110,6 +112,14 @@ type NewCategoryMapping = {
   category: string;
   subcategory: string;
 };
+
+type TeamMember = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
+type ClientSquad = "SQUAD_1" | "SQUAD_2";
 
 const RECEIPT_RULE_OPTIONS = [
   {
@@ -304,6 +314,21 @@ export default function ClientesPage() {
     NewCategoryMapping[]
   >(INITIAL_CATEGORY_MAPPINGS.map((item) => ({ ...item })));
 
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
+  const [teamError, setTeamError] = useState("");
+  const [serviceSquad, setServiceSquad] =
+    useState<ClientSquad | null>(null);
+  const [operationLeaderId, setOperationLeaderId] =
+    useState<string | null>(null);
+  const [payableResponsibleId, setPayableResponsibleId] =
+    useState<string | null>(null);
+  const [receivableResponsibleId, setReceivableResponsibleId] =
+    useState<string | null>(null);
+  const [generalResponsibleId, setGeneralResponsibleId] =
+    useState<string | null>(null);
+  const [serviceAliases, setServiceAliases] = useState("");
+
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setSearch(searchInput.trim());
@@ -414,6 +439,22 @@ export default function ClientesPage() {
     };
   }, [clients]);
 
+  const memberOptions = useMemo(
+    () =>
+      teamMembers.map((member) => ({
+        value: member.id,
+        label: member.name || member.email,
+      })),
+    [teamMembers],
+  );
+
+  function memberLabel(userId: string | null): string {
+    if (!userId) return "Não definido";
+
+    const member = teamMembers.find((item) => item.id === userId);
+    return member?.name || member?.email || "Não definido";
+  }
+
   function resetForm() {
     setActiveStep(0);
     setFormError("");
@@ -425,11 +466,52 @@ export default function ClientesPage() {
         ...item,
       })),
     );
+    setTeamError("");
+    setServiceSquad(null);
+    setOperationLeaderId(null);
+    setPayableResponsibleId(null);
+    setReceivableResponsibleId(null);
+    setGeneralResponsibleId(null);
+    setServiceAliases("");
+  }
+
+  async function loadTeamMembers() {
+    try {
+      setLoadingTeam(true);
+      setTeamError("");
+
+      const response = await fetch(
+        "/api/atendimento/routing/clients",
+        { cache: "no-store" },
+      );
+      const result = (await response.json()) as {
+        members?: TeamMember[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Não foi possível carregar a equipe.",
+        );
+      }
+
+      setTeamMembers(result.members || []);
+    } catch (error) {
+      setTeamMembers([]);
+      setTeamError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar a equipe.",
+      );
+    } finally {
+      setLoadingTeam(false);
+    }
   }
 
   function openNewClientModal() {
     resetForm();
     setModalOpened(true);
+    void loadTeamMembers();
   }
 
   function closeModal() {
@@ -567,7 +649,7 @@ export default function ClientesPage() {
     }
 
     setActiveStep((current) =>
-      Math.min(current + 1, 3),
+      Math.min(current + 1, 4),
     );
   }
 
@@ -604,6 +686,13 @@ export default function ClientesPage() {
               mapping.subcategory.trim() || null,
           }),
         ),
+
+        serviceSquad,
+        operationLeaderId,
+        payableResponsibleId,
+        receivableResponsibleId,
+        generalResponsibleId,
+        serviceAliases: serviceAliases.trim() || null,
       };
 
       const response = await fetch("/api/clients", {
@@ -986,6 +1075,8 @@ export default function ClientesPage() {
 
             <Stepper.Step label="Categorias" />
 
+            <Stepper.Step label="Equipe e e-mails" />
+
             <Stepper.Step label="Revisão" />
           </Stepper>
 
@@ -1163,6 +1254,104 @@ export default function ClientesPage() {
 
           {activeStep === 3 && (
             <Stack>
+              <Group justify="space-between" align="flex-start">
+                <Stack gap={0}>
+                  <Group gap="xs">
+                    <IconRoute size={20} />
+                    <Text fw={700}>Equipe e distribuição de e-mails</Text>
+                  </Group>
+
+                  <Text size="sm" c="dimmed">
+                    Defina quem receberá automaticamente os e-mails deste
+                    cliente. Os campos podem ser preenchidos depois.
+                  </Text>
+                </Stack>
+
+                {loadingTeam && <Loader size="sm" />}
+              </Group>
+
+              {teamError && (
+                <Alert color="yellow">
+                  {teamError} Você ainda pode cadastrar o cliente e configurar
+                  a equipe posteriormente.
+                </Alert>
+              )}
+
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <Select
+                  label="Equipe / Squad"
+                  description="Equipe operacional principal do cliente."
+                  clearable
+                  data={[
+                    { value: "SQUAD_1", label: "Squad 1" },
+                    { value: "SQUAD_2", label: "Squad 2" },
+                  ]}
+                  value={serviceSquad}
+                  onChange={(value) =>
+                    setServiceSquad(value as ClientSquad | null)
+                  }
+                />
+
+                <Select
+                  label="Líder"
+                  description="Supervisiona a operação deste cliente."
+                  searchable
+                  clearable
+                  disabled={loadingTeam}
+                  data={memberOptions}
+                  value={operationLeaderId}
+                  onChange={setOperationLeaderId}
+                />
+
+                <Select
+                  label="Responsável por Contas a Pagar"
+                  description="Recebe boletos, notas, fornecedores e pagamentos."
+                  searchable
+                  clearable
+                  disabled={loadingTeam}
+                  data={memberOptions}
+                  value={payableResponsibleId}
+                  onChange={setPayableResponsibleId}
+                />
+
+                <Select
+                  label="Responsável por Contas a Receber"
+                  description="Recebe cobranças, recebimentos e adquirentes."
+                  searchable
+                  clearable
+                  disabled={loadingTeam}
+                  data={memberOptions}
+                  value={receivableResponsibleId}
+                  onChange={setReceivableResponsibleId}
+                />
+
+                <Select
+                  label="Responsável geral / fallback"
+                  description="Recebe assuntos gerais ou sem área confirmada."
+                  searchable
+                  clearable
+                  disabled={loadingTeam}
+                  data={memberOptions}
+                  value={generalResponsibleId}
+                  onChange={setGeneralResponsibleId}
+                />
+              </SimpleGrid>
+
+              <Textarea
+                label="Nomes usados para identificar o cliente"
+                description="Informe nome fantasia, abreviações e outros nomes que podem aparecer no assunto, corpo, assinatura ou anexo."
+                minRows={3}
+                value={serviceAliases}
+                onChange={(event) =>
+                  setServiceAliases(event.currentTarget.value)
+                }
+                placeholder={"Ex.: Abismo\nAbismo Anhumas\nAnhumas Turismo"}
+              />
+            </Stack>
+          )}
+
+          {activeStep === 4 && (
+            <Stack>
               <Title order={4}>Revisão do cadastro</Title>
 
               <Paper withBorder radius="md" p="md">
@@ -1187,6 +1376,37 @@ export default function ClientesPage() {
                   <Text>
                     <strong>Categorias:</strong>{" "}
                     {categoryMappings.length} mapeamentos
+                  </Text>
+
+                  <Divider />
+
+                  <Text>
+                    <strong>Equipe:</strong>{" "}
+                    {serviceSquad === "SQUAD_1"
+                      ? "Squad 1"
+                      : serviceSquad === "SQUAD_2"
+                        ? "Squad 2"
+                        : "Não definida"}
+                  </Text>
+
+                  <Text>
+                    <strong>Líder:</strong>{" "}
+                    {memberLabel(operationLeaderId)}
+                  </Text>
+
+                  <Text>
+                    <strong>Contas a Pagar:</strong>{" "}
+                    {memberLabel(payableResponsibleId)}
+                  </Text>
+
+                  <Text>
+                    <strong>Contas a Receber:</strong>{" "}
+                    {memberLabel(receivableResponsibleId)}
+                  </Text>
+
+                  <Text>
+                    <strong>Geral / fallback:</strong>{" "}
+                    {memberLabel(generalResponsibleId)}
                   </Text>
                 </Stack>
               </Paper>
@@ -1240,7 +1460,7 @@ export default function ClientesPage() {
               {activeStep === 0 ? "Cancelar" : "Voltar"}
             </Button>
 
-            {activeStep < 3 ? (
+            {activeStep < 4 ? (
               <Button
                 onClick={nextStep}
                 rightSection={

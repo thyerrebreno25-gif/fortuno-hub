@@ -6,6 +6,24 @@ import type {
 import { normalizeText } from "../utils/client-normalizers";
 
 export const clientRepository = {
+  async findOperationalMemberIds(
+    organizationId: string,
+    userIds: string[],
+  ) {
+    if (userIds.length === 0) return [];
+
+    const memberships = await prisma.organizationMember.findMany({
+      where: {
+        organizationId,
+        userId: { in: userIds },
+        role: { not: "CLIENT" },
+      },
+      select: { userId: true },
+    });
+
+    return memberships.map((membership) => membership.userId);
+  },
+
   async findDuplicate(
     organizationId: string,
     normalizedName: string,
@@ -133,6 +151,12 @@ export const clientRepository = {
           normalizedName: normalizeText(input.name),
           document: input.document,
           active: true,
+          serviceSquad: input.serviceSquad,
+          operationLeaderId: input.operationLeaderId,
+          payableResponsibleId: input.payableResponsibleId,
+          receivableResponsibleId: input.receivableResponsibleId,
+          generalResponsibleId: input.generalResponsibleId,
+          serviceAliases: input.serviceAliases,
 
           acquirers: {
             create: input.acquirers.map((acquirer) => ({
@@ -216,6 +240,12 @@ export const clientRepository = {
             document: input.document,
             acquirers: input.acquirers,
             categoryMappings: input.categoryMappings,
+            serviceSquad: input.serviceSquad,
+            operationLeaderId: input.operationLeaderId,
+            payableResponsibleId: input.payableResponsibleId,
+            receivableResponsibleId: input.receivableResponsibleId,
+            generalResponsibleId: input.generalResponsibleId,
+            serviceAliases: input.serviceAliases,
           },
         },
       });

@@ -27,8 +27,10 @@ import {
   IconCircleCheck,
   IconAlertTriangle,
   IconCircleX,
+  IconRoute,
 } from "@tabler/icons-react";
 import { ClientGeneralTab } from "@/modules/clients/components/client-general-tab";
+import { ClientRoutingTab } from "@/modules/clients/components/client-routing-tab";
 import {
   ClientAcquirersTab,
   type EditableAcquirer,
@@ -841,6 +843,13 @@ export default function EditarClientePage() {
             >
               Cartões
             </Tabs.Tab>
+
+            <Tabs.Tab
+              value="routing"
+              leftSection={<IconRoute size={16} />}
+            >
+              Equipe e e-mails
+            </Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="general" pt="xl">
@@ -900,6 +909,10 @@ export default function EditarClientePage() {
               onChange={setCards}
               onSave={saveCards}
             />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="routing" pt="xl">
+            <ClientRoutingTab clientId={client.id} />
           </Tabs.Panel>
         </Tabs>
       </Paper>

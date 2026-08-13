@@ -157,7 +157,8 @@ export async function PATCH(request: Request, context: Context) {
         ? body.clientId
         : null;
 
-    let leaderId: string | null = null;
+    let automaticAssigneeId: string | null = null;
+    let routingSquad: "SQUAD_1" | "SQUAD_2" | null = null;
 
     if (clientId) {
       const client = await prisma.client.findFirst({
@@ -165,7 +166,13 @@ export async function PATCH(request: Request, context: Context) {
           id: clientId,
           organizationId: member.organizationId,
         },
-        select: { operationLeaderId: true },
+        select: {
+          operationLeaderId: true,
+          serviceSquad: true,
+          payableResponsibleId: true,
+          receivableResponsibleId: true,
+          generalResponsibleId: true,
+        },
       });
 
       if (!client) {
@@ -175,19 +182,42 @@ export async function PATCH(request: Request, context: Context) {
         );
       }
 
-      leaderId = client.operationLeaderId;
+      routingSquad = client.serviceSquad;
+
+      if (current.routingArea === "ACCOUNTS_PAYABLE") {
+        automaticAssigneeId =
+          client.payableResponsibleId ||
+          client.generalResponsibleId ||
+          client.operationLeaderId;
+      } else if (current.routingArea === "ACCOUNTS_RECEIVABLE") {
+        automaticAssigneeId =
+          client.receivableResponsibleId ||
+          client.generalResponsibleId ||
+          client.operationLeaderId;
+      } else {
+        automaticAssigneeId =
+          client.generalResponsibleId || client.operationLeaderId;
+      }
     }
+
+    const assignedToId =
+      current.assignedToId || automaticAssigneeId;
 
     await prisma.$transaction([
       prisma.serviceTicket.update({
         where: { id },
         data: {
           clientId,
-          assignedToId: current.assignedToId || leaderId,
+          routingSquad,
+          assignedToId,
           assignedAt:
-            current.assignedToId || leaderId
+            assignedToId
               ? new Date()
               : current.assignedAt,
+          status:
+            assignedToId && current.status === "NEW"
+              ? "IN_PROGRESS"
+              : current.status,
         },
       }),
       prisma.serviceTicketHistory.create({
@@ -196,7 +226,11 @@ export async function PATCH(request: Request, context: Context) {
           userId: member.userId,
           type: "CLIENT_CHANGED",
           message: "Cliente do chamado atualizado.",
-          metadata: { clientId, automaticAssignee: leaderId },
+          metadata: {
+            clientId,
+            routingArea: current.routingArea,
+            automaticAssignee: automaticAssigneeId,
+          },
         },
       }),
     ]);
