@@ -29,6 +29,7 @@ import type {
   DashboardModule,
   DashboardStatus,
 } from "@/modules/dashboard/types/dashboard.types";
+import styles from "./dashboard-page.module.css";
 
 const moduleLabels: Record<DashboardModule, string> = {
   EXCHANGE: "Câmbio",
@@ -126,8 +127,12 @@ export default function DashboardPage() {
       : 100;
 
   return (
-    <Stack gap="lg">
-      <Group justify="space-between" align="center">
+    <Stack gap="lg" className={styles.page}>
+      <Group
+        justify="space-between"
+        align="center"
+        className={styles.pageHeader}
+      >
         <Stack gap={2}>
           <Text size="xs" fw={700} c="dimmed" tt="uppercase" lts={0.8}>
             Fortuno Hub
@@ -165,7 +170,11 @@ export default function DashboardPage() {
       )}
 
       <Paper withBorder radius="lg" p={0} style={{ overflow: "hidden" }}>
-        <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }} spacing={0}>
+        <SimpleGrid
+          cols={{ base: 2, md: 3, xl: 6 }}
+          spacing={0}
+          className={styles.metricsGrid}
+        >
           <Metric
             label="Clientes ativos"
             value={data.summary.activeClients}
@@ -206,8 +215,13 @@ export default function DashboardPage() {
         </SimpleGrid>
       </Paper>
 
-      <SimpleGrid cols={{ base: 1, xl: 3 }}>
-        <Paper withBorder radius="lg" p="lg" style={{ gridColumn: "span 2" }}>
+      <SimpleGrid cols={{ base: 1, xl: 3 }} className={styles.primaryGrid}>
+        <Paper
+          withBorder
+          radius="lg"
+          p="lg"
+          className={styles.recentCard}
+        >
           <Stack gap="md">
             <Group justify="space-between">
               <Stack gap={1}>
@@ -231,7 +245,11 @@ export default function DashboardPage() {
               </Text>
             ) : (
               <ScrollArea>
-                <Table verticalSpacing="sm" horizontalSpacing="md">
+                <Table
+                  verticalSpacing="sm"
+                  horizontalSpacing="md"
+                  className={styles.recentTable}
+                >
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Arquivo</Table.Th>
@@ -352,7 +370,7 @@ export default function DashboardPage() {
         </Stack>
       </SimpleGrid>
 
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+      <SimpleGrid cols={{ base: 1, xl: 2 }} className={styles.twoColumnGrid}>
         <Paper withBorder radius="lg" p="lg">
           <Stack gap="md">
             <Group justify="space-between">
@@ -447,7 +465,7 @@ export default function DashboardPage() {
         </Paper>
       </SimpleGrid>
 
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+      <SimpleGrid cols={{ base: 1, xl: 2 }} className={styles.twoColumnGrid}>
         <Paper withBorder radius="lg" p="lg">
           <Stack gap="md">
             <Title order={4}>Atividades recentes</Title>
@@ -571,11 +589,8 @@ function Metric({
     <Stack
       gap={3}
       p="lg"
-      style={{
-        borderLeft: bordered
-          ? "1px solid var(--mantine-color-gray-2)"
-          : undefined,
-      }}
+      className={styles.metric}
+      data-bordered={bordered || undefined}
     >
       <Text size="xs" c="dimmed" fw={600}>
         {label.toUpperCase()}

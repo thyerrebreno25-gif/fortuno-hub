@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-query";
 
 const appFontFamily =
-  '"Segoe UI Variable", "Inter Variable", Inter, "Segoe UI", Roboto, Arial, sans-serif';
+  '"Inter Variable", Inter, "Segoe UI", Roboto, Arial, sans-serif';
 
 const theme = createTheme({
   primaryColor: "blue",

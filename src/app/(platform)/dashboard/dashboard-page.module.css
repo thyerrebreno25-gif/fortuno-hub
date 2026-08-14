@@ -1,0 +1,95 @@
+.page {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.metricsGrid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.metric {
+  min-width: 0;
+}
+
+.metric[data-bordered] {
+  border-left: 1px solid var(--mantine-color-gray-2);
+}
+
+.primaryGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.recentCard {
+  min-width: 0;
+  grid-column: span 2;
+}
+
+.recentTable {
+  min-width: 760px;
+}
+
+.twoColumnGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container (max-width: 1120px) {
+  .metricsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(4) {
+    border-left: 0;
+  }
+
+  .metric:nth-child(n + 4) {
+    border-top: 1px solid var(--mantine-color-gray-2);
+  }
+}
+
+@container (max-width: 900px) {
+  .primaryGrid,
+  .twoColumnGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recentCard {
+    grid-column: auto;
+  }
+}
+
+@container (max-width: 680px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .metric:nth-child(4) {
+    border-left: 1px solid var(--mantine-color-gray-2);
+  }
+
+  .metric:nth-child(3) {
+    border-top: 1px solid var(--mantine-color-gray-2);
+  }
+}
+
+@container (max-width: 430px) {
+  .metricsGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .metric[data-bordered] {
+    border-top: 1px solid var(--mantine-color-gray-2);
+    border-left: 0;
+  }
+}

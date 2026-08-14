@@ -1,6 +1,6 @@
 :root {
-  --fortuno-font-sans: "Segoe UI Variable", "Inter Variable", Inter,
-    "Segoe UI", Roboto, Arial, sans-serif;
+  --fortuno-font-sans: "Inter Variable", Inter, "Segoe UI", Roboto, Arial,
+    sans-serif;
   --fortuno-ink: #0b1933;
   --fortuno-muted: #66748a;
   --fortuno-line: #e1e7ef;
@@ -8,7 +8,7 @@
 }
 
 html {
-  text-rendering: optimizeLegibility;
+  text-rendering: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -25,7 +25,9 @@ select {
 body {
   color: var(--fortuno-ink);
   background: var(--fortuno-canvas);
-  letter-spacing: -0.006em;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 h1,
@@ -36,11 +38,11 @@ h5,
 h6,
 .mantine-Title-root {
   color: var(--fortuno-ink);
-  letter-spacing: -0.026em;
+  letter-spacing: -0.022em;
 }
 
 .mantine-Text-root {
-  line-height: 1.48;
+  line-height: 1.5;
 }
 
 .mantine-Button-root,
