@@ -60,6 +60,10 @@ type SettingsData = {
     id: string;
     role: UserRole;
     createdAt: string;
+    accessStatus: "PENDING" | "ACTIVATED" | "CONFIGURED" | "UNKNOWN";
+    accessConfiguredAt: string | null;
+    lastSignInAt: string | null;
+    mfaConfigured: boolean;
     user: {
       id: string;
       name: string;
@@ -107,6 +111,29 @@ const roleColors: Record<UserRole, string> = {
   OPERATOR: "green",
   CLIENT: "gray",
 };
+
+const accessStatusData = {
+  PENDING: {
+    label: "Convite pendente",
+    detail: "Ainda não ativou o acesso",
+    color: "orange",
+  },
+  ACTIVATED: {
+    label: "Ativação iniciada",
+    detail: "Falta configurar o autenticador",
+    color: "blue",
+  },
+  CONFIGURED: {
+    label: "Acesso completo",
+    detail: "Conta e autenticador configurados",
+    color: "green",
+  },
+  UNKNOWN: {
+    label: "Status indisponível",
+    detail: "Não foi possível consultar o Supabase",
+    color: "gray",
+  },
+} as const;
 
 const roleOptions = [
   { value: "ADMIN", label: "Administrador" },
@@ -604,9 +631,10 @@ export default function ConfiguracoesPage() {
               <Table miw={850} verticalSpacing="sm" horizontalSpacing="lg">
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Usuário</Table.Th>
-                    <Table.Th>Perfil</Table.Th>
-                    <Table.Th>Vinculado em</Table.Th>
+                     <Table.Th>Usuário</Table.Th>
+                     <Table.Th>Perfil</Table.Th>
+                     <Table.Th>Status do acesso</Table.Th>
+                     <Table.Th>Vinculado em</Table.Th>
                     <Table.Th />
                   </Table.Tr>
                 </Table.Thead>
@@ -624,12 +652,33 @@ export default function ConfiguracoesPage() {
                           </Stack>
                         </Group>
                       </Table.Td>
-                      <Table.Td>
-                        <Badge color={roleColors[member.role]} variant="light">
-                          {roleLabels[member.role]}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>{formatDate(member.createdAt)}</Table.Td>
+                       <Table.Td>
+                         <Badge color={roleColors[member.role]} variant="light">
+                           {roleLabels[member.role]}
+                         </Badge>
+                       </Table.Td>
+                       <Table.Td>
+                         <Stack gap={2}>
+                           <Badge
+                             color={accessStatusData[member.accessStatus].color}
+                             variant="light"
+                             w="fit-content"
+                             leftSection={
+                               member.accessStatus === "CONFIGURED"
+                                 ? <IconCheck size={11} />
+                                 : undefined
+                             }
+                           >
+                             {accessStatusData[member.accessStatus].label}
+                           </Badge>
+                           <Text size="xs" c="dimmed">
+                             {member.lastSignInAt
+                               ? `Último acesso: ${formatDate(member.lastSignInAt)}`
+                               : accessStatusData[member.accessStatus].detail}
+                           </Text>
+                         </Stack>
+                       </Table.Td>
+                       <Table.Td>{formatDate(member.createdAt)}</Table.Td>
                       <Table.Td>
                         <Group justify="flex-end" gap={4}>
                           <ActionIcon

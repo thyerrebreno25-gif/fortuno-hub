@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getSettingsMember,
   SETTINGS_ADMIN_ROLES,
@@ -102,6 +103,39 @@ export async function GET() {
       );
     }
 
+    const authUsers = new Map<
+      string,
+      {
+        confirmedAt: string | null;
+        lastSignInAt: string | null;
+        mfaConfigured: boolean;
+      }
+    >();
+    const admin = createAdminClient();
+
+    if (admin) {
+      const { data: authData, error: authError } =
+        await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+
+      if (authError) {
+        console.warn("Não foi possível consultar o status dos acessos:", authError);
+      } else {
+        for (const authUser of authData.users) {
+          authUsers.set(authUser.id, {
+            confirmedAt:
+              authUser.email_confirmed_at || authUser.confirmed_at || null,
+            lastSignInAt: authUser.last_sign_in_at || null,
+            mfaConfigured: Boolean(
+              authUser.factors?.some(
+                (factor) =>
+                  factor.factor_type === "totp" && factor.status === "verified",
+              ),
+            ),
+          });
+        }
+      }
+    }
+
     return NextResponse.json({
       currentUser: {
         id: member.user.id,
@@ -115,16 +149,34 @@ export async function GET() {
         createdAt: organization.createdAt.toISOString(),
         updatedAt: organization.updatedAt.toISOString(),
       },
-      members: members.map((item) => ({
-        id: item.id,
-        role: item.role,
-        createdAt: item.createdAt.toISOString(),
-        user: {
-          ...item.user,
-          name: item.user.name || item.user.email,
-          updatedAt: item.user.updatedAt.toISOString(),
-        },
-      })),
+      members: members.map((item) => {
+        const authStatus = authUsers.get(item.user.id);
+        const accessStatus = !admin || !authStatus
+          ? "UNKNOWN"
+          : authStatus.mfaConfigured
+            ? "CONFIGURED"
+            : authStatus.confirmedAt || authStatus.lastSignInAt
+              ? "ACTIVATED"
+              : "PENDING";
+
+        return {
+          id: item.id,
+          role: item.role,
+          createdAt: item.createdAt.toISOString(),
+          accessStatus,
+          accessConfiguredAt:
+            accessStatus === "CONFIGURED"
+              ? authStatus?.confirmedAt || authStatus?.lastSignInAt || null
+              : null,
+          lastSignInAt: authStatus?.lastSignInAt || null,
+          mfaConfigured: authStatus?.mfaConfigured || false,
+          user: {
+            ...item.user,
+            name: item.user.name || item.user.email,
+            updatedAt: item.user.updatedAt.toISOString(),
+          },
+        };
+      }),
       summary: {
         activeClients: counts[0],
         imports: counts[1],
