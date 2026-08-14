@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOnboardingMember } from "@/modules/onboarding/auth/onboarding-auth";
+import {
+  canManageOnboarding,
+  getOnboardingMember,
+} from "@/modules/onboarding/auth/onboarding-auth";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -91,5 +94,70 @@ export async function PUT(request: Request, context: Context) {
   } catch (error) {
     console.error("Erro ao salvar projeto de onboarding:", error);
     return NextResponse.json({ error: "Não foi possível salvar a implantação." }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: Request, context: Context) {
+  try {
+    const member = await getOnboardingMember();
+    if (!member) {
+      return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+    }
+    if (!canManageOnboarding(member.role)) {
+      return NextResponse.json(
+        { error: "Seu perfil não possui permissão para excluir onboardings." },
+        { status: 403 },
+      );
+    }
+
+    const { id } = await context.params;
+    const project = await prisma.onboarding.findFirst({
+      where: { id, organizationId: member.organizationId },
+      select: {
+        id: true,
+        companyName: true,
+        cnpj: true,
+        status: true,
+        projectData: true,
+        _count: { select: { tasks: true, history: true } },
+      },
+    });
+
+    if (!project) {
+      return NextResponse.json(
+        { error: "Implantação não encontrada." },
+        { status: 404 },
+      );
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.auditLog.create({
+        data: {
+          userId: member.userId,
+          action: "ONBOARDING_DELETED",
+          entity: "Onboarding",
+          entityId: project.id,
+          beforeData: {
+            companyName: project.companyName,
+            cnpj: project.cnpj,
+            status: project.status,
+            tasks: project._count.tasks,
+            historyEntries: project._count.history,
+            projectData: project.projectData,
+          },
+        },
+      });
+      await transaction.onboarding.delete({ where: { id: project.id } });
+    });
+
+    return NextResponse.json({
+      message: "Onboarding excluído. O registro da exclusão foi preservado na auditoria.",
+    });
+  } catch (error) {
+    console.error("Erro ao excluir onboarding:", error);
+    return NextResponse.json(
+      { error: "Não foi possível excluir o onboarding." },
+      { status: 500 },
+    );
   }
 }

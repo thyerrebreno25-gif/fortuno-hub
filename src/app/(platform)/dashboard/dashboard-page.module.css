@@ -40,6 +40,43 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.insightCard {
+  min-width: 0;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.insightCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--mantine-color-blue-3);
+  box-shadow: 0 12px 28px rgba(18, 56, 101, 0.08);
+}
+
+.insightTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--mantine-color-gray-1);
+}
+
+.insightTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1688e1, #66b7f4);
+  animation: revealChart 650ms ease both;
+  transition: width 300ms ease;
+}
+
+.insightCard[data-warning] .insightTrack span {
+  background: linear-gradient(90deg, #f76707, #ffb15c);
+}
+
+@keyframes revealChart {
+  from { transform: scaleX(0); transform-origin: left; }
+  to { transform: scaleX(1); transform-origin: left; }
+}
+
 @container (max-width: 1120px) {
   .metricsGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

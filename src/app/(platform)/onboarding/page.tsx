@@ -10,7 +10,7 @@ import {
   IconAlertTriangle, IconArrowRight, IconBuilding, IconCalendar, IconChartBar,
   IconCheck, IconClock, IconFileDescription, IconFlag, IconListCheck, IconMessage,
   IconPlayerPause, IconPlayerPlay, IconPlus, IconRocket, IconSearch, IconSettings,
-  IconTemplate, IconTimeline, IconUser, IconUsers,
+  IconTemplate, IconTimeline, IconTrash, IconUser, IconUsers,
 } from "@tabler/icons-react";
 import { TemplateManager } from "@/components/onboarding/TemplateManager";
 import { useOnboarding } from "@/hooks/useOnboarding";
@@ -236,6 +236,7 @@ export default function OnboardingPage() {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [newOpened, setNewOpened] = useState(false);
   const [detail, setDetail] = useState<Project | null>(null);
@@ -361,6 +362,37 @@ export default function OnboardingPage() {
     }
   };
 
+  const deleteProject = async (project: Project) => {
+    const confirmed = window.confirm(
+      `Excluir o onboarding de ${project.companyName}?\n\nAs tarefas e apontamentos deste onboarding serão removidos. O registro da exclusão permanecerá na auditoria.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingProjectId(project.id);
+    setProjectsError(null);
+    try {
+      const response = await fetch(`/api/onboarding/projects/${project.id}`, {
+        method: "DELETE",
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error || "Não foi possível excluir o onboarding.");
+      }
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setDetail((current) => (current?.id === project.id ? null : current));
+      setSelectedTask(null);
+      await refresh();
+    } catch (deleteError) {
+      setProjectsError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Não foi possível excluir o onboarding.",
+      );
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
+
   const mutateTask = (patch: Partial<Task>) => {
     if (!detail || !selectedTask) return;
     const next = structuredClone(detail) as Project;
@@ -442,7 +474,49 @@ export default function OnboardingPage() {
             <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
               {filtered.map((p) => {
                 const progress = projectProgress(p); const blocked = p.stages.flatMap((s) => s.tasks).filter((t) => t.status === "BLOCKED").length; const waiting = p.stages.flatMap((s) => s.tasks).filter((t) => t.status === "WAITING_CLIENT").length;
-                return <Card key={p.id} withBorder radius="lg" p="xl"><Stack gap="lg"><Group justify="space-between"><Group><ThemeIcon size={44} radius="md" variant="light"><IconBuilding size={22} /></ThemeIcon><Stack gap={0}><Text fw={800}>{p.companyName}</Text><Text size="sm" c="dimmed">{p.tradeName || p.cnpj || "Projeto de implantação"}</Text></Stack></Group><Badge color={p.status === "COMPLETED" ? "green" : "blue"}>{p.status === "COMPLETED" ? "Concluído" : p.status === "IN_PROGRESS" ? "Em andamento" : "Não iniciado"}</Badge></Group><Stack gap={7}><Group justify="space-between"><Text size="sm" fw={700}>Progresso</Text><Text size="sm" fw={800}>{progress}%</Text></Group><Progress value={progress} radius="xl" size="md" /></Stack><SimpleGrid cols={3}><Paper withBorder p="sm"><Text size="xs" c="dimmed">Prazo</Text><Text size="sm" fw={700}>{dateLabel(p.expectedEndDate)}</Text></Paper><Paper withBorder p="sm"><Text size="xs" c="dimmed">Bloqueios</Text><Text fw={700}>{blocked}</Text></Paper><Paper withBorder p="sm"><Text size="xs" c="dimmed">Aguardando</Text><Text fw={700}>{waiting}</Text></Paper></SimpleGrid><Group justify="space-between"><Text size="sm" c="dimmed"><IconClock size={14} style={{ verticalAlign: "middle" }} /> {hoursLabel(trackedSeconds(p, clockTick))}</Text><Button variant="subtle" rightSection={<IconArrowRight size={16} />} onClick={() => setDetail(p)}>Abrir onboarding</Button></Group></Stack></Card>;
+                return (
+                  <Card key={p.id} withBorder radius="lg" p="xl">
+                    <Stack gap="lg">
+                      <Group justify="space-between">
+                        <Group>
+                          <ThemeIcon size={44} radius="md" variant="light"><IconBuilding size={22} /></ThemeIcon>
+                          <Stack gap={0}>
+                            <Text fw={800}>{p.companyName}</Text>
+                            <Text size="sm" c="dimmed">{p.tradeName || p.cnpj || "Projeto de implantação"}</Text>
+                          </Stack>
+                        </Group>
+                        <Badge color={p.status === "COMPLETED" ? "green" : "blue"}>
+                          {p.status === "COMPLETED" ? "Concluído" : p.status === "IN_PROGRESS" ? "Em andamento" : "Não iniciado"}
+                        </Badge>
+                      </Group>
+                      <Stack gap={7}>
+                        <Group justify="space-between"><Text size="sm" fw={700}>Progresso</Text><Text size="sm" fw={800}>{progress}%</Text></Group>
+                        <Progress value={progress} radius="xl" size="md" />
+                      </Stack>
+                      <SimpleGrid cols={3}>
+                        <Paper withBorder p="sm"><Text size="xs" c="dimmed">Prazo</Text><Text size="sm" fw={700}>{dateLabel(p.expectedEndDate)}</Text></Paper>
+                        <Paper withBorder p="sm"><Text size="xs" c="dimmed">Bloqueios</Text><Text fw={700}>{blocked}</Text></Paper>
+                        <Paper withBorder p="sm"><Text size="xs" c="dimmed">Aguardando</Text><Text fw={700}>{waiting}</Text></Paper>
+                      </SimpleGrid>
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed"><IconClock size={14} style={{ verticalAlign: "middle" }} /> {hoursLabel(trackedSeconds(p, clockTick))}</Text>
+                        <Group gap={6}>
+                          <ActionIcon
+                            color="red"
+                            variant="light"
+                            loading={deletingProjectId === p.id}
+                            onClick={() => void deleteProject(p)}
+                            aria-label={`Excluir onboarding de ${p.companyName}`}
+                            title="Excluir onboarding"
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                          <Button variant="subtle" rightSection={<IconArrowRight size={16} />} onClick={() => setDetail(p)}>Abrir onboarding</Button>
+                        </Group>
+                      </Group>
+                    </Stack>
+                  </Card>
+                );
               })}
               {!filtered.length && <Paper withBorder p="xl" radius="lg"><Text c="dimmed">Nenhuma implantação encontrada.</Text></Paper>}
             </SimpleGrid>

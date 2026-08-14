@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -22,6 +23,7 @@ async function getMember() {
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
     select: {
+      userId: true,
       organizationId: true,
       role: true,
     },
@@ -287,6 +289,100 @@ export async function PATCH(
 
     return NextResponse.json(
       { error: "Não foi possível editar o cliente." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: RouteContext,
+) {
+  try {
+    const member = await getMember();
+
+    if (!member) {
+      return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
+    }
+
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canDelete) {
+      return NextResponse.json(
+        { error: "Você não possui permissão para excluir clientes." },
+        { status: 403 },
+      );
+    }
+
+    const { id } = await context.params;
+    const client = await prisma.client.findFirst({
+      where: { id, organizationId: member.organizationId },
+      select: {
+        id: true,
+        name: true,
+        document: true,
+        active: true,
+        _count: {
+          select: {
+            imports: true,
+            operationActivities: true,
+            onboardings: true,
+            serviceTickets: true,
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      return NextResponse.json(
+        { error: "Cliente não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    if (!client.active) {
+      return NextResponse.json({
+        message: "Este cliente já está excluído da operação ativa.",
+      });
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.client.update({
+        where: { id },
+        data: { active: false },
+      });
+      await transaction.operationClientProcess.updateMany({
+        where: { clientId: id, active: true },
+        data: { active: false },
+      });
+      await transaction.auditLog.create({
+        data: {
+          userId: member.userId,
+          action: "CLIENT_ARCHIVED",
+          entity: "Client",
+          entityId: id,
+          beforeData: {
+            name: client.name,
+            document: client.document,
+            active: client.active,
+            relatedRecords: client._count,
+          },
+          afterData: { active: false },
+        },
+      });
+    });
+
+    return NextResponse.json({
+      message:
+        "Cliente excluído da operação ativa. O histórico e os dados relacionados foram preservados.",
+    });
+  } catch (error) {
+    console.error("Erro ao excluir cliente:", error);
+    return NextResponse.json(
+      { error: "Não foi possível excluir o cliente." },
       { status: 500 },
     );
   }

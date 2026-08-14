@@ -11,6 +11,7 @@ import {
   ClientValidationError,
   validateCreateClientPayload,
 } from "@/modules/clients/validations/client.validation";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 async function getAuthenticatedMember(): Promise<AuthenticatedMember | null> {
   const supabase = await createSupabaseClient();
@@ -111,7 +112,15 @@ export async function GET(request: Request) {
       pageSize,
     });
 
-    return NextResponse.json(result);
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    return NextResponse.json({
+      ...result,
+      permission: permissions.CLIENTS,
+    });
   } catch (error) {
     console.error("Erro ao listar clientes:", error);
 

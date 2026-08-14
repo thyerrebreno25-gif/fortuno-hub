@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "@/app/dashboard.module.css";
 
 type ProfileData = {
@@ -55,18 +55,23 @@ export function DashboardTopbar() {
   const [readIds, setReadIds] = useState<string[]>([]);
   const [darkMode, setDarkMode] = useState(false);
 
+  const loadNotifications = useCallback(async () => {
+    try {
+      const response = await fetch("/api/notifications", { cache: "no-store" });
+      const payload = await response.json();
+      if (response.ok && Array.isArray(payload?.items)) {
+        setNotifications(payload.items);
+      }
+    } catch {
+      // Mantém a última lista disponível quando a conexão oscilar.
+    }
+  }, []);
+
   useEffect(() => {
     void fetch("/api/profile", { cache: "no-store" })
       .then((response) => response.json())
       .then((payload) => {
         if (payload?.user) setProfile(payload);
-      })
-      .catch(() => undefined);
-
-    void fetch("/api/notifications", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload) => {
-        if (Array.isArray(payload?.items)) setNotifications(payload.items);
       })
       .catch(() => undefined);
 
@@ -83,6 +88,19 @@ export function DashboardTopbar() {
     setDarkMode(theme);
     document.documentElement.dataset.theme = theme ? "dark" : "light";
   }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    const interval = window.setInterval(() => void loadNotifications(), 30000);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void loadNotifications();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [loadNotifications]);
 
   useEffect(() => {
     setProfileOpen(false);

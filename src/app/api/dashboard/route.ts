@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 function startOfDay(date: Date): Date {
   const result = new Date(date);
@@ -71,6 +72,14 @@ export async function GET() {
       select: { userId: true },
     });
     const organizationUserIds = organizationUsers.map((item) => item.userId);
+    const permissions = await getRolePermissions(organizationId, membership.role);
+    const access = Object.fromEntries(
+      Object.entries(permissions).map(([module, permission]) => [
+        module,
+        permission.canView,
+      ]),
+    );
+    const canSeeImports = access.IMPORTS || access.MOTOR_EXCHANGE;
 
     const [
       activeClients,
@@ -89,6 +98,12 @@ export async function GET() {
       activeOnboardings,
       overdueOnboardings,
       onboardingTimeAggregate,
+      pendingOperations,
+      overdueOperations,
+      completedOperationsToday,
+      operationTimeAggregate,
+      newServiceEmails,
+      activeAudits,
     ] = await Promise.all([
       prisma.client.count({ where: { organizationId, active: true } }),
       prisma.client.count({
@@ -208,6 +223,65 @@ export async function GET() {
         },
         _sum: { seconds: true },
       }),
+      prisma.operationActivity.count({
+        where: {
+          organizationId,
+          deletedAt: null,
+          status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] },
+          ...(membership.role === "OPERATOR"
+            ? { responsibleId: user.id }
+            : {}),
+        },
+      }),
+      prisma.operationActivity.count({
+        where: {
+          organizationId,
+          deletedAt: null,
+          dueAt: { lt: now },
+          status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] },
+          ...(membership.role === "OPERATOR"
+            ? { responsibleId: user.id }
+            : {}),
+        },
+      }),
+      prisma.operationActivity.count({
+        where: {
+          organizationId,
+          deletedAt: null,
+          status: "COMPLETED",
+          completedAt: { gte: today },
+          ...(membership.role === "OPERATOR"
+            ? { responsibleId: user.id }
+            : {}),
+        },
+      }),
+      prisma.operationTimeEntry.aggregate({
+        where: {
+          startedAt: { gte: monthStart },
+          activity: { organizationId, deletedAt: null },
+          ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
+        },
+        _sum: { seconds: true },
+      }),
+      prisma.serviceTicket.count({
+        where: {
+          organizationId,
+          isSpam: false,
+          status: "NEW",
+          ...(membership.role === "OPERATOR"
+            ? { OR: [{ assignedToId: user.id }, { assignedToId: null }] }
+            : {}),
+        },
+      }),
+      prisma.audit.count({
+        where: {
+          organizationId,
+          status: { notIn: ["COMPLETED", "CANCELLED"] },
+          ...(membership.role === "OPERATOR"
+            ? { supervisorId: user.id }
+            : {}),
+        },
+      }),
     ]);
 
     const performanceUsers = await prisma.user.findMany({
@@ -228,22 +302,35 @@ export async function GET() {
         name: membership.user.name || membership.user.email.split("@")[0],
         role: membership.role,
       },
+      access,
       summary: {
-        activeClients,
-        newClientsThisMonth,
-        processingsToday,
-        pendingProcessings,
-        failedProcessings,
-        openTickets,
-        activeOnboardings,
-        overdueOnboardings,
-        onboardingHoursThisMonth: Math.round(((onboardingTimeAggregate._sum.seconds || 0) / 3600) * 100) / 100,
+        activeClients: access.CLIENTS ? activeClients : 0,
+        newClientsThisMonth: access.CLIENTS ? newClientsThisMonth : 0,
+        processingsToday: canSeeImports ? processingsToday : 0,
+        pendingProcessings: canSeeImports ? pendingProcessings : 0,
+        failedProcessings: canSeeImports ? failedProcessings : 0,
+        openTickets: access.SUPPORT ? openTickets : 0,
+        activeOnboardings: access.ONBOARDING ? activeOnboardings : 0,
+        overdueOnboardings: access.ONBOARDING ? overdueOnboardings : 0,
+        onboardingHoursThisMonth: access.ONBOARDING
+          ? Math.round(((onboardingTimeAggregate._sum.seconds || 0) / 3600) * 100) / 100
+          : 0,
+        pendingOperations: access.OPERATIONS ? pendingOperations : 0,
+        overdueOperations: access.OPERATIONS ? overdueOperations : 0,
+        completedOperationsToday: access.OPERATIONS
+          ? completedOperationsToday
+          : 0,
+        operationHoursThisMonth: access.OPERATIONS
+          ? Math.round(((operationTimeAggregate._sum.seconds || 0) / 3600) * 100) / 100
+          : 0,
+        newServiceEmails: access.SERVICE_CENTER ? newServiceEmails : 0,
+        activeAudits: access.AUDIT ? activeAudits : 0,
       },
-      processingsByModule: moduleGroups.map((item) => ({
+      processingsByModule: canSeeImports ? moduleGroups.map((item) => ({
         module: item.module,
         total: item._count._all,
-      })),
-      recentProcessings: recentProcessings.map((item) => ({
+      })) : [],
+      recentProcessings: canSeeImports ? recentProcessings.map((item) => ({
         id: item.id,
         module: item.module,
         status: item.status,
@@ -251,32 +338,32 @@ export async function GET() {
         clientName: item.client?.name ?? null,
         userName: item.user.name || item.user.email,
         createdAt: item.createdAt.toISOString(),
-      })),
-      recentActivities: recentActivities.map((item) => ({
+      })) : [],
+      recentActivities: access.HISTORY ? recentActivities.map((item) => ({
         id: item.id,
         action: item.action,
         entity: item.entity,
         entityId: item.entityId,
         userName: item.user.name || item.user.email,
         createdAt: item.createdAt.toISOString(),
-      })),
-      supportTickets: recentTickets.map((item) => ({
+      })) : [],
+      supportTickets: access.SUPPORT ? recentTickets.map((item) => ({
         id: item.id,
         subject: item.subject,
         priority: item.priority,
         status: item.status,
         userName: item.user.name || item.user.email,
         createdAt: item.createdAt.toISOString(),
-      })),
-      teamPerformance: teamGroups.map((item) => ({
+      })) : [],
+      teamPerformance: canSeeImports ? teamGroups.map((item) => ({
         userId: item.userId,
         name: userMap.get(item.userId) || "Usuário",
         total: item._count._all,
-      })),
+      })) : [],
       financialVolume: {
-        credits,
-        debits,
-        total: credits + debits,
+        credits: canSeeImports ? credits : 0,
+        debits: canSeeImports ? debits : 0,
+        total: canSeeImports ? credits + debits : 0,
       },
     });
   } catch (error) {

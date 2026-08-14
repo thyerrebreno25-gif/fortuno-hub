@@ -23,6 +23,12 @@ export interface DashboardSummary {
   activeOnboardings: number;
   overdueOnboardings: number;
   onboardingHoursThisMonth: number;
+  pendingOperations: number;
+  overdueOperations: number;
+  completedOperationsToday: number;
+  operationHoursThisMonth: number;
+  newServiceEmails: number;
+  activeAudits: number;
 }
 
 export interface DashboardProcessingByModule {
@@ -77,6 +83,7 @@ export interface DashboardData {
     name: string;
     role: string;
   };
+  access: Record<string, boolean>;
   summary: DashboardSummary;
   processingsByModule: DashboardProcessingByModule[];
   recentProcessings: DashboardRecentProcessing[];

@@ -126,6 +126,59 @@ export default function DashboardPage() {
         )
       : 100;
 
+  const hasImports = Boolean(data.access.IMPORTS || data.access.MOTOR_EXCHANGE);
+  const operationRate =
+    data.summary.pendingOperations + data.summary.completedOperationsToday > 0
+      ? Math.round(
+          (data.summary.completedOperationsToday /
+            (data.summary.pendingOperations +
+              data.summary.completedOperationsToday)) *
+            100,
+        )
+      : 100;
+  const onboardingRate = data.summary.activeOnboardings
+    ? Math.max(
+        0,
+        Math.round(
+          ((data.summary.activeOnboardings -
+            data.summary.overdueOnboardings) /
+            data.summary.activeOnboardings) *
+            100,
+        ),
+      )
+    : 100;
+
+  const metrics = [
+    ...(data.access.CLIENTS
+      ? [{ label: "Clientes ativos", value: data.summary.activeClients, detail: `+${data.summary.newClientsThisMonth} no mês` }]
+      : []),
+    ...(hasImports
+      ? [
+          { label: "Processamentos hoje", value: data.summary.processingsToday, detail: "Módulos liberados" },
+          { label: "Em processamento", value: data.summary.pendingProcessings, detail: "Aguardando revisão" },
+          { label: "Falhas", value: data.summary.failedProcessings, detail: "Requerem atenção", tone: data.summary.failedProcessings > 0 ? "red" as const : undefined },
+        ]
+      : []),
+    ...(data.access.OPERATIONS
+      ? [
+          { label: "Atividades pendentes", value: data.summary.pendingOperations, detail: `${data.summary.overdueOperations} de dias anteriores`, tone: data.summary.overdueOperations > 0 ? "red" as const : undefined },
+          { label: "Concluídas hoje", value: data.summary.completedOperationsToday, detail: `${data.summary.operationHoursThisMonth}h no mês` },
+        ]
+      : []),
+    ...(data.access.SERVICE_CENTER
+      ? [{ label: "Novos e-mails", value: data.summary.newServiceEmails, detail: "Aguardando triagem", tone: data.summary.newServiceEmails > 0 ? "red" as const : undefined }]
+      : []),
+    ...(data.access.ONBOARDING
+      ? [{ label: "Onboardings ativos", value: data.summary.activeOnboardings, detail: `${data.summary.overdueOnboardings} atrasado(s)` }]
+      : []),
+    ...(data.access.AUDIT
+      ? [{ label: "Auditorias abertas", value: data.summary.activeAudits, detail: "Em acompanhamento" }]
+      : []),
+    ...(data.access.SUPPORT
+      ? [{ label: "Suporte", value: data.summary.openTickets, detail: "Chamados abertos" }]
+      : []),
+  ];
+
   return (
     <Stack gap="lg" className={styles.page}>
       <Group
@@ -154,12 +207,14 @@ export default function DashboardPage() {
             Atualizar
           </Button>
 
-          <Button
-            leftSection={<IconUpload size={16} />}
-            onClick={() => router.push("/extratos")}
-          >
-            Novo processamento
-          </Button>
+          {hasImports && (
+            <Button
+              leftSection={<IconUpload size={16} />}
+              onClick={() => router.push("/extratos")}
+            >
+              Novo processamento
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -171,51 +226,72 @@ export default function DashboardPage() {
 
       <Paper withBorder radius="lg" p={0} style={{ overflow: "hidden" }}>
         <SimpleGrid
-          cols={{ base: 2, md: 3, xl: 6 }}
+          cols={{ base: 1, sm: 2, md: 3, xl: Math.min(6, Math.max(1, metrics.length)) }}
           spacing={0}
           className={styles.metricsGrid}
         >
-          <Metric
-            label="Clientes ativos"
-            value={data.summary.activeClients}
-            detail={`+${data.summary.newClientsThisMonth} no mês`}
-          />
-          <Metric
-            label="Processamentos hoje"
-            value={data.summary.processingsToday}
-            detail="Todos os módulos"
-            bordered
-          />
-          <Metric
-            label="Em andamento"
-            value={data.summary.pendingProcessings}
-            detail="Aguardando revisão"
-            bordered
-          />
-          <Metric
-            label="Falhas"
-            value={data.summary.failedProcessings}
-            detail="Com erro"
-            bordered
-            tone={data.summary.failedProcessings > 0 ? "red" : undefined}
-          />
-          <Metric
-            label="Suporte"
-            value={data.summary.openTickets}
-            detail="Chamados abertos"
-            bordered
-          />
-          <Metric
-            label="Taxa operacional"
-            value={`${successRate}%`}
-            detail="Processamentos de hoje"
-            bordered
-            tone={successRate >= 90 ? "green" : undefined}
-          />
+          {metrics.map((metric, index) => (
+            <Metric
+              key={metric.label}
+              label={metric.label}
+              value={metric.value}
+              detail={metric.detail}
+              bordered={index > 0}
+              tone={metric.tone}
+            />
+          ))}
         </SimpleGrid>
       </Paper>
 
+      <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
+        {hasImports && (
+          <ModuleInsight
+            title="Processamentos"
+            description="Taxa de sucesso dos arquivos processados hoje."
+            value={`${successRate}%`}
+            detail={`${data.summary.failedProcessings} falha(s)`}
+            progress={successRate}
+            onOpen={() => router.push("/historico")}
+          />
+        )}
+        {data.access.OPERATIONS && (
+          <ModuleInsight
+            title="Operação diária"
+            description="Relação entre atividades concluídas hoje e a carga pendente."
+            value={`${operationRate}%`}
+            detail={`${data.summary.overdueOperations} atrasada(s)`}
+            progress={operationRate}
+            onOpen={() => router.push("/operacoes")}
+            warning={data.summary.overdueOperations > 0}
+          />
+        )}
+        {data.access.ONBOARDING && (
+          <ModuleInsight
+            title="Implantações no prazo"
+            description="Saúde dos onboardings ativos da sua operação."
+            value={`${onboardingRate}%`}
+            detail={`${data.summary.onboardingHoursThisMonth}h apontadas`}
+            progress={onboardingRate}
+            onOpen={() => router.push("/onboarding")}
+            warning={data.summary.overdueOnboardings > 0}
+          />
+        )}
+        {data.access.SERVICE_CENTER && (
+          <ModuleInsight
+            title="Central de Atendimento"
+            description="Novos e-mails aguardando leitura ou direcionamento."
+            value={String(data.summary.newServiceEmails)}
+            detail="novos e-mails"
+            progress={data.summary.newServiceEmails > 0 ? 35 : 100}
+            onOpen={() => router.push("/atendimento")}
+            warning={data.summary.newServiceEmails > 0}
+          />
+        )}
+      </SimpleGrid>
+
+      {(hasImports || data.access.ONBOARDING) && (
       <SimpleGrid cols={{ base: 1, xl: 3 }} className={styles.primaryGrid}>
+        {hasImports && (
         <Paper
           withBorder
           radius="lg"
@@ -290,8 +366,10 @@ export default function DashboardPage() {
             )}
           </Stack>
         </Paper>
+        )}
 
         <Stack gap="lg">
+          {hasImports && (
           <Paper withBorder radius="lg" p="lg">
             <Stack gap="md">
               <Stack gap={1}>
@@ -328,7 +406,9 @@ export default function DashboardPage() {
               </Group>
             </Stack>
           </Paper>
+          )}
 
+          {data.access.ONBOARDING && (
           <Paper withBorder radius="lg" p="lg">
             <Stack gap="md">
               <Group justify="space-between">
@@ -367,9 +447,12 @@ export default function DashboardPage() {
               </Button>
             </Stack>
           </Paper>
+          )}
         </Stack>
       </SimpleGrid>
+      )}
 
+      {hasImports && (
       <SimpleGrid cols={{ base: 1, xl: 2 }} className={styles.twoColumnGrid}>
         <Paper withBorder radius="lg" p="lg">
           <Stack gap="md">
@@ -464,8 +547,11 @@ export default function DashboardPage() {
           </Stack>
         </Paper>
       </SimpleGrid>
+      )}
 
+      {(data.access.HISTORY || data.access.SUPPORT) && (
       <SimpleGrid cols={{ base: 1, xl: 2 }} className={styles.twoColumnGrid}>
+        {data.access.HISTORY && (
         <Paper withBorder radius="lg" p="lg">
           <Stack gap="md">
             <Title order={4}>Atividades recentes</Title>
@@ -505,7 +591,9 @@ export default function DashboardPage() {
             )}
           </Stack>
         </Paper>
+        )}
 
+        {data.access.SUPPORT && (
         <Paper withBorder radius="lg" p="lg">
           <Stack gap="md">
             <Group justify="space-between">
@@ -567,7 +655,9 @@ export default function DashboardPage() {
             )}
           </Stack>
         </Paper>
+        )}
       </SimpleGrid>
+      )}
     </Stack>
   );
 }
@@ -602,5 +692,51 @@ function Metric({
         {detail}
       </Text>
     </Stack>
+  );
+}
+
+function ModuleInsight({
+  title,
+  description,
+  value,
+  detail,
+  progress,
+  warning = false,
+  onOpen,
+}: {
+  title: string;
+  description: string;
+  value: string;
+  detail: string;
+  progress: number;
+  warning?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <Paper
+      withBorder
+      radius="lg"
+      p="lg"
+      className={styles.insightCard}
+      data-warning={warning || undefined}
+      onClick={onOpen}
+    >
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Stack gap={2}>
+            <Text fw={750}>{title}</Text>
+            <Text size="xs" c="dimmed">{description}</Text>
+          </Stack>
+          <Text fw={800} fz={27} c={warning ? "red" : "blue"}>{value}</Text>
+        </Group>
+        <div className={styles.insightTrack}>
+          <span style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+        </div>
+        <Group justify="space-between">
+          <Text size="xs" c="dimmed">{detail}</Text>
+          <Text size="xs" fw={700} c="blue">Abrir módulo →</Text>
+        </Group>
+      </Stack>
+    </Paper>
   );
 }

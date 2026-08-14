@@ -96,6 +96,9 @@ type ClientsResponse = {
     hasPreviousPage: boolean;
     hasNextPage: boolean;
   };
+  permission: {
+    canDelete: boolean;
+  };
 };
 
 type StatusFilter = "active" | "inactive" | "all";
@@ -289,6 +292,8 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [canDeleteClients, setCanDeleteClients] = useState(false);
+  const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
 
   const [pagination, setPagination] = useState({
     page: 1,
@@ -380,6 +385,7 @@ export default function ClientesPage() {
 
         setClients(responseData.data);
         setPagination(responseData.pagination);
+        setCanDeleteClients(Boolean(responseData.permission?.canDelete));
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -738,6 +744,44 @@ export default function ClientesPage() {
     }
   }
 
+  async function deleteClient(client: Client) {
+    const confirmed = window.confirm(
+      `Excluir ${client.name} da operação ativa?\n\nO cliente deixará de aparecer na lista de ativos e suas rotinas futuras serão interrompidas. Importações, atividades e históricos já registrados serão preservados.`,
+    );
+
+    if (!confirmed) return;
+
+    setDeletingClientId(client.id);
+    setListError("");
+
+    try {
+      const response = await fetch(`/api/clients/${client.id}`, {
+        method: "DELETE",
+      });
+      const result = (await response.json()) as {
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error || "Não foi possível excluir o cliente.");
+      }
+
+      notifications.show({
+        color: "green",
+        title: "Cliente excluído",
+        message: result.message || "O cliente foi retirado da operação ativa.",
+      });
+      setReloadKey((current) => current + 1);
+    } catch (error) {
+      setListError(
+        error instanceof Error ? error.message : "Não foi possível excluir o cliente.",
+      );
+    } finally {
+      setDeletingClientId(null);
+    }
+  }
+
   return (
     <>
       <Stack gap="xl">
@@ -1010,15 +1054,30 @@ export default function ClientesPage() {
                           </Badge>
                         </Table.Td>
                         <Table.Td ta="right">
-                          <Button
-                            component={Link}
-                            href={`/clientes/${client.id}` as Route}
-                            variant="light"
-                            size="xs"
-                            leftSection={<IconPencil size={15} />}
-                          >
-                            Editar
-                          </Button>
+                          <Group gap={6} justify="flex-end" wrap="nowrap">
+                            <Button
+                              component={Link}
+                              href={`/clientes/${client.id}` as Route}
+                              variant="light"
+                              size="xs"
+                              leftSection={<IconPencil size={15} />}
+                            >
+                              Editar
+                            </Button>
+                            {canDeleteClients && client.active && (
+                              <ActionIcon
+                                color="red"
+                                variant="light"
+                                size={30}
+                                loading={deletingClientId === client.id}
+                                onClick={() => void deleteClient(client)}
+                                aria-label={`Excluir cliente ${client.name}`}
+                                title="Excluir cliente"
+                              >
+                                <IconTrash size={15} />
+                              </ActionIcon>
+                            )}
+                          </Group>
                         </Table.Td>
                       </Table.Tr>
                       );
