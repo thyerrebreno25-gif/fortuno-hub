@@ -48,6 +48,55 @@ export default function ActivateAccessPage() {
 
       try {
         const currentUrl = new URL(window.location.href);
+        const tokenHash =
+          currentUrl.searchParams.get("token_hash");
+        const tokenType =
+          currentUrl.searchParams.get("type");
+
+        if (tokenHash) {
+          if (
+            tokenType !== "invite" &&
+            tokenType !== "recovery"
+          ) {
+            if (active) {
+              setErrorMessage(
+                "Este convite possui um formato inválido. Solicite um novo convite ao administrador.",
+              );
+              setState("invalid");
+            }
+            return;
+          }
+
+          const { error } =
+            await supabase.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: tokenType,
+            });
+
+          if (error) {
+            if (active) {
+              setErrorMessage(
+                "Este convite é inválido ou expirou. Solicite um novo convite ao administrador.",
+              );
+              setState("invalid");
+            }
+            return;
+          }
+
+          currentUrl.searchParams.delete("token_hash");
+          currentUrl.searchParams.delete("type");
+          window.history.replaceState(
+            {},
+            document.title,
+            `${currentUrl.pathname}${currentUrl.search}`,
+          );
+
+          if (active) {
+            setState("ready");
+          }
+          return;
+        }
+
         const code = currentUrl.searchParams.get("code");
 
         if (code) {

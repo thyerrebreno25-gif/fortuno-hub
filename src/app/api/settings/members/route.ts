@@ -30,6 +30,36 @@ function getAppUrl(): string {
     .replace(/\/+$/, "");
 }
 
+type GeneratedLinkProperties = {
+  action_link?: string;
+  hashed_token?: string;
+  verification_type?: string;
+};
+
+function buildActivationUrl(
+  appUrl: string,
+  properties?: GeneratedLinkProperties | null,
+): string {
+  const actionLink = properties?.action_link ?? "";
+  const tokenHash = properties?.hashed_token ?? "";
+  const type = properties?.verification_type;
+
+  if (
+    !appUrl ||
+    !tokenHash ||
+    (type !== "invite" && type !== "recovery")
+  ) {
+    return actionLink;
+  }
+
+  const params = new URLSearchParams({
+    token_hash: tokenHash,
+    type,
+  });
+
+  return `${appUrl}/ativar-acesso?${params.toString()}`;
+}
+
 export async function POST(request: Request) {
   try {
     const member = await getSettingsMember();
@@ -153,8 +183,10 @@ export async function POST(request: Request) {
     });
 
     let authUser = inviteData?.user ?? null;
-    let actionUrl =
-      inviteData?.properties?.action_link ?? "";
+    let actionUrl = buildActivationUrl(
+      appUrl,
+      inviteData?.properties,
+    );
 
     if (inviteError) {
       const {
@@ -197,8 +229,10 @@ export async function POST(request: Request) {
 
       if (!recoveryError) {
         actionUrl =
-          recoveryData?.properties?.action_link ??
-          actionUrl;
+          buildActivationUrl(
+            appUrl,
+            recoveryData?.properties,
+          ) || actionUrl;
       }
     }
 
