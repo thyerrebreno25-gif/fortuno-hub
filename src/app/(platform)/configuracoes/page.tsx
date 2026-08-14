@@ -718,27 +718,29 @@ export default function ConfiguracoesPage() {
                                ? `Último acesso: ${formatDate(member.lastSignInAt)}`
                                : accessStatusData[member.accessStatus].detail}
                            </Text>
+                           {member.accessStatus === "PENDING" && (
+                             <Button
+                               variant="light"
+                               color="orange"
+                               size="compact-xs"
+                               w="fit-content"
+                               mt={4}
+                               leftSection={<IconMailForward size={14} />}
+                               loading={resendingInviteId === member.id}
+                               onClick={() => void resendMemberInvite(member)}
+                               disabled={
+                                 !data.currentUser.canAdminister ||
+                                 !data.integrationStatus.userInvites
+                               }
+                             >
+                               Reenviar convite
+                             </Button>
+                           )}
                          </Stack>
                        </Table.Td>
                        <Table.Td>{formatDate(member.createdAt)}</Table.Td>
                       <Table.Td>
                         <Group justify="flex-end" gap={4}>
-                          {member.accessStatus === "PENDING" && (
-                            <ActionIcon
-                              variant="subtle"
-                              color="orange"
-                              title="Reenviar convite"
-                              aria-label={`Reenviar convite para ${member.user.name}`}
-                              loading={resendingInviteId === member.id}
-                              onClick={() => void resendMemberInvite(member)}
-                              disabled={
-                                !data.currentUser.canAdminister ||
-                                !data.integrationStatus.userInvites
-                              }
-                            >
-                              <IconMailForward size={16} />
-                            </ActionIcon>
-                          )}
                           <ActionIcon
                             variant="subtle"
                             color="blue"
