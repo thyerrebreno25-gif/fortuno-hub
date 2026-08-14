@@ -29,7 +29,7 @@
 
 .layout {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: 225px minmax(0, 1fr);
   min-height: 650px;
   border: 1px solid #dfe6ee;
   border-radius: 12px;
@@ -50,6 +50,24 @@
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
+}
+
+.teamTitle {
+  margin-top: 8px;
+  border-top: 1px solid var(--mantine-color-gray-2);
+}
+
+.teamButton :global(.mantine-Button-label) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.memberFilterBadge {
+  max-width: 210px;
+  flex: 0 0 auto;
 }
 
 .list {

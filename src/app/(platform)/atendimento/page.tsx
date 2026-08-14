@@ -81,6 +81,7 @@ export default function AtendimentoPage() {
   const [tickets, setTickets] = useState<Any[]>([]);
   const [stats, setStats] = useState<Any>({});
   const [view, setView] = useState("GENERAL");
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Any | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -115,6 +116,7 @@ export default function AtendimentoPage() {
   const loadTickets = useCallback(async () => {
     const query = new URLSearchParams({ view });
     if (search.trim()) query.set("search", search.trim());
+    if (selectedMemberId) query.set("assignedToId", selectedMemberId);
 
     const response = await fetch(
       `/api/atendimento?${query.toString()}`,
@@ -124,7 +126,7 @@ export default function AtendimentoPage() {
     if (!response.ok) throw new Error(body.error || "Erro ao carregar chamados.");
     setTickets(body.tickets || []);
     setStats(body.stats || {});
-  }, [view, search]);
+  }, [view, search, selectedMemberId]);
 
   useEffect(() => {
     let active = true;
@@ -249,6 +251,14 @@ export default function AtendimentoPage() {
     [bootstrap],
   );
 
+  const selectedTeamMember = useMemo(
+    () =>
+      (bootstrap?.members || []).find(
+        (member: Any) => member.id === selectedMemberId,
+      ) || null,
+    [bootstrap, selectedMemberId],
+  );
+
   if (loading) {
     return (
       <Group justify="center" py={80}>
@@ -328,26 +338,87 @@ export default function AtendimentoPage() {
                     {stats[stat] ?? 0}
                   </Badge>
                 }
-                onClick={() => {
-                  setView(value);
-                  setSelected(null);
-                  setSelectedId(null);
+                 onClick={() => {
+                   setView(value);
+                   setSelectedMemberId(null);
+                   setSelected(null);
+                   setSelectedId(null);
                 }}
               >
                 {label}
               </Button>
-            ))}
-          </Stack>
+             ))}
+
+             {bootstrap.currentUser?.canManage && (
+               <>
+                 <Text
+                   size="xs"
+                   fw={800}
+                   c="dimmed"
+                   tt="uppercase"
+                   px={8}
+                   pt="md"
+                   pb={6}
+                   className={styles.teamTitle}
+                 >
+                   Equipe
+                 </Text>
+                 <ScrollArea.Autosize mah={280} type="auto">
+                   <Stack gap={4}>
+                     {(bootstrap.members || []).map((member: Any) => (
+                       <Button
+                         key={member.id}
+                         className={`${styles.viewButton} ${styles.teamButton}`}
+                         variant={selectedMemberId === member.id ? "light" : "subtle"}
+                         justify="space-between"
+                         fullWidth
+                         leftSection={<IconUser size={15} />}
+                         rightSection={
+                           <Badge
+                             size="sm"
+                             variant={selectedMemberId === member.id ? "filled" : "light"}
+                           >
+                             {stats.byMember?.[member.id] ?? 0}
+                           </Badge>
+                         }
+                         title={member.name || member.email}
+                         onClick={() => {
+                           setView("TEAM");
+                           setSelectedMemberId(member.id);
+                           setSelected(null);
+                           setSelectedId(null);
+                         }}
+                       >
+                         {member.name || member.email}
+                       </Button>
+                     ))}
+                   </Stack>
+                 </ScrollArea.Autosize>
+               </>
+             )}
+           </Stack>
         </aside>
 
         <section className={styles.list}>
           <div className={styles.searchBar}>
-            <TextInput
-              placeholder="Buscar cliente, assunto ou remetente..."
-              leftSection={<IconSearch size={16} />}
-              value={search}
-              onChange={(event) => setSearch(event.currentTarget.value)}
-            />
+            <Group gap="sm" wrap="nowrap">
+              {selectedTeamMember && (
+                <Badge size="lg" variant="light" className={styles.memberFilterBadge}>
+                  {selectedTeamMember.name || selectedTeamMember.email}
+                </Badge>
+              )}
+              <TextInput
+                placeholder={
+                  selectedTeamMember
+                    ? `Buscar nos e-mails de ${selectedTeamMember.name || selectedTeamMember.email}...`
+                    : "Buscar cliente, assunto ou remetente..."
+                }
+                leftSection={<IconSearch size={16} />}
+                value={search}
+                onChange={(event) => setSearch(event.currentTarget.value)}
+                style={{ flex: 1 }}
+              />
+            </Group>
           </div>
 
           <ScrollArea h={610}>

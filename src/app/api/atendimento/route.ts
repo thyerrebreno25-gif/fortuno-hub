@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getServiceCenterMember,
   getServiceCenterPermission,
+  SERVICE_CENTER_MANAGER_ROLES,
 } from "@/modules/atendimento/auth";
 
 const WAITING = ["WAITING_CUSTOMER", "WAITING_INTERNAL"] as const;
@@ -113,6 +114,16 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const view = url.searchParams.get("view") || "GENERAL";
   const search = url.searchParams.get("search")?.trim() || "";
+  const assignedToId = url.searchParams.get("assignedToId")?.trim() || "";
+  const canManageTeam =
+    permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role);
+
+  if (assignedToId && !canManageTeam) {
+    return NextResponse.json(
+      { error: "Seu perfil não pode consultar a caixa de outro colaborador." },
+      { status: 403 },
+    );
+  }
 
   const where: any = {
     organizationId: member.organizationId,
@@ -134,6 +145,11 @@ export async function GET(request: Request) {
     where.status = { not: "SPAM" };
   }
 
+  if (assignedToId) {
+    where.assignedToId = assignedToId;
+    where.status = { not: "SPAM" };
+  }
+
   if (search) {
     where.OR = [
       { subject: { contains: search, mode: "insensitive" } },
@@ -152,7 +168,7 @@ export async function GET(request: Request) {
 
   const common = { organizationId: member.organizationId };
 
-  const [tickets, general, mine, unassigned, waiting, resolved, spam] =
+  const [tickets, general, mine, unassigned, waiting, resolved, spam, teamCounts] =
     await Promise.all([
       prisma.serviceTicket.findMany({
         where,
@@ -204,11 +220,28 @@ export async function GET(request: Request) {
       prisma.serviceTicket.count({
         where: { ...common, status: "SPAM" },
       }),
+      canManageTeam
+        ? prisma.serviceTicket.groupBy({
+            by: ["assignedToId"],
+            where: {
+              ...common,
+              assignedToId: { not: null },
+              status: { not: "SPAM" },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
     ]);
+
+  const byMember = Object.fromEntries(
+    teamCounts
+      .filter((item) => item.assignedToId)
+      .map((item) => [item.assignedToId as string, item._count._all]),
+  );
 
   return NextResponse.json({
     tickets,
-    stats: { general, mine, unassigned, waiting, resolved, spam },
+    stats: { general, mine, unassigned, waiting, resolved, spam, byMember },
   });
 }
 

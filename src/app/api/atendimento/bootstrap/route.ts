@@ -63,6 +63,11 @@ export async function GET() {
     },
     permission,
     clients,
-    members: members.map((row) => row.user),
+    members: members
+      .filter((row) => row.role !== "CLIENT")
+      .map((row) => ({
+        ...row.user,
+        role: row.role,
+      })),
   });
 }
