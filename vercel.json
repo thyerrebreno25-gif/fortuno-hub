@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/atendimento-retention",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/member-invite-reminders",
+      "schedule": "0 13 * * *"
     }
   ]
 }

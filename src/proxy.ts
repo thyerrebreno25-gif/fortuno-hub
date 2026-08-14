@@ -6,6 +6,7 @@ const PUBLIC_ROUTES = [
   "/ativar-acesso",
   "/api/atendimento/gmail/webhook",
   "/api/cron/atendimento-retention",
+  "/api/cron/member-invite-reminders",
 ];
 
 const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout"];

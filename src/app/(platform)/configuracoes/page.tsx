@@ -186,6 +186,9 @@ export default function ConfiguracoesPage() {
   const [newPassword, setNewPassword] = useState("");
   const [resettingMfaId, setResettingMfaId] = useState<string | null>(null);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
+  const [inviteToResend, setInviteToResend] = useState<
+    SettingsData["members"][number] | null
+  >(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -413,12 +416,6 @@ export default function ConfiguracoesPage() {
   async function resendMemberInvite(
     member: SettingsData["members"][number],
   ) {
-    const confirmed = window.confirm(
-      `Reenviar um novo convite para ${member.user.email}?`,
-    );
-
-    if (!confirmed) return;
-
     setResendingInviteId(member.id);
     setError("");
     setSuccess("");
@@ -438,6 +435,7 @@ export default function ConfiguracoesPage() {
       }
 
       setSuccess(payload.message || "Novo convite enviado.");
+      setInviteToResend(null);
       await load();
     } catch (cause) {
       setError(
@@ -648,7 +646,8 @@ export default function ConfiguracoesPage() {
               <Stack gap={1}>
                 <Title order={4}>Equipe da organização</Title>
                 <Text size="sm" c="dimmed">
-                  Usuários reais vinculados ao ambiente.
+                  Usuários vinculados ao ambiente. Convites pendentes recebem
+                  até três lembretes automáticos, com intervalo de 24 horas.
                 </Text>
               </Stack>
 
@@ -727,7 +726,7 @@ export default function ConfiguracoesPage() {
                                mt={4}
                                leftSection={<IconMailForward size={14} />}
                                loading={resendingInviteId === member.id}
-                               onClick={() => void resendMemberInvite(member)}
+                               onClick={() => setInviteToResend(member)}
                                disabled={
                                  !data.currentUser.canAdminister ||
                                  !data.integrationStatus.userInvites
@@ -872,6 +871,69 @@ export default function ConfiguracoesPage() {
           </Paper>
         </Tabs.Panel>
       </Tabs>
+
+      <Modal
+        opened={Boolean(inviteToResend)}
+        onClose={() => {
+          if (!resendingInviteId) setInviteToResend(null);
+        }}
+        title="Reenviar convite"
+        centered
+        radius="lg"
+        closeOnClickOutside={!resendingInviteId}
+        closeOnEscape={!resendingInviteId}
+      >
+        <Stack gap="md">
+          <Alert
+            color="orange"
+            variant="light"
+            title="Gerar um novo link de ativação?"
+            icon={<IconMailForward size={19} />}
+          >
+            O colaborador receberá um novo e-mail para concluir a criação da
+            senha e configurar o autenticador.
+          </Alert>
+
+          {inviteToResend && (
+            <Paper withBorder radius="md" p="md">
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                Colaborador
+              </Text>
+              <Text fw={700} mt={4}>
+                {inviteToResend.user.name}
+              </Text>
+              <Text size="sm" c="dimmed">
+                {inviteToResend.user.email}
+              </Text>
+            </Paper>
+          )}
+
+          <Text size="xs" c="dimmed">
+            Se o acesso continuar pendente, o FortunoHub também enviará até
+            três lembretes automáticos, respeitando o intervalo de 24 horas.
+          </Text>
+
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setInviteToResend(null)}
+              disabled={Boolean(resendingInviteId)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              color="orange"
+              leftSection={<IconMailForward size={16} />}
+              loading={Boolean(resendingInviteId)}
+              onClick={() => {
+                if (inviteToResend) void resendMemberInvite(inviteToResend);
+              }}
+            >
+              Sim, reenviar convite
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Modal
         opened={memberModal}

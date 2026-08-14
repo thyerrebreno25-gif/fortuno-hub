@@ -5,6 +5,7 @@ type MemberInviteEmailInput = {
   name: string;
   role: MemberRole;
   actionUrl: string;
+  reminder?: boolean;
 };
 
 export type MemberInviteEmailResult =
@@ -46,7 +47,7 @@ function buildHtml(input: MemberInviteEmailInput): string {
   </head>
   <body style="margin:0;padding:0;background:#f2f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-      Seu acesso ao Fortuno Hub foi criado.
+      ${input.reminder ? "Lembrete para ativar seu acesso ao Fortuno Hub." : "Seu acesso ao Fortuno Hub foi criado."}
     </div>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f9;">
@@ -68,13 +69,13 @@ function buildHtml(input: MemberInviteEmailInput): string {
             <tr>
               <td align="center" style="padding:30px 32px 10px;">
                 <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800;letter-spacing:.8px;">
-                  ACESSO LIBERADO
+                  ${input.reminder ? "LEMBRETE DE ACESSO" : "ACESSO LIBERADO"}
                 </div>
                 <h1 style="margin:14px 0 8px;font-size:27px;line-height:35px;color:#102a56;">
-                  Bem-vindo(a) ao Fortuno Hub
+                  ${input.reminder ? "Seu acesso ainda está pendente" : "Bem-vindo(a) ao Fortuno Hub"}
                 </h1>
                 <p style="margin:0;font-size:14px;line-height:22px;color:#64748b;">
-                  Seu usuário foi criado e já está vinculado ao ambiente corporativo.
+                  ${input.reminder ? "Geramos um novo link para você concluir a ativação." : "Seu usuário foi criado e já está vinculado ao ambiente corporativo."}
                 </p>
               </td>
             </tr>
@@ -86,7 +87,7 @@ function buildHtml(input: MemberInviteEmailInput): string {
                 </p>
 
                 <p style="margin:0 0 22px;font-size:15px;line-height:24px;color:#334155;">
-                  Você recebeu acesso ao <strong>Fortuno Hub</strong>. Para concluir seu cadastro e acessar o sistema, utilize o botão abaixo.
+                  ${input.reminder ? "Seu convite anterior ainda não foi concluído. Para ativar seu acesso ao <strong>Fortuno Hub</strong>, utilize o novo link abaixo." : "Você recebeu acesso ao <strong>Fortuno Hub</strong>. Para concluir seu cadastro e acessar o sistema, utilize o botão abaixo."}
                 </p>
 
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-collapse:separate;">
@@ -163,7 +164,7 @@ FORTUNO HUB
 
 Olá, ${input.name}.
 
-Seu acesso ao Fortuno Hub foi criado.
+${input.reminder ? "Este é um lembrete para ativar seu acesso ao Fortuno Hub." : "Seu acesso ao Fortuno Hub foi criado."}
 
 E-mail: ${input.to}
 Perfil: ${roleLabels[input.role]}
@@ -213,12 +214,19 @@ export async function sendMemberInviteEmail(
       body: JSON.stringify({
         from,
         to: [input.to],
-        subject: "Seu acesso ao Fortuno Hub está pronto",
+        subject: input.reminder
+          ? "Lembrete: ative seu acesso ao Fortuno Hub"
+          : "Seu acesso ao Fortuno Hub está pronto",
         html: buildHtml(input),
         text: buildText(input),
         tags: [
           { name: "module", value: "settings" },
-          { name: "event", value: "member_invited" },
+          {
+            name: "event",
+            value: input.reminder
+              ? "member_invite_resent"
+              : "member_invited",
+          },
           { name: "role", value: input.role.toLowerCase() },
         ],
       }),

@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendMemberInviteEmail } from "@/modules/settings/email/member-invite-email";
 import {
-  buildMemberActivationUrl,
-  getMemberInviteAppUrl,
-  getMemberInviteRedirectTo,
-} from "@/modules/settings/server/member-invite-link";
+  deliverMemberInvite,
+  isMemberAccessActivated,
+  type MemberInviteRole,
+} from "@/modules/settings/server/member-invite-delivery";
 import {
   getSettingsMember,
   SETTINGS_ADMIN_ROLES,
@@ -15,8 +14,6 @@ import {
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
-
-type InviteRole = "ADMIN" | "MANAGER" | "OPERATOR" | "CLIENT";
 
 export async function POST(_request: Request, context: RouteContext) {
   try {
@@ -86,83 +83,25 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
-    const accessAlreadyActivated = Boolean(
-      authUser.email_confirmed_at ||
-        authUser.confirmed_at ||
-        authUser.last_sign_in_at ||
-        authUser.factors?.some(
-          (factor) =>
-            factor.factor_type === "totp" && factor.status === "verified",
-        ),
-    );
-
-    if (accessAlreadyActivated) {
+    if (isMemberAccessActivated(authUser)) {
       return NextResponse.json(
         { error: "Este colaborador já ativou o acesso." },
         { status: 409 },
       );
     }
 
-    const appUrl = getMemberInviteAppUrl();
-    const redirectTo = getMemberInviteRedirectTo(appUrl);
     const email = target.user.email.trim().toLowerCase();
     const name = target.user.name || target.user.email;
-
-    const inviteResult = await admin.auth.admin.generateLink({
-      type: "invite",
+    const delivery = await deliverMemberInvite(admin, {
       email,
-      options: {
-        data: { name },
-        ...(redirectTo ? { redirectTo } : {}),
-      },
-    });
-
-    let linkType: "invite" | "recovery" = "invite";
-    let actionUrl = buildMemberActivationUrl(
-      appUrl,
-      inviteResult.data?.properties,
-    );
-
-    if (inviteResult.error || !actionUrl) {
-      const recoveryResult = await admin.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        options: {
-          ...(redirectTo ? { redirectTo } : {}),
-        },
-      });
-
-      if (recoveryResult.error) {
-        return NextResponse.json(
-          { error: recoveryResult.error.message },
-          { status: 400 },
-        );
-      }
-
-      linkType = "recovery";
-      actionUrl = buildMemberActivationUrl(
-        appUrl,
-        recoveryResult.data?.properties,
-      );
-    }
-
-    if (!actionUrl) {
-      return NextResponse.json(
-        { error: "Não foi possível gerar um novo link de ativação." },
-        { status: 500 },
-      );
-    }
-
-    const emailResult = await sendMemberInviteEmail({
-      to: email,
       name,
-      role: target.role as InviteRole,
-      actionUrl,
+      role: target.role as MemberInviteRole,
+      reminder: true,
     });
 
-    if (!emailResult.sent) {
+    if (!delivery.sent) {
       return NextResponse.json(
-        { error: `O novo link foi gerado, mas o e-mail falhou: ${emailResult.reason}` },
+        { error: `Não foi possível enviar o novo convite: ${delivery.reason}` },
         { status: 502 },
       );
     }
@@ -178,8 +117,8 @@ export async function POST(_request: Request, context: RouteContext) {
           email,
           role: target.role,
           delivery: "RESEND_CUSTOM_INVITE",
-          linkType,
-          emailId: emailResult.id || null,
+          linkType: delivery.linkType,
+          emailId: delivery.emailId || null,
         },
       },
     });
