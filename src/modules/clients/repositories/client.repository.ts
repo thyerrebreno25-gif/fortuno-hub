@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import type {
   CreateClientInput,
   ListClientsInput,
@@ -53,9 +54,20 @@ export const clientRepository = {
   async list(input: ListClientsInput) {
   const skip = (input.page - 1) * input.pageSize;
   const normalizedSearch = input.search ? normalizeText(input.search) : "";
-  const documentSearch = input.search?.replace(/\D/g, "") ?? "";
+  const documentSearch = input.search && /^[\d.\-/\s]+$/.test(input.search)
+    ? input.search.replace(/\D/g, "")
+    : "";
+  const documentMatches = documentSearch
+    ? await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "Client"
+        WHERE "organizationId" = ${input.organizationId}
+          AND regexp_replace(COALESCE("document", ''), '[^0-9]', '', 'g')
+            LIKE ${`%${documentSearch}%`}
+      `
+    : [];
 
-  const where = {
+  const where: Prisma.ClientWhereInput = {
     organizationId: input.organizationId,
 
     ...(input.status === "active"
@@ -68,16 +80,21 @@ export const clientRepository = {
       ? {
           OR: [
             {
-              normalizedName: {
-                contains: normalizedSearch,
+              name: {
+                contains: input.search.trim(),
+                mode: "insensitive",
               },
             },
-            ...(documentSearch
+            {
+              normalizedName: {
+                contains: normalizedSearch,
+                mode: "insensitive",
+              },
+            },
+            ...(documentMatches.length
               ? [
                   {
-                    document: {
-                      contains: documentSearch,
-                    },
+                    id: { in: documentMatches.map((item) => item.id) },
                   },
                 ]
               : []),

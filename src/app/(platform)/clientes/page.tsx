@@ -288,6 +288,7 @@ export default function ClientesPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] =
     useState<StatusFilter>("active");
+  const [listStateReady, setListStateReady] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -335,15 +336,55 @@ export default function ClientesPage() {
   const [serviceAliases, setServiceAliases] = useState("");
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedPage = Number.parseInt(params.get("page") || "1", 10);
+    const requestedSearch = params.get("search")?.trim() || "";
+    const requestedStatus = params.get("status");
+
+    setPage(Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1);
+    setSearchInput(requestedSearch);
+    setSearch(requestedSearch);
+    setStatus(
+      requestedStatus === "inactive" || requestedStatus === "all"
+        ? requestedStatus
+        : "active",
+    );
+    setListStateReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!listStateReady) return;
+
     const timeout = window.setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
+      const nextSearch = searchInput.trim();
+      if (nextSearch !== search) {
+        setSearch(nextSearch);
+        setPage(1);
+      }
     }, 400);
 
     return () => window.clearTimeout(timeout);
-  }, [searchInput]);
+  }, [listStateReady, search, searchInput]);
 
   useEffect(() => {
+    if (!listStateReady) return;
+
+    const params = new URLSearchParams({
+      page: String(page),
+      status,
+    });
+    if (search) params.set("search", search);
+
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `/clientes?${params.toString()}`,
+    );
+  }, [listStateReady, page, search, status]);
+
+  useEffect(() => {
+    if (!listStateReady) return;
+
     const controller = new AbortController();
 
     async function loadClients() {
@@ -410,7 +451,13 @@ export default function ClientesPage() {
     void loadClients();
 
     return () => controller.abort();
-  }, [page, reloadKey, search, status]);
+  }, [listStateReady, page, reloadKey, search, status]);
+
+  const listReturnPath = useMemo(() => {
+    const params = new URLSearchParams({ page: String(page), status });
+    if (search) params.set("search", search);
+    return `/clientes?${params.toString()}`;
+  }, [page, search, status]);
 
   const displayedClients = useMemo(() => {
     const normalizedSearch = normalizeSearchText(searchInput);
@@ -1057,7 +1104,9 @@ export default function ClientesPage() {
                           <Group gap={6} justify="flex-end" wrap="nowrap">
                             <Button
                               component={Link}
-                              href={`/clientes/${client.id}` as Route}
+                              href={
+                                `/clientes/${client.id}?returnTo=${encodeURIComponent(listReturnPath)}` as Route
+                              }
                               variant="light"
                               size="xs"
                               leftSection={<IconPencil size={15} />}

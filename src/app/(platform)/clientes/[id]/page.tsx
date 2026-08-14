@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { Route } from "next";
 import { useParams, useRouter } from "next/navigation";
 import {
   Alert,
@@ -155,6 +156,13 @@ export default function EditarClientePage() {
   const [savingBanks, setSavingBanks] = useState(false);
   const [savingCards, setSavingCards] = useState(false);
   const [error, setError] = useState("");
+
+  function backToClients() {
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    router.push(
+      (returnTo?.startsWith("/clientes?") ? returnTo : "/clientes") as Route,
+    );
+  }
 
   const configuredMappings = useMemo(() => {
     return CATEGORY_MAPPING_TYPES.map((mappingType) => {
@@ -682,7 +690,7 @@ export default function EditarClientePage() {
         <Button
           variant="subtle"
           leftSection={<IconArrowLeft size={17} />}
-          onClick={() => router.push("/clientes")}
+          onClick={backToClients}
           w="fit-content"
         >
           Voltar para clientes
@@ -700,7 +708,7 @@ export default function EditarClientePage() {
       <Button
         variant="subtle"
         leftSection={<IconArrowLeft size={17} />}
-        onClick={() => router.push("/clientes")}
+        onClick={backToClients}
         w="fit-content"
       >
         Voltar para clientes
