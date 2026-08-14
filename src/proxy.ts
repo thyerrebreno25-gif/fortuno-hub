@@ -7,10 +7,21 @@ const PUBLIC_ROUTES = [
   "/api/atendimento/gmail/webhook",
 ];
 
+const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout"];
+
+function matchesRoute(pathname: string, route: string) {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
+function redirectTo(request: NextRequest, pathname: string) {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+  return NextResponse.redirect(url);
+}
+
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request,
-  });
+  let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,25 +31,16 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
           });
 
-          response = NextResponse.next({
-            request,
-          });
+          response = NextResponse.next({ request });
 
-          cookiesToSet.forEach(
-            ({ name, value, options }) => {
-              response.cookies.set(
-                name,
-                value,
-                options,
-              );
-            },
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
         },
       },
     },
@@ -49,41 +51,56 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-
-  const isPublicRoute = PUBLIC_ROUTES.some(
-    (route) =>
-      pathname === route ||
-      pathname.startsWith(`${route}/`),
+  const isPublicRoute = PUBLIC_ROUTES.some((route) =>
+    matchesRoute(pathname, route),
   );
-
+  const isAuthenticationRoute = AUTHENTICATION_ROUTES.some((route) =>
+    matchesRoute(pathname, route),
+  );
   const isLoginPage = pathname === "/login";
+  const isMfaPage = pathname === "/mfa";
 
-  /*
-   * Usuário não autenticado:
-   * permite Login e Ativação de Acesso.
-   * Qualquer outra página vai para /login.
-   */
   if (!user && !isPublicRoute) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-
-    return NextResponse.redirect(loginUrl);
+    return redirectTo(request, "/login");
   }
 
-  /*
-   * Usuário já autenticado tentando abrir o login:
-   * manda para a plataforma.
-   *
-   * IMPORTANTE:
-   * não fazemos isso em /ativar-acesso,
-   * porque o convite do Supabase pode criar uma
-   * sessão temporária antes da definição da senha.
-   */
-  if (user && isLoginPage) {
-    const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/inicio";
+  // Convites, webhook e encerramento de sessão não dependem do segundo fator.
+  if (
+    !user ||
+    (isPublicRoute && !isLoginPage) ||
+    (isAuthenticationRoute && !isMfaPage)
+  ) {
+    return response;
+  }
 
-    return NextResponse.redirect(dashboardUrl);
+  const [factorsResult, assuranceResult] = await Promise.all([
+    supabase.auth.mfa.listFactors(),
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+  ]);
+
+  const hasVerifiedTotp = Boolean(factorsResult.data?.totp.length);
+  const hasAssuranceLevelTwo =
+    assuranceResult.data?.currentLevel === "aal2";
+  const requiresMfa = !hasVerifiedTotp || !hasAssuranceLevelTwo;
+
+  if (requiresMfa && !isMfaPage) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        {
+          error: "Confirme o código do autenticador para continuar.",
+          code: hasVerifiedTotp
+            ? "MFA_CHALLENGE_REQUIRED"
+            : "MFA_ENROLLMENT_REQUIRED",
+        },
+        { status: 403 },
+      );
+    }
+
+    return redirectTo(request, "/mfa");
+  }
+
+  if (!requiresMfa && (isLoginPage || isMfaPage)) {
+    return redirectTo(request, "/inicio");
   }
 
   return response;

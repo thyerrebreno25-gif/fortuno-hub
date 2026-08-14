@@ -39,7 +39,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/inicio");
+    router.replace("/mfa");
     router.refresh();
   }
 

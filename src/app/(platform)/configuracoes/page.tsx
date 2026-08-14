@@ -156,6 +156,7 @@ export default function ConfiguracoesPage() {
 
   const [passwordModal, setPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [resettingMfaId, setResettingMfaId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -328,6 +329,55 @@ export default function ConfiguracoesPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function resetMemberMfa(
+    member: SettingsData["members"][number],
+  ) {
+    const isCurrentUser = member.user.id === data?.currentUser.id;
+    const confirmed = window.confirm(
+      isCurrentUser
+        ? "Redefinir seu autenticador? Sua sessão será encerrada e, no próximo login, você precisará ler um novo QR Code."
+        : `Redefinir o autenticador de ${member.user.name}? As sessões desse colaborador serão encerradas e um novo QR Code aparecerá no próximo login.`,
+    );
+
+    if (!confirmed) return;
+
+    setResettingMfaId(member.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await fetch(`/api/settings/members/${member.id}/mfa`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as {
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error || "Não foi possível redefinir o autenticador.",
+        );
+      }
+
+      setSuccess(payload.message || "Autenticador redefinido.");
+
+      if (isCurrentUser) {
+        window.setTimeout(() => {
+          window.location.assign("/login");
+        }, 1200);
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível redefinir o autenticador.",
+      );
+    } finally {
+      setResettingMfaId(null);
     }
   }
 
@@ -584,6 +634,21 @@ export default function ConfiguracoesPage() {
                         <Group justify="flex-end" gap={4}>
                           <ActionIcon
                             variant="subtle"
+                            color="blue"
+                            title="Redefinir autenticador"
+                            aria-label={`Redefinir autenticador de ${member.user.name}`}
+                            loading={resettingMfaId === member.id}
+                            onClick={() => void resetMemberMfa(member)}
+                            disabled={
+                              !data.currentUser.canAdminister ||
+                              (member.role === "MASTER" &&
+                                member.user.id !== data.currentUser.id)
+                            }
+                          >
+                            <IconKey size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="subtle"
                             onClick={() => openEdit(member)}
                             disabled={
                               !data.currentUser.canAdminister ||
@@ -643,6 +708,10 @@ export default function ConfiguracoesPage() {
                   </Text>
                 </Stack>
                 <Integration label="Sessão autenticada" active />
+                <Integration
+                  label="Autenticador obrigatório por usuário"
+                  active
+                />
                 <Integration label="Isolamento por organização" active />
                 <Integration label="Auditoria de alterações" active />
               </Stack>
