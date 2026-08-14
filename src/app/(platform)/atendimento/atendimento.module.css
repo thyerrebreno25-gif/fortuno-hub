@@ -259,6 +259,17 @@
 .attachmentChip {
   max-width: 260px;
   background: var(--mantine-color-gray-0);
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.attachmentChip:hover {
+  background: var(--mantine-color-blue-0);
+  border-color: var(--mantine-color-blue-3);
 }
 
 .replyComposer {

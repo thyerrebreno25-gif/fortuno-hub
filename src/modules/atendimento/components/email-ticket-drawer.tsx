@@ -27,6 +27,7 @@ import {
   IconBold,
   IconCircleCheck,
   IconClock,
+  IconDownload,
   IconItalic,
   IconLink,
   IconList,
@@ -483,6 +484,10 @@ export function EmailTicketDrawer({
                                   {files.map((file: Any) => (
                                     <Paper
                                       key={file.id}
+                                      component="a"
+                                      href={`/api/atendimento/${ticket.id}/attachments/${file.id}`}
+                                      target="_blank"
+                                      rel="noreferrer"
                                       withBorder
                                       radius="md"
                                       px="sm"
@@ -499,6 +504,8 @@ export function EmailTicketDrawer({
                                         >
                                           {file.name}
                                         </Text>
+
+                                        <IconDownload size={14} />
                                       </Group>
                                     </Paper>
                                   ))}

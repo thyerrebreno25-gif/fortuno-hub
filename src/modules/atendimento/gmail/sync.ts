@@ -32,6 +32,7 @@ type ParsedAddress = {
 
 type ParsedAttachment = {
   id: string;
+  externalId: string | null;
   name: string;
   mimeType: string | null;
   size: number | null;
@@ -107,9 +108,17 @@ function parseMessageBodies(root: GmailPart) {
   const attachments: ParsedAttachment[] = [];
 
   function walk(part: GmailPart) {
-    if (part.filename && part.body?.attachmentId) {
+    if (
+      part.filename &&
+      (part.body?.attachmentId || part.body?.data)
+    ) {
+      const externalId = part.body.attachmentId || null;
+
       attachments.push({
-        id: part.body.attachmentId,
+        id:
+          externalId ||
+          `inline_${part.partId || attachments.length}`,
+        externalId,
         name: part.filename,
         mimeType: part.mimeType || null,
         size: part.body.size || null,
@@ -337,7 +346,7 @@ async function ingestGmailMessage(
             id: `gmail_${message.id}_${attachment.id}`,
             messageId: serviceMessage.id,
             externalAttachmentId:
-              attachment.id,
+              attachment.externalId,
             name: attachment.name,
             mimeType: attachment.mimeType,
             size: attachment.size,
