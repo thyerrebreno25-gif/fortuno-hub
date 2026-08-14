@@ -28,6 +28,7 @@ import {
   IconCheck,
   IconEdit,
   IconKey,
+  IconMailForward,
   IconPlus,
   IconRefresh,
   IconSearch,
@@ -184,6 +185,7 @@ export default function ConfiguracoesPage() {
   const [passwordModal, setPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [resettingMfaId, setResettingMfaId] = useState<string | null>(null);
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -405,6 +407,46 @@ export default function ConfiguracoesPage() {
       );
     } finally {
       setResettingMfaId(null);
+    }
+  }
+
+  async function resendMemberInvite(
+    member: SettingsData["members"][number],
+  ) {
+    const confirmed = window.confirm(
+      `Reenviar um novo convite para ${member.user.email}?`,
+    );
+
+    if (!confirmed) return;
+
+    setResendingInviteId(member.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await fetch(
+        `/api/settings/members/${member.id}/resend-invite`,
+        { method: "POST" },
+      );
+      const payload = (await response.json()) as {
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Não foi possível reenviar o convite.");
+      }
+
+      setSuccess(payload.message || "Novo convite enviado.");
+      await load();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível reenviar o convite.",
+      );
+    } finally {
+      setResendingInviteId(null);
     }
   }
 
@@ -681,6 +723,22 @@ export default function ConfiguracoesPage() {
                        <Table.Td>{formatDate(member.createdAt)}</Table.Td>
                       <Table.Td>
                         <Group justify="flex-end" gap={4}>
+                          {member.accessStatus === "PENDING" && (
+                            <ActionIcon
+                              variant="subtle"
+                              color="orange"
+                              title="Reenviar convite"
+                              aria-label={`Reenviar convite para ${member.user.name}`}
+                              loading={resendingInviteId === member.id}
+                              onClick={() => void resendMemberInvite(member)}
+                              disabled={
+                                !data.currentUser.canAdminister ||
+                                !data.integrationStatus.userInvites
+                              }
+                            >
+                              <IconMailForward size={16} />
+                            </ActionIcon>
+                          )}
                           <ActionIcon
                             variant="subtle"
                             color="blue"

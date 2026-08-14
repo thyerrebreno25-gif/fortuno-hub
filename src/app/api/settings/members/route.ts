@@ -6,6 +6,11 @@ import {
   SETTINGS_ADMIN_ROLES,
 } from "@/modules/settings/server/settings-auth";
 import { sendMemberInviteEmail } from "@/modules/settings/email/member-invite-email";
+import {
+  buildMemberActivationUrl,
+  getMemberInviteAppUrl,
+  getMemberInviteRedirectTo,
+} from "@/modules/settings/server/member-invite-link";
 
 const ALLOWED_ROLES = new Set([
   "ADMIN",
@@ -19,46 +24,6 @@ type AllowedRole =
   | "MANAGER"
   | "OPERATOR"
   | "CLIENT";
-
-function getAppUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_URL ||
-    ""
-  )
-    .trim()
-    .replace(/\/+$/, "");
-}
-
-type GeneratedLinkProperties = {
-  action_link?: string;
-  hashed_token?: string;
-  verification_type?: string;
-};
-
-function buildActivationUrl(
-  appUrl: string,
-  properties?: GeneratedLinkProperties | null,
-): string {
-  const actionLink = properties?.action_link ?? "";
-  const tokenHash = properties?.hashed_token ?? "";
-  const type = properties?.verification_type;
-
-  if (
-    !appUrl ||
-    !tokenHash ||
-    (type !== "invite" && type !== "recovery")
-  ) {
-    return actionLink;
-  }
-
-  const params = new URLSearchParams({
-    token_hash: tokenHash,
-    type,
-  });
-
-  return `${appUrl}/ativar-acesso?${params.toString()}`;
-}
 
 export async function POST(request: Request) {
   try {
@@ -163,10 +128,8 @@ export async function POST(request: Request) {
       },
     );
 
-    const appUrl = getAppUrl();
-    const redirectTo = appUrl
-      ? `${appUrl}/ativar-acesso`
-      : undefined;
+    const appUrl = getMemberInviteAppUrl();
+    const redirectTo = getMemberInviteRedirectTo(appUrl);
 
     const {
       data: inviteData,
@@ -183,7 +146,7 @@ export async function POST(request: Request) {
     });
 
     let authUser = inviteData?.user ?? null;
-    let actionUrl = buildActivationUrl(
+    let actionUrl = buildMemberActivationUrl(
       appUrl,
       inviteData?.properties,
     );
@@ -229,7 +192,7 @@ export async function POST(request: Request) {
 
       if (!recoveryError) {
         actionUrl =
-          buildActivationUrl(
+          buildMemberActivationUrl(
             appUrl,
             recoveryData?.properties,
           ) || actionUrl;
