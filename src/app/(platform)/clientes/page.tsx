@@ -255,10 +255,10 @@ function getClientSetupStatus(client: Client): SetupStatus {
     cleanDocument(client.document).length === 14;
 
   const acquirersCompleted = client.acquirers.length > 0;
-  const categoryProgress = Math.min(
-    client.categoryMappings.length / 6,
-    1,
-  );
+  // Somente os tipos aplicáveis ao cliente são persistidos. Como todo vínculo
+  // salvo já possui uma categoria válida, os tipos removidos não reduzem o
+  // percentual de configuração.
+  const categoryProgress = 1;
   const banksCompleted = client.banks.length > 0;
   const cardsCompleted = client.cards.length > 0;
 
@@ -319,6 +319,8 @@ export default function ClientesPage() {
   const [categoryMappings, setCategoryMappings] = useState<
     NewCategoryMapping[]
   >(INITIAL_CATEGORY_MAPPINGS.map((item) => ({ ...item })));
+  const [categoryMappingToAdd, setCategoryMappingToAdd] =
+    useState<CategoryMappingType | null>(null);
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loadingTeam, setLoadingTeam] = useState(false);
@@ -519,6 +521,7 @@ export default function ClientesPage() {
         ...item,
       })),
     );
+    setCategoryMappingToAdd(null);
     setTeamError("");
     setServiceSquad(null);
     setOperationLeaderId(null);
@@ -627,6 +630,35 @@ export default function ClientesPage() {
           : mapping,
       ),
     );
+  }
+
+  function removeCategoryMapping(mappingType: CategoryMappingType) {
+    setCategoryMappings((current) =>
+      current.filter((mapping) => mapping.mappingType !== mappingType),
+    );
+  }
+
+  function addCategoryMapping() {
+    if (!categoryMappingToAdd) return;
+
+    const mapping = INITIAL_CATEGORY_MAPPINGS.find(
+      (item) => item.mappingType === categoryMappingToAdd,
+    );
+
+    if (!mapping) return;
+
+    setCategoryMappings((current) =>
+      [...current, { ...mapping }].sort(
+        (first, second) =>
+          INITIAL_CATEGORY_MAPPINGS.findIndex(
+            (item) => item.mappingType === first.mappingType,
+          ) -
+          INITIAL_CATEGORY_MAPPINGS.findIndex(
+            (item) => item.mappingType === second.mappingType,
+          ),
+      ),
+    );
+    setCategoryMappingToAdd(null);
   }
 
   function validateCurrentStep(): boolean {
@@ -1306,10 +1338,55 @@ export default function ClientesPage() {
                 </Text>
 
                 <Text size="sm" c="dimmed">
-                  Defina onde cada tipo de movimentação será
-                  classificado.
+                  Mantenha somente os tipos de movimentação que se aplicam a
+                  este cliente. Os itens removidos não afetarão outros
+                  clientes.
                 </Text>
               </Stack>
+
+              <Paper withBorder radius="md" p="md" bg="var(--mantine-color-gray-0)">
+                <Group align="flex-end">
+                  <Select
+                    label="Adicionar categoria aplicável"
+                    placeholder={
+                      categoryMappings.length < INITIAL_CATEGORY_MAPPINGS.length
+                        ? "Selecione o tipo"
+                        : "Todos os tipos já foram adicionados"
+                    }
+                    data={INITIAL_CATEGORY_MAPPINGS.filter(
+                      (option) =>
+                        !categoryMappings.some(
+                          (mapping) => mapping.mappingType === option.mappingType,
+                        ),
+                    ).map((option) => ({
+                      value: option.mappingType,
+                      label: option.label,
+                    }))}
+                    value={categoryMappingToAdd}
+                    onChange={(value) =>
+                      setCategoryMappingToAdd(value as CategoryMappingType | null)
+                    }
+                    disabled={
+                      categoryMappings.length === INITIAL_CATEGORY_MAPPINGS.length
+                    }
+                    flex={1}
+                  />
+                  <Button
+                    variant="light"
+                    leftSection={<IconPlus size={16} />}
+                    disabled={!categoryMappingToAdd}
+                    onClick={addCategoryMapping}
+                  >
+                    Adicionar
+                  </Button>
+                </Group>
+              </Paper>
+
+              {categoryMappings.length === 0 && (
+                <Alert color="blue">
+                  Nenhuma categoria operacional será aplicada a este cliente.
+                </Alert>
+              )}
 
               {categoryMappings.map((mapping) => (
                 <Paper
@@ -1318,9 +1395,22 @@ export default function ClientesPage() {
                   radius="md"
                   p="md"
                 >
-                  <Text fw={700} mb="sm">
-                    {mapping.label}
-                  </Text>
+                  <Group justify="space-between" mb="sm">
+                    <Text fw={700}>
+                      {mapping.label}
+                    </Text>
+                    <Button
+                      variant="subtle"
+                      color="red"
+                      size="xs"
+                      leftSection={<IconTrash size={15} />}
+                      onClick={() =>
+                        removeCategoryMapping(mapping.mappingType)
+                      }
+                    >
+                      Não se aplica
+                    </Button>
+                  </Group>
 
                   <SimpleGrid
                     cols={{

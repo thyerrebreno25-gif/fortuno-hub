@@ -153,6 +153,21 @@ export async function PUT(
       };
     });
 
+    const submittedMappingTypes = parsed.map(
+      (mapping) => mapping.mappingType,
+    );
+
+    if (new Set(submittedMappingTypes).size !== submittedMappingTypes.length) {
+      return NextResponse.json(
+        {
+          error: "O mesmo tipo de categoria foi enviado mais de uma vez.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
     const selectedCategoryIds = parsed.flatMap((mapping) => [
       ...(mapping.categoryId ? [mapping.categoryId] : []),
       ...(mapping.subcategoryId
@@ -219,6 +234,21 @@ export async function PUT(
     }
 
     const mappings = await prisma.$transaction(async (tx) => {
+      if (submittedMappingTypes.length === 0) {
+        await tx.clientCategoryMapping.deleteMany({
+          where: { clientId },
+        });
+      } else {
+        await tx.clientCategoryMapping.deleteMany({
+          where: {
+            clientId,
+            mappingType: {
+              notIn: submittedMappingTypes,
+            },
+          },
+        });
+      }
+
       for (const mapping of parsed) {
         if (!mapping.categoryId) {
           await tx.clientCategoryMapping.deleteMany({

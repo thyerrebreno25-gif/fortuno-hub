@@ -18,6 +18,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconDeviceFloppy,
   IconPlus,
+  IconTrash,
 } from "@tabler/icons-react";
 
 export type CategoryMappingType =
@@ -83,6 +84,16 @@ export function ClientCategoriesTab({
   const [createError, setCreateError] = useState("");
   const [creatingForMapping, setCreatingForMapping] =
     useState<CategoryMappingType | null>(null);
+  const [mappingToAdd, setMappingToAdd] =
+    useState<CategoryMappingType | null>(null);
+
+  const availableMappingTypes = CATEGORY_MAPPING_TYPES.filter(
+    (mappingType) =>
+      !mappings.some((mapping) => mapping.mappingType === mappingType),
+  );
+  const hasIncompleteMappings = mappings.some(
+    (mapping) => !mapping.categoryId,
+  );
 
   function openCategoryModal(
     mappingType: CategoryMappingType | null = null,
@@ -120,6 +131,39 @@ export function ClientCategoriesTab({
         };
       }),
     );
+  }
+
+  function addMapping() {
+    if (!mappingToAdd) return;
+
+    const nextMappings = [
+      ...mappings,
+      {
+        mappingType: mappingToAdd,
+        categoryId: null,
+        subcategoryId: null,
+      },
+    ].sort(
+      (first, second) =>
+        CATEGORY_MAPPING_TYPES.indexOf(first.mappingType) -
+        CATEGORY_MAPPING_TYPES.indexOf(second.mappingType),
+    );
+
+    onChange(nextMappings);
+    setMappingToAdd(null);
+  }
+
+  function removeMapping(mappingType: CategoryMappingType) {
+    onChange(
+      mappings.filter(
+        (mapping) => mapping.mappingType !== mappingType,
+      ),
+    );
+
+    if (creatingForMapping === mappingType) {
+      setModalOpened(false);
+      setCreatingForMapping(null);
+    }
   }
 
   async function createCategory() {
@@ -240,9 +284,9 @@ export function ClientCategoriesTab({
           <Stack gap={2}>
             <Title order={4}>Categorias do cliente no Conta Azul</Title>
             <Text size="sm" c="dimmed">
-              Cada cliente possui seu próprio mapeamento. Selecione uma
-              categoria existente ou crie uma nomenclatura específica sem
-              alterar os clientes já configurados.
+              Mantenha somente os tipos aplicáveis a este cliente. Remover
+              um bloco desfaz apenas o vínculo deste cliente e não exclui a
+              categoria dos demais cadastros.
             </Text>
           </Stack>
 
@@ -262,6 +306,52 @@ export function ClientCategoriesTab({
           </Alert>
         )}
 
+        <Paper withBorder radius="md" p="md" bg="var(--mantine-color-gray-0)">
+          <Group align="flex-end">
+            <Select
+              label="Adicionar categoria aplicável"
+              placeholder={
+                availableMappingTypes.length > 0
+                  ? "Selecione o tipo"
+                  : "Todos os tipos já foram adicionados"
+              }
+              data={availableMappingTypes.map((mappingType) => ({
+                value: mappingType,
+                label: MAPPING_LABELS[mappingType],
+              }))}
+              value={mappingToAdd}
+              onChange={(value) =>
+                setMappingToAdd(value as CategoryMappingType | null)
+              }
+              disabled={availableMappingTypes.length === 0}
+              flex={1}
+            />
+            <Button
+              variant="light"
+              leftSection={<IconPlus size={16} />}
+              onClick={addMapping}
+              disabled={!mappingToAdd}
+            >
+              Adicionar
+            </Button>
+          </Group>
+        </Paper>
+
+        {mappings.length === 0 && (
+          <Alert color="blue">
+            Nenhuma categoria operacional foi marcada como aplicável a este
+            cliente. Você pode salvar assim ou adicionar somente as que ele
+            utiliza.
+          </Alert>
+        )}
+
+        {hasIncompleteMappings && (
+          <Alert color="yellow">
+            Selecione uma categoria para cada tipo mantido como aplicável ou
+            remova o bloco usando &quot;Não se aplica&quot;.
+          </Alert>
+        )}
+
         {mappings.map((mapping) => {
           const selectedCategory = categories.find(
             (category) => category.id === mapping.categoryId,
@@ -275,9 +365,20 @@ export function ClientCategoriesTab({
               p="md"
             >
               <Stack>
-                <Text fw={700}>
-                  {MAPPING_LABELS[mapping.mappingType]}
-                </Text>
+                <Group justify="space-between" align="center">
+                  <Text fw={700}>
+                    {MAPPING_LABELS[mapping.mappingType]}
+                  </Text>
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    size="xs"
+                    leftSection={<IconTrash size={15} />}
+                    onClick={() => removeMapping(mapping.mappingType)}
+                  >
+                    Não se aplica
+                  </Button>
+                </Group>
 
                 <SimpleGrid cols={{ base: 1, sm: 2 }}>
                   <Group align="flex-end" gap="xs" wrap="nowrap">
@@ -352,7 +453,7 @@ export function ClientCategoriesTab({
           onClick={onSave}
           loading={saving}
           w="fit-content"
-          disabled={categories.length === 0}
+          disabled={hasIncompleteMappings}
         >
           Salvar categorias
         </Button>

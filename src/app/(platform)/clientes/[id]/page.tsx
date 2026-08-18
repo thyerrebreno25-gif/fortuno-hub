@@ -40,7 +40,6 @@ import {
   type ReceiptRule,
 } from "@/modules/clients/components/client-acquirers-tab";
 import {
-  CATEGORY_MAPPING_TYPES,
   ClientCategoriesTab,
   type CategoryMappingType,
   type CategoryOption,
@@ -164,31 +163,18 @@ export default function EditarClientePage() {
     );
   }
 
-  const configuredMappings = useMemo(() => {
-    return CATEGORY_MAPPING_TYPES.map((mappingType) => {
-      const existing = mappings.find(
-        (mapping) => mapping.mappingType === mappingType,
-      );
-
-      return (
-        existing ?? {
-          mappingType,
-          categoryId: null,
-          subcategoryId: null,
-        }
-      );
-    });
-  }, [mappings]);
-
   const setupSummary = useMemo(() => {
     const generalCompleted =
       name.trim().length >= 3 && cleanDocument(document).length === 14;
     const activeAcquirers = acquirers.filter(
       (item) => item.active && (item.name ?? "").trim().length >= 2,
     ).length;
-    const configuredCategories = configuredMappings.filter(
+    const configuredCategories = mappings.filter(
       (item) => Boolean(item.categoryId),
     ).length;
+    const applicableCategories = mappings.length;
+    const categoriesCompleted =
+      configuredCategories === applicableCategories;
     const activeBanks = banks.filter(
       (item) =>
         item.active &&
@@ -205,7 +191,9 @@ export default function EditarClientePage() {
     const percentage = Math.round(
       (generalCompleted ? 15 : 0) +
         (activeAcquirers > 0 ? 20 : 0) +
-        (configuredCategories / CATEGORY_MAPPING_TYPES.length) * 35 +
+        (categoriesCompleted
+          ? 35
+          : (configuredCategories / Math.max(applicableCategories, 1)) * 35) +
         (activeBanks > 0 ? 15 : 0) +
         (activeCards > 0 ? 15 : 0),
     );
@@ -237,11 +225,14 @@ export default function EditarClientePage() {
       },
       {
         label: "Categorias",
-        detail: `${configuredCategories} de ${CATEGORY_MAPPING_TYPES.length} mapeadas`,
-        completed: configuredCategories === CATEGORY_MAPPING_TYPES.length,
+        detail:
+          applicableCategories === 0
+            ? "Nenhuma categoria aplicável"
+            : `${configuredCategories} de ${applicableCategories} aplicáveis mapeadas`,
+        completed: categoriesCompleted,
         partial:
           configuredCategories > 0 &&
-          configuredCategories < CATEGORY_MAPPING_TYPES.length,
+          configuredCategories < applicableCategories,
       },
       {
         label: "Bancos",
@@ -269,7 +260,7 @@ export default function EditarClientePage() {
       items,
       missingCount: items.filter((item) => !item.completed).length,
     };
-  }, [acquirers, banks, cards, configuredMappings, document, name]);
+  }, [acquirers, banks, cards, document, mappings, name]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -327,17 +318,11 @@ export default function EditarClientePage() {
         );
 
         setMappings(
-          CATEGORY_MAPPING_TYPES.map((mappingType) => {
-            const existing = loaded.categoryMappings.find(
-              (mapping) => mapping.mappingType === mappingType,
-            );
-
-            return {
-              mappingType,
-              categoryId: existing?.categoryId ?? null,
-              subcategoryId: existing?.subcategoryId ?? null,
-            };
-          }),
+          loaded.categoryMappings.map((mapping) => ({
+            mappingType: mapping.mappingType,
+            categoryId: mapping.categoryId,
+            subcategoryId: mapping.subcategoryId,
+          })),
         );
 
         setBanks(
@@ -539,22 +524,16 @@ export default function EditarClientePage() {
         message?: string;
       }>(
         `/api/clients/${params.id}/category-mappings`,
-        { mappings: configuredMappings },
+        { mappings },
         "Não foi possível salvar as categorias.",
       );
 
       setMappings(
-        CATEGORY_MAPPING_TYPES.map((mappingType) => {
-          const existing = result.mappings.find(
-            (mapping) => mapping.mappingType === mappingType,
-          );
-
-          return {
-            mappingType,
-            categoryId: existing?.categoryId ?? null,
-            subcategoryId: existing?.subcategoryId ?? null,
-          };
-        }),
+        result.mappings.map((mapping) => ({
+          mappingType: mapping.mappingType,
+          categoryId: mapping.categoryId,
+          subcategoryId: mapping.subcategoryId,
+        })),
       );
 
       notifications.show({
@@ -893,7 +872,7 @@ export default function EditarClientePage() {
           <Tabs.Panel value="categories" pt="xl">
             <ClientCategoriesTab
               categories={categories}
-              mappings={configuredMappings}
+              mappings={mappings}
               saving={savingCategories}
               onCategoriesChange={setCategories}
               onChange={setMappings}
