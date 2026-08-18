@@ -7,7 +7,13 @@ import { buildAuditDashboard, type AuditDashboardLine } from "../core/audit-dash
 const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const percent = (value: number) => `${value.toFixed(2).replace(".", ",")}%`;
 
-export function AcquirerAuditDashboard({ lines }: { lines: AuditDashboardLine[] }) {
+export function AcquirerAuditDashboard({
+  lines,
+  acquirer,
+}: {
+  lines: AuditDashboardLine[];
+  acquirer: string;
+}) {
   const data = useMemo(() => buildAuditDashboard(lines), [lines]);
   const maxBrand = Math.max(...data.byBrand.map((item) => item.gross), 1);
   const maxModality = Math.max(...data.byModality.map((item) => item.gross), 1);
@@ -20,7 +26,7 @@ export function AcquirerAuditDashboard({ lines }: { lines: AuditDashboardLine[] 
             <Title order={4}>Dashboard executivo</Title>
             <Text size="sm" c="dimmed">Resumo da auditoria do arquivo atualmente processado.</Text>
           </Stack>
-          <Badge variant="light">REDE</Badge>
+          <Badge variant="light">{acquirer}</Badge>
         </Group>
 
         <SimpleGrid cols={{ base: 2, md: 4 }}>

@@ -2,11 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  parseRedeWorkbook,
   type ContractedRate,
   type FeeCategory,
   type ReadingInstructionSummary,
 } from "@/modules/acquirers/rede-workbook-parser";
+import {
+  parseAcquirerWorkbook,
+  type ConfiguredAcquirerRates,
+  type SupportedAcquirer,
+} from "@/modules/acquirers/parse-acquirer-workbook";
+import type { CieloSourceTotals } from "@/modules/acquirers/cielo-workbook-parser";
 import { interpretReadingInstructions } from "@/modules/acquirers/reading-instructions";
 import { exportAcquirerToContaAzul } from "@/modules/acquirers/conta-azul-exporter";
 import { AcquirerAuditDashboard } from "@/modules/acquirers/components/acquirer-audit-dashboard";
@@ -37,7 +42,6 @@ import {
 } from "@mantine/core";
 import {
   IconAlertTriangle,
-  IconBuildingBank,
   IconCalendar,
   IconCheck,
   IconChevronRight,
@@ -48,7 +52,6 @@ import {
   IconRefresh,
   IconSearch,
   IconSettings,
-  IconShieldCheck,
   IconSparkles,
   IconTable,
   IconTrash,
@@ -101,16 +104,6 @@ type ClientCategories = {
   chargeback: string;
   anticipation: string;
 };
-
-const exampleLines: ConvertedLine[] = [
-  { id: 1, sourceSheet: "Recebimentos", sourceRow: 12, eventType: "SALE", saleDate: "2026-07-01", dueDate: "2026-07-03", paymentDate: "2026-07-03", description: "VENDA VISA CRÉDITO", category: "Receita de cartões", amount: 100, anticipated: false, status: "OK" },
-  { id: 2, sourceSheet: "Recebimentos", sourceRow: 12, eventType: "FEE", saleDate: "2026-07-01", dueDate: "2026-07-03", paymentDate: "2026-07-03", description: "TAXA MDR VISA CRÉDITO", category: "Taxas de adquirentes", amount: -3.5, anticipated: false, status: "OK" },
-  { id: 3, sourceSheet: "Recebimentos", sourceRow: 18, eventType: "SALE", saleDate: "2026-07-02", dueDate: "2026-07-05", paymentDate: "2026-07-05", description: "VENDA MASTERCARD DÉBITO", category: "Receita de cartões", amount: 350, anticipated: false, status: "OK" },
-  { id: 4, sourceSheet: "Recebimentos", sourceRow: 18, eventType: "FEE", saleDate: "2026-07-02", dueDate: "2026-07-05", paymentDate: "2026-07-05", description: "TAXA MDR MASTERCARD DÉBITO", category: "Taxas de adquirentes", amount: -7.8, anticipated: false, status: "OK" },
-  { id: 5, sourceSheet: "Ajustes", sourceRow: 7, eventType: "ADJUSTMENT", saleDate: "2026-07-04", dueDate: "2026-07-04", paymentDate: "2026-07-04", description: "AJUSTE FINANCEIRO POSITIVO", category: "Ajustes financeiros", amount: 35, anticipated: false, status: "OK" },
-  { id: 6, sourceSheet: "Cancelamentos", sourceRow: 3, eventType: "CANCELLATION", saleDate: "2026-07-05", dueDate: "2026-07-05", paymentDate: "2026-07-05", description: "CANCELAMENTO VENDA ELO", category: "Cancelamentos de vendas", amount: -80, anticipated: false, status: "OK" },
-  { id: 7, sourceSheet: "Antecipações", sourceRow: 9, eventType: "ANTICIPATION", saleDate: "2026-07-06", dueDate: "2026-07-06", paymentDate: "2026-07-06", description: "TAXA DE ANTECIPAÇÃO", category: "Taxa de antecipação", amount: -12, anticipated: true, status: "OK" },
-];
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -260,9 +253,12 @@ export default function AdquirentesPage() {
   const [clientsLoading, setClientsLoading] = useState(true);
   const [clientsError, setClientsError] = useState<string | null>(null);
   const [categories, setCategories] = useState<ClientCategories | null>(null);
-  const [contractedRates, setContractedRates] = useState<ContractedRate[]>([]);
+  const [configuredAcquirers, setConfiguredAcquirers] = useState<ConfiguredAcquirerRates[]>([]);
   const [processedSheets, setProcessedSheets] = useState<string[]>([]);
   const [sourceRows, setSourceRows] = useState(0);
+  const [detectedAcquirer, setDetectedAcquirer] = useState<SupportedAcquirer | null>(null);
+  const [activeParser, setActiveParser] = useState({ id: "", version: "" });
+  const [sourceTotals, setSourceTotals] = useState<CieloSourceTotals | null>(null);
   const [readingInstructions, setReadingInstructions] = useState("");
   const [instructionSummary, setInstructionSummary] = useState<ReadingInstructionSummary | null>(null);
   const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
@@ -364,7 +360,15 @@ export default function AdquirentesPage() {
 
         if (!cancelled) {
           const acquirers = Array.isArray(result?.client?.acquirers) ? result.client.acquirers : [];
-          setContractedRates(acquirers.flatMap((acquirer: { active?: boolean; rates?: ContractedRate[] }) => acquirer.active === false ? [] : (acquirer.rates ?? [])));
+          setConfiguredAcquirers(
+            acquirers.flatMap((acquirer: {
+              active?: boolean;
+              name?: string;
+              rates?: ContractedRate[];
+            }) => acquirer.active === false || !acquirer.name
+              ? []
+              : [{ name: acquirer.name, rates: acquirer.rates ?? [] }]),
+          );
           setCategories({
             sale: categoryName("SALES_REVENUE", "Receita de cartões"),
             fee: categoryName("MDR_FEES", "Taxas de adquirentes"),
@@ -377,7 +381,7 @@ export default function AdquirentesPage() {
       } catch {
         if (!cancelled) {
           setCategories(null);
-          setContractedRates([]);
+          setConfiguredAcquirers([]);
         }
       } finally {
         if (!cancelled) {
@@ -534,16 +538,19 @@ export default function AdquirentesPage() {
     }
     setProcessing(true);
     try {
-      const result = await parseRedeWorkbook(
+      const result = await parseAcquirerWorkbook(
         file,
         categories,
         manualPaymentDate,
-        contractedRates,
+        configuredAcquirers,
         { readingRules: interpretedInstructions.rules },
       );
       setLines(result.lines);
       setProcessedSheets(result.processedSheets);
       setSourceRows(result.sourceRows);
+      setDetectedAcquirer(result.acquirer);
+      setActiveParser({ id: result.parserId, version: result.parserVersion });
+      setSourceTotals(result.sourceTotals);
       setInstructionSummary(result.instructionSummary);
       setInstructionReviewConfirmed(false);
       setView("review");
@@ -559,19 +566,23 @@ export default function AdquirentesPage() {
 
   async function exportContaAzul() {
     try {
-      exportAcquirerToContaAzul(lines, selectedClient?.label ?? "Cliente");
+      exportAcquirerToContaAzul(
+        lines,
+        selectedClient?.label ?? "Cliente",
+        detectedAcquirer ?? "ADQUIRENTE",
+      );
       await trackImport({
         clientId,
         module: "ACQUIRER",
         status: totals.divergentSales > 0 ? "REVIEW" : "EXPORTED",
         originalName: file?.name || "adquirente.xlsx",
-        parserId: "rede-workbook",
-        parserVersion: "1.1.0",
+        parserId: activeParser.id || null,
+        parserVersion: activeParser.version || null,
         expectedTotal: totals.expectedNet,
         parsedTotal: totals.identifiedNet,
         difference: totals.difference,
         metadata: {
-          acquirer: "REDE",
+          acquirer: detectedAcquirer,
           sourceRows,
           sheets: processedSheets,
           gross: totals.gross,
@@ -596,6 +607,7 @@ export default function AdquirentesPage() {
             value: rule.value,
           })) ?? [],
           excludedSourceRows: instructionSummary?.excludedRows ?? 0,
+          sourceTotals,
         },
         transactions: lines.map((line) => ({
           date: line.paymentDate || line.dueDate || line.saleDate || new Date().toISOString().slice(0, 10),
@@ -626,6 +638,9 @@ export default function AdquirentesPage() {
     setLines([]);
     setProcessedSheets([]);
     setSourceRows(0);
+    setDetectedAcquirer(null);
+    setActiveParser({ id: "", version: "" });
+    setSourceTotals(null);
     setReadingInstructions("");
     setInstructionSummary(null);
     setInstructionReviewConfirmed(false);
@@ -759,7 +774,17 @@ export default function AdquirentesPage() {
 
             <Group justify="flex-end"><Button size="md" disabled={!clientId || !file || !manualPaymentDate || interpretedInstructions.unrecognized.length > 0} loading={processing} onClick={processFile} rightSection={<IconChevronRight size={18} />}>Ler todas as abas</Button></Group>
 
-            <Stack gap="sm"><Text fw={700}>Principais adquirentes previstas</Text><Group gap="xs">{["REDE", "Cielo", "Getnet", "Pagar.me", "Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => <Badge key={brand} variant="outline" color="gray">{brand}</Badge>)}</Group></Stack>
+            <Stack gap="sm">
+              <Text fw={700}>Leitores disponíveis</Text>
+              <Group gap="xs">
+                {["REDE", "Cielo"].map((brand) => (
+                  <Badge key={brand} variant="light" color="green">{brand} ativo</Badge>
+                ))}
+                {["Getnet", "Pagar.me", "Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => (
+                  <Badge key={brand} variant="outline" color="gray">{brand} em preparação</Badge>
+                ))}
+              </Group>
+            </Stack>
           </Stack>
         </Paper>
       ) : (
@@ -1014,11 +1039,53 @@ export default function AdquirentesPage() {
 
           <Paper withBorder radius="lg" p="lg">
             <Stack gap="xs">
-              <Text fw={800}>Leitura completa REDE</Text>
+              <Group justify="space-between">
+                <Text fw={800}>Leitura completa {detectedAcquirer ?? "da adquirente"}</Text>
+                {detectedAcquirer && <Badge variant="light">{detectedAcquirer}</Badge>}
+              </Group>
               <Text size="sm" c="dimmed">
                 {sourceSheets.length} aba(s) processada(s) • {sourceRows} linhas-fonte lidas
               </Text>
               <Text size="sm" c="dimmed">{sourceSheets.join(" • ")}</Text>
+              {sourceTotals && sourceTotals.net != null && (
+                <Card withBorder radius="md" mt="xs">
+                  <SimpleGrid cols={{ base: 2, md: 4 }}>
+                    <Stack gap={0}>
+                      <Text size="xs" c="dimmed">Linhas no totalizador</Text>
+                      <Text fw={800}>{sourceTotals.rows ?? "—"}</Text>
+                    </Stack>
+                    <Stack gap={0}>
+                      <Text size="xs" c="dimmed">Bruto do arquivo</Text>
+                      <Text fw={800}>{formatMoney(sourceTotals.gross ?? 0)}</Text>
+                    </Stack>
+                    <Stack gap={0}>
+                      <Text size="xs" c="dimmed">Taxas do arquivo</Text>
+                      <Text fw={800} c="red">-{formatMoney(sourceTotals.fees ?? 0)}</Text>
+                    </Stack>
+                    <Stack gap={0}>
+                      <Text size="xs" c="dimmed">Líquido do arquivo</Text>
+                      <Text fw={800} c="green">{formatMoney(sourceTotals.net)}</Text>
+                    </Stack>
+                  </SimpleGrid>
+                </Card>
+              )}
+              {sourceTotals && sourceTotals.net != null && (
+                instructionSummary?.excludedRows ? (
+                  <Alert color="blue" icon={<IconTable size={18} />}>
+                    O totalizador original foi preservado como referência. Como existem linhas
+                    excluídas por orientação, a conciliação abaixo considera apenas os registros mantidos.
+                  </Alert>
+                ) : (
+                  <Alert
+                    color={Math.abs(totals.identifiedNet - sourceTotals.net) < 0.01 ? "green" : "red"}
+                    icon={Math.abs(totals.identifiedNet - sourceTotals.net) < 0.01 ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
+                  >
+                    {Math.abs(totals.identifiedNet - sourceTotals.net) < 0.01
+                      ? "O valor líquido calculado confere com o totalizador do arquivo."
+                      : `Há uma diferença de ${formatMoney(totals.identifiedNet - sourceTotals.net)} entre a leitura e o totalizador.`}
+                  </Alert>
+                )
+              )}
               <Alert color="green" icon={<IconCheck size={18} />}>
                 A taxa cobrada é exibida na linha da venda. Quando houver taxa contratada no cliente,
                 o sistema compara as duas e calcula o impacto financeiro. A linha negativa da tarifa
@@ -1027,7 +1094,7 @@ export default function AdquirentesPage() {
             </Stack>
           </Paper>
 
-          <AcquirerAuditDashboard lines={lines} />
+          <AcquirerAuditDashboard lines={lines} acquirer={detectedAcquirer ?? "Adquirente"} />
 
           <Paper withBorder radius="lg">
             <Group justify="space-between" p="lg" align="flex-end">

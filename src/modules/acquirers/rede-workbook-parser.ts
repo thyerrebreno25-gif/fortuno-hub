@@ -52,7 +52,7 @@ export type ParsedAcquirerLine = {
   feeCategory?: FeeCategory;
 };
 
-type Categories = {
+export type Categories = {
   sale: string;
   fee: string;
   adjustment: string;
@@ -451,7 +451,6 @@ export async function parseRedeWorkbook(
       const descriptor = [cardBrand, displayModality(modality), transactionType === "CREDIT" ? `${installmentCount}x` : "", establishment].filter(Boolean).join(" - ");
 
       if (sheetKey === "pagamentos" || sheetKey === "pagamentos futuros" || sheetKey === "bloqueados suspenso") {
-        const gross = getFirstNonZeroNumber(row, "valor bruto da parcela atualizada", "valor bruto da parcela original", "valor bruto da parcela");
         const fee = number(get(row, "valor MDR descontado"));
         const saleDate = date(get(row, "data original da venda"));
         const dueDate = date(get(row, "data original de vencimento", "data prevista do recebimento"));

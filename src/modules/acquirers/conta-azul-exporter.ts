@@ -101,6 +101,7 @@ function sanitizeFileName(value: string): string {
 export function exportAcquirerToContaAzul(
   lines: ContaAzulAcquirerLine[],
   clientName: string,
+  acquirerName = "ADQUIRENTE",
 ): void {
   if (!lines.length) {
     throw new Error("Não existem lançamentos para exportar.");
@@ -152,7 +153,7 @@ export function exportAcquirerToContaAzul(
   const today = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(
     workbook,
-    `Conta_Azul_REDE_${sanitizeFileName(clientName)}_${today}.xlsx`,
+    `Conta_Azul_${sanitizeFileName(acquirerName)}_${sanitizeFileName(clientName)}_${today}.xlsx`,
     { compression: true },
   );
 }

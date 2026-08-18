@@ -182,10 +182,10 @@ function headerMatchesField(header: string, field: ReadingInstructionField) {
   }
   if (field === "BRAND") return /bandeira|marca\s+do\s+cartao/.test(normalized);
   if (field === "MODALITY") {
-    return /modalidade|tipo\s+de\s+(?:pagamento|transacao|produto)/.test(normalized);
+    return /modalidade|forma\s+de\s+pagamento|tipo\s+de\s+(?:pagamento|transacao|produto)/.test(normalized);
   }
   if (field === "DESCRIPTION") {
-    return /descricao|motivo|historico|tipo\s+do\s+ajuste|cancelamento\/chargeback/.test(normalized);
+    return /descricao|motivo|historico|tipo\s+(?:do\s+ajuste|de\s+lancamento)|cancelamento\/chargeback/.test(normalized);
   }
   return false;
 }
