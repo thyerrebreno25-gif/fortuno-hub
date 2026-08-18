@@ -50,6 +50,7 @@ type CieloRow = [
   rate: number,
   establishment: string,
   account: string,
+  bank?: string,
 ];
 
 function detailedWorkbook(rows: CieloRow[]) {
@@ -67,7 +68,7 @@ function detailedWorkbook(rows: CieloRow[]) {
     [rows.length, gross, -fees, gross - fees],
     [],
     headers,
-    ...rows.map(([rowGross, rowFee, brand, installment, installments, rate, establishment, account], index) => [
+    ...rows.map(([rowGross, rowFee, brand, installment, installments, rate, establishment, account, bank = "Banco A"], index) => [
       "17/04/2026",
       "15/02/2026",
       establishment,
@@ -89,7 +90,7 @@ function detailedWorkbook(rows: CieloRow[]) {
       0,
       rowFee,
       0,
-      "Banco A",
+      bank,
       "0001",
       account,
       `TID-${index + 1}`,
@@ -107,7 +108,7 @@ const referenceRows: CieloRow[] = [
   [299.6, -14.56, "Mastercard", 7, 10, 4.86, "1000000001", "1111-1"],
   [1598, -73.19, "Visa", 3, 3, 4.58, "1000000001", "1111-1"],
   [799, -38.67, "Mastercard", 2, 4, 4.84, "1000000001", "1111-1"],
-  [1065.33, -44.1, "Mastercard", 2, 3, 4.14, "1000000002", "2222-2"],
+  [1065.33, -44.1, "Mastercard", 2, 3, 4.14, "1000000002", "2222-2", "Banco do Brasil"],
   [333.33, -16.13, "Mastercard", 2, 3, 4.84, "1000000001", "1111-1"],
   [359.66, -17.41, "Mastercard", 2, 3, 4.84, "1000000001", "1111-1"],
   [259.6, -10.96, "Visa", 1, 10, 4.22, "1000000001", "1111-1"],
@@ -152,6 +153,24 @@ describe("leitor de recebíveis detalhados da Cielo", () => {
 
   it("aplica a orientação de conta também no layout Cielo", async () => {
     const { rules } = interpretReadingInstructions("Ignorar conta 2222-2");
+    const result = await parseCieloWorkbook(
+      detailedWorkbook(referenceRows),
+      categories,
+      "2026-04-17",
+      [],
+      { readingRules: rules },
+    );
+
+    expect(result.instructionSummary.excludedRows).toBe(1);
+    expect(result.lines).toHaveLength(14);
+    expect(result.lines.reduce((sum, line) => sum + line.amount, 0))
+      .toBeCloseTo(3621.75, 2);
+  });
+
+  it("distingue banco de conta ao aplicar a orientação no layout Cielo", async () => {
+    const { rules } = interpretReadingInstructions(
+      "Não quero os dados da conta do Banco do Brasil",
+    );
     const result = await parseCieloWorkbook(
       detailedWorkbook(referenceRows),
       categories,

@@ -713,7 +713,7 @@ export default function AdquirentesPage() {
                 <Textarea
                   label="Instruções para esta importação (opcional)"
                   placeholder={'Ex.: Não quero os dados da conta 12345-6\nIgnorar bandeira Elo\nTrazer apenas modalidade débito'}
-                  description="O leitor entende conta, estabelecimento, bandeira, modalidade, aba e descrição."
+                  description="O leitor entende banco, conta, estabelecimento, bandeira, modalidade, aba e descrição."
                   value={readingInstructions}
                   onChange={(event) => {
                     setReadingInstructions(event.currentTarget.value);

@@ -16,6 +16,27 @@ describe("orientações do leitor de adquirentes", () => {
     ]);
   });
 
+  it("distingue o banco quando a frase menciona a conta do banco", () => {
+    const result = interpretReadingInstructions(
+      "Não quero os dados da conta do Banco do Brasil",
+    );
+
+    expect(result.unrecognized).toEqual([]);
+    expect(result.rules).toMatchObject([
+      {
+        action: "EXCLUDE",
+        field: "BANK",
+        value: "Banco do Brasil",
+        label: "Ignorar banco “Banco do Brasil”",
+      },
+    ]);
+    expect(evaluateReadingInstructions(
+      { banco: "Banco do Brasil", conta: "8621-5" },
+      "Recebidos",
+      result.rules,
+    ).excluded).toBe(true);
+  });
+
   it("aceita uma orientação por linha para campos suportados", () => {
     const result = interpretReadingInstructions([
       "Ignorar bandeira Elo",

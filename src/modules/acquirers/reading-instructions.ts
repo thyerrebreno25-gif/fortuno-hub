@@ -1,5 +1,6 @@
 export type ReadingInstructionField =
   | "ACCOUNT"
+  | "BANK"
   | "ESTABLISHMENT"
   | "BRAND"
   | "MODALITY"
@@ -30,6 +31,7 @@ export type ReadingInstructionEvaluation = {
 
 const fieldLabels: Record<ReadingInstructionField, string> = {
   ACCOUNT: "conta",
+  BANK: "banco",
   ESTABLISHMENT: "estabelecimento",
   BRAND: "bandeira",
   MODALITY: "modalidade",
@@ -41,6 +43,10 @@ const fieldPatterns: Array<{
   field: ReadingInstructionField;
   pattern: RegExp;
 }> = [
+  {
+    field: "BANK",
+    pattern: /\b(?:banco|institui[cç][aã]o\s+(?:banc[aá]ria|de\s+destino))\b/i,
+  },
   {
     field: "ACCOUNT",
     pattern: /\b(?:conta(?:\s+(?:corrente|banc[aá]ria))?|domic[ií]lio\s+banc[aá]rio)\b/i,
@@ -128,6 +134,15 @@ function extractValue(
     if (directModality) return cleanExtractedValue(directModality);
   }
 
+  if (field === "BANK") {
+    const suffix = cleanExtractedValue(
+      statement.slice((fieldMatch.index ?? 0) + fieldMatch[0].length),
+    );
+    return suffix
+      ? cleanExtractedValue(`${fieldMatch[0]} ${suffix}`)
+      : "";
+  }
+
   const start = (fieldMatch.index ?? 0) + fieldMatch[0].length;
   return cleanExtractedValue(statement.slice(start));
 }
@@ -177,6 +192,9 @@ function headerMatchesField(header: string, field: ReadingInstructionField) {
   if (field === "ACCOUNT") {
     return /\bconta\b|domicilio\s+bancario|dados\s+bancarios/.test(normalized);
   }
+  if (field === "BANK") {
+    return /\bbanco\b|instituicao\s+(?:bancaria|de\s+destino)/.test(normalized);
+  }
   if (field === "ESTABLISHMENT") {
     return /estabelecimento|empresa|loja/.test(normalized);
   }
@@ -211,6 +229,16 @@ function valueMatches(candidate: string, rule: AcquirerReadingRule) {
     const compactCandidate = candidateText.replace(/[^a-z0-9]/g, "");
     const compactRule = ruleText.replace(/[^a-z0-9]/g, "");
     return compactRule.length >= 3 && compactCandidate.includes(compactRule);
+  }
+
+  if (rule.field === "BANK") {
+    const withoutBankPrefix = (value: string) => value
+      .replace(/^banco\s+/i, "")
+      .replace(/^instituicao\s+(?:bancaria|de\s+destino)\s+/i, "")
+      .trim();
+    return withoutBankPrefix(candidateText).includes(
+      withoutBankPrefix(ruleText),
+    );
   }
 
   return candidateText.includes(ruleText);
