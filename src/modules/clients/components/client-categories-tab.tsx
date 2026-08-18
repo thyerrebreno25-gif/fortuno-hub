@@ -81,6 +81,19 @@ export function ClientCategoriesTab({
   const [parentId, setParentId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [creatingForMapping, setCreatingForMapping] =
+    useState<CategoryMappingType | null>(null);
+
+  function openCategoryModal(
+    mappingType: CategoryMappingType | null = null,
+  ) {
+    setCategoryName("");
+    setCategoryCode("");
+    setParentId(null);
+    setCreateError("");
+    setCreatingForMapping(mappingType);
+    setModalOpened(true);
+  }
 
   function updateMapping(
     mappingType: CategoryMappingType,
@@ -176,6 +189,26 @@ export function ClientCategoriesTab({
         );
       }
 
+      if (creatingForMapping) {
+        onChange(
+          mappings.map((mapping) =>
+            mapping.mappingType === creatingForMapping
+              ? parentId
+                ? {
+                    ...mapping,
+                    categoryId: parentId,
+                    subcategoryId: result.category!.id,
+                  }
+                : {
+                    ...mapping,
+                    categoryId: result.category!.id,
+                    subcategoryId: null,
+                  }
+              : mapping,
+          ),
+        );
+      }
+
       notifications.show({
         color: "green",
         title: parentId
@@ -187,6 +220,7 @@ export function ClientCategoriesTab({
       setCategoryName("");
       setCategoryCode("");
       setParentId(null);
+      setCreatingForMapping(null);
       setModalOpened(false);
     } catch (error) {
       setCreateError(
@@ -204,26 +238,27 @@ export function ClientCategoriesTab({
       <Stack>
         <Group justify="space-between" align="flex-start">
           <Stack gap={2}>
-            <Title order={4}>Categorias Conta Azul</Title>
+            <Title order={4}>Categorias do cliente no Conta Azul</Title>
             <Text size="sm" c="dimmed">
-              Crie categorias e associe cada movimentação ao
-              cadastro correto.
+              Cada cliente possui seu próprio mapeamento. Selecione uma
+              categoria existente ou crie uma nomenclatura específica sem
+              alterar os clientes já configurados.
             </Text>
           </Stack>
 
           <Button
             variant="light"
             leftSection={<IconPlus size={16} />}
-            onClick={() => setModalOpened(true)}
+            onClick={() => openCategoryModal()}
           >
-            Nova categoria
+            Nova nomenclatura
           </Button>
         </Group>
 
         {categories.length === 0 && (
           <Alert color="yellow">
             Ainda não existem categorias. Clique em
-            &quot;Nova categoria&quot; para criar a primeira.
+            &quot;Nova nomenclatura&quot; para criar a primeira.
           </Alert>
         )}
 
@@ -245,24 +280,39 @@ export function ClientCategoriesTab({
                 </Text>
 
                 <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                  <Select
-                    label="Categoria"
-                    placeholder="Selecione uma categoria"
-                    searchable
-                    clearable
-                    value={mapping.categoryId}
-                    data={categories.map((category) => ({
-                      value: category.id,
-                      label: category.name,
-                    }))}
-                    onChange={(value) =>
-                      updateMapping(
-                        mapping.mappingType,
-                        "categoryId",
-                        value,
-                      )
-                    }
-                  />
+                  <Group align="flex-end" gap="xs" wrap="nowrap">
+                    <Select
+                      label="Categoria"
+                      placeholder="Selecione ou pesquise"
+                      searchable
+                      clearable
+                      flex={1}
+                      value={mapping.categoryId}
+                      data={categories.map((category) => ({
+                        value: category.id,
+                        label: category.name,
+                      }))}
+                      nothingFoundMessage="Categoria não encontrada"
+                      onChange={(value) =>
+                        updateMapping(
+                          mapping.mappingType,
+                          "categoryId",
+                          value,
+                        )
+                      }
+                    />
+
+                    <Button
+                      variant="light"
+                      px="sm"
+                      leftSection={<IconPlus size={15} />}
+                      onClick={() =>
+                        openCategoryModal(mapping.mappingType)
+                      }
+                    >
+                      Criar nova
+                    </Button>
+                  </Group>
 
                   <Select
                     label="Subcategoria"
@@ -314,9 +364,14 @@ export function ClientCategoriesTab({
           if (!creating) {
             setModalOpened(false);
             setCreateError("");
+            setCreatingForMapping(null);
           }
         }}
-        title="Nova categoria"
+        title={
+          creatingForMapping
+            ? `Nova nomenclatura para ${MAPPING_LABELS[creatingForMapping]}`
+            : "Nova nomenclatura de categoria"
+        }
         centered
       >
         <Stack>
@@ -326,7 +381,7 @@ export function ClientCategoriesTab({
 
           <Select
             label="Categoria principal"
-            description="Deixe vazio para criar uma categoria principal."
+            description="Deixe vazio para criar uma categoria. Se escolher uma existente, será criada uma subcategoria."
             placeholder="Categoria principal"
             clearable
             searchable
@@ -340,6 +395,7 @@ export function ClientCategoriesTab({
 
           <TextInput
             label={parentId ? "Nome da subcategoria" : "Nome da categoria"}
+            description="Use exatamente a nomenclatura cadastrada no Conta Azul."
             value={categoryName}
             onChange={(event) =>
               setCategoryName(event.currentTarget.value)
@@ -359,7 +415,10 @@ export function ClientCategoriesTab({
           <Group justify="flex-end">
             <Button
               variant="default"
-              onClick={() => setModalOpened(false)}
+              onClick={() => {
+                setModalOpened(false);
+                setCreatingForMapping(null);
+              }}
               disabled={creating}
             >
               Cancelar
