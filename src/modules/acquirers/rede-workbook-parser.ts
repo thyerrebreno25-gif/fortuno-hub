@@ -1,4 +1,8 @@
 import * as XLSX from "xlsx";
+import {
+  evaluateReadingInstructions,
+  type AcquirerReadingRule,
+} from "./reading-instructions";
 
 export type AcquirerEventType =
   | "SALE"
@@ -55,6 +59,18 @@ type Categories = {
   cancellation: string;
   chargeback: string;
   anticipation: string;
+};
+
+export type ReadingInstructionSummary = {
+  rules: AcquirerReadingRule[];
+  excludedRows: number;
+  matchesByRule: Record<string, number>;
+  exclusionsByRule: Record<string, number>;
+  unmatchedRuleIds: string[];
+};
+
+type ParseRedeOptions = {
+  readingRules?: AcquirerReadingRule[];
 };
 
 type Row = Record<string, unknown>;
@@ -317,10 +333,20 @@ export async function parseRedeWorkbook(
   categories: Categories,
   manualPaymentDate: string,
   contractedRates: ContractedRate[],
-): Promise<{ lines: ParsedAcquirerLine[]; processedSheets: string[]; sourceRows: number }> {
+  options: ParseRedeOptions = {},
+): Promise<{
+  lines: ParsedAcquirerLine[];
+  processedSheets: string[];
+  sourceRows: number;
+  instructionSummary: ReadingInstructionSummary;
+}> {
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   const lines: ParsedAcquirerLine[] = [];
   const processedSheets: string[] = [];
+  const readingRules = options.readingRules ?? [];
+  const matchesByRule = Object.fromEntries(readingRules.map((rule) => [rule.id, 0]));
+  const exclusionsByRule = Object.fromEntries(readingRules.map((rule) => [rule.id, 0]));
+  let excludedRows = 0;
   let sourceRows = 0;
   let id = 1;
   const paymentAggregates = new Map<string, PaymentAggregate>();
@@ -338,6 +364,7 @@ export async function parseRedeWorkbook(
     matrix.slice(2).forEach((values) => {
       if (!values.some((value) => value !== null && value !== "")) return;
       const row = record(headers, values);
+      if (evaluateReadingInstructions(row, sheetName, readingRules).excluded) return;
       const paymentDate = date(get(row, "data do recebimento"));
       if (!paymentDate) return;
 
@@ -397,6 +424,21 @@ export async function parseRedeWorkbook(
       if (!values.some((value) => value !== null && value !== "")) return;
       sourceRows += 1;
       const row = record(headers, values);
+      const instructionEvaluation = evaluateReadingInstructions(
+        row,
+        sheetName,
+        readingRules,
+      );
+      instructionEvaluation.matchedRuleIds.forEach((ruleId) => {
+        matchesByRule[ruleId] = (matchesByRule[ruleId] ?? 0) + 1;
+      });
+      if (instructionEvaluation.excluded) {
+        excludedRows += 1;
+        instructionEvaluation.exclusionRuleIds.forEach((ruleId) => {
+          exclusionsByRule[ruleId] = (exclusionsByRule[ruleId] ?? 0) + 1;
+        });
+        return;
+      }
       const sourceRow = offset + 3;
       const sheetKey = normalize(sheetName);
       const brand = get(row, "bandeira", "bandeira da venda", "bandeira ajustada", "bandeira do recebimento");
@@ -513,5 +555,18 @@ export async function parseRedeWorkbook(
     });
   }
 
-  return { lines, processedSheets, sourceRows };
+  return {
+    lines,
+    processedSheets,
+    sourceRows,
+    instructionSummary: {
+      rules: readingRules,
+      excludedRows,
+      matchesByRule,
+      exclusionsByRule,
+      unmatchedRuleIds: readingRules
+        .filter((rule) => (matchesByRule[rule.id] ?? 0) === 0)
+        .map((rule) => rule.id),
+    },
+  };
 }

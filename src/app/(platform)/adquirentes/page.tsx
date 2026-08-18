@@ -5,7 +5,9 @@ import {
   parseRedeWorkbook,
   type ContractedRate,
   type FeeCategory,
+  type ReadingInstructionSummary,
 } from "@/modules/acquirers/rede-workbook-parser";
+import { interpretReadingInstructions } from "@/modules/acquirers/reading-instructions";
 import { exportAcquirerToContaAzul } from "@/modules/acquirers/conta-azul-exporter";
 import { AcquirerAuditDashboard } from "@/modules/acquirers/components/acquirer-audit-dashboard";
 import { trackImport } from "@/modules/imports/import-tracker";
@@ -29,6 +31,7 @@ import {
   Table,
   Text,
   TextInput,
+  Textarea,
   ThemeIcon,
   Title,
 } from "@mantine/core";
@@ -46,6 +49,7 @@ import {
   IconSearch,
   IconSettings,
   IconShieldCheck,
+  IconSparkles,
   IconTable,
   IconTrash,
   IconUpload,
@@ -259,6 +263,10 @@ export default function AdquirentesPage() {
   const [contractedRates, setContractedRates] = useState<ContractedRate[]>([]);
   const [processedSheets, setProcessedSheets] = useState<string[]>([]);
   const [sourceRows, setSourceRows] = useState(0);
+  const [readingInstructions, setReadingInstructions] = useState("");
+  const [instructionSummary, setInstructionSummary] = useState<ReadingInstructionSummary | null>(null);
+  const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [manualPaymentDate, setManualPaymentDate] = useState("2026-07-10");
@@ -267,6 +275,13 @@ export default function AdquirentesPage() {
   const [onlyProblems, setOnlyProblems] = useState(false);
 
   const selectedClient = clients.find((client) => client.value === clientId);
+  const interpretedInstructions = useMemo(
+    () => interpretReadingInstructions(readingInstructions),
+    [readingInstructions],
+  );
+  const unmatchedInstructionRules = instructionSummary?.rules.filter((rule) =>
+    instructionSummary.unmatchedRuleIds.includes(rule.id),
+  ) ?? [];
 
   useEffect(() => {
     let cancelled = false;
@@ -510,16 +525,33 @@ export default function AdquirentesPage() {
 
   async function processFile() {
     if (!clientId || !file || !categories) return;
+    setProcessingError(null);
+    if (interpretedInstructions.unrecognized.length > 0) {
+      setProcessingError(
+        "Há uma orientação que o leitor ainda não conseguiu transformar em regra. Ajuste o texto indicado antes de continuar.",
+      );
+      return;
+    }
     setProcessing(true);
     try {
-      const result = await parseRedeWorkbook(file, categories, manualPaymentDate, contractedRates);
+      const result = await parseRedeWorkbook(
+        file,
+        categories,
+        manualPaymentDate,
+        contractedRates,
+        { readingRules: interpretedInstructions.rules },
+      );
       setLines(result.lines);
       setProcessedSheets(result.processedSheets);
       setSourceRows(result.sourceRows);
+      setInstructionSummary(result.instructionSummary);
+      setInstructionReviewConfirmed(false);
       setView("review");
     } catch (error) {
       console.error("Erro ao processar planilha:", error);
-      window.alert(error instanceof Error ? error.message : "Não foi possível ler a planilha.");
+      setProcessingError(
+        error instanceof Error ? error.message : "Não foi possível ler a planilha.",
+      );
     } finally {
       setProcessing(false);
     }
@@ -534,7 +566,7 @@ export default function AdquirentesPage() {
         status: totals.divergentSales > 0 ? "REVIEW" : "EXPORTED",
         originalName: file?.name || "adquirente.xlsx",
         parserId: "rede-workbook",
-        parserVersion: "1.0.0",
+        parserVersion: "1.1.0",
         expectedTotal: totals.expectedNet,
         parsedTotal: totals.identifiedNet,
         difference: totals.difference,
@@ -557,6 +589,13 @@ export default function AdquirentesPage() {
           cancellations: totals.cancellations,
           divergentSales: totals.divergentSales,
           exportFormat: "XLSX_CONTA_AZUL",
+          readingInstructions: readingInstructions.trim() || null,
+          readingRules: instructionSummary?.rules.map((rule) => ({
+            action: rule.action,
+            field: rule.field,
+            value: rule.value,
+          })) ?? [],
+          excludedSourceRows: instructionSummary?.excludedRows ?? 0,
         },
         transactions: lines.map((line) => ({
           date: line.paymentDate || line.dueDate || line.saleDate || new Date().toISOString().slice(0, 10),
@@ -587,6 +626,10 @@ export default function AdquirentesPage() {
     setLines([]);
     setProcessedSheets([]);
     setSourceRows(0);
+    setReadingInstructions("");
+    setInstructionSummary(null);
+    setInstructionReviewConfirmed(false);
+    setProcessingError(null);
     resetRef.current?.();
   }
 
@@ -638,6 +681,62 @@ export default function AdquirentesPage() {
               </Paper>
             )}
 
+            <Paper withBorder radius="lg" p="lg">
+              <Stack gap="md">
+                <Group align="flex-start" wrap="nowrap">
+                  <ThemeIcon variant="light" size={42} radius="md">
+                    <IconSparkles size={22} />
+                  </ThemeIcon>
+                  <Stack gap={2}>
+                    <Text fw={800}>Orientações ao leitor</Text>
+                    <Text size="sm" c="dimmed">
+                      Escreva o que deve ser incluído ou ignorado. Use uma orientação por linha para o sistema confirmar exatamente o que entendeu.
+                    </Text>
+                  </Stack>
+                </Group>
+
+                <Textarea
+                  label="Instruções para esta importação (opcional)"
+                  placeholder={'Ex.: Não quero os dados da conta 12345-6\nIgnorar bandeira Elo\nTrazer apenas modalidade débito'}
+                  description="O leitor entende conta, estabelecimento, bandeira, modalidade, aba e descrição."
+                  value={readingInstructions}
+                  onChange={(event) => {
+                    setReadingInstructions(event.currentTarget.value);
+                    setProcessingError(null);
+                  }}
+                  autosize
+                  minRows={3}
+                  maxRows={8}
+                />
+
+                {interpretedInstructions.rules.length > 0 && (
+                  <Stack gap="xs">
+                    <Text size="xs" fw={800} c="dimmed" tt="uppercase">
+                      O leitor entendeu
+                    </Text>
+                    <Group gap="xs">
+                      {interpretedInstructions.rules.map((rule) => (
+                        <Badge key={rule.id} variant="light" color={rule.action === "EXCLUDE" ? "orange" : "blue"}>
+                          {rule.label}
+                        </Badge>
+                      ))}
+                    </Group>
+                  </Stack>
+                )}
+
+                {interpretedInstructions.unrecognized.length > 0 && (
+                  <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="Orientação ainda não compreendida">
+                    {interpretedInstructions.unrecognized.map((instruction) => (
+                      <Text key={instruction} size="sm">“{instruction}”</Text>
+                    ))}
+                    <Text size="sm" mt={4}>
+                      Informe a ação e o campo. Exemplo: “Ignorar estabelecimento Loja Centro”.
+                    </Text>
+                  </Alert>
+                )}
+              </Stack>
+            </Paper>
+
             <Paper withBorder radius="xl" p={38} style={{ borderStyle: "dashed" }}>
               <Stack align="center" gap="md">
                 <ThemeIcon variant="light" size={54} radius="xl"><IconUpload size={27} /></ThemeIcon>
@@ -648,17 +747,60 @@ export default function AdquirentesPage() {
               </Stack>
             </Paper>
 
-            {file && <Card withBorder radius="lg"><Group justify="space-between"><Group><ThemeIcon variant="light" size={44} radius="md"><IconFileSpreadsheet size={23} /></ThemeIcon><Stack gap={1}><Text fw={700}>{file.name}</Text><Text size="sm" c="dimmed">{(file.size / 1024 / 1024).toFixed(2)} MB</Text></Stack></Group><ActionIcon variant="subtle" color="red" onClick={() => { setFile(null); resetRef.current?.(); }}><IconX size={18} /></ActionIcon></Group></Card>}
+            {file && <Card withBorder radius="lg"><Group justify="space-between"><Group><ThemeIcon variant="light" size={44} radius="md"><IconFileSpreadsheet size={23} /></ThemeIcon><Stack gap={1}><Text fw={700}>{file.name}</Text><Text size="sm" c="dimmed">{(file.size / 1024 / 1024).toFixed(2)} MB</Text></Stack></Group><ActionIcon variant="subtle" color="red" onClick={() => { setFile(null); setProcessingError(null); resetRef.current?.(); }}><IconX size={18} /></ActionIcon></Group></Card>}
+
+            {processingError && (
+              <Alert color="red" icon={<IconAlertTriangle size={18} />}>
+                {processingError}
+              </Alert>
+            )}
 
             <Alert color="blue" icon={<IconTable size={18} />}>Cada venda será exportada pelo valor bruto e cada taxa será exportada em uma linha negativa separada. O líquido será usado apenas para conferência.</Alert>
 
-            <Group justify="flex-end"><Button size="md" disabled={!clientId || !file || !manualPaymentDate} loading={processing} onClick={processFile} rightSection={<IconChevronRight size={18} />}>Ler todas as abas</Button></Group>
+            <Group justify="flex-end"><Button size="md" disabled={!clientId || !file || !manualPaymentDate || interpretedInstructions.unrecognized.length > 0} loading={processing} onClick={processFile} rightSection={<IconChevronRight size={18} />}>Ler todas as abas</Button></Group>
 
             <Stack gap="sm"><Text fw={700}>Principais adquirentes previstas</Text><Group gap="xs">{["REDE", "Cielo", "Getnet", "Pagar.me", "Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => <Badge key={brand} variant="outline" color="gray">{brand}</Badge>)}</Group></Stack>
           </Stack>
         </Paper>
       ) : (
         <>
+          {instructionSummary && instructionSummary.rules.length > 0 && (
+            <Alert
+              color={unmatchedInstructionRules.length > 0 ? "yellow" : "teal"}
+              icon={unmatchedInstructionRules.length > 0 ? <IconAlertTriangle size={19} /> : <IconSparkles size={19} />}
+              title="Resultado das orientações ao leitor"
+            >
+              <Stack gap="sm">
+                <Text size="sm">
+                  {instructionSummary.excludedRows} linha(s) da planilha foram retiradas antes da criação dos lançamentos.
+                </Text>
+                <Stack gap={4}>
+                  {instructionSummary.rules.map((rule) => {
+                    const matches = instructionSummary.matchesByRule[rule.id] ?? 0;
+                    const exclusions = instructionSummary.exclusionsByRule[rule.id] ?? 0;
+                    return (
+                      <Group key={rule.id} gap="xs">
+                        <Badge variant="light" color={matches > 0 ? "teal" : "yellow"}>
+                          {matches > 0 ? `${matches} ocorrência(s)` : "nenhuma ocorrência"}
+                        </Badge>
+                        <Text size="sm">
+                          {rule.label}{exclusions > 0 ? ` — ${exclusions} linha(s) retirada(s)` : ""}
+                        </Text>
+                      </Group>
+                    );
+                  })}
+                </Stack>
+                {unmatchedInstructionRules.length > 0 && (
+                  <Checkbox
+                    checked={instructionReviewConfirmed}
+                    onChange={(event) => setInstructionReviewConfirmed(event.currentTarget.checked)}
+                    label="Revisei as orientações sem ocorrência e desejo permitir a exportação mesmo assim."
+                  />
+                )}
+              </Stack>
+            </Alert>
+          )}
+
           <SimpleGrid cols={{ base: 1, sm: 2, xl: 5 }}>
             <Card withBorder radius="lg">
               <Text size="xs" c="dimmed">Vendas brutas</Text>
@@ -1090,7 +1232,17 @@ export default function AdquirentesPage() {
                 <Stack gap={0}><Text size="xs" c="dimmed">Custos e descontos</Text><Text fw={800} fz={20} c="red">-{formatMoney(totals.totalCosts)}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Líquido conferido</Text><Text fw={800} fz={20}>{formatMoney(totals.expectedNet)}</Text></Stack>
               </SimpleGrid>
-              <Button leftSection={<IconDownload size={18} />} size="md" disabled={lines.length === 0} onClick={exportContaAzul}>Exportar planilha Conta Azul</Button>
+              <Button
+                leftSection={<IconDownload size={18} />}
+                size="md"
+                disabled={
+                  lines.length === 0
+                  || (unmatchedInstructionRules.length > 0 && !instructionReviewConfirmed)
+                }
+                onClick={exportContaAzul}
+              >
+                Exportar planilha Conta Azul
+              </Button>
             </Group>
             <Alert mt="lg" color="green" icon={<IconReceipt size={18} />}>A exportação conterá venda bruta, taxa, ajustes, cancelamentos, chargebacks e antecipações em linhas independentes.</Alert>
           </Paper>
