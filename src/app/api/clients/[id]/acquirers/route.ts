@@ -125,8 +125,23 @@ export async function PUT(request: Request, context: RouteContext) {
           typeof rateRow.modality === "string" && MODALITIES.has(rateRow.modality)
             ? rateRow.modality
             : "CREDIT";
+        const informedInstallments = Number(rateRow.installments ?? 1);
+
+        if (
+          modality === "CREDIT"
+          && (
+            !Number.isInteger(informedInstallments)
+            || informedInstallments < 1
+            || informedInstallments > 36
+          )
+        ) {
+          throw new Error(
+            `Informe uma faixa de parcelas entre 1x e 36x na regra ${rateIndex + 1} de ${name}.`,
+          );
+        }
+
         const installments =
-          modality === "CREDIT" && Number(rateRow.installments) > 1 ? 2 : 1;
+          modality === "CREDIT" ? informedInstallments : 1;
         const contractedRate = Number(rateRow.rate);
         const tolerance = Number(rateRow.tolerance ?? 0);
         const cardBrand =
@@ -159,7 +174,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
       if (new Set(rateKeys).size !== rateKeys.length) {
         throw new Error(
-          `Existem taxas duplicadas em ${name}. Revise modalidade, forma e bandeira.`,
+          `Existem taxas duplicadas em ${name}. Revise modalidade, faixa e bandeira.`,
         );
       }
 
@@ -188,7 +203,13 @@ export async function PUT(request: Request, context: RouteContext) {
 
       if (parsed.length > 0) {
         await tx.clientAcquirer.createMany({
-          data: parsed.map(({ rates: _rates, ...item }) => ({ clientId, ...item })),
+          data: parsed.map((item) => ({
+            clientId,
+            name: item.name,
+            normalizedName: item.normalizedName,
+            receiptRule: item.receiptRule,
+            active: item.active,
+          })),
         });
       }
 

@@ -261,6 +261,10 @@ export function ClientAcquirersTab({
                       Uma regra específica de bandeira prevalece sobre a regra
                       geral da mesma modalidade e forma de pagamento.
                     </Text>
+                    <Text size="xs" c="dimmed">
+                      No crédito parcelado, informe o fim de cada faixa. Exemplo:
+                      uma taxa até 6x e outra até 36x representam 2x a 6x e 7x ou mais.
+                    </Text>
                   </Stack>
                   <Button
                     size="xs"
@@ -277,12 +281,13 @@ export function ClientAcquirersTab({
                     Nenhuma taxa contratada cadastrada para esta adquirente.
                   </Alert>
                 ) : (
-                  <Table.ScrollContainer minWidth={850}>
+                  <Table.ScrollContainer minWidth={980}>
                     <Table verticalSpacing="xs">
                       <Table.Thead>
                         <Table.Tr>
                           <Table.Th>Tipo</Table.Th>
                           <Table.Th>Forma</Table.Th>
+                          <Table.Th>Parcelas até</Table.Th>
                           <Table.Th>Bandeira</Table.Th>
                           <Table.Th>Taxa (%)</Table.Th>
                           <Table.Th>Tolerância (p.p.)</Table.Th>
@@ -309,7 +314,7 @@ export function ClientAcquirersTab({
                                       modality,
                                       installments:
                                         modality === "CREDIT" && Number(rate.installments) > 1
-                                          ? 2
+                                          ? Number(rate.installments)
                                           : 1,
                                       cardBrand: modality === "PIX" ? "" : rate.cardBrand,
                                     });
@@ -334,7 +339,30 @@ export function ClientAcquirersTab({
                                       acquirer.key,
                                       rate.key,
                                       "installments",
-                                      value === "INSTALLMENT" ? 2 : 1,
+                                      value === "INSTALLMENT"
+                                        ? Number(rate.installments) > 1
+                                          ? Number(rate.installments)
+                                          : 6
+                                        : 1,
+                                    )
+                                  }
+                                />
+                              </Table.Td>
+                              <Table.Td>
+                                <NumberInput
+                                  min={paymentForm === "INSTALLMENT" ? 2 : 1}
+                                  max={36}
+                                  decimalScale={0}
+                                  allowDecimal={false}
+                                  value={Number(rate.installments) || 1}
+                                  suffix="x"
+                                  disabled={paymentForm !== "INSTALLMENT"}
+                                  onChange={(value) =>
+                                    updateRate(
+                                      acquirer.key,
+                                      rate.key,
+                                      "installments",
+                                      value,
                                     )
                                   }
                                 />

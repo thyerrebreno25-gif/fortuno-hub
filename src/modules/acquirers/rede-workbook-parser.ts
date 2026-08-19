@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { selectContractedRate } from "./contracted-rate-matcher";
 import {
   evaluateReadingInstructions,
   type AcquirerReadingRule,
@@ -238,17 +239,13 @@ function validateRate(
     return { rateValidation: "NOT_CONFIGURED" as const };
   }
 
-  const normalizedModality = normalizeModality(modality);
   const originalInstallments = Math.max(1, Math.trunc(number(installments) || 1));
-  const paymentForm = normalizedModality === "CREDIT" && originalInstallments > 1 ? 2 : 1;
-  const normalizedBrand = normalizeBrand(brand);
-  const candidates = rates.filter((rate) =>
-    normalizeModality(rate.modality) === normalizedModality &&
-    (rate.installments == null || Number(rate.installments) === paymentForm),
+  const contracted = selectContractedRate(
+    rates,
+    normalizeModality(modality),
+    originalInstallments,
+    brand,
   );
-  const specific = candidates.find((rate) => normalizeBrand(rate.cardBrand) === normalizedBrand);
-  const general = candidates.find((rate) => !normalizeBrand(rate.cardBrand) || normalize(rate.cardBrand) === "todas");
-  const contracted = specific ?? general;
 
   if (!contracted) return { rateValidation: "NOT_CONFIGURED" as const };
   const tolerance = Number(contracted.tolerance || 0);
@@ -372,7 +369,9 @@ export async function parseRedeWorkbook(
       const modalityRaw = get(row, "modalidade", "modalidade da venda", "tipo de produto");
       const establishment = text(get(row, "nome do estabelecimento", "nome do estabelecimento da venda"));
       const originalInstallments = Math.max(1, Math.trunc(number(get(row, "número de parcelas", "numero de parcelas", "parcelas")) || 1));
-      const installments = normalizeModality(modalityRaw) === "CREDIT" && originalInstallments > 1 ? 2 : 1;
+      const installments = normalizeModality(modalityRaw) === "CREDIT"
+        ? originalInstallments
+        : 1;
       const gross = getFirstNonZeroNumber(row, "valor bruto da parcela atualizada", "valor bruto da parcela original", "valor bruto da parcela");
       const fee = Math.abs(number(get(row, "valor MDR descontado")));
       const explicitRate = number(get(row, "taxa MDR"));

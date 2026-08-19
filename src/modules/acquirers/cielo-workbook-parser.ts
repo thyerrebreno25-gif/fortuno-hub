@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { selectContractedRate } from "./contracted-rate-matcher";
 import {
   evaluateReadingInstructions,
   type AcquirerReadingRule,
@@ -131,19 +132,12 @@ function validateRate(
   if (!chargedRate) return { rateValidation: "NOT_APPLICABLE" as const };
   if (rates.length === 0) return { rateValidation: "NOT_CONFIGURED" as const };
 
-  const paymentForm = modality === "CREDIT" && installments > 1 ? 2 : 1;
-  const normalizedBrand = normalizeBrand(brand);
-  const candidates = rates.filter((rate) =>
-    normalizeModality(rate.modality) === modality
-    && (rate.installments == null || Number(rate.installments) === paymentForm),
+  const contracted = selectContractedRate(
+    rates,
+    modality,
+    installments,
+    brand,
   );
-  const specific = candidates.find(
-    (rate) => normalizeBrand(rate.cardBrand) === normalizedBrand,
-  );
-  const general = candidates.find(
-    (rate) => !normalizeBrand(rate.cardBrand) || normalize(rate.cardBrand) === "todas",
-  );
-  const contracted = specific ?? general;
 
   if (!contracted) return { rateValidation: "NOT_CONFIGURED" as const };
   const tolerance = Number(contracted.tolerance || 0);

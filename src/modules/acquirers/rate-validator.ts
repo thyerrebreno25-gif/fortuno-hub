@@ -1,3 +1,5 @@
+import { selectContractedRate } from "./contracted-rate-matcher";
+
 export type ContractedRateRule = {
   id?: string;
   modality: string;
@@ -24,36 +26,16 @@ export type RateValidationResult = {
   financialImpact: number | null;
 };
 
-function normalize(value?: string | null): string | null {
-  if (!value) return null;
-  const result = value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toUpperCase();
-  return result || null;
-}
-
 export function validateContractedRate(
   input: RateValidationInput,
   rules: ContractedRateRule[],
 ): RateValidationResult {
-  const modality = normalize(input.modality);
-  const brand = normalize(input.cardBrand);
-  const installments =
-    modality === "PIX" ? null : input.installments ?? 1;
-
-  const candidates = rules.filter(
-    (rule) =>
-      normalize(rule.modality) === modality &&
-      (rule.installments ?? null) === installments,
+  const matchedRule = selectContractedRate(
+    rules,
+    input.modality,
+    input.installments ?? 1,
+    input.cardBrand,
   );
-
-  const matchedRule =
-    candidates.find((rule) => normalize(rule.cardBrand) === brand && brand) ??
-    candidates.find((rule) => normalize(rule.cardBrand) === null) ??
-    null;
 
   if (!matchedRule) {
     return {
