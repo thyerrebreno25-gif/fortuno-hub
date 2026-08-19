@@ -8,10 +8,10 @@ import {
 } from "@/modules/acquirers/rede-workbook-parser";
 import {
   parseAcquirerWorkbook,
+  type AcquirerSourceTotals,
   type ConfiguredAcquirerRates,
   type SupportedAcquirer,
 } from "@/modules/acquirers/parse-acquirer-workbook";
-import type { CieloSourceTotals } from "@/modules/acquirers/cielo-workbook-parser";
 import { interpretReadingInstructions } from "@/modules/acquirers/reading-instructions";
 import { exportAcquirerToContaAzul } from "@/modules/acquirers/conta-azul-exporter";
 import { AcquirerAuditDashboard } from "@/modules/acquirers/components/acquirer-audit-dashboard";
@@ -258,7 +258,7 @@ export default function AdquirentesPage() {
   const [sourceRows, setSourceRows] = useState(0);
   const [detectedAcquirer, setDetectedAcquirer] = useState<SupportedAcquirer | null>(null);
   const [activeParser, setActiveParser] = useState({ id: "", version: "" });
-  const [sourceTotals, setSourceTotals] = useState<CieloSourceTotals | null>(null);
+  const [sourceTotals, setSourceTotals] = useState<AcquirerSourceTotals | null>(null);
   const [readingInstructions, setReadingInstructions] = useState("");
   const [instructionSummary, setInstructionSummary] = useState<ReadingInstructionSummary | null>(null);
   const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
@@ -778,7 +778,7 @@ export default function AdquirentesPage() {
             <Stack gap="sm">
               <Text fw={700}>Leitores disponíveis</Text>
               <Group gap="xs">
-                {["REDE", "Cielo"].map((brand) => (
+                {["REDE", "Cielo", "GETNET"].map((brand) => (
                   <Badge key={brand} variant="light" color="green">{brand} ativo</Badge>
                 ))}
                 {["Getnet", "Pagar.me", "Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => (

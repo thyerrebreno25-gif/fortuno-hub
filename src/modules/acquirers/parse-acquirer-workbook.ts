@@ -5,6 +5,10 @@ import {
 } from "./cielo-workbook-parser";
 import type { AcquirerReadingRule } from "./reading-instructions";
 import {
+  isGetnetDetailedSheet,
+  parseGetnetWorkbook,
+} from "./getnet-workbook-parser";
+import {
   parseRedeWorkbook,
   type Categories,
   type ContractedRate,
@@ -12,7 +16,8 @@ import {
   type ReadingInstructionSummary,
 } from "./rede-workbook-parser";
 
-export type SupportedAcquirer = "REDE" | "CIELO";
+export type SupportedAcquirer = "REDE" | "CIELO" | "GETNET";
+export type AcquirerSourceTotals = CieloSourceTotals;
 
 export type ConfiguredAcquirerRates = {
   name: string;
@@ -24,7 +29,7 @@ export type AcquirerWorkbookResult = {
   processedSheets: string[];
   sourceRows: number;
   instructionSummary: ReadingInstructionSummary;
-  sourceTotals: CieloSourceTotals | null;
+  sourceTotals: AcquirerSourceTotals | null;
   acquirer: SupportedAcquirer;
   parserId: string;
   parserVersion: string;
@@ -45,6 +50,10 @@ function detectAcquirer(workbook: XLSX.WorkBook): SupportedAcquirer | null {
       raw: true,
       range: 0,
     }).slice(0, 30);
+
+    if (isGetnetDetailedSheet(sheetName, matrix)) {
+      return "GETNET";
+    }
 
     for (const values of matrix) {
       const headers = new Set(values.map(normalize));
@@ -79,7 +88,11 @@ function ratesForAcquirer(
   acquirer: SupportedAcquirer,
   configuredAcquirers: ConfiguredAcquirerRates[],
 ) {
-  const aliases = acquirer === "REDE" ? ["rede", "redecard"] : ["cielo"];
+  const aliases = {
+    REDE: ["rede", "redecard"],
+    CIELO: ["cielo"],
+    GETNET: ["getnet"],
+  }[acquirer];
   const matched = configuredAcquirers.find((item) => {
     const name = normalize(item.name).replace(/[^a-z0-9]/g, "");
     return aliases.some((alias) => name.includes(alias.replace(/[^a-z0-9]/g, "")));
@@ -102,7 +115,7 @@ export async function parseAcquirerWorkbook(
 
   if (!acquirer) {
     throw new Error(
-      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede e da Cielo.",
+      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo e GETNET.",
     );
   }
 
@@ -120,6 +133,22 @@ export async function parseAcquirerWorkbook(
       ...result,
       acquirer,
       parserId: "cielo-recebiveis-detalhado",
+      parserVersion: "1.0.0",
+    };
+  }
+
+  if (acquirer === "GETNET") {
+    const result = await parseGetnetWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      contractedRates,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "getnet-recebiveis-detalhado",
       parserVersion: "1.0.0",
     };
   }
