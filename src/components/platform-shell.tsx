@@ -180,13 +180,6 @@ const menuItems: MenuItem[] = [
     group: "Financeiro",
   },
   {
-    label: "BrasilMed",
-    href: "/conciliacao-brasilmed",
-    moduleCode: "IMPORTS",
-    icon: icons.document,
-    group: "Financeiro",
-  },
-  {
     label: "Clientes",
     href: "/clientes",
     moduleCode: "CLIENTS",

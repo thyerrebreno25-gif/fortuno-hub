@@ -23,7 +23,6 @@ import {
   IconChartBar,
   IconClipboardCheck,
   IconFileAnalytics,
-  IconFileInvoice,
   IconHeadset,
   IconHistory,
   IconRocket,
@@ -100,15 +99,6 @@ const features: Feature[] = [
     moduleCode: "IMPORTS",
     group: "Operação financeira",
     icon: <IconActivity size={24} />,
-  },
-  {
-    title: "BrasilMed",
-    description:
-      "Acesse as rotinas e conciliações específicas da operação BrasilMed.",
-    href: "/conciliacao-brasilmed",
-    moduleCode: "IMPORTS",
-    group: "Operação financeira",
-    icon: <IconFileInvoice size={24} />,
   },
   {
     title: "Motor Cambial",
