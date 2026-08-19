@@ -77,6 +77,20 @@ type CategoryOption = { id: string; name: string; code?: string | null; children
 
 const exampleItems: InvoiceItem[] = [];
 
+const ACTIVE_INVOICE_BANKS = ["Banco Inter", "Sicoob"];
+const PENDING_INVOICE_BANKS = [
+  "Banco do Brasil",
+  "Caixa",
+  "Itaú",
+  "Bradesco",
+  "Santander",
+  "Nubank",
+  "C6",
+  "Sicredi",
+  "XP",
+  "BTG",
+];
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -544,9 +558,9 @@ export default function FaturasPage() {
 
               <Select
                 label="Banco da fatura"
-                description="Seleção manual mantida. Ela define qual parser será usado."
+                description="Somente bancos com leitor ativo podem ser selecionados."
                 placeholder="Selecione o banco"
-                data={["Banco Inter", "Sicoob", "Itaú", "Bradesco", "Santander", "Nubank", "Banco do Brasil"]}
+                data={ACTIVE_INVOICE_BANKS}
                 value={bank}
                 onChange={setBank}
                 searchable
@@ -658,28 +672,35 @@ export default function FaturasPage() {
             </Group>
 
             <Stack gap="sm">
-              <Text fw={700}>Principais bancos e emissores previstos</Text>
+              <Text fw={700}>Cobertura dos leitores de fatura</Text>
 
-              <Group gap="xs">
-                {[
-                  "Banco do Brasil",
-                  "Caixa",
-                  "Itaú",
-                  "Bradesco",
-                  "Santander",
-                  "Inter",
-                  "Nubank",
-                  "C6",
-                  "Sicoob",
-                  "Sicredi",
-                  "XP",
-                  "BTG",
-                ].map((bank) => (
-                  <Badge key={bank} variant="outline" color="gray">
-                    {bank}
-                  </Badge>
-                ))}
-              </Group>
+              <Stack gap={6}>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                  Já aprendidos
+                </Text>
+
+                <Group gap="xs">
+                  {ACTIVE_INVOICE_BANKS.map((bank) => (
+                    <Badge key={bank} variant="light" color="green">
+                      {bank} ativo
+                    </Badge>
+                  ))}
+                </Group>
+              </Stack>
+
+              <Stack gap={6}>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                  Ainda não aprendidos
+                </Text>
+
+                <Group gap="xs">
+                  {PENDING_INVOICE_BANKS.map((bank) => (
+                    <Badge key={bank} variant="outline" color="gray">
+                      {bank} em preparação
+                    </Badge>
+                  ))}
+                </Group>
+              </Stack>
             </Stack>
           </Stack>
         </Paper>
