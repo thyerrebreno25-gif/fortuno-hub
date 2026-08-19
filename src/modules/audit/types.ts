@@ -52,7 +52,16 @@ export type AuditAnalysisResult = {
     critical: number;
     warnings: number;
     info: number;
+    sourceTransactionCount: number;
     transactionCount: number;
+    entryCount: number;
+    exitCount: number;
+    entryTotal: number;
+    exitTotal: number;
+    priorityTransactionCount: number;
+    compensatedPairCount: number;
+    compensatedTransactionCount: number;
+    genericIgnoredTransactionCount: number;
     months: string[];
   };
 };

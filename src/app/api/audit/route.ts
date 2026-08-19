@@ -104,7 +104,29 @@ export async function POST(request: Request) {
         size: Number(file.size || 0) || null,
         periodStart: body.periodStart ? new Date(`${body.periodStart}T12:00:00`) : null,
         periodEnd: body.periodEnd ? new Date(`${body.periodEnd}T12:00:00`) : null,
-        parsedSummary: { transactionCount: Number(body.metrics?.transactionCount ?? 0), months: body.metrics?.months ?? [] },
+        parsedSummary: {
+          sourceTransactionCount: Number(
+            body.metrics?.sourceTransactionCount ?? 0,
+          ),
+          transactionCount: Number(body.metrics?.transactionCount ?? 0),
+          entryCount: Number(body.metrics?.entryCount ?? 0),
+          exitCount: Number(body.metrics?.exitCount ?? 0),
+          entryTotal: Number(body.metrics?.entryTotal ?? 0),
+          exitTotal: Number(body.metrics?.exitTotal ?? 0),
+          priorityTransactionCount: Number(
+            body.metrics?.priorityTransactionCount ?? 0,
+          ),
+          compensatedPairCount: Number(
+            body.metrics?.compensatedPairCount ?? 0,
+          ),
+          compensatedTransactionCount: Number(
+            body.metrics?.compensatedTransactionCount ?? 0,
+          ),
+          genericIgnoredTransactionCount: Number(
+            body.metrics?.genericIgnoredTransactionCount ?? 0,
+          ),
+          months: body.metrics?.months ?? [],
+        },
       }] },
       findings: { create: findings.map((finding) => ({
         source: "AUTOMATIC" as const,

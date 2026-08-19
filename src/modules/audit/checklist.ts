@@ -1,10 +1,26 @@
 export const DEFAULT_AUDIT_CHECKLIST = [
-  { category: "Contas a Pagar e Receber", title: "Revisar contas a pagar e a receber em atraso e os motivos ainda não cobertos pelos relatórios importados." },
-  { category: "Contas a Pagar e Receber", title: "Validar inadimplentes com os recebimentos e confirmar pendências que dependam de alinhamento com o cliente." },
-  { category: "Conciliação Bancária", title: "Confirmar a conciliação Conta Azul x banco quando o extrato bancário não tiver sido importado na auditoria." },
-  { category: "Aplicações Financeiras", title: "Validar aplicações, rendimentos e impostos que o sistema sinalizou para revisão." },
-  { category: "Meios de Recebimento", title: "Validar saldos e taxas dos meios de recebimento quando os relatórios das adquirentes não tiverem sido importados." },
-  { category: "Fluxo de Caixa", title: "Revisar novas categorias e variações apontadas pelo motor e confirmar se fazem sentido no contexto do cliente." },
-  { category: "DRE", title: "Validar competências e datas que dependam de contexto operacional ou documentação externa." },
-  { category: "Revisão Final", title: "Revisar todos os alertas críticos e pontos de atenção antes de concluir a auditoria." },
+  {
+    category: "Obrigações fiscais",
+    title: "Confirmar se impostos e encargos recorrentes foram pagos em todos os meses do período.",
+  },
+  {
+    category: "Folha de pagamento",
+    title: "Confirmar salários, férias, décimo terceiro e demais itens de folha aplicáveis ao período.",
+  },
+  {
+    category: "Sócios",
+    title: "Validar o pró-labore mensal e eventuais encargos relacionados.",
+  },
+  {
+    category: "Obrigações recorrentes",
+    title: "Revisar outras obrigações materiais do cliente, como benefícios, aluguel, honorários e financiamentos.",
+  },
+  {
+    category: "Conciliação bancária",
+    title: "Confirmar o saldo final e validar se as transferências internas compensadas fazem sentido.",
+  },
+  {
+    category: "Revisão final",
+    title: "Revisar os reports prioritários antes de concluir a auditoria.",
+  },
 ] as const;

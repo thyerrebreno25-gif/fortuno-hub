@@ -187,6 +187,13 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("pt-BR").format(date);
 }
 
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
 export default function AuditoriaPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
@@ -284,7 +291,10 @@ export default function AuditoriaPage() {
       notifications.show({
         color: "green",
         title: "Auditoria concluída",
-        message: `${result.movements.length} lançamentos analisados e ${result.findings.length} pontos identificados.`,
+        message:
+          `${result.movements.length} lançamentos analisados, `
+          + `${result.metrics.priorityTransactionCount} prioritário(s) e `
+          + `${result.findings.length} pontos identificados.`,
       });
 
       await load();
@@ -646,8 +656,8 @@ export default function AuditoriaPage() {
           </Text>
           <Title order={2}>Análise de Auditoria</Title>
           <Text c="dimmed">
-            Importe os relatórios, identifique os pontos e siga o fluxo
-            Líder → Operador → Líder até o check final.
+            Foque impostos, folha, pró-labore e obrigações materiais, seguindo
+            o fluxo Líder → Operador → Líder até o check final.
           </Text>
         </div>
 
@@ -713,7 +723,7 @@ export default function AuditoriaPage() {
 
       {analysis && (
         <>
-          <SimpleGrid cols={{ base: 2, md: 5 }}>
+          <SimpleGrid cols={{ base: 2, md: 4 }}>
             <Metric
               title="Saúde"
               value={`${analysis.healthScore}%`}
@@ -736,16 +746,87 @@ export default function AuditoriaPage() {
               color="orange"
             />
             <Metric
-              title="Observações"
-              value={analysis.metrics.info}
+              title="Reports"
+              value={analysis.findings.length}
               color="blue"
             />
-            <Metric
-              title="Lançamentos"
-              value={analysis.metrics.transactionCount}
-              color="gray"
-            />
           </SimpleGrid>
+
+          <Paper withBorder radius="lg" p="lg">
+            <Group justify="space-between" align="flex-start" mb="md">
+              <div>
+                <Text fw={700}>Entradas e saídas analisadas</Text>
+                <Text size="xs" c="dimmed">
+                  Separação pelo sinal do valor identificado no extrato.
+                </Text>
+              </div>
+              <Badge variant="light" color="gray">
+                {analysis.metrics.sourceTransactionCount} no arquivo
+              </Badge>
+            </Group>
+
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+              <Card withBorder radius="md" p="md">
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                  Entradas
+                </Text>
+                <Text fz={24} fw={800} c="green">
+                  {analysis.metrics.entryCount}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {formatMoney(analysis.metrics.entryTotal)}
+                </Text>
+              </Card>
+
+              <Card withBorder radius="md" p="md">
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                  Saídas
+                </Text>
+                <Text fz={24} fw={800} c="red">
+                  {analysis.metrics.exitCount}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {formatMoney(analysis.metrics.exitTotal)}
+                </Text>
+              </Card>
+
+              <Card withBorder radius="md" p="md">
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                  Movimentos prioritários
+                </Text>
+                <Text fz={24} fw={800} c="blue">
+                  {analysis.metrics.priorityTransactionCount}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Impostos, folha e pró-labore
+                </Text>
+              </Card>
+
+              <Card withBorder radius="md" p="md">
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                  Desconsiderados
+                </Text>
+                <Text fz={24} fw={800} c="gray">
+                  {analysis.metrics.compensatedTransactionCount
+                    + analysis.metrics.genericIgnoredTransactionCount}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {analysis.metrics.compensatedPairCount} par(es) e{" "}
+                  {analysis.metrics.genericIgnoredTransactionCount} genérico(s)
+                </Text>
+              </Card>
+            </SimpleGrid>
+
+            {(analysis.metrics.compensatedPairCount > 0
+              || analysis.metrics.genericIgnoredTransactionCount > 0) && (
+              <Alert color="blue" icon={<IconCheck size={16} />} mt="md">
+                Pares de entrada e saída do mesmo dia e valor, PIX sem
+                identificação, recebimentos genéricos e transferências entre
+                contas não geraram reports. Lançamentos prioritários e itens
+                identificados permaneceram na análise.
+              </Alert>
+            )}
+          </Paper>
 
           <Paper withBorder radius="lg" p="lg">
             <Group justify="space-between" mb="xs">

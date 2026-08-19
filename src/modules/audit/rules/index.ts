@@ -1,4 +1,8 @@
 import type { AuditFindingDraft, AuditMovement, AuditSeverity } from "../types";
+import {
+  classifyMonthlyObligation,
+  MONTHLY_OBLIGATIONS,
+} from "../movement-classifier";
 
 function normalize(value: string | null | undefined) {
   return String(value ?? "")
@@ -201,6 +205,66 @@ export function newCategoryRule(movements: AuditMovement[]): AuditFindingDraft[]
   }));
 }
 
+export function monthlyObligationCoverageRule(
+  movements: AuditMovement[],
+  expectedMonths = [...new Set(movements.map((item) => item.monthKey))].sort(),
+): AuditFindingDraft[] {
+  if (expectedMonths.length < 2) return [];
+
+  const findings: AuditFindingDraft[] = [];
+
+  for (const obligation of MONTHLY_OBLIGATIONS) {
+    const items = movements.filter(
+      (movement) =>
+        movement.amount < 0
+        && classifyMonthlyObligation(movement) === obligation.code,
+    );
+
+    if (items.length === 0) continue;
+
+    const totalsByMonth = new Map<string, number>();
+
+    for (const item of items) {
+      totalsByMonth.set(
+        item.monthKey,
+        (totalsByMonth.get(item.monthKey) ?? 0) + Math.abs(item.amount),
+      );
+    }
+
+    const missingMonths = expectedMonths.filter(
+      (month) => !totalsByMonth.has(month),
+    );
+
+    if (missingMonths.length === 0) continue;
+
+    const identifiedTotals = [...totalsByMonth.values()];
+    const average = identifiedTotals.reduce((sum, value) => sum + value, 0)
+      / identifiedTotals.length;
+
+    findings.push({
+      localId: localId(`MISSING_MONTHLY_${obligation.code}`, missingMonths.join("-")),
+      ruleCode: `MISSING_MONTHLY_${obligation.code}`,
+      title: `${obligation.label} não identificados em todos os meses`,
+      description:
+        `${obligation.label} aparecem em parte do período, mas não foram `
+        + `identificados em ${missingMonths.join(", ")}. Confirme o pagamento `
+        + "ou verifique se a movimentação foi classificada corretamente.",
+      severity: obligation.code === "PRO_LABORE" ? "WARNING" : "CRITICAL",
+      subject: obligation.label,
+      competence: missingMonths.join(", "),
+      amount: average,
+      evidence: expectedMonths.map((month) => ({
+        label: month,
+        value: totalsByMonth.has(month)
+          ? money(totalsByMonth.get(month) ?? 0)
+          : "Não identificado",
+      })),
+    });
+  }
+
+  return findings;
+}
+
 export function negativeEndingBalanceRule(movements: AuditMovement[]): AuditFindingDraft[] {
   const withBalance = movements.filter((item) => item.balance != null);
   const last = withBalance[withBalance.length - 1];
@@ -218,10 +282,7 @@ export function negativeEndingBalanceRule(movements: AuditMovement[]): AuditFind
 }
 
 export const auditRules = [
-  categoryDivergenceRule,
   duplicateRule,
-  recurringMissingRule,
-  monthlyVariationRule,
-  newCategoryRule,
+  monthlyObligationCoverageRule,
   negativeEndingBalanceRule,
 ];
