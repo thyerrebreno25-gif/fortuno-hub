@@ -31,7 +31,7 @@ export async function getCurrentMember(){
   const supabase = await createSupabaseClient();
   const {data:{user}} = await supabase.auth.getUser();
   if(!user) return null;
-  return prisma.organizationMember.findFirst({where:{userId:user.id},orderBy:{createdAt:"asc"},select:{id:true,userId:true,organizationId:true,role:true}});
+  return prisma.organizationMember.findFirst({where:{userId:user.id},orderBy:{createdAt:"asc"},select:{id:true,userId:true,organizationId:true,role:true,isTeamLeader:true}});
 }
 
 export async function getRolePermissions(organizationId:string, role:string){

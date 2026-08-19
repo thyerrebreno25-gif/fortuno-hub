@@ -40,6 +40,7 @@ type Permission = {
 
 type PermissionsResponse = {
   role: string;
+  isTeamLeader?: boolean;
   permissions: Record<string, Permission>;
 };
 
@@ -242,7 +243,8 @@ export default function InicioPage() {
       .map((feature) => {
         if (
           feature.moduleCode === "AUDIT" &&
-          data.role === "OPERATOR"
+          data.role === "OPERATOR" &&
+          !data.isTeamLeader
         ) {
           return {
             ...feature,

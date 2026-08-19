@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   canSuperviseAudit,
   getAuditMember,
+  isAuditAdministrator,
 } from "@/modules/audit/auth";
 
 type Context = {
@@ -28,9 +29,9 @@ export async function PATCH(
     );
   }
 
-  if (!canSuperviseAudit(member.role)) {
+  if (!canSuperviseAudit(member.role, member.isTeamLeader)) {
     return NextResponse.json(
-      { error: "Apenas supervisores podem revisar o checklist." },
+      { error: "Apenas líderes podem revisar o checklist." },
       { status: 403 },
     );
   }
@@ -70,6 +71,7 @@ export async function PATCH(
           id: true,
           organizationId: true,
           clientId: true,
+          supervisorId: true,
         },
       },
     },
@@ -82,12 +84,23 @@ export async function PATCH(
     );
   }
 
+  const administrator = isAuditAdministrator(member.role);
+  if (
+    !administrator &&
+    checklist.audit.supervisorId !== member.userId
+  ) {
+    return NextResponse.json(
+      { error: "Somente o líder responsável pode revisar este checklist." },
+      { status: 403 },
+    );
+  }
+
   if (status === "NON_COMPLIANT") {
     if (!note) {
       return NextResponse.json(
         {
           error:
-            "Informe a orientação do supervisor antes de enviar para correção.",
+            "Informe a orientação do líder antes de enviar para correção.",
         },
         { status: 400 },
       );
@@ -100,11 +113,23 @@ export async function PATCH(
       );
     }
 
+    if (!dueAt) {
+      return NextResponse.json(
+        { error: "Defina o prazo da correção." },
+        { status: 400 },
+      );
+    }
+
     const operator =
       await prisma.organizationMember.findFirst({
         where: {
           organizationId: member.organizationId,
           userId: operatorId,
+          role: "OPERATOR",
+          isTeamLeader: false,
+          ...(member.isTeamLeader && !administrator
+            ? { teamLeaderId: member.id }
+            : {}),
         },
         select: {
           userId: true,
@@ -113,7 +138,7 @@ export async function PATCH(
 
     if (!operator) {
       return NextResponse.json(
-        { error: "Operador inválido." },
+        { error: "Selecione um operador vinculado à equipe deste líder." },
         { status: 400 },
       );
     }

@@ -34,7 +34,7 @@ type Bootstrap = { currentUser: { id: string; role: string; name?: string | null
 const CLOSED = new Set(["VALIDATED", "DISMISSED"]);
 
 function label(value: string) {
-  return ({ SENT: "Enviado", IN_PROGRESS: "Em andamento", PENDING_VALIDATION: "Aguardando validação", VALIDATED: "Validado", RETURNED: "Devolvido", DISMISSED: "Descartado" } as Record<string, string>)[value] || value;
+  return ({ SENT: "Enviado", IN_PROGRESS: "Em andamento", PENDING_VALIDATION: "Aguardando check do líder", VALIDATED: "Validado", RETURNED: "Devolvido", DISMISSED: "Descartado" } as Record<string, string>)[value] || value;
 }
 function color(value: string) {
   if (value === "VALIDATED") return "green";
@@ -92,7 +92,7 @@ export default function MinhasAuditoriasPage() {
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Não foi possível atualizar a correção.");
-    notifications.show({ color: actionName === "START" ? "blue" : "green", title: actionName === "START" ? "Correção iniciada" : "Enviado para validação", message: actionName === "START" ? "O item está em andamento." : "Sua devolutiva foi enviada ao supervisor." });
+    notifications.show({ color: actionName === "START" ? "blue" : "green", title: actionName === "START" ? "Correção iniciada" : "Enviado para o líder", message: actionName === "START" ? "O item está em andamento." : "Sua devolutiva foi enviada para o check do líder." });
     await load();
   }
 
@@ -113,7 +113,7 @@ export default function MinhasAuditoriasPage() {
         <div>
           <Text size="xs" fw={800} c="blue" tt="uppercase" lts={1}>Auditoria • Operador</Text>
           <Title order={2}>Minhas Auditorias</Title>
-          <Text c="dimmed">Cada cliente fica agrupado em uma auditoria. Corrija os apontamentos, registre sua devolutiva e envie para validação.</Text>
+          <Text c="dimmed">Cada cliente fica agrupado em uma auditoria. Corrija os apontamentos, registre sua devolutiva e envie para o check do líder.</Text>
         </div>
         <Button variant="default" leftSection={<IconRefresh size={16} />} loading={loading} onClick={() => void load()}>Atualizar</Button>
       </Group>
@@ -135,7 +135,7 @@ export default function MinhasAuditoriasPage() {
             return <Accordion.Item key={audit.id} value={audit.id}>
               <Accordion.Control>
                 <Stack gap={8} pr="md">
-                  <Group justify="space-between"><div><Text fw={800}>{audit.client.name}</Text><Text size="xs" c="dimmed">{audit.referenceLabel || `${formatDate(audit.periodStart)} → ${formatDate(audit.periodEnd)}`} • Supervisor: {audit.supervisor?.name || audit.supervisor?.email || "—"}</Text></div><Badge>{open.length} pendente{open.length === 1 ? "" : "s"}</Badge></Group>
+                  <Group justify="space-between"><div><Text fw={800}>{audit.client.name}</Text><Text size="xs" c="dimmed">{audit.referenceLabel || `${formatDate(audit.periodStart)} → ${formatDate(audit.periodEnd)}`} • Líder: {audit.supervisor?.name || audit.supervisor?.email || "—"}</Text></div><Badge>{open.length} pendente{open.length === 1 ? "" : "s"}</Badge></Group>
                   <Progress value={progress} radius="xl" />
                 </Stack>
               </Accordion.Control>
@@ -144,13 +144,13 @@ export default function MinhasAuditoriasPage() {
                   {audit.findings.map((finding) => <Paper key={finding.id} withBorder radius="md" p="md">
                     <Group gap="xs"><Badge color={finding.severity === "CRITICAL" ? "red" : finding.severity === "WARNING" ? "orange" : "blue"}>{finding.severity}</Badge><Badge color={color(finding.status)} variant="outline">{label(finding.status)}</Badge>{finding.source === "SUPERVISOR_CHECKLIST" && <Badge color="violet">Checklist</Badge>}{overdue(finding) && <Badge color="red">Atrasado</Badge>}</Group>
                     <Text fw={700} mt="xs">{finding.title}</Text><Text size="sm" c="dimmed">{finding.description}</Text>
-                    {finding.supervisorNote && <Alert color="blue" mt="sm" title="Orientação do supervisor">{finding.supervisorNote}</Alert>}
+                    {finding.supervisorNote && <Alert color="blue" mt="sm" title="Orientação do líder">{finding.supervisorNote}</Alert>}
                     <SimpleGrid cols={{ base: 1, sm: 2 }} mt="sm"><Text size="xs"><b>Prazo:</b> {formatDate(finding.dueAt)}</Text><Text size="xs"><b>Categoria:</b> {finding.category || "—"}</Text></SimpleGrid>
                     {(finding.interactions?.length ?? 0) > 0 && <Accordion mt="sm" variant="contained"><Accordion.Item value={`hist-${finding.id}`}><Accordion.Control>Histórico da correção</Accordion.Control><Accordion.Panel><Stack gap={4}>{(finding.interactions ?? []).map((i) => <Text key={i.id} size="xs" c="dimmed"><b>{i.user?.name || i.user?.email || "Usuário"}</b>: {i.action}{i.note ? ` — ${i.note}` : ""}</Text>)}</Stack></Accordion.Panel></Accordion.Item></Accordion>}
                     <Group mt="md">
-                      {finding.status === "SENT" && <Button size="xs" onClick={async () => { try { await action(finding.id, "START"); } catch (error) { notifications.show({ color: "red", title: "Auditoria", message: error instanceof Error ? error.message : "Erro inesperado." }); } }}>Iniciar correção</Button>}
-                      {["IN_PROGRESS", "RETURNED"].includes(finding.status) && <Button size="xs" color="green" onClick={() => setModal({ finding, note: "" })}>Concluir e enviar para validação</Button>}
-                      {finding.status === "PENDING_VALIDATION" && <Alert color="yellow" py={6}>Aguardando validação do supervisor.</Alert>}
+                      {["SENT", "RETURNED"].includes(finding.status) && <Button size="xs" onClick={async () => { try { await action(finding.id, "START"); } catch (error) { notifications.show({ color: "red", title: "Auditoria", message: error instanceof Error ? error.message : "Erro inesperado." }); } }}>{finding.status === "RETURNED" ? "Retomar correção" : "Iniciar correção"}</Button>}
+                      {finding.status === "IN_PROGRESS" && <Button size="xs" color="green" onClick={() => setModal({ finding, note: "" })}>Concluir e enviar para o líder</Button>}
+                      {finding.status === "PENDING_VALIDATION" && <Alert color="yellow" py={6}>Aguardando check do líder.</Alert>}
                       {finding.status === "VALIDATED" && <Badge color="green">Correção validada</Badge>}
                     </Group>
                   </Paper>)}
@@ -162,7 +162,7 @@ export default function MinhasAuditoriasPage() {
       )}
 
       <Modal opened={!!modal} onClose={() => setModal(null)} title="Devolutiva da correção" centered>
-        {modal && <Stack><Text fw={700}>{modal.finding.title}</Text><Textarea label="O que foi feito?" description="Explique a correção realizada para o supervisor validar." required minRows={5} value={modal.note} onChange={(e) => setModal({ ...modal, note: e.currentTarget.value })} /><Button color="green" disabled={!modal.note.trim()} onClick={async () => { try { await action(modal.finding.id, "COMPLETE", modal.note); setModal(null); } catch (error) { notifications.show({ color: "red", title: "Auditoria", message: error instanceof Error ? error.message : "Erro inesperado." }); } }}>Enviar para validação</Button></Stack>}
+        {modal && <Stack><Text fw={700}>{modal.finding.title}</Text><Textarea label="O que foi feito?" description="Explique a correção realizada para o líder conferir." required minRows={5} value={modal.note} onChange={(e) => setModal({ ...modal, note: e.currentTarget.value })} /><Button color="green" disabled={!modal.note.trim()} onClick={async () => { try { await action(modal.finding.id, "COMPLETE", modal.note); setModal(null); } catch (error) { notifications.show({ color: "red", title: "Auditoria", message: error instanceof Error ? error.message : "Erro inesperado." }); } }}>Enviar para o líder</Button></Stack>}
       </Modal>
     </Stack>
   );

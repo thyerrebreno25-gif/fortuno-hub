@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   canSuperviseAudit,
   getAuditMember,
+  isAuditAdministrator,
 } from "@/modules/audit/auth";
 
 type Context = {
@@ -22,11 +23,11 @@ export async function DELETE(
     );
   }
 
-  if (!canSuperviseAudit(member.role)) {
+  if (!canSuperviseAudit(member.role, member.isTeamLeader)) {
     return NextResponse.json(
       {
         error:
-          "Apenas supervisores podem excluir auditorias.",
+          "Apenas líderes podem excluir auditorias.",
       },
       { status: 403 },
     );
@@ -41,6 +42,7 @@ export async function DELETE(
     },
     select: {
       id: true,
+      supervisorId: true,
       client: {
         select: {
           name: true,
@@ -53,6 +55,16 @@ export async function DELETE(
     return NextResponse.json(
       { error: "Auditoria não encontrada." },
       { status: 404 },
+    );
+  }
+
+  if (
+    !isAuditAdministrator(member.role) &&
+    audit.supervisorId !== member.userId
+  ) {
+    return NextResponse.json(
+      { error: "Somente o líder responsável pode excluir esta auditoria." },
+      { status: 403 },
     );
   }
 

@@ -47,6 +47,8 @@ type Bootstrap = {
     role: string;
     name?: string | null;
     email: string;
+    isTeamLeader: boolean;
+    canSupervise: boolean;
   };
   clients: Array<{
     id: string;
@@ -150,7 +152,7 @@ function statusLabel(value: string) {
     DISMISSED: "Descartado",
     SENT: "Enviado",
     IN_PROGRESS: "Em andamento",
-    PENDING_VALIDATION: "Aguardando validação",
+    PENDING_VALIDATION: "Aguardando check do líder",
     VALIDATED: "Validado",
     RETURNED: "Devolvido",
   };
@@ -197,9 +199,7 @@ export default function AuditoriaPage() {
   const [actionModal, setActionModal] = useState<ActionModalState | null>(null);
   const [checklistReview, setChecklistReview] = useState<ChecklistReviewState | null>(null);
 
-  const isSupervisor = ["MASTER", "ADMIN", "MANAGER"].includes(
-    bootstrap?.currentUser.role || "",
-  );
+  const isSupervisor = Boolean(bootstrap?.currentUser.canSupervise);
 
   async function load() {
     const [bootResponse, auditsResponse] = await Promise.all([
@@ -391,7 +391,7 @@ export default function AuditoriaPage() {
       message:
         body.status === "NON_COMPLIANT"
           ? "A não conformidade foi registrada e enviada ao operador."
-          : "A revisão do supervisor foi salva.",
+          : "A revisão do líder foi salva.",
     });
   }
 
@@ -451,7 +451,7 @@ export default function AuditoriaPage() {
           </Text>
           <Title order={2}>Pendências de Auditoria</Title>
           <Text c="dimmed">
-            Correções encaminhadas pela supervisão, organizadas por cliente e
+            Correções encaminhadas pela liderança, organizadas por cliente e
             auditoria.
           </Text>
           <Button component={Link} href="/auditoria/minhas" variant="light" mt="sm">
@@ -528,26 +528,26 @@ export default function AuditoriaPage() {
                         <Text size="sm">{finding.description}</Text>
 
                         {finding.supervisorNote && (
-                          <Alert color="blue" title="Orientação do supervisor">
+                          <Alert color="blue" title="Orientação do líder">
                             {finding.supervisorNote}
                           </Alert>
                         )}
 
                         <Group>
-                          {finding.status === "SENT" && (
+                          {["SENT", "RETURNED"].includes(finding.status) && (
                             <Button
                               size="xs"
                               onClick={() =>
                                 findingAction(finding.id, "START")
                               }
                             >
-                              Iniciar correção
+                              {finding.status === "RETURNED"
+                                ? "Retomar correção"
+                                : "Iniciar correção"}
                             </Button>
                           )}
 
-                          {["IN_PROGRESS", "RETURNED"].includes(
-                            finding.status,
-                          ) && (
+                          {finding.status === "IN_PROGRESS" && (
                             <Button
                               size="xs"
                               color="green"
@@ -559,7 +559,7 @@ export default function AuditoriaPage() {
                                 })
                               }
                             >
-                              Marcar como feito
+                              Concluir e enviar para o líder
                             </Button>
                           )}
                         </Group>
@@ -628,7 +628,7 @@ export default function AuditoriaPage() {
                   setActionModal(null);
                 }}
               >
-                Enviar para validação
+                Enviar para o líder
               </Button>
             </Stack>
           )}
@@ -646,14 +646,14 @@ export default function AuditoriaPage() {
           </Text>
           <Title order={2}>Análise de Auditoria</Title>
           <Text c="dimmed">
-            Importe os relatórios, deixe o motor identificar padrões e
-            direcione as correções ao operador.
+            Importe os relatórios, identifique os pontos e siga o fluxo
+            Líder → Operador → Líder até o check final.
           </Text>
         </div>
 
         <Group>
           <Button component={Link} href="/auditoria/andamento" variant="default">
-            Auditorias em andamento
+            Check das auditorias
           </Button>
           <Button
           variant="light"
@@ -785,7 +785,7 @@ export default function AuditoriaPage() {
               <div>
                 <Text fw={700}>Relatórios e checklist</Text>
                 <Text size="xs" c="dimmed">
-                  Base analisada e validações manuais do supervisor
+                  Base analisada e validações manuais do líder
                 </Text>
               </div>
             </Group>
@@ -1008,7 +1008,7 @@ export default function AuditoriaPage() {
 
             <Select
               label="Resultado da revisão"
-              description="Defina o resultado da conferência feita pelo supervisor."
+              description="Defina o resultado da conferência feita pelo líder."
               required
               data={[
                 { value: "COMPLIANT", label: "Conforme" },
@@ -1032,7 +1032,7 @@ export default function AuditoriaPage() {
             <Textarea
               label={
                 checklistReview.status === "NON_COMPLIANT"
-                  ? "Orientação do supervisor"
+                  ? "Orientação do líder"
                   : "Observação da revisão"
               }
               description={
@@ -1095,7 +1095,7 @@ export default function AuditoriaPage() {
 
                 <Alert color="blue">
                   Ao salvar como <b>Não conforme</b>, o sistema criará um
-                  report com origem <b>Checklist do supervisor</b> e enviará
+                  report com origem <b>Checklist do líder</b> e enviará
                   a orientação diretamente para o operador selecionado.
                 </Alert>
               </>
@@ -1119,7 +1119,8 @@ export default function AuditoriaPage() {
                   checklistReview.status === "PENDING" ||
                   (checklistReview.status === "NON_COMPLIANT" &&
                     (!checklistReview.note.trim() ||
-                      !checklistReview.operatorId))
+                      !checklistReview.operatorId ||
+                      !checklistReview.dueAt))
                 }
                 onClick={async () => {
                   try {
@@ -1177,7 +1178,7 @@ export default function AuditoriaPage() {
             />
 
             <Textarea
-              label="Orientação do supervisor"
+              label="Orientação do líder"
               description="Obrigatória. Diga exatamente o que deve ser conferido/corrigido."
               required
               minRows={4}
@@ -1208,7 +1209,11 @@ export default function AuditoriaPage() {
 
             <Button
               rightSection={<IconArrowRight size={16} />}
-              disabled={!assignment.operatorId || !assignment.note.trim()}
+              disabled={
+                !assignment.operatorId ||
+                !assignment.note.trim() ||
+                !assignment.dueAt
+              }
               onClick={async () => {
                 await findingAction(assignment.finding.id, "ASSIGN", {
                   operatorId: assignment.operatorId,

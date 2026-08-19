@@ -3,5 +3,5 @@ import { getCurrentMember, getRolePermissions } from "@/modules/permissions/perm
 export async function GET(){
   const member=await getCurrentMember();
   if(!member) return NextResponse.json({error:"Sessão inválida."},{status:401});
-  return NextResponse.json({role:member.role,permissions:await getRolePermissions(member.organizationId,member.role)});
+  return NextResponse.json({role:member.role,isTeamLeader:member.isTeamLeader,permissions:await getRolePermissions(member.organizationId,member.role)});
 }

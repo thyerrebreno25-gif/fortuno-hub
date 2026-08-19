@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { canSuperviseAudit, getAuditMember } from "@/modules/audit/auth";
+import {
+  canSuperviseAudit,
+  getAuditMember,
+  isAuditAdministrator,
+} from "@/modules/audit/auth";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const member = await getAuditMember();
@@ -14,34 +19,64 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   });
   if (!finding) return NextResponse.json({ error: "Apontamento não encontrado." }, { status: 404 });
 
-  const supervisor = canSuperviseAudit(member.role);
+  const administrator = isAuditAdministrator(member.role);
+  const supervisor =
+    administrator ||
+    (canSuperviseAudit(member.role, member.isTeamLeader) &&
+      finding.audit.supervisorId === member.userId);
   const isOperator = finding.operatorId === member.userId;
-  let data: any = {};
-  let note = typeof body.note === "string" ? body.note.trim() : "";
+  let data: Prisma.AuditFindingUncheckedUpdateInput = {};
+  const note = typeof body.note === "string" ? body.note.trim() : "";
 
   if (action === "ASSIGN") {
-    if (!supervisor) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    if (!supervisor) return NextResponse.json({ error: "Somente o líder responsável por esta auditoria pode direcionar o apontamento." }, { status: 403 });
     const operatorId = String(body.operatorId || "");
-    if (!operatorId || !note) return NextResponse.json({ error: "Selecione o operador e informe a orientação do supervisor." }, { status: 400 });
-    const operator = await prisma.organizationMember.findFirst({ where: { organizationId: member.organizationId, userId: operatorId }, select: { userId: true } });
-    if (!operator) return NextResponse.json({ error: "Operador inválido." }, { status: 400 });
+    if (!operatorId || !note || !body.dueAt) return NextResponse.json({ error: "Selecione o operador, informe a orientação e defina o prazo." }, { status: 400 });
+    const operator = await prisma.organizationMember.findFirst({
+      where: {
+        organizationId: member.organizationId,
+        userId: operatorId,
+        role: "OPERATOR",
+        isTeamLeader: false,
+        ...(member.isTeamLeader && !administrator
+          ? { teamLeaderId: member.id }
+          : {}),
+      },
+      select: { userId: true },
+    });
+    if (!operator) return NextResponse.json({ error: "Selecione um operador vinculado à equipe deste líder." }, { status: 400 });
     data = { operatorId, supervisorNote: note, dueAt: body.dueAt ? new Date(`${body.dueAt}T23:59:59`) : null, status: "SENT", sentAt: new Date() };
   } else if (action === "DISMISS") {
     if (!supervisor) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    if (["VALIDATED", "DISMISSED"].includes(finding.status)) {
+      return NextResponse.json({ error: "Este apontamento já está encerrado." }, { status: 409 });
+    }
     if (!note) return NextResponse.json({ error: "Informe o motivo para descartar o apontamento." }, { status: 400 });
     data = { status: "DISMISSED" };
   } else if (action === "START") {
     if (!isOperator) return NextResponse.json({ error: "Este apontamento não está atribuído a você." }, { status: 403 });
+    if (!["SENT", "RETURNED"].includes(finding.status)) {
+      return NextResponse.json({ error: "Esta correção não está disponível para ser iniciada." }, { status: 409 });
+    }
     data = { status: "IN_PROGRESS" };
   } else if (action === "COMPLETE") {
     if (!isOperator) return NextResponse.json({ error: "Este apontamento não está atribuído a você." }, { status: 403 });
+    if (finding.status !== "IN_PROGRESS") {
+      return NextResponse.json({ error: "Inicie a correção antes de enviá-la ao líder." }, { status: 409 });
+    }
     if (!note) return NextResponse.json({ error: "Informe o que foi feito antes de concluir." }, { status: 400 });
     data = { status: "PENDING_VALIDATION", completedAt: new Date() };
   } else if (action === "VALIDATE") {
     if (!supervisor) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    if (finding.status !== "PENDING_VALIDATION") {
+      return NextResponse.json({ error: "Somente correções devolvidas pelo operador podem ser validadas." }, { status: 409 });
+    }
     data = { status: "VALIDATED", validatedAt: new Date() };
   } else if (action === "RETURN") {
     if (!supervisor) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    if (finding.status !== "PENDING_VALIDATION") {
+      return NextResponse.json({ error: "Somente correções aguardando check podem ser devolvidas." }, { status: 409 });
+    }
     if (!note) return NextResponse.json({ error: "Informe o motivo da devolução." }, { status: 400 });
     data = { status: "RETURNED", validatedAt: null };
   } else {
@@ -55,10 +90,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const unresolved = await tx.auditFinding.count({ where: { auditId: finding.auditId, status: { notIn: ["VALIDATED", "DISMISSED"] } } });
     const sent = await tx.auditFinding.count({ where: { auditId: finding.auditId, status: { in: ["SENT", "IN_PROGRESS", "PENDING_VALIDATION", "RETURNED"] } } });
     const pendingValidation = await tx.auditFinding.count({ where: { auditId: finding.auditId, status: "PENDING_VALIDATION" } });
-    let auditStatus: any = "IN_REVIEW";
-    if (unresolved === 0) auditStatus = "COMPLETED";
-    else if (pendingValidation > 0) auditStatus = "PENDING_VALIDATION";
-    else if (sent > 0) auditStatus = "SENT_TO_CORRECTION";
+    const auditStatus = unresolved === 0
+      ? "COMPLETED"
+      : pendingValidation > 0
+        ? "PENDING_VALIDATION"
+        : sent > 0
+          ? "SENT_TO_CORRECTION"
+          : "IN_REVIEW";
     await tx.audit.update({ where: { id: finding.auditId }, data: { status: auditStatus, completedAt: unresolved === 0 ? new Date() : null } });
     return changed;
   });
