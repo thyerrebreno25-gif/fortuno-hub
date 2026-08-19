@@ -288,13 +288,18 @@ model OrganizationMember {
   organizationId String
   userId         String
   role           UserRole @default(OPERATOR)
+  isTeamLeader   Boolean  @default(false)
+  teamLeaderId   String?
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamLeader   OrganizationMember?  @relation("OrganizationTeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  teamMembers  OrganizationMember[] @relation("OrganizationTeamLeader")
 
   @@unique([organizationId, userId])
   @@index([userId])
+  @@index([teamLeaderId])
 }
 
 model Client {

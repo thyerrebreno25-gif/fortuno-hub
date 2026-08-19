@@ -51,6 +51,7 @@ import {
 } from "@/modules/currency/services/ofx-generator";
 import { formatDateBR } from "@/modules/currency/utils/date";
 import { formatMoney } from "@/modules/currency/utils/number";
+import { trackImport } from "@/modules/imports/import-tracker";
 
 type RateMode = "SELL" | "BUY";
 
@@ -477,7 +478,7 @@ export default function CurrencyConversionPage() {
     });
   }
 
-  function exportOfx() {
+  async function exportOfx() {
     try {
       const ofx = generateCurrencyOfx(transactions, {
         bankId,
@@ -490,6 +491,51 @@ export default function CurrencyConversionPage() {
         `convertnow-cambio-${new Date().toISOString().slice(0, 10)}.ofx`,
         "application/x-ofx;charset=utf-8",
       );
+
+      try {
+        await trackImport({
+          module: "EXCHANGE",
+          status: "EXPORTED",
+          originalName:
+            file?.name || `cambio-${new Date().toISOString().slice(0, 10)}.ofx`,
+          parserId: file ? "currency-import" : "currency-manual",
+          parserVersion: "1.0.0",
+          expectedTotal: convertedClosingBalance,
+          parsedTotal: totalConverted,
+          difference: null,
+          metadata: {
+            currency,
+            rateMode,
+            transactionCount: convertedCount,
+            originalVolume: totalOriginal,
+            convertedVolume: totalConverted,
+            exportFormat: "OFX",
+          },
+          transactions: transactions
+            .filter(
+              (item) =>
+                item.status === "CONVERTED" && item.convertedAmount !== null,
+            )
+            .map((item) => ({
+              date: item.date,
+              description: item.description,
+              amount: Math.abs(item.convertedAmount ?? 0),
+              type: item.type,
+              metadata: {
+                originalAmount: item.originalAmount,
+                currency: item.currency,
+                rate: item.rate,
+                rateDate: item.rateDate,
+                rateSource: item.rateSource,
+              },
+            })),
+        });
+      } catch (trackingError) {
+        console.error(
+          "OFX gerado, mas a exportação não foi registrada no Dashboard:",
+          trackingError,
+        );
+      }
 
       notifications.show({
         color: "green",

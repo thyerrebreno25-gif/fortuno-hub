@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,8 +21,6 @@ const modules = [
   ["DASHBOARD", "Dashboard"],
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
-  ["OPERATIONS", "Operações"],
-  ["SERVICE_CENTER", "Atendimento"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],
   ["ONBOARDING", "Onboarding"],

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,6 +17,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Tabs,
   Text,
@@ -60,6 +62,10 @@ type SettingsData = {
   members: Array<{
     id: string;
     role: UserRole;
+    isTeamLeader: boolean;
+    teamLeaderId: string | null;
+    teamLeader: { id: string; name: string } | null;
+    teamMembersCount: number;
     createdAt: string;
     accessStatus: "PENDING" | "ACTIVATED" | "CONFIGURED" | "UNKNOWN";
     accessConfiguredAt: string | null;
@@ -181,6 +187,8 @@ export default function ConfiguracoesPage() {
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState<string | null>("OPERATOR");
+  const [memberIsTeamLeader, setMemberIsTeamLeader] = useState(false);
+  const [memberTeamLeaderId, setMemberTeamLeaderId] = useState<string | null>(null);
 
   const [passwordModal, setPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -235,6 +243,16 @@ export default function ConfiguracoesPage() {
     );
   }, [data, search]);
 
+  const teamLeaderOptions = useMemo(
+    () =>
+      (data?.members ?? [])
+        .filter(
+          (item) => item.isTeamLeader && item.id !== editingMemberId,
+        )
+        .map((item) => ({ value: item.id, label: item.user.name })),
+    [data, editingMemberId],
+  );
+
   async function saveOrganization() {
     setSaving(true);
     setError("");
@@ -276,6 +294,8 @@ export default function ConfiguracoesPage() {
     setMemberName("");
     setMemberEmail("");
     setMemberRole("OPERATOR");
+    setMemberIsTeamLeader(false);
+    setMemberTeamLeaderId(null);
     setMemberModal(true);
   }
 
@@ -284,6 +304,8 @@ export default function ConfiguracoesPage() {
     setMemberName(member.user.name);
     setMemberEmail(member.user.email);
     setMemberRole(member.role);
+    setMemberIsTeamLeader(member.isTeamLeader);
+    setMemberTeamLeaderId(member.teamLeaderId);
     setMemberModal(true);
   }
 
@@ -304,6 +326,8 @@ export default function ConfiguracoesPage() {
             name: memberName,
             email: memberEmail,
             role: memberRole,
+            isTeamLeader: memberIsTeamLeader,
+            teamLeaderId: memberIsTeamLeader ? null : memberTeamLeaderId,
           }),
         },
       );
@@ -674,6 +698,7 @@ export default function ConfiguracoesPage() {
                   <Table.Tr>
                      <Table.Th>Usuário</Table.Th>
                      <Table.Th>Perfil</Table.Th>
+                     <Table.Th>Equipe</Table.Th>
                      <Table.Th>Status do acesso</Table.Th>
                      <Table.Th>Vinculado em</Table.Th>
                     <Table.Th />
@@ -697,6 +722,25 @@ export default function ConfiguracoesPage() {
                          <Badge color={roleColors[member.role]} variant="light">
                            {roleLabels[member.role]}
                          </Badge>
+                       </Table.Td>
+                       <Table.Td>
+                         {member.isTeamLeader ? (
+                           <Stack gap={2}>
+                             <Badge color="blue" variant="light" w="fit-content">
+                               Líder de equipe
+                             </Badge>
+                             <Text size="xs" c="dimmed">
+                               {member.teamMembersCount} colaborador(es)
+                             </Text>
+                           </Stack>
+                         ) : member.teamLeader ? (
+                           <Stack gap={2}>
+                             <Text size="sm" fw={600}>{member.teamLeader.name}</Text>
+                             <Text size="xs" c="dimmed">Líder responsável</Text>
+                           </Stack>
+                         ) : (
+                           <Text size="sm" c="dimmed">Sem líder definido</Text>
+                         )}
                        </Table.Td>
                        <Table.Td>
                          <Stack gap={2}>
@@ -961,6 +1005,33 @@ export default function ConfiguracoesPage() {
             value={memberRole}
             onChange={setMemberRole}
             required
+          />
+
+          <Switch
+            label="Este colaborador é líder de equipe"
+            description="Líderes visualizam no Dashboard os resultados dos colaboradores vinculados a eles."
+            checked={memberIsTeamLeader}
+            onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              setMemberIsTeamLeader(checked);
+              if (checked) setMemberTeamLeaderId(null);
+            }}
+          />
+
+          <Select
+            label="Líder responsável"
+            description={
+              teamLeaderOptions.length
+                ? "Vincule o colaborador a uma das equipes existentes."
+                : "Marque primeiro um colaborador como líder para formar as equipes."
+            }
+            placeholder="Sem líder definido"
+            data={teamLeaderOptions}
+            value={memberTeamLeaderId}
+            onChange={setMemberTeamLeaderId}
+            clearable
+            searchable
+            disabled={memberIsTeamLeader || teamLeaderOptions.length === 0}
           />
 
           {!editingMemberId && !data.integrationStatus.userInvites && (

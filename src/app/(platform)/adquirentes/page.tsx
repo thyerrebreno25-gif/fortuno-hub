@@ -574,7 +574,7 @@ export default function AdquirentesPage() {
       await trackImport({
         clientId,
         module: "ACQUIRER",
-        status: totals.divergentSales > 0 ? "REVIEW" : "EXPORTED",
+        status: "EXPORTED",
         originalName: file?.name || "adquirente.xlsx",
         parserId: activeParser.id || null,
         parserVersion: activeParser.version || null,
@@ -599,6 +599,7 @@ export default function AdquirentesPage() {
           adjustments: totals.adjustments,
           cancellations: totals.cancellations,
           divergentSales: totals.divergentSales,
+          requiresRateReview: totals.divergentSales > 0,
           exportFormat: "XLSX_CONTA_AZUL",
           readingInstructions: readingInstructions.trim() || null,
           readingRules: instructionSummary?.rules.map((rule) => ({

@@ -15,19 +15,14 @@ export type DashboardStatus =
 
 export interface DashboardSummary {
   activeClients: number;
-  newClientsThisMonth: number;
-  processingsToday: number;
-  pendingProcessings: number;
-  failedProcessings: number;
+  exportsToday: number;
+  exportsThisMonth: number;
+  exportedClientsThisMonth: number;
+  exportedTransactionsThisMonth: number;
   openTickets: number;
   activeOnboardings: number;
   overdueOnboardings: number;
   onboardingHoursThisMonth: number;
-  pendingOperations: number;
-  overdueOperations: number;
-  completedOperationsToday: number;
-  operationHoursThisMonth: number;
-  newServiceEmails: number;
   activeAudits: number;
 }
 
@@ -82,6 +77,8 @@ export interface DashboardData {
     id: string;
     name: string;
     role: string;
+    isTeamLeader: boolean;
+    visibleTeamSize: number;
   };
   access: Record<string, boolean>;
   summary: DashboardSummary;
@@ -91,4 +88,21 @@ export interface DashboardData {
   supportTickets: DashboardSupportTicket[];
   teamPerformance: DashboardTeamPerformance[];
   financialVolume: DashboardFinancialVolume;
+  acquirerComparison: Array<{
+    acquirer: "CIELO" | "GETNET" | "REDE" | "PAGARME";
+    label: string;
+    clientsCount: number;
+    bestClientName: string | null;
+    highestClientName: string | null;
+    bestRate: number | null;
+    highestRate: number | null;
+    spread: number | null;
+    clients: Array<{
+      clientId: string;
+      clientName: string;
+      averageRate: number;
+      deltaFromBest: number;
+      rateCount: number;
+    }>;
+  }>;
 }

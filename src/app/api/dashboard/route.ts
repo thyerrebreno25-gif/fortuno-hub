@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import { buildAcquirerComparison } from "@/modules/dashboard/acquirer-comparison";
 import { getRolePermissions } from "@/modules/permissions/permissions";
 
 function startOfDay(date: Date): Date {
@@ -38,15 +39,12 @@ export async function GET() {
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
       select: {
+        id: true,
         organizationId: true,
         role: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        isTeamLeader: true,
+        teamMembers: { select: { userId: true } },
+        user: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -61,17 +59,22 @@ export async function GET() {
     const now = new Date();
     const today = startOfDay(now);
     const monthStart = startOfMonth(now);
-
-    const visibleImportWhere = {
-      organizationId,
-      ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
-    } as const;
-
-    const organizationUsers = await prisma.organizationMember.findMany({
+    const hasOrganizationScope = ["MASTER", "ADMIN"].includes(membership.role);
+    const organizationMembers = await prisma.organizationMember.findMany({
       where: { organizationId },
       select: { userId: true },
     });
-    const organizationUserIds = organizationUsers.map((item) => item.userId);
+    const visibleUserIds = hasOrganizationScope
+      ? organizationMembers.map((item) => item.userId)
+      : Array.from(
+          new Set([
+            membership.user.id,
+            ...(membership.isTeamLeader
+              ? membership.teamMembers.map((item) => item.userId)
+              : []),
+          ]),
+        );
+
     const permissions = await getRolePermissions(organizationId, membership.role);
     const access = Object.fromEntries(
       Object.entries(permissions).map(([module, permission]) => [
@@ -79,17 +82,22 @@ export async function GET() {
         permission.canView,
       ]),
     );
-    const canSeeImports = access.IMPORTS || access.MOTOR_EXCHANGE;
+    const canSeeImports = Boolean(access.IMPORTS || access.MOTOR_EXCHANGE);
+    const exportedWhere = {
+      organizationId,
+      status: "EXPORTED" as const,
+      userId: { in: visibleUserIds },
+    };
 
     const [
       activeClients,
-      newClientsThisMonth,
-      processingsToday,
-      pendingProcessings,
-      failedProcessings,
+      exportsToday,
+      exportsThisMonth,
+      exportedClientRows,
+      exportedTransactionsThisMonth,
       openTickets,
       moduleGroups,
-      recentProcessings,
+      recentExports,
       recentActivities,
       recentTickets,
       teamGroups,
@@ -98,43 +106,56 @@ export async function GET() {
       activeOnboardings,
       overdueOnboardings,
       onboardingTimeAggregate,
-      pendingOperations,
-      overdueOperations,
-      completedOperationsToday,
-      operationTimeAggregate,
-      newServiceEmails,
       activeAudits,
+      acquirerRows,
     ] = await Promise.all([
-      prisma.client.count({ where: { organizationId, active: true } }),
       prisma.client.count({
-        where: { organizationId, createdAt: { gte: monthStart } },
-      }),
-      prisma.importJob.count({
-        where: { ...visibleImportWhere, createdAt: { gte: today } },
-      }),
-      prisma.importJob.count({
         where: {
-          ...visibleImportWhere,
-          status: { in: ["UPLOADED", "PROCESSING", "REVIEW", "VALIDATED"] },
+          organizationId,
+          active: true,
+          ...(hasOrganizationScope
+            ? {}
+            : {
+                imports: {
+                  some: { status: "EXPORTED", userId: { in: visibleUserIds } },
+                },
+              }),
         },
       }),
       prisma.importJob.count({
-        where: { ...visibleImportWhere, status: "FAILED" },
+        where: { ...exportedWhere, createdAt: { gte: today } },
+      }),
+      prisma.importJob.count({
+        where: { ...exportedWhere, createdAt: { gte: monthStart } },
+      }),
+      prisma.importJob.findMany({
+        where: {
+          ...exportedWhere,
+          createdAt: { gte: monthStart },
+          clientId: { not: null },
+        },
+        distinct: ["clientId"],
+        select: { clientId: true },
+      }),
+      prisma.parsedTransaction.count({
+        where: {
+          importJob: { ...exportedWhere, createdAt: { gte: monthStart } },
+        },
       }),
       prisma.supportTicket.count({
         where: {
           organizationId,
           status: { in: ["OPEN", "IN_PROGRESS"] },
-          ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
+          ...(hasOrganizationScope ? {} : { userId: { in: visibleUserIds } }),
         },
       }),
       prisma.importJob.groupBy({
         by: ["module"],
-        where: { ...visibleImportWhere, createdAt: { gte: today } },
+        where: { ...exportedWhere, createdAt: { gte: monthStart } },
         _count: { _all: true },
       }),
       prisma.importJob.findMany({
-        where: visibleImportWhere,
+        where: exportedWhere,
         orderBy: { createdAt: "desc" },
         take: 8,
         select: {
@@ -149,8 +170,15 @@ export async function GET() {
       }),
       prisma.auditLog.findMany({
         where: {
-          userId: { in: organizationUserIds },
-          ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
+          userId: { in: visibleUserIds },
+          entity: {
+            notIn: [
+              "OperationActivity",
+              "OperationConfiguration",
+              "ServiceTicket",
+              "EmailConnection",
+            ],
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 8,
@@ -166,7 +194,7 @@ export async function GET() {
       prisma.supportTicket.findMany({
         where: {
           organizationId,
-          ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
+          ...(hasOrganizationScope ? {} : { userId: { in: visibleUserIds } }),
         },
         orderBy: { createdAt: "desc" },
         take: 5,
@@ -181,105 +209,86 @@ export async function GET() {
       }),
       prisma.importJob.groupBy({
         by: ["userId"],
-        where: {
-          organizationId,
-          createdAt: { gte: monthStart },
-          ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
-        },
+        where: { ...exportedWhere, createdAt: { gte: monthStart } },
         _count: { _all: true },
         orderBy: { _count: { userId: "desc" } },
-        take: 5,
+        take: 10,
       }),
       prisma.parsedTransaction.aggregate({
         where: {
           type: "CREDIT",
-          date: { gte: monthStart },
-          importJob: visibleImportWhere,
+          importJob: { ...exportedWhere, createdAt: { gte: monthStart } },
         },
         _sum: { amount: true },
       }),
       prisma.parsedTransaction.aggregate({
         where: {
           type: "DEBIT",
-          date: { gte: monthStart },
-          importJob: visibleImportWhere,
+          importJob: { ...exportedWhere, createdAt: { gte: monthStart } },
         },
         _sum: { amount: true },
       }),
       prisma.onboarding.count({
-        where: { organizationId, status: { in: ["OPEN", "IN_PROGRESS"] } },
+        where: {
+          organizationId,
+          status: { in: ["OPEN", "IN_PROGRESS"] },
+          ...(hasOrganizationScope
+            ? {}
+            : { responsibleId: { in: visibleUserIds } }),
+        },
       }),
       prisma.onboarding.count({
         where: {
           organizationId,
           status: { in: ["OPEN", "IN_PROGRESS"] },
           expectedEndDate: { lt: now },
+          ...(hasOrganizationScope
+            ? {}
+            : { responsibleId: { in: visibleUserIds } }),
         },
       }),
       prisma.onboardingTimeEntry.aggregate({
         where: {
+          userId: { in: visibleUserIds },
+          startedAt: { gte: monthStart },
           task: { onboarding: { organizationId } },
-          startedAt: { gte: monthStart },
         },
         _sum: { seconds: true },
-      }),
-      prisma.operationActivity.count({
-        where: {
-          organizationId,
-          deletedAt: null,
-          status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] },
-          ...(membership.role === "OPERATOR"
-            ? { responsibleId: user.id }
-            : {}),
-        },
-      }),
-      prisma.operationActivity.count({
-        where: {
-          organizationId,
-          deletedAt: null,
-          dueAt: { lt: now },
-          status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] },
-          ...(membership.role === "OPERATOR"
-            ? { responsibleId: user.id }
-            : {}),
-        },
-      }),
-      prisma.operationActivity.count({
-        where: {
-          organizationId,
-          deletedAt: null,
-          status: "COMPLETED",
-          completedAt: { gte: today },
-          ...(membership.role === "OPERATOR"
-            ? { responsibleId: user.id }
-            : {}),
-        },
-      }),
-      prisma.operationTimeEntry.aggregate({
-        where: {
-          startedAt: { gte: monthStart },
-          activity: { organizationId, deletedAt: null },
-          ...(membership.role === "OPERATOR" ? { userId: user.id } : {}),
-        },
-        _sum: { seconds: true },
-      }),
-      prisma.serviceTicket.count({
-        where: {
-          organizationId,
-          isSpam: false,
-          status: "NEW",
-          ...(membership.role === "OPERATOR"
-            ? { OR: [{ assignedToId: user.id }, { assignedToId: null }] }
-            : {}),
-        },
       }),
       prisma.audit.count({
         where: {
           organizationId,
           status: { notIn: ["COMPLETED", "CANCELLED"] },
-          ...(membership.role === "OPERATOR"
-            ? { supervisorId: user.id }
-            : {}),
+          ...(hasOrganizationScope
+            ? {}
+            : { supervisorId: { in: visibleUserIds } }),
+        },
+      }),
+      prisma.clientAcquirer.findMany({
+        where: {
+          active: true,
+          client: {
+            organizationId,
+            active: true,
+            ...(hasOrganizationScope
+              ? {}
+              : {
+                  imports: {
+                    some: {
+                      status: "EXPORTED",
+                      userId: { in: visibleUserIds },
+                    },
+                  },
+                }),
+          },
+        },
+        select: {
+          name: true,
+          client: { select: { id: true, name: true } },
+          rates: {
+            where: { active: true },
+            select: { expectedRate: true },
+          },
         },
       }),
     ]);
@@ -291,7 +300,6 @@ export async function GET() {
     const userMap = new Map(
       performanceUsers.map((item) => [item.id, item.name || item.email]),
     );
-
     const credits = Math.abs(toNumber(creditAggregate._sum.amount));
     const debits = Math.abs(toNumber(debitAggregate._sum.amount));
 
@@ -301,74 +309,89 @@ export async function GET() {
         id: membership.user.id,
         name: membership.user.name || membership.user.email.split("@")[0],
         role: membership.role,
+        isTeamLeader: membership.isTeamLeader,
+        visibleTeamSize: visibleUserIds.length,
       },
       access,
       summary: {
         activeClients: access.CLIENTS ? activeClients : 0,
-        newClientsThisMonth: access.CLIENTS ? newClientsThisMonth : 0,
-        processingsToday: canSeeImports ? processingsToday : 0,
-        pendingProcessings: canSeeImports ? pendingProcessings : 0,
-        failedProcessings: canSeeImports ? failedProcessings : 0,
+        exportsToday: canSeeImports ? exportsToday : 0,
+        exportsThisMonth: canSeeImports ? exportsThisMonth : 0,
+        exportedClientsThisMonth: canSeeImports ? exportedClientRows.length : 0,
+        exportedTransactionsThisMonth: canSeeImports
+          ? exportedTransactionsThisMonth
+          : 0,
         openTickets: access.SUPPORT ? openTickets : 0,
         activeOnboardings: access.ONBOARDING ? activeOnboardings : 0,
         overdueOnboardings: access.ONBOARDING ? overdueOnboardings : 0,
         onboardingHoursThisMonth: access.ONBOARDING
-          ? Math.round(((onboardingTimeAggregate._sum.seconds || 0) / 3600) * 100) / 100
+          ? Math.round(((onboardingTimeAggregate._sum.seconds || 0) / 3600) * 100) /
+            100
           : 0,
-        pendingOperations: access.OPERATIONS ? pendingOperations : 0,
-        overdueOperations: access.OPERATIONS ? overdueOperations : 0,
-        completedOperationsToday: access.OPERATIONS
-          ? completedOperationsToday
-          : 0,
-        operationHoursThisMonth: access.OPERATIONS
-          ? Math.round(((operationTimeAggregate._sum.seconds || 0) / 3600) * 100) / 100
-          : 0,
-        newServiceEmails: access.SERVICE_CENTER ? newServiceEmails : 0,
         activeAudits: access.AUDIT ? activeAudits : 0,
       },
-      processingsByModule: canSeeImports ? moduleGroups.map((item) => ({
-        module: item.module,
-        total: item._count._all,
-      })) : [],
-      recentProcessings: canSeeImports ? recentProcessings.map((item) => ({
-        id: item.id,
-        module: item.module,
-        status: item.status,
-        originalName: item.originalName,
-        clientName: item.client?.name ?? null,
-        userName: item.user.name || item.user.email,
-        createdAt: item.createdAt.toISOString(),
-      })) : [],
-      recentActivities: access.HISTORY ? recentActivities.map((item) => ({
-        id: item.id,
-        action: item.action,
-        entity: item.entity,
-        entityId: item.entityId,
-        userName: item.user.name || item.user.email,
-        createdAt: item.createdAt.toISOString(),
-      })) : [],
-      supportTickets: access.SUPPORT ? recentTickets.map((item) => ({
-        id: item.id,
-        subject: item.subject,
-        priority: item.priority,
-        status: item.status,
-        userName: item.user.name || item.user.email,
-        createdAt: item.createdAt.toISOString(),
-      })) : [],
-      teamPerformance: canSeeImports ? teamGroups.map((item) => ({
-        userId: item.userId,
-        name: userMap.get(item.userId) || "Usuário",
-        total: item._count._all,
-      })) : [],
+      processingsByModule: canSeeImports
+        ? moduleGroups.map((item) => ({
+            module: item.module,
+            total: item._count._all,
+          }))
+        : [],
+      recentProcessings: canSeeImports
+        ? recentExports.map((item) => ({
+            id: item.id,
+            module: item.module,
+            status: item.status,
+            originalName: item.originalName,
+            clientName: item.client?.name ?? null,
+            userName: item.user.name || item.user.email,
+            createdAt: item.createdAt.toISOString(),
+          }))
+        : [],
+      recentActivities: access.HISTORY
+        ? recentActivities.map((item) => ({
+            id: item.id,
+            action: item.action,
+            entity: item.entity,
+            entityId: item.entityId,
+            userName: item.user.name || item.user.email,
+            createdAt: item.createdAt.toISOString(),
+          }))
+        : [],
+      supportTickets: access.SUPPORT
+        ? recentTickets.map((item) => ({
+            id: item.id,
+            subject: item.subject,
+            priority: item.priority,
+            status: item.status,
+            userName: item.user.name || item.user.email,
+            createdAt: item.createdAt.toISOString(),
+          }))
+        : [],
+      teamPerformance: canSeeImports
+        ? teamGroups.map((item) => ({
+            userId: item.userId,
+            name: userMap.get(item.userId) || "Usuário",
+            total: item._count._all,
+          }))
+        : [],
       financialVolume: {
         credits: canSeeImports ? credits : 0,
         debits: canSeeImports ? debits : 0,
         total: canSeeImports ? credits + debits : 0,
       },
+      acquirerComparison: canSeeImports
+        ? buildAcquirerComparison(
+            acquirerRows.map((item) => ({
+              clientId: item.client.id,
+              clientName: item.client.name,
+              acquirerName: item.name,
+              rates: item.rates.map((rate) => Number(rate.expectedRate)),
+            })),
+          )
+        : [],
     });
   } catch (error) {
     console.error("Erro ao carregar Dashboard:", error);
-
     return NextResponse.json(
       { error: "Não foi possível carregar os dados reais do Dashboard." },
       { status: 500 },

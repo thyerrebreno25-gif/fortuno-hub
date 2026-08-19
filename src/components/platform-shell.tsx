@@ -201,20 +201,6 @@ const menuItems: MenuItem[] = [
     group: "Financeiro",
   },
   {
-    label: "Operações",
-    href: "/operacoes",
-    moduleCode: "OPERATIONS",
-    icon: icons.operations,
-    group: "Operação",
-  },
-  {
-    label: "Atendimento",
-    href: "/atendimento",
-    moduleCode: "SERVICE_CENTER",
-    icon: icons.support,
-    group: "Operação",
-  },
-  {
     label: "Onboarding",
     href: "/onboarding",
     moduleCode: "ONBOARDING",

@@ -128,25 +128,6 @@ const features: Feature[] = [
     icon: <IconUsers size={24} />,
   },
   {
-    title: "Atendimento",
-    description:
-      "Organize a caixa de entrada, direcione e-mails para a equipe e acompanhe cada solicitação.",
-    href: "/atendimento",
-    moduleCode: "SERVICE_CENTER",
-    group: "Atendimento e clientes",
-    icon: <IconHeadset size={24} />,
-    badge: "Central",
-  },
-  {
-    title: "Operações",
-    description:
-      "Acompanhe as rotinas operacionais e organize atividades da equipe.",
-    href: "/operacoes",
-    moduleCode: "OPERATIONS",
-    group: "Atendimento e clientes",
-    icon: <IconFileAnalytics size={24} />,
-  },
-  {
     title: "Onboarding",
     description:
       "Conduza a implantação de novos clientes e acompanhe as etapas do processo.",

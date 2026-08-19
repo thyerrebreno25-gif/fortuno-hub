@@ -65,6 +65,8 @@ export async function POST(request: Request) {
       name?: unknown;
       email?: unknown;
       role?: unknown;
+      isTeamLeader?: unknown;
+      teamLeaderId?: unknown;
     };
 
     const name =
@@ -82,6 +84,12 @@ export async function POST(request: Request) {
       ALLOWED_ROLES.has(body.role)
         ? (body.role as AllowedRole)
         : "OPERATOR";
+    const isTeamLeader = body.isTeamLeader === true;
+    const requestedTeamLeaderId =
+      typeof body.teamLeaderId === "string" && body.teamLeaderId.trim()
+        ? body.teamLeaderId.trim()
+        : null;
+    const teamLeaderId = isTeamLeader ? null : requestedTeamLeaderId;
 
     if (name.length < 2) {
       return NextResponse.json(
@@ -95,6 +103,24 @@ export async function POST(request: Request) {
         { error: "Informe um e-mail válido." },
         { status: 400 },
       );
+    }
+
+    if (teamLeaderId) {
+      const leader = await prisma.organizationMember.findFirst({
+        where: {
+          id: teamLeaderId,
+          organizationId: member.organizationId,
+          isTeamLeader: true,
+        },
+        select: { id: true },
+      });
+
+      if (!leader) {
+        return NextResponse.json(
+          { error: "Selecione um líder válido desta organização." },
+          { status: 400 },
+        );
+      }
     }
 
     const existingMember =
@@ -271,6 +297,8 @@ export async function POST(request: Request) {
                     member.organizationId,
                   userId: user.id,
                   role,
+                  isTeamLeader,
+                  teamLeaderId,
                 },
               },
             );
@@ -286,6 +314,8 @@ export async function POST(request: Request) {
                 name,
                 email,
                 role,
+                isTeamLeader,
+                teamLeaderId,
                 delivery:
                   "RESEND_CUSTOM_INVITE",
               },

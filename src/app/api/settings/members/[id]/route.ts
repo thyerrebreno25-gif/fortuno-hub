@@ -35,6 +35,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     const body = (await request.json()) as {
       role?: unknown;
       name?: unknown;
+      isTeamLeader?: unknown;
+      teamLeaderId?: unknown;
     };
 
     const role =
@@ -42,6 +44,11 @@ export async function PATCH(request: Request, context: RouteContext) {
         ? body.role
         : null;
     const name = typeof body.name === "string" ? body.name.trim() : "";
+    const isTeamLeader = body.isTeamLeader === true;
+    const requestedTeamLeaderId =
+      typeof body.teamLeaderId === "string" && body.teamLeaderId.trim()
+        ? body.teamLeaderId.trim()
+        : null;
 
     const target = await prisma.organizationMember.findFirst({
       where: {
@@ -52,6 +59,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         id: true,
         userId: true,
         role: true,
+        isTeamLeader: true,
       },
     });
 
@@ -69,15 +77,43 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    await prisma.$transaction(async (transaction) => {
-      if (role) {
-        await transaction.organizationMember.update({
-          where: { id },
-          data: {
-            role: role as "ADMIN" | "MANAGER" | "OPERATOR" | "CLIENT",
-          },
-        });
+    if (requestedTeamLeaderId === id) {
+      return NextResponse.json(
+        { error: "Um colaborador não pode liderar a própria equipe." },
+        { status: 400 },
+      );
+    }
+
+    const teamLeaderId = isTeamLeader ? null : requestedTeamLeaderId;
+    if (teamLeaderId) {
+      const leader = await prisma.organizationMember.findFirst({
+        where: {
+          id: teamLeaderId,
+          organizationId: current.organizationId,
+          isTeamLeader: true,
+        },
+        select: { id: true },
+      });
+
+      if (!leader) {
+        return NextResponse.json(
+          { error: "Selecione um líder válido desta organização." },
+          { status: 400 },
+        );
       }
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.organizationMember.update({
+        where: { id },
+        data: {
+          ...(role
+            ? { role: role as "ADMIN" | "MANAGER" | "OPERATOR" | "CLIENT" }
+            : {}),
+          isTeamLeader,
+          teamLeaderId,
+        },
+      });
 
       if (name.length >= 2) {
         await transaction.user.update({
@@ -95,6 +131,8 @@ export async function PATCH(request: Request, context: RouteContext) {
           afterData: {
             role: role || undefined,
             name: name || undefined,
+            isTeamLeader,
+            teamLeaderId,
           },
         },
       });

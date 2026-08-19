@@ -38,7 +38,16 @@ export async function GET() {
         select: {
           id: true,
           role: true,
+          isTeamLeader: true,
+          teamLeaderId: true,
           createdAt: true,
+          teamLeader: {
+            select: {
+              id: true,
+              user: { select: { name: true, email: true } },
+            },
+          },
+          _count: { select: { teamMembers: true } },
           user: {
             select: {
               id: true,
@@ -162,6 +171,15 @@ export async function GET() {
         return {
           id: item.id,
           role: item.role,
+          isTeamLeader: item.isTeamLeader,
+          teamLeaderId: item.teamLeaderId,
+          teamLeader: item.teamLeader
+            ? {
+                id: item.teamLeader.id,
+                name: item.teamLeader.user.name || item.teamLeader.user.email,
+              }
+            : null,
+          teamMembersCount: item._count.teamMembers,
           createdAt: item.createdAt.toISOString(),
           accessStatus,
           accessConfiguredAt:

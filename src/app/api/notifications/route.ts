@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountMember } from "@/modules/account/server/account-auth";
-import { getServiceCenterPermission } from "@/modules/atendimento/auth";
 
 type NotificationItem = {
   id: string;
@@ -21,12 +20,8 @@ export async function GET() {
     }
 
     const now = new Date();
-    const servicePermission = await getServiceCenterPermission(
-      member.organizationId,
-      member.role,
-    );
 
-    const [imports, tickets, onboardings, blockedTasks, serviceEmails] = await Promise.all([
+    const [imports, tickets, onboardings, blockedTasks] = await Promise.all([
       prisma.importJob.findMany({
         where: {
           organizationId: member.organizationId,
@@ -93,35 +88,6 @@ export async function GET() {
           },
         },
       }),
-      servicePermission.canView
-        ? prisma.serviceTicket.findMany({
-            where: {
-              organizationId: member.organizationId,
-              source: "GMAIL",
-              isSpam: false,
-              status: { in: ["NEW", "IN_PROGRESS", "WAITING_INTERNAL"] },
-              ...(member.role === "OPERATOR"
-                ? {
-                    OR: [
-                      { assignedToId: member.userId },
-                      { assignedToId: null },
-                    ],
-                  }
-                : {}),
-            },
-            orderBy: { lastMessageAt: "desc" },
-            take: 12,
-            select: {
-              id: true,
-              subject: true,
-              senderName: true,
-              senderEmail: true,
-              assignedToId: true,
-              lastMessageAt: true,
-              client: { select: { name: true } },
-            },
-          })
-        : Promise.resolve([]),
     ]);
 
     const items: NotificationItem[] = [];
@@ -176,21 +142,6 @@ export async function GET() {
         description: `${task.onboarding.companyName || "Implantação"} · ${task.title}${task.blockedReason ? ` · ${task.blockedReason}` : ""}`,
         href: "/onboarding",
         createdAt: task.updatedAt.toISOString(),
-      });
-    }
-
-    for (const email of serviceEmails) {
-      const sender = email.senderName || email.senderEmail;
-      items.push({
-        id: `email-${email.id}-${email.lastMessageAt.getTime()}`,
-        type: "INFO",
-        title:
-          email.assignedToId === member.userId
-            ? "Novo e-mail para você"
-            : "Novo e-mail recebido",
-        description: `${email.client?.name || sender} · ${email.subject}`,
-        href: "/atendimento",
-        createdAt: email.lastMessageAt.toISOString(),
       });
     }
 
