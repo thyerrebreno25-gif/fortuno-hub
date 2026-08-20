@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  getServiceCenterMember,
-  getServiceCenterPermission,
-} from "@/modules/atendimento/auth";
+import { getServiceCenterMember } from "@/modules/atendimento/auth";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 export async function GET() {
   const member = await getServiceCenterMember();
@@ -12,6 +10,18 @@ export async function GET() {
     return NextResponse.json(
       { error: "Sessão inválida." },
       { status: 401 },
+    );
+  }
+
+  const permissions = await getRolePermissions(
+    member.organizationId,
+    member.role,
+  );
+
+  if (!permissions.CLIENTS.canView) {
+    return NextResponse.json(
+      { error: "Sem permissão para visualizar clientes." },
+      { status: 403 },
     );
   }
 
@@ -77,12 +87,12 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const permission = await getServiceCenterPermission(
+  const permissions = await getRolePermissions(
     member.organizationId,
     member.role,
   );
 
-  if (!permission.canManage) {
+  if (!permissions.CLIENTS.canEdit) {
     return NextResponse.json(
       { error: "Sem permissão para alterar o roteamento." },
       { status: 403 },

@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-const MANAGER_ROLES = new Set(["MASTER", "ADMIN", "MANAGER"]);
 const RECEIPT_RULES = new Set([
   "WITHOUT_ADVANCE",
   "AUTOMATIC_ADVANCE",
@@ -63,7 +63,12 @@ export async function PUT(request: Request, context: RouteContext) {
       );
     }
 
-    if (!MANAGER_ROLES.has(member.role)) {
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canEdit) {
       return NextResponse.json(
         { error: "Você não possui permissão para editar adquirentes." },
         { status: 403 },

@@ -80,6 +80,18 @@ export async function GET(request: Request) {
       );
     }
 
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canView) {
+      return NextResponse.json(
+        { error: "Você não possui permissão para visualizar clientes." },
+        { status: 403 },
+      );
+    }
+
     const url = new URL(request.url);
 
     const page = parsePositiveInteger(
@@ -111,11 +123,6 @@ export async function GET(request: Request) {
       page,
       pageSize,
     });
-
-    const permissions = await getRolePermissions(
-      member.organizationId,
-      member.role,
-    );
 
     return NextResponse.json({
       ...result,

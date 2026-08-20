@@ -7,8 +7,6 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-const MANAGER_ROLES = new Set(["MASTER", "ADMIN", "MANAGER"]);
-
 async function getMember() {
   const supabase = await createSupabaseClient();
 
@@ -54,6 +52,18 @@ export async function GET(
       return NextResponse.json(
         { error: "Sua sessão expirou." },
         { status: 401 },
+      );
+    }
+
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canView) {
+      return NextResponse.json(
+        { error: "Você não possui permissão para visualizar clientes." },
+        { status: 403 },
       );
     }
 
@@ -149,6 +159,7 @@ export async function GET(
     return NextResponse.json({
       client: clientWithRates,
       categories,
+      permission: permissions.CLIENTS,
     });
   } catch (error) {
     console.error("Erro ao carregar cliente:", error);
@@ -174,7 +185,12 @@ export async function PATCH(
       );
     }
 
-    if (!MANAGER_ROLES.has(member.role)) {
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canEdit) {
       return NextResponse.json(
         { error: "Você não possui permissão para editar clientes." },
         { status: 403 },

@@ -134,6 +134,7 @@ export default function EditarClientePage() {
 
   const [client, setClient] = useState<Client | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [canEditClient, setCanEditClient] = useState(false);
 
   const [name, setName] = useState("");
   const [document, setDocument] = useState("");
@@ -278,6 +279,7 @@ export default function EditarClientePage() {
         const result = (await response.json()) as {
           client?: Client;
           categories?: CategoryOption[];
+          permission?: { canEdit?: boolean };
           error?: string;
         };
 
@@ -291,6 +293,7 @@ export default function EditarClientePage() {
 
         setClient(loaded);
         setCategories(result.categories ?? []);
+        setCanEditClient(Boolean(result.permission?.canEdit));
         setName(loaded.name);
         setDocument(formatCnpj(loaded.document || ""));
         setActive(loaded.active);
@@ -793,6 +796,12 @@ export default function EditarClientePage() {
         </Alert>
       )}
 
+      {!canEditClient && (
+        <Alert color="blue">
+          Seu perfil possui acesso somente para consultar este cliente.
+        </Alert>
+      )}
+
       <Paper withBorder radius="lg" p="lg">
         <Tabs defaultValue="general" keepMounted={false}>
           <Tabs.List>
@@ -840,66 +849,78 @@ export default function EditarClientePage() {
           </Tabs.List>
 
           <Tabs.Panel value="general" pt="xl">
-            <ClientGeneralTab
-              name={name}
-              document={document}
-              active={active}
-              saving={savingGeneral}
-              onNameChange={setName}
-              onDocumentChange={(value) =>
-                setDocument(formatCnpj(value))
-              }
-              onActiveChange={setActive}
-              operationalEmail={operationalEmail}
-              operationalEmailCc={operationalEmailCc}
-              cluster={cluster}
-              onOperationalEmailChange={setOperationalEmail}
-              onOperationalEmailCcChange={setOperationalEmailCc}
-              onClusterChange={setCluster}
-              onSave={saveGeneralData}
-            />
+            <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <ClientGeneralTab
+                name={name}
+                document={document}
+                active={active}
+                saving={savingGeneral}
+                onNameChange={setName}
+                onDocumentChange={(value) =>
+                  setDocument(formatCnpj(value))
+                }
+                onActiveChange={setActive}
+                operationalEmail={operationalEmail}
+                operationalEmailCc={operationalEmailCc}
+                cluster={cluster}
+                onOperationalEmailChange={setOperationalEmail}
+                onOperationalEmailCcChange={setOperationalEmailCc}
+                onClusterChange={setCluster}
+                onSave={saveGeneralData}
+              />
+            </fieldset>
           </Tabs.Panel>
 
           <Tabs.Panel value="acquirers" pt="xl">
-            <ClientAcquirersTab
-              acquirers={acquirers}
-              saving={savingAcquirers}
-              onChange={setAcquirers}
-              onSave={saveAcquirers}
-            />
+            <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <ClientAcquirersTab
+                acquirers={acquirers}
+                saving={savingAcquirers}
+                onChange={setAcquirers}
+                onSave={saveAcquirers}
+              />
+            </fieldset>
           </Tabs.Panel>
 
           <Tabs.Panel value="categories" pt="xl">
-            <ClientCategoriesTab
-              categories={categories}
-              mappings={mappings}
-              saving={savingCategories}
-              onCategoriesChange={setCategories}
-              onChange={setMappings}
-              onSave={saveCategories}
-            />
+            <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <ClientCategoriesTab
+                categories={categories}
+                mappings={mappings}
+                saving={savingCategories}
+                onCategoriesChange={setCategories}
+                onChange={setMappings}
+                onSave={saveCategories}
+              />
+            </fieldset>
           </Tabs.Panel>
 
           <Tabs.Panel value="banks" pt="xl">
-            <ClientBanksTab
-              banks={banks}
-              saving={savingBanks}
-              onChange={setBanks}
-              onSave={saveBanks}
-            />
+            <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <ClientBanksTab
+                banks={banks}
+                saving={savingBanks}
+                onChange={setBanks}
+                onSave={saveBanks}
+              />
+            </fieldset>
           </Tabs.Panel>
 
           <Tabs.Panel value="cards" pt="xl">
-            <ClientCardsTab
-              cards={cards}
-              saving={savingCards}
-              onChange={setCards}
-              onSave={saveCards}
-            />
+            <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <ClientCardsTab
+                cards={cards}
+                saving={savingCards}
+                onChange={setCards}
+                onSave={saveCards}
+              />
+            </fieldset>
           </Tabs.Panel>
 
           <Tabs.Panel value="routing" pt="xl">
-            <ClientRoutingTab clientId={client.id} />
+            <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <ClientRoutingTab clientId={client.id} />
+            </fieldset>
           </Tabs.Panel>
         </Tabs>
       </Paper>

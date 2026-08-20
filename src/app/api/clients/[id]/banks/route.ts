@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
-
-const MANAGER_ROLES = new Set(["MASTER", "ADMIN", "MANAGER"]);
 
 async function getMember() {
   const supabase = await createSupabaseClient();
@@ -41,7 +40,12 @@ export async function PUT(
       );
     }
 
-    if (!MANAGER_ROLES.has(member.role)) {
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canEdit) {
       return NextResponse.json(
         { error: "Você não possui permissão para editar bancos." },
         { status: 403 },

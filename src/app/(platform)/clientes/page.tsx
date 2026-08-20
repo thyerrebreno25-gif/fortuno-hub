@@ -30,6 +30,7 @@ import {
   IconBuilding,
   IconChevronLeft,
   IconChevronRight,
+  IconEye,
   IconPencil,
   IconPlus,
   IconRefresh,
@@ -97,6 +98,8 @@ type ClientsResponse = {
     hasNextPage: boolean;
   };
   permission: {
+    canCreate: boolean;
+    canEdit: boolean;
     canDelete: boolean;
   };
 };
@@ -293,7 +296,11 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [canDeleteClients, setCanDeleteClients] = useState(false);
+  const [clientPermission, setClientPermission] = useState({
+    canCreate: false,
+    canEdit: false,
+    canDelete: false,
+  });
   const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
 
   const [pagination, setPagination] = useState({
@@ -428,7 +435,11 @@ export default function ClientesPage() {
 
         setClients(responseData.data);
         setPagination(responseData.pagination);
-        setCanDeleteClients(Boolean(responseData.permission?.canDelete));
+        setClientPermission({
+          canCreate: Boolean(responseData.permission?.canCreate),
+          canEdit: Boolean(responseData.permission?.canEdit),
+          canDelete: Boolean(responseData.permission?.canDelete),
+        });
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -887,12 +898,14 @@ export default function ClientesPage() {
             </Text>
           </Stack>
 
-          <Button
-            leftSection={<IconPlus size={18} />}
-            onClick={openNewClientModal}
-          >
-            Novo cliente
-          </Button>
+          {clientPermission.canCreate && (
+            <Button
+              leftSection={<IconPlus size={18} />}
+              onClick={openNewClientModal}
+            >
+              Novo cliente
+            </Button>
+          )}
         </Group>
 
         <SimpleGrid
@@ -1141,11 +1154,15 @@ export default function ClientesPage() {
                               }
                               variant="light"
                               size="xs"
-                              leftSection={<IconPencil size={15} />}
+                              leftSection={
+                                clientPermission.canEdit
+                                  ? <IconPencil size={15} />
+                                  : <IconEye size={15} />
+                              }
                             >
-                              Editar
+                              {clientPermission.canEdit ? "Editar" : "Visualizar"}
                             </Button>
-                            {canDeleteClients && client.active && (
+                            {clientPermission.canDelete && client.active && (
                               <ActionIcon
                                 color="red"
                                 variant="light"

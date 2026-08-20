@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
-
-const MANAGER_ROLES = new Set(["MASTER", "ADMIN", "MANAGER"]);
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 async function getMember() {
   const supabase = await createSupabaseClient();
@@ -46,7 +45,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!MANAGER_ROLES.has(member.role)) {
+    const permissions = await getRolePermissions(
+      member.organizationId,
+      member.role,
+    );
+
+    if (!permissions.CLIENTS.canEdit) {
       return NextResponse.json(
         { error: "Você não possui permissão para criar categorias." },
         { status: 403 },

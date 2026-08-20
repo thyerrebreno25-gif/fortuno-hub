@@ -1,4 +1,5 @@
 import { clientRepository } from "../repositories/client.repository";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 import type {
   AuthenticatedMember,
   CreateClientInput,
@@ -21,10 +22,13 @@ export class ClientPermissionError extends Error {
   }
 }
 
-function ensureCreatePermission(member: AuthenticatedMember) {
-  const allowedRoles = ["MASTER", "ADMIN", "MANAGER"];
+async function ensureCreatePermission(member: AuthenticatedMember) {
+  const permissions = await getRolePermissions(
+    member.organizationId,
+    member.role,
+  );
 
-  if (!allowedRoles.includes(member.role)) {
+  if (!permissions.CLIENTS.canCreate) {
     throw new ClientPermissionError(
       "Seu perfil não possui permissão para cadastrar clientes.",
     );
@@ -57,7 +61,7 @@ export const clientService = {
     member: AuthenticatedMember,
     input: CreateClientInput,
   ) {
-    ensureCreatePermission(member);
+    await ensureCreatePermission(member);
 
     const requestedMemberIds = [
       input.operationLeaderId,
