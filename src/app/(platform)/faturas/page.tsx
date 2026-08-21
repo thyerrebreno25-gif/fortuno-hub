@@ -78,12 +78,11 @@ type CategoryOption = { id: string; name: string; code?: string | null; children
 
 const exampleItems: InvoiceItem[] = [];
 
-const ACTIVE_INVOICE_BANKS = ["Banco Inter", "Sicoob"];
+const ACTIVE_INVOICE_BANKS = ["Banco Inter", "Bradesco", "Sicoob"];
 const PENDING_INVOICE_BANKS = [
   "Banco do Brasil",
   "Caixa",
   "Itaú",
-  "Bradesco",
   "Santander",
   "Nubank",
   "C6",

@@ -4,6 +4,7 @@ import {
   isCardInvoiceImage,
 } from "./image-reader.client";
 import { parseInterInvoice } from "./parsers/inter-parser";
+import { parseBradescoInvoice } from "./parsers/bradesco-parser";
 import { parseSicoobInvoice } from "./parsers/sicoob-parser";
 import type { ParsedInvoice } from "./types";
 
@@ -47,6 +48,10 @@ export async function parseCardInvoice(
 
   if (normalized.includes("INTER")) {
     return parseInterInvoice(lines);
+  }
+
+  if (normalized.includes("BRADESCO")) {
+    return parseBradescoInvoice(lines);
   }
 
   throw new Error(`O parser de ${bank} ainda não foi implementado.`);
