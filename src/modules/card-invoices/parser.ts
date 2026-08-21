@@ -6,6 +6,7 @@ import {
 import { parseBancoDoBrasilInvoice } from "./parsers/banco-do-brasil-parser";
 import { parseInterInvoice } from "./parsers/inter-parser";
 import { parseBradescoInvoice } from "./parsers/bradesco-parser";
+import { parseItauInvoice } from "./parsers/itau-parser";
 import { parseSicoobInvoice } from "./parsers/sicoob-parser";
 import type { ParsedInvoice } from "./types";
 
@@ -57,6 +58,10 @@ export async function parseCardInvoice(
 
   if (normalized.includes("BANCO DO BRASIL")) {
     return parseBancoDoBrasilInvoice(lines);
+  }
+
+  if (normalized.includes("ITAU")) {
+    return parseItauInvoice(lines);
   }
 
   throw new Error(`O parser de ${bank} ainda não foi implementado.`);
