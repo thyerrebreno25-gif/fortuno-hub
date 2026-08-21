@@ -1,4 +1,8 @@
 import { extractPdfLines } from "./pdf-reader.client";
+import {
+  extractInterInvoiceImageLines,
+  isCardInvoiceImage,
+} from "./image-reader.client";
 import { parseInterInvoice } from "./parsers/inter-parser";
 import { parseSicoobInvoice } from "./parsers/sicoob-parser";
 import type { ParsedInvoice } from "./types";
@@ -21,6 +25,22 @@ export async function parseCardInvoice(
    */
   if (normalized.includes("SICOOB")) {
     return parseSicoobInvoice(file, password);
+  }
+
+  if (isCardInvoiceImage(file)) {
+    if (normalized.includes("INTER")) {
+      const imageResult = await extractInterInvoiceImageLines(file);
+      const parsed = parseInterInvoice(imageResult.lines);
+      return {
+        ...parsed,
+        warnings: [...imageResult.warnings, ...parsed.warnings],
+      };
+    }
+    throw new Error(`A leitura de imagem para ${bank} ainda não foi implementada.`);
+  }
+
+  if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+    throw new Error("Selecione uma fatura em PDF, PNG, JPG, JPEG ou WebP.");
   }
 
   const lines = await extractPdfLines(file, password);

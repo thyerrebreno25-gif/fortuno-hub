@@ -1,4 +1,8 @@
 import type { ParsedInvoice, ParsedInvoiceItem } from "../types";
+import {
+  extractCardInvoiceImageText,
+  isCardInvoiceImage,
+} from "../image-reader.client";
 
 function normalize(value: string): string {
   return String(value ?? "")
@@ -192,7 +196,7 @@ function parseMovementLine(
   const day = Number(dateMatch[1]);
   const month = Number(dateMatch[2]);
 
-  let description = cleanDescription(
+  const description = cleanDescription(
     cleaned.slice(dateMatch[0].length, valueMatch.index),
   );
 
@@ -342,7 +346,7 @@ async function renderPageForOcr(
 }
 
 async function recognizePage(
-  canvas: HTMLCanvasElement,
+  image: HTMLCanvasElement,
 ): Promise<string> {
   const { createWorker } = await import("tesseract.js");
 
@@ -357,7 +361,7 @@ async function recognizePage(
       preserve_interword_spaces: "1",
     });
 
-    const result = await worker.recognize(canvas);
+    const result = await worker.recognize(image);
 
     return result.data.text || "";
   } finally {
@@ -369,6 +373,10 @@ async function readSicoobByOcr(
   file: File,
   password?: string,
 ): Promise<string> {
+  if (isCardInvoiceImage(file)) {
+    return extractCardInvoiceImageText(file);
+  }
+
   const pdf = await openPdf(file, password);
   const texts: string[] = [];
 
@@ -394,9 +402,10 @@ export async function parseSicoobInvoice(
   file: File,
   password?: string,
 ): Promise<ParsedInvoice> {
-  if (!file?.name?.toLowerCase().endsWith(".pdf")) {
+  const isPdf = file?.name?.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+  if (!isPdf && !isCardInvoiceImage(file)) {
     throw new Error(
-      "O parser Sicoob aceita somente faturas em PDF.",
+      "O parser Sicoob aceita faturas em PDF, PNG, JPG, JPEG ou WebP.",
     );
   }
 
@@ -404,7 +413,7 @@ export async function parseSicoobInvoice(
 
   if (normalize(text).length < 50) {
     throw new Error(
-      "O PDF Sicoob foi aberto, mas o OCR não conseguiu reconhecer o conteúdo.",
+      "O arquivo Sicoob foi aberto, mas o OCR não conseguiu reconhecer o conteúdo.",
     );
   }
 

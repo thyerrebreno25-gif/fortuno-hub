@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { notifications } from "@mantine/notifications";
 import { parseCardInvoice } from "@/modules/card-invoices/parser";
+import { CARD_INVOICE_IMAGE_ACCEPT } from "@/modules/card-invoices/image-reader.client";
 import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exporter";
 import { trackImport } from "@/modules/imports/import-tracker";
 import {
@@ -504,7 +505,7 @@ export default function FaturasPage() {
           <Title order={2}>Faturas de cartão</Title>
 
           <Text c="dimmed">
-            Importe a fatura em PDF, revise os lançamentos e exporte no padrão
+            Importe a fatura em PDF ou imagem, revise os lançamentos e exporte no padrão
             do Conta Azul com categorização aprendida por cliente.
           </Text>
         </Stack>
@@ -570,7 +571,7 @@ export default function FaturasPage() {
 
               <PasswordInput
                 label="Senha do PDF"
-                description="Preencha somente quando a fatura estiver protegida."
+                description="Preencha somente para um PDF protegido; imagens não usam senha."
                 placeholder="Senha opcional"
                 value={password}
                 onChange={(event) => setPassword(event.currentTarget.value)}
@@ -591,19 +592,19 @@ export default function FaturasPage() {
 
                 <Stack align="center" gap={4}>
                   <Text fw={800} fz="lg">
-                    Envie a fatura em PDF
+                    Envie a fatura em PDF ou imagem
                   </Text>
 
                   <Text size="sm" c="dimmed" ta="center">
-                    Arquivos protegidos por senha também poderão ser
-                    processados.
+                    Aceita PDF, PNG, JPG, JPEG e WebP. PDFs protegidos por senha
+                    também poderão ser processados.
                   </Text>
                 </Stack>
 
                 <FileButton
                   resetRef={resetRef}
                   onChange={setFile}
-                  accept=".pdf,application/pdf"
+                  accept={`.pdf,application/pdf,${CARD_INVOICE_IMAGE_ACCEPT}`}
                 >
                   {(props) => (
                     <Button
@@ -611,7 +612,7 @@ export default function FaturasPage() {
                       leftSection={<IconUpload size={18} />}
                       size="md"
                     >
-                      Selecionar PDF
+                      Selecionar arquivo
                     </Button>
                   )}
                 </FileButton>

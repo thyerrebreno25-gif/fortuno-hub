@@ -82,7 +82,7 @@ function extractInvoiceTotal(source: PdfTextLine[], identifiedTotal: number): nu
   // Reliable summary labels elsewhere in the invoice.
   for (const line of source) {
     const key = normalize(line.text).toLowerCase();
-    if (/^(fatura atual|despesas do mes)\b/.test(key)) {
+    if (/^(fatura atual|despesas do mes|fatura fechada total)\b/.test(key)) {
       candidates.push(...moneyValues(line.text).map(Math.abs));
     }
   }
