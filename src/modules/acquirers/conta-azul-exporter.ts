@@ -17,6 +17,7 @@ export type ContaAzulAcquirerLine = {
   chargedRate?: number;
   contractedRate?: number;
   rateValidation?: "MATCH" | "DIVERGENT" | "NOT_CONFIGURED" | "NOT_APPLICABLE";
+  sourceMetadata?: Record<string, string | number | boolean | null>;
 };
 
 function dateForContaAzul(value: string): string {
@@ -57,6 +58,37 @@ function rateStatusLabel(value?: ContaAzulAcquirerLine["rateValidation"]): strin
 }
 
 function buildObservation(line: ContaAzulAcquirerLine): string {
+  const source = line.sourceMetadata ?? {};
+  const sourceValue = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = source[key];
+      if (value !== undefined && value !== null && value !== "" && value !== "-") {
+        return String(value);
+      }
+    }
+    return "";
+  };
+  const sourceIdentifiers = [
+    sourceValue("nsu/cv") ? `NSU/CV: ${sourceValue("nsu/cv")}` : "",
+    sourceValue("tid") ? `TID: ${sourceValue("tid")}` : "",
+    sourceValue("numero da autorizacao")
+      ? `Autorização: ${sourceValue("numero da autorizacao")}`
+      : "",
+    sourceValue("numero do pedido")
+      ? `Pedido: ${sourceValue("numero do pedido")}`
+      : "",
+    sourceValue(
+      "resumo de vendas/numero do lote",
+      "resumo de vendas/numero do lote da venda",
+      "resumo de vendas/numero do lote ajustado",
+    )
+      ? `Lote: ${sourceValue(
+        "resumo de vendas/numero do lote",
+        "resumo de vendas/numero do lote da venda",
+        "resumo de vendas/numero do lote ajustado",
+      )}`
+      : "",
+  ];
   const details = [
     `Origem: ${line.sourceSheet} - linha ${line.sourceRow}`,
     line.acquirer ? `Adquirente: ${line.acquirer}` : "",
@@ -70,6 +102,7 @@ function buildObservation(line: ContaAzulAcquirerLine): string {
       ? `Taxa contratada: ${line.contractedRate.toFixed(4).replace(".", ",")}%`
       : "",
     line.eventType === "SALE" ? rateStatusLabel(line.rateValidation) : "",
+    ...sourceIdentifiers,
   ].filter(Boolean);
 
   return details.join(" | ");

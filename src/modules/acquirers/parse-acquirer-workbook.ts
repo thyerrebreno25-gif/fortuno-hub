@@ -162,9 +162,8 @@ export async function parseAcquirerWorkbook(
   );
   return {
     ...result,
-    sourceTotals: null,
     acquirer,
     parserId: "rede-workbook",
-    parserVersion: "1.1.0",
+    parserVersion: "2.0.0",
   };
 }

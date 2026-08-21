@@ -89,6 +89,7 @@ type ConvertedLine = {
   cardBrand?: string;
   installments?: number;
   feeCategory?: FeeCategory;
+  sourceMetadata?: Record<string, string | number | boolean | null>;
 };
 
 type ClientOption = {
@@ -620,6 +621,8 @@ export default function AdquirentesPage() {
             eventType: line.eventType,
             feeCategory: line.feeCategory ?? null,
             sourceSheet: line.sourceSheet,
+            sourceRow: line.sourceRow,
+            sourceMetadata: line.sourceMetadata ?? null,
           },
         })),
       });
@@ -1060,7 +1063,7 @@ export default function AdquirentesPage() {
                       <Text fw={800}>{formatMoney(sourceTotals.gross ?? 0)}</Text>
                     </Stack>
                     <Stack gap={0}>
-                      <Text size="xs" c="dimmed">Taxas do arquivo</Text>
+                      <Text size="xs" c="dimmed">Custos e descontos</Text>
                       <Text fw={800} c="red">-{formatMoney(sourceTotals.fees ?? 0)}</Text>
                     </Stack>
                     <Stack gap={0}>

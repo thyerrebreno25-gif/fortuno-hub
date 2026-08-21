@@ -51,6 +51,14 @@ export type ParsedAcquirerLine = {
   cardBrand?: string;
   installments?: number;
   feeCategory?: FeeCategory;
+  sourceMetadata?: Record<string, string | number | boolean | null>;
+};
+
+export type RedeSourceTotals = {
+  rows: number | null;
+  gross: number | null;
+  fees: number | null;
+  net: number | null;
 };
 
 export type Categories = {
@@ -130,12 +138,36 @@ function get(row: Row, ...keys: string[]) {
   return undefined;
 }
 
-function getFirstNonZeroNumber(row: Row, ...keys: string[]) {
-  for (const key of keys) {
-    const parsed = number(row[normalize(key)]);
-    if (parsed !== 0) return parsed;
-  }
-  return 0;
+function getPreferredNumber(row: Row, preferredKey: string, fallbackKey: string) {
+  const preferred = get(row, preferredKey);
+  return preferred !== undefined && preferred !== null && preferred !== "-"
+    ? number(preferred)
+    : number(get(row, fallbackKey));
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function rowMetadata(row: Row) {
+  return Object.fromEntries(
+    Object.entries(row).flatMap(([key, value]) => {
+      if (value === undefined || value === null || value === "" || value === "-") {
+        return [];
+      }
+      if (value instanceof Date) {
+        return [[key, value.toISOString()]];
+      }
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        return [[key, value]];
+      }
+      return [[key, String(value)]];
+    }),
+  );
 }
 
 function normalizeModality(value: unknown): "DEBIT" | "CREDIT" | "PIX" | "VOUCHER" | "OTHER" {
@@ -261,68 +293,12 @@ function validateRate(
 }
 
 
-type PaymentAggregate = {
-  gross: number;
-  fee: number;
-  chargedRate: number;
-  brand: string;
-  modality: "DEBIT" | "CREDIT" | "PIX" | "VOUCHER" | "OTHER";
-  installments?: number;
-  mixedInstallments: boolean;
-  establishment: string;
-};
-
-function aggregateBaseKey(
-  paymentDate: string,
-  brand: unknown,
-  modality: unknown,
-  establishment: unknown,
-) {
-  return [
-    paymentDate,
-    normalizeBrand(brand) || "NO_BRAND",
-    normalizeModality(modality),
-    normalize(establishment) || "NO_ESTABLISHMENT",
-  ].join("|");
-}
-
-function aggregateKey(
-  paymentDate: string,
-  brand: unknown,
-  modality: unknown,
-  establishment: unknown,
-  paymentForm: number,
-) {
-  return `${aggregateBaseKey(paymentDate, brand, modality, establishment)}|${paymentForm}`;
-}
-
 function rateFromValues(explicitRate: number, fee: number, gross: number) {
   if (explicitRate > 0) {
     // A REDE normalmente entrega 0,007 para representar 0,70%.
     return explicitRate <= 1 ? explicitRate * 100 : explicitRate;
   }
   return gross !== 0 && fee !== 0 ? Math.abs(fee / gross) * 100 : 0;
-}
-
-function findBestPaymentAggregate(
-  aggregates: Map<string, PaymentAggregate>,
-  baseKey: string,
-  depositedValue: number,
-) {
-  const candidates = Array.from(aggregates.entries())
-    .filter(([key]) => key.startsWith(`${baseKey}|`))
-    .map(([, aggregate]) => aggregate);
-
-  if (candidates.length === 0) return undefined;
-  if (candidates.length === 1) return candidates[0];
-
-  return candidates.reduce((best, candidate) => {
-    const candidateNet = candidate.gross - candidate.fee;
-    const bestNet = best.gross - best.fee;
-    return Math.abs(candidateNet - depositedValue) < Math.abs(bestNet - depositedValue)
-      ? candidate
-      : best;
-  });
 }
 
 export async function parseRedeWorkbook(
@@ -335,72 +311,103 @@ export async function parseRedeWorkbook(
   lines: ParsedAcquirerLine[];
   processedSheets: string[];
   sourceRows: number;
+  sourceTotals: RedeSourceTotals;
   instructionSummary: ReadingInstructionSummary;
 }> {
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   const lines: ParsedAcquirerLine[] = [];
-  const processedSheets: string[] = [];
+  const processedSheets = workbook.SheetNames.filter((sheetName) => normalize(sheetName) !== "capa");
   const readingRules = options.readingRules ?? [];
   const matchesByRule = Object.fromEntries(readingRules.map((rule) => [rule.id, 0]));
   const exclusionsByRule = Object.fromEntries(readingRules.map((rule) => [rule.id, 0]));
   let excludedRows = 0;
-  let sourceRows = 0;
   let id = 1;
-  const paymentAggregates = new Map<string, PaymentAggregate>();
 
-  // Primeira passagem: consolida os detalhes de pagamentos para enriquecer a aba recebidos.
-  for (const sheetName of workbook.SheetNames) {
-    const sheetKey = normalize(sheetName);
-    if (!["pagamentos", "pagamentos futuros", "bloqueados suspenso"].includes(sheetKey)) continue;
+  type ParsedSourceRow = {
+    row: Row;
+    sourceRow: number;
+  };
 
-    const sheet = workbook.Sheets[sheetName];
-    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
-    if (matrix.length < 3) continue;
-    const headers = matrix[1] ?? [];
+  type ParsedSheet = {
+    name: string;
+    key: string;
+    rows: ParsedSourceRow[];
+  };
 
-    matrix.slice(2).forEach((values) => {
-      if (!values.some((value) => value !== null && value !== "")) return;
-      const row = record(headers, values);
-      if (evaluateReadingInstructions(row, sheetName, readingRules).excluded) return;
-      const paymentDate = date(get(row, "data do recebimento"));
-      if (!paymentDate) return;
-
-      const brand = get(row, "bandeira", "bandeira da venda");
-      const modalityRaw = get(row, "modalidade", "modalidade da venda", "tipo de produto");
-      const establishment = text(get(row, "nome do estabelecimento", "nome do estabelecimento da venda"));
-      const originalInstallments = Math.max(1, Math.trunc(number(get(row, "número de parcelas", "numero de parcelas", "parcelas")) || 1));
-      const installments = normalizeModality(modalityRaw) === "CREDIT"
-        ? originalInstallments
-        : 1;
-      const gross = getFirstNonZeroNumber(row, "valor bruto da parcela atualizada", "valor bruto da parcela original", "valor bruto da parcela");
-      const fee = Math.abs(number(get(row, "valor MDR descontado")));
-      const explicitRate = number(get(row, "taxa MDR"));
-      const key = aggregateKey(paymentDate, brand, modalityRaw, establishment, installments);
-      const current = paymentAggregates.get(key);
-      const modality = normalizeModality(modalityRaw);
-
-      if (!current) {
-        paymentAggregates.set(key, {
-          gross,
-          fee,
-          chargedRate: 0,
-          brand: displayBrand(brand),
-          modality,
-          installments,
-          mixedInstallments: false,
-          establishment,
-        });
-      } else {
-        current.gross += gross;
-        current.fee += fee;
-        current.installments = installments;
-        current.mixedInstallments = false;
-      }
-
-      const aggregate = paymentAggregates.get(key)!;
-      aggregate.chargedRate = rateFromValues(explicitRate, aggregate.fee, aggregate.gross);
+  const sheets: ParsedSheet[] = processedSheets.map((sheetName) => {
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+      header: 1,
+      defval: null,
+      raw: true,
     });
+    const headers = matrix[1] ?? [];
+    return {
+      name: sheetName,
+      key: normalize(sheetName),
+      rows: matrix.slice(2).flatMap((values, offset) =>
+        values.some((value) => value !== null && value !== "")
+          ? [{ row: record(headers, values), sourceRow: offset + 3 }]
+          : [],
+      ),
+    };
+  });
+
+  const sourceRows = sheets.reduce((total, sheet) => total + sheet.rows.length, 0);
+  const includedInPrepass = (sheetName: string, row: Row) =>
+    !evaluateReadingInstructions(row, sheetName, readingRules).excluded;
+  const eventTypeFromCancellation = (value: unknown): "CANCELLATION" | "CHARGEBACK" => {
+    const kind = normalize(value);
+    return kind.includes("chargeback") || kind.includes("contest")
+      ? "CHARGEBACK"
+      : "CANCELLATION";
+  };
+  const eventKey = (
+    eventType: "CANCELLATION" | "CHARGEBACK",
+    eventDate: string,
+    batch: unknown,
+    value: number,
+  ) => [eventType, eventDate, normalize(batch), roundMoney(Math.abs(value)).toFixed(2)].join("|");
+
+  // A Rede replica cancelamentos e chargebacks tanto em "ajustes" quanto na aba
+  // específica. Esta última é a fonte canônica porque contém NSU, TID e autorização.
+  const canonicalEventCounts = new Map<string, number>();
+  const cancellationsByNsu = new Map<string, { original: number; discounted: number }>();
+  for (const sheet of sheets.filter((item) => item.key === "cancelamentos e contestacoes")) {
+    for (const { row } of sheet.rows) {
+      if (!includedInPrepass(sheet.name, row)) continue;
+      const eventType = eventTypeFromCancellation(get(row, "cancelamento/chargeback"));
+      const value = number(get(row, "valor descontado", "valor original da venda"));
+      const eventDate = date(get(row, "data do débito", "data original da venda")) || manualPaymentDate;
+      const batch = get(row, "resumo de vendas/número do lote ajustado");
+      const key = eventKey(eventType, eventDate, batch, value);
+      canonicalEventCounts.set(key, (canonicalEventCounts.get(key) ?? 0) + 1);
+
+      const nsu = normalize(get(row, "NSU/CV"));
+      if (!nsu) continue;
+      const current = cancellationsByNsu.get(nsu) ?? { original: 0, discounted: 0 };
+      current.original = Math.max(current.original, number(get(row, "valor original da venda")));
+      current.discounted = roundMoney(current.discounted + Math.abs(value));
+      cancellationsByNsu.set(nsu, current);
+    }
   }
+
+  const paymentSheet = sheets.find((sheet) => sheet.key === "pagamentos");
+  const hasDetailedPayments = Boolean(
+    paymentSheet?.rows.some(({ row }) => includedInPrepass(paymentSheet.name, row)),
+  );
+  let receivedRows = 0;
+  let receivedNet = 0;
+  for (const sheet of sheets.filter((item) => item.key === "recebidos")) {
+    for (const { row } of sheet.rows) {
+      const deposited = number(get(row, "valor depositado"));
+      if (deposited === 0) continue;
+      receivedRows += 1;
+      receivedNet = roundMoney(receivedNet + deposited);
+    }
+  }
+
+  const remainingCanonicalEvents = new Map(canonicalEventCounts);
+  const recoveredCanceledSales = new Set<string>();
 
   const push = (line: Omit<ParsedAcquirerLine, "id">) =>
     lines.push({
@@ -411,18 +418,10 @@ export async function parseRedeWorkbook(
         classifyFeeCategory(line.eventType, line.description, line.sourceSheet),
     });
 
-  for (const sheetName of workbook.SheetNames) {
-    if (normalize(sheetName) === "capa") continue;
-    processedSheets.push(sheetName);
-    const sheet = workbook.Sheets[sheetName];
-    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
-    if (matrix.length < 3) continue;
-    const headers = matrix[1] ?? [];
-
-    matrix.slice(2).forEach((values, offset) => {
-      if (!values.some((value) => value !== null && value !== "")) return;
-      sourceRows += 1;
-      const row = record(headers, values);
+  for (const sheet of sheets) {
+    const sheetName = sheet.name;
+    const sheetKey = sheet.key;
+    sheet.rows.forEach(({ row, sourceRow }) => {
       const instructionEvaluation = evaluateReadingInstructions(
         row,
         sheetName,
@@ -438,8 +437,6 @@ export async function parseRedeWorkbook(
         });
         return;
       }
-      const sourceRow = offset + 3;
-      const sheetKey = normalize(sheetName);
       const brand = get(row, "bandeira", "bandeira da venda", "bandeira ajustada", "bandeira do recebimento");
       const modality = get(row, "modalidade", "modalidade da venda", "modalidade ajustada", "tipo de produto");
       const installmentsRaw = get(row, "número de parcelas", "numero de parcelas", "parcelas", "quantidade de parcelas");
@@ -449,13 +446,98 @@ export async function parseRedeWorkbook(
       const establishment = text(get(row, "nome do estabelecimento", "nome do estabelecimento da venda", "nome do estabelecimento cobrado"));
       const descriptor = [cardBrand, displayModality(modality), transactionType === "CREDIT" ? `${installmentCount}x` : "", establishment].filter(Boolean).join(" - ");
 
-      if (sheetKey === "pagamentos" || sheetKey === "pagamentos futuros" || sheetKey === "bloqueados suspenso") {
-        const fee = number(get(row, "valor MDR descontado"));
+      if (sheetKey === "pagamentos") {
+        const originalGross = number(get(row, "valor bruto da parcela original", "valor bruto da parcela"));
+        let gross = getPreferredNumber(
+          row,
+          "valor bruto da parcela atualizada",
+          "valor bruto da parcela original",
+        );
+        let fee = Math.abs(number(get(row, "valor MDR descontado")));
         const saleDate = date(get(row, "data original da venda"));
         const dueDate = date(get(row, "data original de vencimento", "data prevista do recebimento"));
         const paymentDate = date(get(row, "data do recebimento")) || manualPaymentDate;
-        // A venda será representada na aba recebidos. Aqui mantemos somente a tarifa detalhada.
-        if (fee !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "FEE", saleDate, dueDate, paymentDate, description: `TAXA MDR ${descriptor}`.trim(), category: categories.fee, amount: -Math.abs(fee), anticipated: false, status: "OK", rateValidation: "NOT_APPLICABLE", acquirer: "REDE", transactionType, cardBrand: cardBrand || undefined, installments: installmentCount });
+        const nsu = text(get(row, "NSU/CV"));
+        const normalizedNsu = normalize(nsu);
+        const paymentStatus = normalize(get(row, "status"));
+        const cancellation = cancellationsByNsu.get(normalizedNsu);
+
+        // Uma venda desagendada tem bruto atualizado zero. Quando o próprio relatório
+        // traz o cancelamento debitado no período, recompomos bruto e MDR para que a
+        // venda + tarifa + cancelamento fechem exatamente em zero.
+        if (gross === 0 && paymentStatus.includes("desagendada")) {
+          if (cancellation && !recoveredCanceledSales.has(normalizedNsu)) {
+            gross = originalGross || cancellation.original;
+            fee = roundMoney(Math.max(0, gross - cancellation.discounted));
+            recoveredCanceledSales.add(normalizedNsu);
+          } else {
+            return;
+          }
+        }
+        if (gross === 0) return;
+
+        const chargedRate = rateFromValues(number(get(row, "taxa MDR")), fee, gross);
+        const validation = validateRate(
+          chargedRate,
+          transactionType,
+          installmentCount,
+          cardBrand,
+          contractedRates,
+        );
+        const negotiated = normalize(get(row, "negociada"));
+        const anticipated = paymentStatus.includes("antecipada") || Boolean(negotiated && !negotiated.includes("livre"));
+        const identifiers = [
+          nsu ? `NSU ${nsu}` : "",
+          text(get(row, "número da autorização")) ? `AUT. ${text(get(row, "número da autorização"))}` : "",
+        ].filter(Boolean).join(" - ");
+        const metadata = rowMetadata(row);
+
+        push({
+          sourceSheet: sheetName,
+          sourceRow,
+          eventType: "SALE",
+          saleDate,
+          dueDate,
+          paymentDate,
+          description: `VENDA REDE ${descriptor}${identifiers ? ` - ${identifiers}` : ""}`.trim(),
+          category: categories.sale,
+          amount: roundMoney(gross),
+          anticipated,
+          status: validation.rateValidation === "DIVERGENT" ? "REVIEW" : "OK",
+          rateValidation: validation.rateValidation,
+          chargedRate: chargedRate || undefined,
+          contractedRate: "contractedRate" in validation ? validation.contractedRate : undefined,
+          acquirer: "REDE",
+          transactionType,
+          cardBrand: cardBrand || undefined,
+          installments: installmentCount,
+          sourceMetadata: metadata,
+        });
+        if (fee !== 0) push({
+          sourceSheet: sheetName,
+          sourceRow,
+          eventType: "FEE",
+          saleDate,
+          dueDate,
+          paymentDate,
+          description: `TAXA MDR REDE ${descriptor}${identifiers ? ` - ${identifiers}` : ""}`.trim(),
+          category: categories.fee,
+          amount: -roundMoney(Math.abs(fee)),
+          anticipated,
+          status: "OK",
+          rateValidation: "NOT_APPLICABLE",
+          acquirer: "REDE",
+          transactionType,
+          cardBrand: cardBrand || undefined,
+          installments: installmentCount,
+          sourceMetadata: metadata,
+        });
+        return;
+      }
+
+      if (sheetKey === "pagamentos futuros" || sheetKey === "bloqueados suspenso") {
+        // São agendas, não movimentações efetivamente recebidas. Continuam contadas
+        // como linhas-fonte, mas não entram no financeiro nem na exportação atual.
         return;
       }
 
@@ -464,40 +546,112 @@ export async function parseRedeWorkbook(
         const reason = text(get(row, "motivo", "tipo do ajuste")) || "Ajuste";
         const charged = number(get(row, "valor cobrado nesta data"));
         const credited = number(get(row, "valor creditado nesta data"));
-        const isAnticipation = normalize(reason).includes("antecipacao");
-        if (charged !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: isAnticipation ? "ANTICIPATION" : "ADJUSTMENT", saleDate: adjustmentDate, dueDate: adjustmentDate, paymentDate: adjustmentDate, description: reason.toUpperCase(), category: isAnticipation ? categories.anticipation : categories.adjustment, amount: -Math.abs(charged), anticipated: isAnticipation, status: "OK", rateValidation: "NOT_APPLICABLE" });
-        if (credited !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: adjustmentDate, dueDate: adjustmentDate, paymentDate: adjustmentDate, description: `DEVOLUÇÃO - ${reason}`.toUpperCase(), category: categories.adjustment, amount: Math.abs(credited), anticipated: false, status: "OK", rateValidation: "NOT_APPLICABLE" });
+        const normalizedReason = normalize(reason);
+        const isAnticipation = normalizedReason.includes("antecipacao");
+        const adjustmentEventType: AcquirerEventType = isAnticipation
+          ? "ANTICIPATION"
+          : normalizedReason.includes("contest") || normalizedReason.includes("chargeback")
+            ? "CHARGEBACK"
+            : normalizedReason.includes("cancel")
+              ? "CANCELLATION"
+              : "ADJUSTMENT";
+        const category = adjustmentEventType === "ANTICIPATION"
+          ? categories.anticipation
+          : adjustmentEventType === "CHARGEBACK"
+            ? categories.chargeback
+            : adjustmentEventType === "CANCELLATION"
+              ? categories.cancellation
+              : categories.adjustment;
+        const metadata = rowMetadata(row);
+
+        let duplicateOfCanonical = false;
+        if (charged !== 0 && (adjustmentEventType === "CANCELLATION" || adjustmentEventType === "CHARGEBACK")) {
+          const duplicateKey = eventKey(
+            adjustmentEventType,
+            adjustmentDate,
+            get(row, "resumo de vendas/número do lote ajustado"),
+            charged,
+          );
+          const remaining = remainingCanonicalEvents.get(duplicateKey) ?? 0;
+          if (remaining > 0) {
+            duplicateOfCanonical = true;
+            remainingCanonicalEvents.set(duplicateKey, remaining - 1);
+          }
+        }
+
+        if (charged !== 0 && !duplicateOfCanonical) push({
+          sourceSheet: sheetName,
+          sourceRow,
+          eventType: adjustmentEventType,
+          saleDate: adjustmentDate,
+          dueDate: adjustmentDate,
+          paymentDate: adjustmentDate,
+          description: reason.toUpperCase(),
+          category,
+          amount: -roundMoney(Math.abs(charged)),
+          anticipated: isAnticipation,
+          status: "OK",
+          rateValidation: "NOT_APPLICABLE",
+          sourceMetadata: metadata,
+        });
+        if (credited !== 0) push({
+          sourceSheet: sheetName,
+          sourceRow,
+          eventType: "ADJUSTMENT",
+          saleDate: adjustmentDate,
+          dueDate: adjustmentDate,
+          paymentDate: adjustmentDate,
+          description: `DEVOLUÇÃO - ${reason}`.toUpperCase(),
+          category: categories.adjustment,
+          amount: roundMoney(Math.abs(credited)),
+          anticipated: false,
+          status: "OK",
+          rateValidation: "NOT_APPLICABLE",
+          sourceMetadata: metadata,
+        });
         return;
       }
 
       if (sheetKey === "cancelamentos e contestacoes") {
-        const kind = normalize(get(row, "cancelamento/chargeback"));
-        const eventType: AcquirerEventType = kind.includes("chargeback") || kind.includes("contest") ? "CHARGEBACK" : "CANCELLATION";
+        const eventType = eventTypeFromCancellation(get(row, "cancelamento/chargeback"));
         const value = number(get(row, "valor descontado", "valor original da venda"));
         const eventDate = date(get(row, "data do débito", "data original da venda")) || manualPaymentDate;
-        if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType, saleDate: date(get(row, "data original da venda")), dueDate: eventDate, paymentDate: eventDate, description: text(get(row, "motivo do cancelamento")) || eventType, category: eventType === "CHARGEBACK" ? categories.chargeback : categories.cancellation, amount: -Math.abs(value), anticipated: false, status: "OK", rateValidation: "NOT_APPLICABLE" });
+        const cancellationModality = get(row, "modalidade da venda");
+        const cancellationType = normalizeModality(cancellationModality);
+        const cancellationBrand = displayBrand(get(row, "bandeira da venda"));
+        const cancellationInstallments = Math.max(1, Math.trunc(number(get(row, "número de parcelas")) || 1));
+        if (value !== 0) push({
+          sourceSheet: sheetName,
+          sourceRow,
+          eventType,
+          saleDate: date(get(row, "data original da venda")),
+          dueDate: eventDate,
+          paymentDate: eventDate,
+          description: text(get(row, "motivo do cancelamento")) || eventType,
+          category: eventType === "CHARGEBACK" ? categories.chargeback : categories.cancellation,
+          amount: -roundMoney(Math.abs(value)),
+          anticipated: false,
+          status: "OK",
+          rateValidation: "NOT_APPLICABLE",
+          acquirer: "REDE",
+          transactionType: cancellationType,
+          cardBrand: cancellationBrand || undefined,
+          installments: cancellationInstallments,
+          sourceMetadata: rowMetadata(row),
+        });
         return;
       }
 
       if (sheetKey === "recebidos") {
         const depositedValue = number(get(row, "valor depositado"));
         const eventDate = date(get(row, "data")) || manualPaymentDate;
+        if (hasDetailedPayments) return;
         const receivedBrand = get(row, "bandeira", "bandeira do recebimento") ?? brand;
         const receivedModality = get(row, "modalidade", "modalidade do recebimento") ?? modality;
         const receivedEstablishment = text(get(row, "nome do estabelecimento", "estabelecimento")) || establishment;
-        const baseKey = aggregateBaseKey(eventDate, receivedBrand, receivedModality, receivedEstablishment);
-        const aggregate = findBestPaymentAggregate(paymentAggregates, baseKey, depositedValue);
-
-        const finalType = aggregate?.modality ?? normalizeModality(receivedModality);
-        const finalBrand = aggregate?.brand || (finalType === "PIX" ? "" : displayBrand(receivedBrand));
-        const finalInstallments = aggregate?.installments ?? 1;
-        const chargedRate = aggregate?.chargedRate || 0;
-        const grossAmount = aggregate?.gross || depositedValue;
-        const validation = aggregate
-          ? validateRate(chargedRate, finalType, finalInstallments, finalBrand, contractedRates)
-          : chargedRate > 0
-            ? { rateValidation: "NOT_CONFIGURED" as const }
-            : { rateValidation: "NOT_APPLICABLE" as const };
+        const finalType = normalizeModality(receivedModality);
+        const finalBrand = finalType === "PIX" ? "" : displayBrand(receivedBrand);
+        const finalInstallments = 1;
         const receivedDescriptor = [
           finalBrand,
           displayModality(finalType),
@@ -514,16 +668,15 @@ export async function parseRedeWorkbook(
           paymentDate: eventDate,
           description: `RECEBIMENTO ${receivedDescriptor}`.trim(),
           category: categories.sale,
-          amount: grossAmount,
-          anticipated: !normalize(get(row, "negociadas")).includes("livre"),
-          status: validation.rateValidation === "DIVERGENT" ? "REVIEW" : "OK",
-          rateValidation: validation.rateValidation,
-          chargedRate: chargedRate || undefined,
-          contractedRate: "contractedRate" in validation ? validation.contractedRate : undefined,
+          amount: roundMoney(depositedValue),
+          anticipated: Boolean(normalize(get(row, "negociadas")) && !normalize(get(row, "negociadas")).includes("livre")),
+          status: "OK",
+          rateValidation: "NOT_APPLICABLE",
           acquirer: "REDE",
           transactionType: finalType,
           cardBrand: finalBrand || undefined,
           installments: finalInstallments,
+          sourceMetadata: rowMetadata(row),
         });
         return;
       }
@@ -531,7 +684,7 @@ export async function parseRedeWorkbook(
       if (sheetKey === "bloqueados retido e penhorado") {
         const value = number(get(row, "valor do bloqueio"));
         const eventDate = date(get(row, "data do bloqueio")) || manualPaymentDate;
-        if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: eventDate, dueDate: eventDate, paymentDate: eventDate, description: `BLOQUEIO - ${text(get(row, "tipo do bloqueio"))}`.trim(), category: categories.adjustment, amount: -Math.abs(value), anticipated: false, status: "REVIEW", rateValidation: "NOT_APPLICABLE" });
+        if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: eventDate, dueDate: eventDate, paymentDate: eventDate, description: `BLOQUEIO - ${text(get(row, "tipo do bloqueio"))}`.trim(), category: categories.adjustment, amount: -Math.abs(value), anticipated: false, status: "REVIEW", rateValidation: "NOT_APPLICABLE", sourceMetadata: rowMetadata(row) });
         return;
       }
 
@@ -540,7 +693,7 @@ export async function parseRedeWorkbook(
         const future = number(get(row, "valor desagendamento no pagamento futuro"));
         const eventDate = date(get(row, "data do recebimento desagendado", "data prevista para desagendamento")) || manualPaymentDate;
         for (const [label, value] of [["DESAGENDAMENTO", current], ["DESAGENDAMENTO FUTURO", future]] as const) {
-          if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: date(get(row, "data original da venda")), dueDate: eventDate, paymentDate: eventDate, description: label, category: categories.adjustment, amount: -Math.abs(value), anticipated: false, status: "REVIEW", rateValidation: "NOT_APPLICABLE" });
+          if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: date(get(row, "data original da venda")), dueDate: eventDate, paymentDate: eventDate, description: label, category: categories.adjustment, amount: -Math.abs(value), anticipated: false, status: "REVIEW", rateValidation: "NOT_APPLICABLE", sourceMetadata: rowMetadata(row) });
         }
         return;
       }
@@ -548,15 +701,31 @@ export async function parseRedeWorkbook(
       if (sheetKey === "cobrancas em aberto") {
         const value = number(get(row, "valor pendente", "total da cobrança"));
         const eventDate = date(get(row, "data de criação do débito")) || manualPaymentDate;
-        if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: eventDate, dueDate: eventDate, paymentDate: eventDate, description: text(get(row, "motivo")) || "COBRANÇA EM ABERTO", category: categories.adjustment, amount: -Math.abs(value), anticipated: false, status: "REVIEW", rateValidation: "NOT_APPLICABLE" });
+        if (value !== 0) push({ sourceSheet: sheetName, sourceRow, eventType: "ADJUSTMENT", saleDate: eventDate, dueDate: eventDate, paymentDate: eventDate, description: text(get(row, "motivo")) || "COBRANÇA EM ABERTO", category: categories.adjustment, amount: -Math.abs(value), anticipated: false, status: "REVIEW", rateValidation: "NOT_APPLICABLE", sourceMetadata: rowMetadata(row) });
       }
     });
   }
+
+  const parsedGross = roundMoney(
+    lines.filter((line) => line.eventType === "SALE").reduce((total, line) => total + line.amount, 0),
+  );
+  const identifiedNet = roundMoney(lines.reduce((total, line) => total + line.amount, 0));
+  const reconciledNet = receivedRows > 0 ? receivedNet : identifiedNet;
+  const reconciledGross = hasDetailedPayments ? parsedGross : reconciledNet;
+  const sourceTotals: RedeSourceTotals = {
+    rows: receivedRows > 0
+      ? receivedRows
+      : lines.filter((line) => line.eventType === "SALE").length,
+    gross: reconciledGross,
+    fees: roundMoney(Math.max(0, reconciledGross - reconciledNet)),
+    net: reconciledNet,
+  };
 
   return {
     lines,
     processedSheets,
     sourceRows,
+    sourceTotals,
     instructionSummary: {
       rules: readingRules,
       excludedRows,
