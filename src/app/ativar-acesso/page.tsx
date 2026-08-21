@@ -18,6 +18,7 @@ function getHashSession() {
     return {
       accessToken: "",
       refreshToken: "",
+      inviteToken: "",
     };
   }
 
@@ -27,6 +28,7 @@ function getHashSession() {
   return {
     accessToken: params.get("access_token") ?? "",
     refreshToken: params.get("refresh_token") ?? "",
+    inviteToken: params.get("invite_token") ?? "",
   };
 }
 
@@ -48,6 +50,45 @@ export default function ActivateAccessPage() {
 
       try {
         const currentUrl = new URL(window.location.href);
+        const { inviteToken } = getHashSession();
+
+        if (inviteToken) {
+          window.history.replaceState(
+            {},
+            document.title,
+            `${currentUrl.pathname}${currentUrl.search}`,
+          );
+
+          const response = await fetch(
+            "/api/auth/member-invite/exchange",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ token: inviteToken }),
+            },
+          );
+          const payload = (await response.json()) as {
+            activationUrl?: string;
+            error?: string;
+          };
+
+          if (!response.ok || !payload.activationUrl) {
+            if (active) {
+              setErrorMessage(
+                payload.error ||
+                  "Não foi possível validar este convite.",
+              );
+              setState("invalid");
+            }
+            return;
+          }
+
+          window.location.replace(payload.activationUrl);
+          return;
+        }
+
         const tokenHash =
           currentUrl.searchParams.get("token_hash");
         const tokenType =
@@ -76,7 +117,7 @@ export default function ActivateAccessPage() {
           if (error) {
             if (active) {
               setErrorMessage(
-                "Este convite é inválido ou expirou. Solicite um novo convite ao administrador.",
+                "Não foi possível concluir esta tentativa. Abra novamente o link original recebido por e-mail.",
               );
               setState("invalid");
             }
@@ -106,7 +147,7 @@ export default function ActivateAccessPage() {
           if (error) {
             if (active) {
               setErrorMessage(
-                "Este convite é inválido ou expirou. Solicite um novo convite ao administrador.",
+                "Não foi possível concluir esta tentativa. Abra novamente o link original recebido por e-mail.",
               );
               setState("invalid");
             }

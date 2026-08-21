@@ -179,7 +179,8 @@ export async function sendAutomaticPendingInviteReminders(now = new Date()) {
     if (!actor) continue;
 
     try {
-      const delivery = await deliverMemberInvite(admin, {
+      const delivery = await deliverMemberInvite({
+        memberId: member.id,
         email,
         name,
         role: member.role as MemberInviteRole,
@@ -205,7 +206,7 @@ export async function sendAutomaticPendingInviteReminders(now = new Date()) {
             name,
             email,
             role: member.role,
-            delivery: "RESEND_CUSTOM_INVITE",
+            delivery: "PERMANENT_CUSTOM_INVITE",
             linkType: delivery.linkType,
             emailId: delivery.emailId || null,
             automatic: true,

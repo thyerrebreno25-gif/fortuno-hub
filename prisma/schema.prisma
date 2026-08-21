@@ -296,10 +296,22 @@ model OrganizationMember {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   teamLeader   OrganizationMember?  @relation("OrganizationTeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
   teamMembers  OrganizationMember[] @relation("OrganizationTeamLeader")
+  inviteTokens OrganizationMemberInviteToken[]
 
   @@unique([organizationId, userId])
   @@index([userId])
   @@index([teamLeaderId])
+}
+
+model OrganizationMemberInviteToken {
+  id        String   @id @default(cuid())
+  memberId  String
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
 }
 
 model Client {

@@ -1,13 +1,8 @@
 import "server-only";
 
 import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { sendMemberInviteEmail } from "@/modules/settings/email/member-invite-email";
-import {
-  buildMemberActivationUrl,
-  getMemberInviteAppUrl,
-  getMemberInviteRedirectTo,
-} from "@/modules/settings/server/member-invite-link";
+import { createPermanentMemberInviteUrl } from "@/modules/settings/server/member-invite-token";
 
 export type MemberInviteRole =
   | "ADMIN"
@@ -15,12 +10,10 @@ export type MemberInviteRole =
   | "OPERATOR"
   | "CLIENT";
 
-type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
-
 type DeliveryResult =
   | {
       sent: true;
-      linkType: "invite" | "recovery";
+      linkType: "permanent";
       emailId?: string;
     }
   | {
@@ -41,59 +34,25 @@ export function isMemberAccessActivated(authUser: SupabaseAuthUser) {
 }
 
 export async function deliverMemberInvite(
-  admin: AdminClient,
   input: {
+    memberId: string;
     email: string;
     name: string;
     role: MemberInviteRole;
     reminder?: boolean;
   },
 ): Promise<DeliveryResult> {
-  const appUrl = getMemberInviteAppUrl();
-  const redirectTo = getMemberInviteRedirectTo(appUrl);
+  let actionUrl: string;
 
-  const inviteResult = await admin.auth.admin.generateLink({
-    type: "invite",
-    email: input.email,
-    options: {
-      data: { name: input.name },
-      ...(redirectTo ? { redirectTo } : {}),
-    },
-  });
-
-  let linkType: "invite" | "recovery" = "invite";
-  let actionUrl = buildMemberActivationUrl(
-    appUrl,
-    inviteResult.data?.properties,
-  );
-
-  if (inviteResult.error || !actionUrl) {
-    const recoveryResult = await admin.auth.admin.generateLink({
-      type: "recovery",
-      email: input.email,
-      options: {
-        ...(redirectTo ? { redirectTo } : {}),
-      },
-    });
-
-    if (recoveryResult.error) {
-      return {
-        sent: false,
-        reason: recoveryResult.error.message,
-      };
-    }
-
-    linkType = "recovery";
-    actionUrl = buildMemberActivationUrl(
-      appUrl,
-      recoveryResult.data?.properties,
-    );
-  }
-
-  if (!actionUrl) {
+  try {
+    actionUrl = await createPermanentMemberInviteUrl(input.memberId);
+  } catch (error) {
     return {
       sent: false,
-      reason: "Não foi possível gerar um novo link de ativação.",
+      reason:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível gerar o link permanente de ativação.",
     };
   }
 
@@ -111,7 +70,7 @@ export async function deliverMemberInvite(
 
   return {
     sent: true,
-    linkType,
+    linkType: "permanent",
     emailId: emailResult.id,
   };
 }

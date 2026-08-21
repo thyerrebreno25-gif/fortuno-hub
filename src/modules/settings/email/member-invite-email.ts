@@ -75,7 +75,7 @@ function buildHtml(input: MemberInviteEmailInput): string {
                   ${input.reminder ? "Seu acesso ainda está pendente" : "Bem-vindo(a) ao Fortuno Hub"}
                 </h1>
                 <p style="margin:0;font-size:14px;line-height:22px;color:#64748b;">
-                  ${input.reminder ? "Geramos um novo link para você concluir a ativação." : "Seu usuário foi criado e já está vinculado ao ambiente corporativo."}
+                  ${input.reminder ? "Seu link de ativação continua disponível para concluir o acesso." : "Seu usuário foi criado e já está vinculado ao ambiente corporativo."}
                 </p>
               </td>
             </tr>
@@ -87,7 +87,7 @@ function buildHtml(input: MemberInviteEmailInput): string {
                 </p>
 
                 <p style="margin:0 0 22px;font-size:15px;line-height:24px;color:#334155;">
-                  ${input.reminder ? "Seu convite anterior ainda não foi concluído. Para ativar seu acesso ao <strong>Fortuno Hub</strong>, utilize o novo link abaixo." : "Você recebeu acesso ao <strong>Fortuno Hub</strong>. Para concluir seu cadastro e acessar o sistema, utilize o botão abaixo."}
+                  ${input.reminder ? "Seu convite ainda não foi concluído. Para ativar seu acesso ao <strong>Fortuno Hub</strong>, utilize o link abaixo." : "Você recebeu acesso ao <strong>Fortuno Hub</strong>. Para concluir seu cadastro e acessar o sistema, utilize o botão abaixo."}
                 </p>
 
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-collapse:separate;">
@@ -120,7 +120,7 @@ function buildHtml(input: MemberInviteEmailInput): string {
                 </table>
 
                 <p style="margin:14px 0 0;text-align:center;font-size:12px;line-height:19px;color:#94a3b8;">
-                  Este link é pessoal e temporário. Não encaminhe este e-mail para outras pessoas.
+                  Este link é pessoal, não expira e deixa de funcionar após a ativação. Não encaminhe este e-mail para outras pessoas.
                 </p>
 
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 0;">
@@ -172,7 +172,7 @@ Perfil: ${roleLabels[input.role]}
 Para concluir seu cadastro e acessar o sistema:
 ${input.actionUrl}
 
-Este link é pessoal e temporário. Não compartilhe com outras pessoas.
+Este link é pessoal, não expira e deixa de funcionar após a ativação. Não compartilhe com outras pessoas.
 
 Fortuno Gestão Financeira
 Fortuno Hub

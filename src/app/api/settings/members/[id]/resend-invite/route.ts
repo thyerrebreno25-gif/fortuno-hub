@@ -92,7 +92,8 @@ export async function POST(_request: Request, context: RouteContext) {
 
     const email = target.user.email.trim().toLowerCase();
     const name = target.user.name || target.user.email;
-    const delivery = await deliverMemberInvite(admin, {
+    const delivery = await deliverMemberInvite({
+      memberId: target.id,
       email,
       name,
       role: target.role as MemberInviteRole,
@@ -116,7 +117,7 @@ export async function POST(_request: Request, context: RouteContext) {
           name,
           email,
           role: target.role,
-          delivery: "RESEND_CUSTOM_INVITE",
+          delivery: "PERMANENT_CUSTOM_INVITE",
           linkType: delivery.linkType,
           emailId: delivery.emailId || null,
         },

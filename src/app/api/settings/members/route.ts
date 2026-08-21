@@ -5,12 +5,10 @@ import {
   getSettingsMember,
   SETTINGS_ADMIN_ROLES,
 } from "@/modules/settings/server/settings-auth";
-import { sendMemberInviteEmail } from "@/modules/settings/email/member-invite-email";
 import {
-  buildMemberActivationUrl,
-  getMemberInviteAppUrl,
-  getMemberInviteRedirectTo,
-} from "@/modules/settings/server/member-invite-link";
+  deliverMemberInvite,
+  type MemberInviteRole,
+} from "@/modules/settings/server/member-invite-delivery";
 
 const ALLOWED_ROLES = new Set([
   "ADMIN",
@@ -154,9 +152,6 @@ export async function POST(request: Request) {
       },
     );
 
-    const appUrl = getMemberInviteAppUrl();
-    const redirectTo = getMemberInviteRedirectTo(appUrl);
-
     const {
       data: inviteData,
       error: inviteError,
@@ -165,17 +160,10 @@ export async function POST(request: Request) {
       email,
       options: {
         data: { name },
-        ...(redirectTo
-          ? { redirectTo }
-          : {}),
       },
     });
 
     let authUser = inviteData?.user ?? null;
-    let actionUrl = buildMemberActivationUrl(
-      appUrl,
-      inviteData?.properties,
-    );
 
     if (inviteError) {
       const {
@@ -201,27 +189,6 @@ export async function POST(request: Request) {
           { error: inviteError.message },
           { status: 400 },
         );
-      }
-
-      const {
-        data: recoveryData,
-        error: recoveryError,
-      } = await admin.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        options: {
-          ...(redirectTo
-            ? { redirectTo }
-            : {}),
-        },
-      });
-
-      if (!recoveryError) {
-        actionUrl =
-          buildMemberActivationUrl(
-            appUrl,
-            recoveryData?.properties,
-          ) || actionUrl;
       }
     }
 
@@ -317,7 +284,7 @@ export async function POST(request: Request) {
                 isTeamLeader,
                 teamLeaderId,
                 delivery:
-                  "RESEND_CUSTOM_INVITE",
+                  "PERMANENT_CUSTOM_INVITE",
               },
             },
           });
@@ -326,25 +293,24 @@ export async function POST(request: Request) {
         },
       );
 
-    const emailResult =
-      await sendMemberInviteEmail({
-        to: email,
-        name,
-        role,
-        actionUrl,
-      });
+    const delivery = await deliverMemberInvite({
+      memberId: created.id,
+      email,
+      name,
+      role: role as MemberInviteRole,
+    });
 
-    if (!emailResult.sent) {
+    if (!delivery.sent) {
       console.error(
         "Usuário criado, mas convite por e-mail falhou:",
-        emailResult.reason,
+        delivery.reason,
       );
 
       return NextResponse.json(
         {
           id: created.id,
           emailSent: false,
-          emailError: emailResult.reason,
+          emailError: delivery.reason,
           message:
             "Usuário criado e vinculado à organização, mas o e-mail de acesso não pôde ser enviado.",
         },
