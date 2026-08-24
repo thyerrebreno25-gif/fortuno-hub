@@ -1,15 +1,26 @@
 "use client";
 
-export async function extractPdfLines(file: File): Promise<string[]> {
+export async function extractPdfLines(file: File, password?: string): Promise<string[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
+  if (typeof window !== "undefined") {
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+      import.meta.url,
+    ).toString();
+  }
 
-  const pdf = await pdfjs.getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-  }).promise;
+  let pdf;
+  try {
+    pdf = await pdfjs.getDocument({
+      data: new Uint8Array(await file.arrayBuffer()),
+      password: password || undefined,
+    }).promise;
+  } catch (error) {
+    if (error instanceof Error && error.name === "PasswordException") {
+      throw new Error("O PDF é protegido. Informe a senha correta para continuar.");
+    }
+    throw error;
+  }
 
   const lines: string[] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {

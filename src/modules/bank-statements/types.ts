@@ -2,8 +2,10 @@ export type StatementTransaction = {
   id: number;
   selected: boolean;
   date: string;
+  accountingDate?: string;
   description: string;
   document: string;
+  sourceType?: string;
   type: "CREDIT" | "DEBIT";
   amount: number;
   balance: number | null;

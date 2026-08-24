@@ -1,15 +1,16 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ActionIcon, Alert, Badge, Button, Card, Center, Checkbox, Group, NumberInput, Paper, Progress, ScrollArea, Select, SimpleGrid, Stack, Table, Text, ThemeIcon, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Card, Center, Checkbox, Group, NumberInput, Paper, PasswordInput, Progress, ScrollArea, Select, SimpleGrid, Stack, Table, Text, ThemeIcon, Title } from "@mantine/core";
 import { IconAlertTriangle, IconArrowDown, IconArrowUp, IconBuildingBank, IconCheck, IconChevronRight, IconDownload, IconFileAnalytics, IconPhoto, IconRefresh, IconTrash, IconUpload, IconX } from "@tabler/icons-react";
 import { extractPdfLines } from "@/modules/bank-statements/pdf-reader.client";
+import { parseC6 } from "@/modules/bank-statements/parsers/c6";
 import { parseSicredi } from "@/modules/bank-statements/parsers/sicredi";
 import { generateOfx } from "@/modules/bank-statements/ofx";
 import type { ParsedStatement, StatementTransaction } from "@/modules/bank-statements/types";
 import { trackImport } from "@/modules/imports/import-tracker";
 
-const BANKS = [{ value: "SICREDI", label: "Sicredi" }, { value: "BB", label: "Banco do Brasil (em breve)" }, { value: "ITAU", label: "Itaú (em breve)" }, { value: "INTER", label: "Inter (em breve)" }];
+const BANKS = [{ value: "SICREDI", label: "Sicredi" }, { value: "C6", label: "C6 Bank" }, { value: "BB", label: "Banco do Brasil (em breve)" }, { value: "ITAU", label: "Itaú (em breve)" }, { value: "INTER", label: "Inter (em breve)" }];
 const money = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 const date = (v?: string) => v ? v.split("-").reverse().join("/") : "-";
 function download(name: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
@@ -18,6 +19,7 @@ export default function ExtratosPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bank, setBank] = useState<string | null>("SICREDI");
   const [file, setFile] = useState<File | null>(null);
+  const [password, setPassword] = useState("");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [statement, setStatement] = useState<ParsedStatement | null>(null);
@@ -38,26 +40,30 @@ export default function ExtratosPage() {
     if (!file || !bank) return;
     setProcessing(true); setError("");
     try {
-      if (bank !== "SICREDI") throw new Error("A lógica disponível nesta versão é a do Sicredi.");
-      if (file.type.startsWith("image/") || /\.(png|jpe?g)$/i.test(file.name)) throw new Error("A leitura por imagem será ativada no parser Sicredi na próxima etapa de OCR. Este primeiro layout já está funcional para PDF.");
-      const parsed = parseSicredi(await extractPdfLines(file));
-      setStatement(parsed); setTransactions(parsed.transactions); setInitialBalance("");
+      if (!(["SICREDI", "C6"] as string[]).includes(bank)) throw new Error("Esse banco ainda não possui um leitor configurado.");
+      if (file.type.startsWith("image/") || /\.(png|jpe?g)$/i.test(file.name)) throw new Error("A leitura de extratos por imagem ainda não está disponível. Envie o PDF original do banco.");
+      const lines = await extractPdfLines(file, password);
+      const parsed = bank === "C6" ? parseC6(lines) : parseSicredi(lines);
+      setStatement(parsed); setTransactions(parsed.transactions);
+      setInitialBalance(bank === "C6" ? parsed.detectedOpeningBalance ?? "" : "");
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ler o arquivo."); }
     finally { setProcessing(false); }
   }
-  function reset() { setFile(null); setStatement(null); setTransactions([]); setInitialBalance(""); setError(""); if (fileInputRef.current) fileInputRef.current.value = ""; }
+  function reset() { setFile(null); setPassword(""); setStatement(null); setTransactions([]); setInitialBalance(""); setError(""); if (fileInputRef.current) fileInputRef.current.value = ""; }
   function toggle(id: number, selected: boolean) { setTransactions((c) => c.map((t) => t.id === id ? { ...t, selected } : t)); }
   function remove(id: number) { setTransactions((c) => c.filter((t) => t.id !== id)); }
   async function exportOfx() {
     if (!statement || initialBalance === "") return;
-    const content = generateOfx({ bankId: "748", branch: statement.branch, account: statement.account, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
-    download(`sicredi_${statement.account || "extrato"}_${statement.periodStart || ""}.ofx`, content, "application/x-ofx;charset=utf-8");
+    const isC6 = statement.bank === "C6 Bank";
+    const bankSlug = isC6 ? "c6" : "sicredi";
+    const content = generateOfx({ bankId: isC6 ? "336" : "748", branch: statement.branch, account: statement.account, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
+    download(`${bankSlug}_${statement.account || "extrato"}_${statement.periodStart || ""}.ofx`, content, "application/x-ofx;charset=utf-8");
     try {
       await trackImport({
         module: "BANK_STATEMENT",
         status: "EXPORTED",
-        originalName: file?.name || `sicredi_${statement.account || "extrato"}.pdf`,
-        parserId: "sicredi-conta-corrente",
+        originalName: file?.name || `${bankSlug}_${statement.account || "extrato"}.pdf`,
+        parserId: isC6 ? "c6-conta-corrente" : "sicredi-conta-corrente",
         parserVersion: "1.0.0",
         expectedTotal: totals.detected,
         parsedTotal: totals.calculated,
@@ -73,12 +79,12 @@ export default function ExtratosPage() {
           exportFormat: "OFX",
         },
         transactions: transactions.filter((item) => item.selected).map((item) => ({
-          date: item.date,
+          date: item.accountingDate ?? item.date,
           description: item.description,
           amount: item.amount,
           type: item.type,
           document: item.document,
-          metadata: { balance: item.balance },
+          metadata: { balance: item.balance, launchDate: item.date, sourceType: item.sourceType },
         })),
       });
     } catch (trackingError) {
@@ -92,10 +98,11 @@ export default function ExtratosPage() {
     {!statement ? <Paper withBorder radius="xl" p={{ base: "lg", md: 40 }}><Stack gap="xl">
       <Center><Stack align="center" gap="sm"><ThemeIcon size={68} radius="xl" variant="light"><IconUpload size={34}/></ThemeIcon><Title order={3}>Importe o extrato bancário</Title><Text c="dimmed" ta="center">O banco é selecionado manualmente. Cada opção utiliza uma lógica própria de leitura.</Text></Stack></Center>
       <Select label="Banco *" description="Escolha o banco antes de anexar o arquivo." data={BANKS} value={bank} onChange={setBank} searchable required maw={520}/>
-      <Paper withBorder radius="xl" p={34} style={{ borderStyle: "dashed" }}><Stack align="center"><Group><Badge leftSection={<IconFileAnalytics size={13}/>}>PDF</Badge><Badge leftSection={<IconPhoto size={13}/>} variant="light">JPG / PNG</Badge></Group><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}/><Button leftSection={<IconUpload size={18}/>} onClick={() => fileInputRef.current?.click()}>Selecionar arquivo</Button><Text size="sm" c="dimmed">Layout ativo: Sicredi - Extrato de conta corrente.</Text></Stack></Paper>
+      <PasswordInput label="Senha do PDF" description="Preencha somente quando o banco proteger o extrato com senha." placeholder="Digite a senha do arquivo" value={password} onChange={(event) => setPassword(event.currentTarget.value)} maw={520}/>
+      <Paper withBorder radius="xl" p={34} style={{ borderStyle: "dashed" }}><Stack align="center"><Group><Badge leftSection={<IconFileAnalytics size={13}/>}>PDF</Badge><Badge leftSection={<IconPhoto size={13}/>} variant="light">JPG / PNG</Badge></Group><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}/><Button leftSection={<IconUpload size={18}/>} onClick={() => fileInputRef.current?.click()}>Selecionar arquivo</Button><Text size="sm" c="dimmed">Layouts ativos: Sicredi e C6 Bank - Extrato de conta corrente.</Text></Stack></Paper>
       {file && <Card withBorder><Group justify="space-between"><Stack gap={0}><Text fw={700}>{file.name}</Text><Text size="sm" c="dimmed">{(file.size/1024/1024).toFixed(2)} MB</Text></Stack><ActionIcon color="red" variant="subtle" onClick={()=>{setFile(null);if (fileInputRef.current) fileInputRef.current.value = "";}}><IconX size={18}/></ActionIcon></Group></Card>}
       {error && <Alert color="red" icon={<IconAlertTriangle size={18}/>}>{error}</Alert>}
-      <Alert color="blue">O saldo inicial será digitado manualmente depois da leitura. O sistema somará entradas e subtrairá saídas para comparar o saldo final calculado com o saldo final apresentado no extrato.</Alert>
+      <Alert color="blue">O sistema somará entradas e subtrairá saídas para comparar o saldo final calculado com o saldo apresentado no extrato. No C6, o saldo inicial também é identificado automaticamente.</Alert>
       <Group justify="flex-end"><Button disabled={!file || !bank} loading={processing} onClick={processFile} rightSection={<IconChevronRight size={18}/>}>Ler extrato</Button></Group>
     </Stack></Paper> : <>
       <SimpleGrid cols={{ base:1, sm:2, xl:4 }}>
@@ -111,7 +118,7 @@ export default function ExtratosPage() {
         <Progress value={balanceValid ? 100 : initialBalance === "" ? 0 : 60} color={balanceValid ? "green" : "orange"}/>
       </Stack></Paper>
 
-      <Paper withBorder radius="lg"><Group p="lg" justify="space-between"><Stack gap={2}><Title order={4}>Movimentações extraídas</Title><Text size="sm" c="dimmed">Valores positivos são entradas e valores negativos são saídas.</Text></Stack><Badge>{totals.count} selecionadas</Badge></Group><ScrollArea><Table miw={1000} verticalSpacing="sm"><Table.Thead><Table.Tr><Table.Th></Table.Th><Table.Th>Data</Table.Th><Table.Th>Descrição</Table.Th><Table.Th>Documento</Table.Th><Table.Th>Tipo</Table.Th><Table.Th ta="right">Valor</Table.Th><Table.Th ta="right">Saldo</Table.Th><Table.Th></Table.Th></Table.Tr></Table.Thead><Table.Tbody>{transactions.map(t=><Table.Tr key={t.id}><Table.Td><Checkbox checked={t.selected} onChange={e=>toggle(t.id,e.currentTarget.checked)}/></Table.Td><Table.Td>{date(t.date)}</Table.Td><Table.Td><Text fw={600}>{t.description}</Text></Table.Td><Table.Td>{t.document || "-"}</Table.Td><Table.Td><Badge color={t.type==="CREDIT"?"green":"red"} variant="light">{t.type==="CREDIT"?"Entrada":"Saída"}</Badge></Table.Td><Table.Td ta="right">{money(t.amount)}</Table.Td><Table.Td ta="right">{t.balance===null?"-":money(t.balance)}</Table.Td><Table.Td><ActionIcon color="red" variant="subtle" onClick={()=>remove(t.id)}><IconTrash size={17}/></ActionIcon></Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea></Paper>
+      <Paper withBorder radius="lg"><Group p="lg" justify="space-between"><Stack gap={2}><Title order={4}>Movimentações extraídas</Title><Text size="sm" c="dimmed">Valores positivos são entradas e valores negativos são saídas.</Text></Stack><Badge>{totals.count} selecionadas</Badge></Group><ScrollArea><Table miw={1100} verticalSpacing="sm"><Table.Thead><Table.Tr><Table.Th></Table.Th><Table.Th>Data do lançamento</Table.Th><Table.Th>Data contábil</Table.Th><Table.Th>Descrição</Table.Th><Table.Th>Origem</Table.Th><Table.Th>Tipo</Table.Th><Table.Th ta="right">Valor</Table.Th><Table.Th ta="right">Saldo</Table.Th><Table.Th></Table.Th></Table.Tr></Table.Thead><Table.Tbody>{transactions.map(t=><Table.Tr key={t.id}><Table.Td><Checkbox checked={t.selected} onChange={e=>toggle(t.id,e.currentTarget.checked)}/></Table.Td><Table.Td>{date(t.date)}</Table.Td><Table.Td>{date(t.accountingDate ?? t.date)}</Table.Td><Table.Td><Text fw={600}>{t.description}</Text></Table.Td><Table.Td>{t.sourceType || t.document || "-"}</Table.Td><Table.Td><Badge color={t.type==="CREDIT"?"green":"red"} variant="light">{t.type==="CREDIT"?"Entrada":"Saída"}</Badge></Table.Td><Table.Td ta="right">{money(t.amount)}</Table.Td><Table.Td ta="right">{t.balance===null?"-":money(t.balance)}</Table.Td><Table.Td><ActionIcon color="red" variant="subtle" onClick={()=>remove(t.id)}><IconTrash size={17}/></ActionIcon></Table.Td></Table.Tr>)}</Table.Tbody></Table></ScrollArea></Paper>
       <Paper withBorder radius="lg" p="lg"><Group justify="space-between"><Alert color={balanceValid ? "green" : "orange"} icon={balanceValid?<IconCheck size={18}/>:<IconAlertTriangle size={18}/>}>{balanceValid ? "Saldo inicial + entradas - saídas = saldo final do extrato. O OFX está liberado." : "Informe o saldo inicial correto e confira se a diferença fica zerada."}</Alert><Button leftSection={<IconDownload size={18}/>} disabled={!balanceValid} onClick={exportOfx}>Gerar OFX</Button></Group></Paper>
     </>}
   </Stack>;
