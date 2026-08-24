@@ -477,7 +477,7 @@ export default function FaturasPage() {
           date: item.date,
           description: item.description,
           amount: item.amount,
-          type: "DEBIT",
+          type: item.amount < 0 ? "CREDIT" : "DEBIT",
           category: item.category,
           metadata: { installment: item.installment || null },
         })),

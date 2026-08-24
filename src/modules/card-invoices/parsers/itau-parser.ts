@@ -170,6 +170,7 @@ function parseMovement(
 function merchantKey(description: string): string {
   return normalize(description)
     .toUpperCase()
+    .replace(/^(?:ESTORNO|CREDITO)(?:\s+DE)?\s+/, "")
     .replace(/[^A-Z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -183,23 +184,36 @@ function sameMerchant(left: string, right: string): boolean {
   return shortest >= 6 && (a.startsWith(b) || b.startsWith(a));
 }
 
-function reconcileCredits(movements: RawMovement[]): { items: RawMovement[]; unmatchedCredits: RawMovement[] } {
+function isExplicitReversal(description: string): boolean {
+  return /^(?:ESTORNO|CREDITO)\b/i.test(normalize(description));
+}
+
+function reconcileCredits(movements: RawMovement[]): RawMovement[] {
   const positives = movements
     .filter((movement) => movement.amount > 0)
     .map((movement) => ({ ...movement }));
   const credits = movements.filter((movement) => movement.amount < 0);
-  const unmatchedCredits: RawMovement[] = [];
+  const remainingCredits: RawMovement[] = [];
 
   for (const credit of credits) {
-    const candidates = positives.filter(
+    let candidates = positives.filter(
       (movement) => movement.amount > 0
         && movement.date === credit.date
         && sameMerchant(movement.description, credit.description),
     );
+
+    // Estornos identificados pelo banco podem aparecer dias depois da cobrança.
+    if (!candidates.length && isExplicitReversal(credit.description)) {
+      candidates = positives.filter(
+        (movement) => movement.amount > 0
+          && sameMerchant(movement.description, credit.description),
+      );
+    }
+
     let remaining = Math.abs(credit.amount);
 
     if (!candidates.length) {
-      unmatchedCredits.push(credit);
+      remainingCredits.push({ ...credit });
       continue;
     }
 
@@ -210,13 +224,15 @@ function reconcileCredits(movements: RawMovement[]): { items: RawMovement[]; unm
       remaining = Number((remaining - applied).toFixed(2));
     }
 
-    if (remaining > 0.004) unmatchedCredits.push({ ...credit, amount: -remaining });
+    if (remaining > 0.004) {
+      remainingCredits.push({ ...credit, amount: -remaining });
+    }
   }
 
-  return {
-    items: positives.filter((movement) => movement.amount >= 0.01),
-    unmatchedCredits,
-  };
+  return [
+    ...positives.filter((movement) => movement.amount >= 0.01),
+    ...remainingCredits,
+  ].sort((left, right) => left.date.localeCompare(right.date));
 }
 
 export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
@@ -253,7 +269,7 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
   }
 
   const reconciled = reconcileCredits(movements);
-  const items: ParsedInvoiceItem[] = reconciled.items.map((movement, index) => ({
+  const items: ParsedInvoiceItem[] = reconciled.map((movement, index) => ({
     id: index + 1,
     date: movement.date,
     description: movement.description,
@@ -273,9 +289,6 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
   }
   if (!items.length) {
     warnings.push("Nenhum lançamento exportável foi identificado no layout do Itaú.");
-  }
-  if (reconciled.unmatchedCredits.length) {
-    warnings.push(`${reconciled.unmatchedCredits.length} crédito(s) não puderam ser conciliados com a compra correspondente.`);
   }
   if (invoiceTotal === null) {
     warnings.push("O valor total não foi identificado automaticamente na fatura do Itaú.");

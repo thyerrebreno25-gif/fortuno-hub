@@ -21,6 +21,10 @@ function sanitize(value: string): string {
     .replace(/^_+|_+$/g, "") || "cliente";
 }
 
+export function invoiceAmountToContaAzulValue(amount: number): number {
+  return Number((amount < 0 ? Math.abs(amount) : -Math.abs(amount)).toFixed(2));
+}
+
 export function exportInvoiceToContaAzul(input: {
   items: ContaAzulInvoiceItem[];
   clientName: string;
@@ -38,7 +42,7 @@ export function exportInvoiceToContaAzul(input: {
     "Data de Competência": formatDate(item.date || input.competenceDate),
     "Data de Vencimento": formatDate(input.dueDate),
     "Data de Pagamento": formatDate(input.paymentDate),
-    Valor: Number((-Math.abs(item.amount)).toFixed(2)),
+    Valor: invoiceAmountToContaAzulValue(item.amount),
     Categoria: item.category ?? "",
     Descrição: item.installment
       ? `${item.description} ${item.installment}`.trim()
@@ -49,6 +53,7 @@ export function exportInvoiceToContaAzul(input: {
     Observações: [
       input.bankName ? `Banco: ${input.bankName}` : "",
       item.installment ? `Parcela: ${item.installment}` : "",
+      item.amount < 0 ? "Crédito/estorno identificado na fatura" : "",
       "Categoria aplicada pelo Fortuno Hub",
     ].filter(Boolean).join(" | "),
   }));

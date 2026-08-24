@@ -65,4 +65,33 @@ describe("leitor de fatura do Itaú", () => {
     });
     expect(result.warnings).toEqual([]);
   });
+
+  it("mantém crédito líquido e relaciona estorno de outra data", () => {
+    const source = lines([
+      "fatura do cartão: vencimento: data de fechamento:",
+      "Fechada 11/08/2026 30 julho",
+      "Total da fatura R$168,19",
+      "Lançamentos",
+      "ALESSANDRA LIMA CARDOSO BI - FINAL 1106",
+      "10/07 COMPRA SEM ESTORNO R$200,00",
+      "13/06 ReiArma*Rei Armari02/02 R$31,81",
+      "13/06 ReiArma*Rei Armarinho -R$0,01",
+      "13/06 ReiArma*Rei Armarinho -R$63,61",
+      "30/06 ANUIDADE DIFERENCI06/12 R$83,25",
+      "30/07 ESTORNO DE ANUIDADE DIF -R$83,25",
+      "Total de lançamentos nacionais R$168,19",
+    ]);
+
+    const result = parseItauInvoice(source);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.reduce((total, item) => total + item.amount, 0)).toBeCloseTo(168.19, 2);
+    expect(result.items.some((item) => item.description.startsWith("ANUIDADE"))).toBe(false);
+    expect(result.items.find((item) => item.amount < 0)).toMatchObject({
+      description: "ReiArma*Rei Armarinho",
+      amount: -31.81,
+      cardLastDigits: "1106",
+    });
+    expect(result.warnings).toEqual([]);
+  });
 });
