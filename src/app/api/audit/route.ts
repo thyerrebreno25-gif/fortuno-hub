@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { AuditFindingSeverity, Prisma } from "@/generated/prisma/client";
+import type { AuditFileType, AuditFindingSeverity, Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   canSuperviseAudit,
@@ -19,6 +19,16 @@ type AuditFindingInput = {
   amount?: unknown;
   evidence?: unknown;
 };
+
+type AuditFileInput = {
+  type?: unknown;
+  name?: unknown;
+  mimeType?: unknown;
+  size?: unknown;
+  parsedSummary?: unknown;
+};
+
+const ALLOWED_FILE_TYPES = new Set<AuditFileType>(["MOVEMENTS", "DRE"]);
 
 function auditSeverity(value: unknown): AuditFindingSeverity {
   return value === "CRITICAL" || value === "WARNING" ? value : "INFO";
@@ -82,7 +92,24 @@ export async function POST(request: Request) {
   const client = await prisma.client.findFirst({ where: { id: clientId, organizationId: member.organizationId, active: true }, select: { id: true } });
   if (!client) return NextResponse.json({ error: "Cliente inválido." }, { status: 400 });
   const findings: AuditFindingInput[] = Array.isArray(body.findings) ? body.findings : [];
-  const file = body.file ?? {};
+  const legacyFile = body.file ?? {};
+  const receivedFiles: AuditFileInput[] = Array.isArray(body.files)
+    ? body.files
+    : [{ ...legacyFile, type: "MOVEMENTS" }];
+  const files = receivedFiles
+    .map((file) => ({
+      type: ALLOWED_FILE_TYPES.has(file.type as AuditFileType)
+        ? file.type as AuditFileType
+        : "MOVEMENTS" as AuditFileType,
+      name: String(file.name || (file.type === "DRE" ? "DRE Gerencial.pdf" : "Extrato de Movimentações.pdf")),
+      mimeType: optionalText(file.mimeType) || "application/pdf",
+      size: Number(file.size || 0) || null,
+      parsedSummary: optionalEvidence(file.parsedSummary),
+    }));
+
+  if (!files.some((file) => file.type === "MOVEMENTS")) {
+    return NextResponse.json({ error: "Envie o Extrato de Movimentações." }, { status: 400 });
+  }
 
   const audit = await prisma.audit.create({
     data: {
@@ -97,14 +124,14 @@ export async function POST(request: Request) {
       totalChecks: Number(body.totalChecks ?? 0),
       passedChecks: Number(body.passedChecks ?? 0),
       summary: body.metrics ?? undefined,
-      files: { create: [{
-        type: "MOVEMENTS",
-        name: String(file.name || "Extrato de Movimentações.pdf"),
-        mimeType: file.mimeType || "application/pdf",
-        size: Number(file.size || 0) || null,
+      files: { create: files.map((file) => ({
+        type: file.type,
+        name: file.name,
+        mimeType: file.mimeType,
+        size: file.size,
         periodStart: body.periodStart ? new Date(`${body.periodStart}T12:00:00`) : null,
         periodEnd: body.periodEnd ? new Date(`${body.periodEnd}T12:00:00`) : null,
-        parsedSummary: {
+        parsedSummary: file.parsedSummary ?? (file.type === "MOVEMENTS" ? {
           sourceTransactionCount: Number(
             body.metrics?.sourceTransactionCount ?? 0,
           ),
@@ -126,8 +153,16 @@ export async function POST(request: Request) {
             body.metrics?.genericIgnoredTransactionCount ?? 0,
           ),
           months: body.metrics?.months ?? [],
-        },
-      }] },
+        } : {
+          categoryCount: Number(body.metrics?.dreCategoryCount ?? 0),
+          recurringGroupsChecked: Number(body.metrics?.dreRecurringGroupsChecked ?? 0),
+          missingRecurringGroups: Number(body.metrics?.dreMissingRecurringGroups ?? 0),
+          materialVariations: Number(body.metrics?.dreMaterialVariations ?? 0),
+          resultAlerts: Number(body.metrics?.dreResultAlerts ?? 0),
+          months: body.metrics?.dreMonths ?? [],
+          company: body.metrics?.dreCompany ?? null,
+        }),
+      })) },
       findings: { create: findings.map((finding) => ({
         source: "AUTOMATIC" as const,
         ruleCode: optionalText(finding.ruleCode),
@@ -140,7 +175,7 @@ export async function POST(request: Request) {
         amount: typeof finding.amount === "number" ? finding.amount : null,
         evidence: optionalEvidence(finding.evidence),
       })) },
-      checklist: { create: DEFAULT_AUDIT_CHECKLIST.map((item, index) => ({ category: item.category, title: item.title, mandatory: true, position: index + 1 })) },
+      checklist: { create: DEFAULT_AUDIT_CHECKLIST.map((item, index) => ({ category: item.category, title: item.title, description: item.description, mandatory: true, position: index + 1 })) },
     },
     include: { client: true, findings: true, files: true, checklist: true },
   });

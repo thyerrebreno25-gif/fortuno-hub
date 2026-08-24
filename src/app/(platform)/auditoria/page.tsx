@@ -34,7 +34,9 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 
-import { analyzeAuditMovements } from "@/modules/audit/engine";
+import { analyzeContaAzulDre } from "@/modules/audit/dre-engine";
+import { analyzeAuditMovements, combineAuditAnalyses } from "@/modules/audit/engine";
+import { parseContaAzulDre } from "@/modules/audit/parsers/conta-azul-dre-parser";
 import { parseContaAzulMovements } from "@/modules/audit/parsers/conta-azul-movements-parser";
 import type {
   AuditAnalysisResult,
@@ -97,7 +99,11 @@ type SavedAudit = {
     name: string;
   };
   findings: SavedFinding[];
-  files: unknown[];
+  files: Array<{
+    id: string;
+    type: string;
+    name: string;
+  }>;
   checklist: Array<{
     id: string;
     category: string;
@@ -198,6 +204,7 @@ export default function AuditoriaPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [dreFile, setDreFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AuditAnalysisResult | null>(null);
   const [savedAudit, setSavedAudit] = useState<SavedAudit | null>(null);
   const [audits, setAudits] = useState<SavedAudit[]>([]);
@@ -232,16 +239,21 @@ export default function AuditoriaPage() {
   }
 
   useEffect(() => {
-    load().catch((error) => {
-      notifications.show({
-        color: "red",
-        title: "Auditoria",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Não foi possível carregar o módulo.",
+    const loadTimer = window.setTimeout(() => {
+      load().catch((error) => {
+        notifications.show({
+          color: "red",
+          title: "Auditoria",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Não foi possível carregar o módulo.",
+        });
       });
-    });
+
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
   }, []);
 
   async function runAnalysis() {
@@ -251,7 +263,11 @@ export default function AuditoriaPage() {
 
     try {
       const movements = await parseContaAzulMovements(file);
-      const result = analyzeAuditMovements(movements);
+      const movementAnalysis = analyzeAuditMovements(movements);
+      const dreAnalysis = dreFile
+        ? analyzeContaAzulDre(await parseContaAzulDre(dreFile))
+        : null;
+      const result = combineAuditAnalyses(movementAnalysis, dreAnalysis);
 
       setAnalysis(result);
 
@@ -269,12 +285,27 @@ export default function AuditoriaPage() {
           periodStart: result.periodStart,
           periodEnd: result.periodEnd,
           metrics: result.metrics,
-          referenceLabel: result.metrics.months.join(" → "),
-          file: {
-            name: file.name,
-            size: file.size,
-            mimeType: file.type,
-          },
+          referenceLabel: [
+            ...new Set([
+              ...result.metrics.months,
+              ...(result.metrics.dreMonths ?? []),
+            ]),
+          ].sort().join(" → "),
+          files: [
+            {
+              type: "MOVEMENTS",
+              name: file.name,
+              size: file.size,
+              mimeType: file.type,
+            },
+            ...(dreFile ? [{
+              type: "DRE",
+              name: dreFile.name,
+              size: dreFile.size,
+              mimeType: dreFile.type,
+              parsedSummary: dreAnalysis?.metrics,
+            }] : []),
+          ],
         }),
       });
 
@@ -292,9 +323,9 @@ export default function AuditoriaPage() {
         color: "green",
         title: "Auditoria concluída",
         message:
-          `${result.movements.length} lançamentos analisados, `
-          + `${result.metrics.priorityTransactionCount} prioritário(s) e `
-          + `${result.findings.length} pontos identificados.`,
+          `${result.movements.length} lançamentos e `
+          + `${result.metrics.dreCategoryCount ?? 0} linhas da DRE analisados. `
+          + `${result.findings.length} ponto(s) identificado(s).`,
       });
 
       await load();
@@ -408,6 +439,7 @@ export default function AuditoriaPage() {
   function startNewAudit() {
     setClientId(null);
     setFile(null);
+    setDreFile(null);
     setAnalysis(null);
     setSavedAudit(null);
     setAssignment(null);
@@ -676,7 +708,7 @@ export default function AuditoriaPage() {
       </Group>
 
       <Paper withBorder radius="lg" p="lg">
-        <SimpleGrid cols={{ base: 1, md: 3 }}>
+        <SimpleGrid cols={{ base: 1, md: 4 }}>
           <Select
             label="Cliente"
             placeholder="Selecione o cliente"
@@ -709,6 +741,28 @@ export default function AuditoriaPage() {
             </FileButton>
           </div>
 
+          <div>
+            <Text size="sm" fw={600} mb={6}>
+              DRE Gerencial
+            </Text>
+
+            <FileButton onChange={setDreFile} accept="application/pdf">
+              {(props) => (
+                <Button
+                  {...props}
+                  fullWidth
+                  variant="default"
+                  leftSection={<IconUpload size={16} />}
+                >
+                  {dreFile ? dreFile.name : "Selecionar PDF"}
+                </Button>
+              )}
+            </FileButton>
+            <Text size="xs" c="dimmed" mt={4}>
+              Recomendada para comparar recorrências por competência.
+            </Text>
+          </div>
+
           <Button
             mt={25}
             disabled={!clientId || !file}
@@ -719,6 +773,14 @@ export default function AuditoriaPage() {
             Executar auditoria
           </Button>
         </SimpleGrid>
+
+        {!dreFile && (
+          <Alert color="yellow" icon={<IconAlertTriangle size={16} />} mt="md">
+            Sem a DRE, a auditoria usa somente o extrato. Água, energia,
+            internet e demais recorrências ficam dependentes da revisão manual
+            do líder.
+          </Alert>
+        )}
       </Paper>
 
       {analysis && (
@@ -817,6 +879,15 @@ export default function AuditoriaPage() {
               </Card>
             </SimpleGrid>
 
+            {analysis.metrics.sourcesAnalyzed?.includes("DRE") && (
+              <Alert color="green" icon={<IconCheck size={16} />} mt="md">
+                DRE analisada em {analysis.metrics.dreMonths?.length ?? 0}
+                {" "}competência(s), com {analysis.metrics.dreRecurringGroupsChecked ?? 0}
+                {" "}grupo(s) recorrente(s) reconhecido(s) e {analysis.metrics.dreCategoryCount ?? 0}
+                {" "}linha(s) lida(s).
+              </Alert>
+            )}
+
             {(analysis.metrics.compensatedPairCount > 0
               || analysis.metrics.genericIgnoredTransactionCount > 0) && (
               <Alert color="blue" icon={<IconCheck size={16} />} mt="md">
@@ -876,6 +947,16 @@ export default function AuditoriaPage() {
                 Extrato de Movimentações analisado
               </Alert>
 
+              {currentAudit.files?.some((file) => file.type === "DRE") ? (
+                <Alert color="green" icon={<IconCheck size={16} />}>
+                  DRE Gerencial analisada e comparada por competência
+                </Alert>
+              ) : (
+                <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
+                  DRE não enviada: recorrências devem ser confirmadas no checklist do líder
+                </Alert>
+              )}
+
               {(currentAudit.checklist ?? []).map((item) => {
                 const relatedFinding = currentAudit.findings.find(
                   (finding) => finding.ruleCode === `CHECKLIST:${item.id}`,
@@ -892,6 +973,12 @@ export default function AuditoriaPage() {
                         <Text size="sm" fw={700} mt={2}>
                           {item.title}
                         </Text>
+
+                        {item.description && (
+                          <Text size="xs" c="dimmed" mt={4}>
+                            {item.description}
+                          </Text>
+                        )}
 
                         {item.note && (
                           <Text size="xs" c="dimmed" mt="xs">

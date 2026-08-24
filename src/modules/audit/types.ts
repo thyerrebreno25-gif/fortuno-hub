@@ -40,6 +40,33 @@ export type AuditFindingDraft = {
   evidence: AuditEvidence[];
 };
 
+export type AuditDreRow = {
+  category: string;
+  values: Record<string, number>;
+  level: number;
+  sourcePage: number;
+  sourceText: string;
+};
+
+export type AuditDreAnalysisResult = {
+  company: string | null;
+  months: string[];
+  rows: AuditDreRow[];
+  findings: AuditFindingDraft[];
+  healthScore: number;
+  passedChecks: number;
+  totalChecks: number;
+  periodStart: string | null;
+  periodEnd: string | null;
+  metrics: {
+    categoryCount: number;
+    recurringGroupsChecked: number;
+    missingRecurringGroups: number;
+    materialVariations: number;
+    resultAlerts: number;
+  };
+};
+
 export type AuditAnalysisResult = {
   movements: AuditMovement[];
   findings: AuditFindingDraft[];
@@ -63,5 +90,13 @@ export type AuditAnalysisResult = {
     compensatedTransactionCount: number;
     genericIgnoredTransactionCount: number;
     months: string[];
+    dreCategoryCount?: number;
+    dreRecurringGroupsChecked?: number;
+    dreMissingRecurringGroups?: number;
+    dreMaterialVariations?: number;
+    dreResultAlerts?: number;
+    dreMonths?: string[];
+    dreCompany?: string | null;
+    sourcesAnalyzed?: Array<"MOVEMENTS" | "DRE">;
   };
 };
