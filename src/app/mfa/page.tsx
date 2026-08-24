@@ -154,6 +154,19 @@ export default function MfaPage() {
       return;
     }
 
+    const dailyResponse = await fetch("/api/auth/mfa/daily", {
+      method: "POST",
+    });
+    if (!dailyResponse.ok) {
+      const payload = await dailyResponse.json().catch(() => ({}));
+      setError(
+        payload.error ||
+          "O código foi confirmado, mas não foi possível liberar este dispositivo durante o dia.",
+      );
+      setVerifying(false);
+      return;
+    }
+
     router.replace("/inicio");
     router.refresh();
   }
@@ -238,8 +251,8 @@ export default function MfaPage() {
                 </h2>
                 <p>
                   {mode === "enroll"
-                    ? "Faça esta configuração uma única vez. Nos próximos acessos, pediremos apenas o código de 6 números."
-                    : `Abra o Google Authenticator no celular conectado a ${email}.`}
+                    ? "Faça esta configuração uma única vez. Depois, o código será solicitado somente no primeiro login de cada dia neste dispositivo."
+                    : `Abra o Google Authenticator no celular conectado a ${email}. Esta verificação valerá até o fim do dia neste dispositivo.`}
                 </p>
               </header>
 

@@ -16,7 +16,7 @@ export function SessionTimeout() {
     Math.floor(WARNING_BEFORE_MS / 1000),
   );
 
-  const lastActivityRef = useRef(Date.now());
+  const lastActivityRef = useRef(0);
   const lastWriteRef = useRef(0);
   const signingOutRef = useRef(false);
 
@@ -224,6 +224,8 @@ export function SessionTimeout() {
         >
           Por segurança, o Fortuno Hub encerra
           sessões após 30 minutos sem atividade.
+          Ao entrar novamente hoje neste dispositivo,
+          o código do autenticador não será solicitado.
         </p>
 
         <div

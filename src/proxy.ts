@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  DAILY_MFA_COOKIE_NAME,
+  verifyDailyMfaToken,
+} from "@/lib/auth/daily-mfa";
 
 const PUBLIC_ROUTES = [
   "/login",
@@ -85,7 +89,14 @@ export async function proxy(request: NextRequest) {
   const hasVerifiedTotp = Boolean(factorsResult.data?.totp.length);
   const hasAssuranceLevelTwo =
     assuranceResult.data?.currentLevel === "aal2";
-  const requiresMfa = !hasVerifiedTotp || !hasAssuranceLevelTwo;
+  const hasDailyVerification = hasVerifiedTotp
+    ? await verifyDailyMfaToken(
+        request.cookies.get(DAILY_MFA_COOKIE_NAME)?.value,
+        user.id,
+      )
+    : false;
+  const requiresMfa =
+    !hasVerifiedTotp || (!hasAssuranceLevelTwo && !hasDailyVerification);
 
   if (requiresMfa && !isMfaPage) {
     if (pathname.startsWith("/api/")) {
