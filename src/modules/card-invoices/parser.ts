@@ -8,6 +8,9 @@ import { parseInterInvoice } from "./parsers/inter-parser";
 import { parseBradescoInvoice } from "./parsers/bradesco-parser";
 import { parseItauInvoice } from "./parsers/itau-parser";
 import { parseSicoobInvoice } from "./parsers/sicoob-parser";
+import { parseSantanderInvoice } from "./parsers/santander-parser";
+import { parseCaixaInvoice } from "./parsers/caixa-parser";
+import { parseBtgInvoice } from "./parsers/btg-parser";
 import type { ParsedInvoice } from "./types";
 
 export async function parseCardInvoice(
@@ -62,6 +65,18 @@ export async function parseCardInvoice(
 
   if (normalized.includes("ITAU")) {
     return parseItauInvoice(lines);
+  }
+
+  if (normalized.includes("SANTANDER")) {
+    return parseSantanderInvoice(lines);
+  }
+
+  if (normalized.includes("CAIXA")) {
+    return parseCaixaInvoice(lines);
+  }
+
+  if (normalized.includes("BTG")) {
+    return parseBtgInvoice(lines);
   }
 
   throw new Error(`O parser de ${bank} ainda não foi implementado.`);
