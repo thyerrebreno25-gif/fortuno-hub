@@ -7,7 +7,6 @@ import { CARD_INVOICE_IMAGE_ACCEPT } from "@/modules/card-invoices/image-reader.
 import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exporter";
 import { trackImport } from "@/modules/imports/import-tracker";
 import {
-  areSimilarInvoiceMerchants,
   findLearnedInvoiceCategory,
   learnInvoiceCategory,
 } from "@/modules/card-invoices/category-learning";
@@ -23,7 +22,6 @@ import {
   Group,
   NumberInput,
   Paper,
-  PasswordInput,
   Modal,
   Progress,
   ScrollArea,
@@ -46,6 +44,8 @@ import {
   IconCreditCard,
   IconDownload,
   IconEdit,
+  IconEye,
+  IconEyeOff,
   IconFileInvoice,
   IconFileSpreadsheet,
   IconLock,
@@ -133,6 +133,7 @@ export default function FaturasPage() {
   const [bank, setBank] = useState<string | null>("Banco Inter");
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
   const [competenceDate, setCompetenceDate] = useState("2026-07-01");
@@ -144,7 +145,6 @@ export default function FaturasPage() {
   const [search, setSearch] = useState("");
   const [selectedItem, setSelectedItem] = useState<InvoiceItem | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
-  const [applyToSimilar, setApplyToSimilar] = useState(true);
   const [learnForClient, setLearnForClient] = useState(true);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
@@ -320,7 +320,6 @@ export default function FaturasPage() {
     setSelectedItem(null);
     setEditModalOpened(false);
     setSearch("");
-    setApplyToSimilar(true);
     setLearnForClient(true);
     resetRef.current?.();
   }
@@ -341,7 +340,6 @@ export default function FaturasPage() {
 
   function openEdit(item: InvoiceItem) {
     setSelectedItem({ ...item });
-    setApplyToSimilar(true);
     setLearnForClient(true);
     setEditModalOpened(true);
   }
@@ -414,12 +412,7 @@ export default function FaturasPage() {
 
     setItems((current) =>
       current.map((item) => {
-        const sameMerchant = areSimilarInvoiceMerchants(
-          item.description,
-          selectedItem.description,
-        );
-
-        if (item.id === selectedItem.id || (applyToSimilar && sameMerchant)) {
+        if (item.id === selectedItem.id) {
           return {
             ...item,
             category: selectedItem.category,
@@ -568,17 +561,37 @@ export default function FaturasPage() {
                 value={bank}
                 onChange={setBank}
                 searchable
+                autoComplete="off"
                 required
                 leftSection={<IconBuildingBank size={17} />}
               />
 
-              <PasswordInput
+              <TextInput
                 label="Senha do PDF"
                 description="Preencha somente para um PDF protegido; imagens não usam senha."
                 placeholder="Senha opcional"
+                name="pdf-document-unlock-code"
+                autoComplete="one-time-code"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 value={password}
                 onChange={(event) => setPassword(event.currentTarget.value)}
                 leftSection={<IconLock size={17} />}
+                rightSection={(
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    aria-label={passwordVisible ? "Ocultar senha do PDF" : "Mostrar senha do PDF"}
+                    onClick={() => setPasswordVisible((visible) => !visible)}
+                  >
+                    {passwordVisible ? <IconEyeOff size={17} /> : <IconEye size={17} />}
+                  </ActionIcon>
+                )}
+                styles={{
+                  input: {
+                    WebkitTextSecurity: passwordVisible ? "none" : "disc",
+                  },
+                }}
               />
             </SimpleGrid>
 
@@ -1177,14 +1190,6 @@ export default function FaturasPage() {
                 </Stack>
 
                 <Stack gap="sm">
-                  <Checkbox
-                    checked={applyToSimilar}
-                    onChange={(event) =>
-                      setApplyToSimilar(event.currentTarget.checked)
-                    }
-                    label="Aplicar esta categoria às ocorrências semelhantes desta fatura"
-                  />
-
                   <Checkbox
                     checked={learnForClient}
                     onChange={(event) =>

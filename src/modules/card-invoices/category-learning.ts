@@ -7,9 +7,10 @@ export type InvoiceCategoryRule = {
 };
 
 const STORAGE_KEY = "convert-now:invoice-category-rules:v1";
+const SIMILARITY_THRESHOLD = 0.62;
 const IGNORED_TOKENS = new Set([
   "COMPRA", "CARTAO", "CREDITO", "DEBITO", "PARCELA", "PAGAMENTO",
-  "BRASIL", "BR", "LTDA", "ME", "SA", "EIRELI",
+  "BRASIL", "BR", "BRA", "LTDA", "ME", "SA", "EIRELI", "INC", "LLC", "SLU",
 ]);
 
 export function normalizeInvoiceMerchant(description: string): string {
@@ -20,6 +21,7 @@ export function normalizeInvoiceMerchant(description: string): string {
     .replace(/\(\s*PARCELA\s+\d+\s+DE\s+\d+\s*\)/gi, " ")
     .replace(/\b\d{1,2}\s*\/\s*\d{1,2}\b/g, " ")
     .replace(/\b20\d{2}\b/g, " ")
+    .replace(/\b([A-Z]{3,})\d+\b/g, "$1")
     .replace(/\b[A-Z0-9]{8,}\b/g, " ")
     .replace(/[.*_#|\\/:-]+/g, " ")
     .replace(/\s+/g, " ")
@@ -30,7 +32,12 @@ function merchantTokens(description: string): string[] {
   return normalizeInvoiceMerchant(description)
     .split(" ")
     .map((token) => token.trim())
+    .map((token) => token.replace(/^([A-Z]{3,})\d+$/, "$1"))
     .filter((token) => token.length >= 3 && !IGNORED_TOKENS.has(token) && !/^\d+$/.test(token));
+}
+
+function merchantSignature(description: string): string {
+  return merchantTokens(description).join(" ") || normalizeInvoiceMerchant(description);
 }
 
 export function invoiceMerchantSimilarity(left: string, right: string): number {
@@ -38,26 +45,23 @@ export function invoiceMerchantSimilarity(left: string, right: string): number {
   const rightKey = normalizeInvoiceMerchant(right);
   if (!leftKey || !rightKey) return 0;
   if (leftKey === rightKey) return 1;
-  if (leftKey.includes(rightKey) || rightKey.includes(leftKey)) {
-    const min = Math.min(leftKey.length, rightKey.length);
-    const max = Math.max(leftKey.length, rightKey.length);
-    if (min >= 5) return 0.88 + (min / max) * 0.1;
-  }
 
   const a = new Set(merchantTokens(left));
   const b = new Set(merchantTokens(right));
   if (!a.size || !b.size) return 0;
+  if (a.size === b.size && [...a].every((token) => b.has(token))) return 1;
+
   const intersection = [...a].filter((token) => b.has(token)).length;
   const union = new Set([...a, ...b]).size;
   const jaccard = intersection / union;
   const firstA = [...a][0];
   const firstB = [...b][0];
   const samePrincipalMerchant = firstA === firstB;
-  return Math.min(1, jaccard + (samePrincipalMerchant ? 0.25 : 0));
+  return Math.min(1, jaccard + (samePrincipalMerchant && jaccard >= 0.75 ? 0.05 : 0));
 }
 
 export function areSimilarInvoiceMerchants(left: string, right: string): boolean {
-  return invoiceMerchantSimilarity(left, right) >= 0.62;
+  return invoiceMerchantSimilarity(left, right) >= SIMILARITY_THRESHOLD;
 }
 
 function readAllRules(): InvoiceCategoryRule[] {
@@ -86,7 +90,7 @@ export function learnInvoiceCategory(input: {
   description: string;
   category: string;
 }): InvoiceCategoryRule {
-  const merchantKey = normalizeInvoiceMerchant(input.description);
+  const merchantKey = merchantSignature(input.description);
   const rule: InvoiceCategoryRule = {
     clientId: input.clientId,
     merchantKey,
@@ -96,7 +100,7 @@ export function learnInvoiceCategory(input: {
   };
   const rules = readAllRules();
   const index = rules.findIndex(
-    (item) => item.clientId === input.clientId && areSimilarInvoiceMerchants(item.merchantLabel, input.description),
+    (item) => item.clientId === input.clientId && merchantSignature(item.merchantLabel) === merchantKey,
   );
   if (index >= 0) rules[index] = rule;
   else rules.push(rule);
@@ -111,7 +115,7 @@ export function findLearnedInvoiceCategory(
   const candidates = readAllRules()
     .filter((rule) => rule.clientId === clientId)
     .map((rule) => ({ rule, score: invoiceMerchantSimilarity(rule.merchantLabel, description) }))
-    .filter((candidate) => candidate.score >= 0.62)
+    .filter((candidate) => candidate.score >= SIMILARITY_THRESHOLD)
     .sort((a, b) => b.score - a.score || b.rule.updatedAt.localeCompare(a.rule.updatedAt));
   return candidates[0]?.rule ?? null;
 }
