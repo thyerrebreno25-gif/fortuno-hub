@@ -242,7 +242,8 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
   const closingDate = extractClosingDate(lines, dueDate);
   const invoiceTotal = extractInvoiceTotal(source);
   const movements: RawMovement[] = [];
-  let inMovements = false;
+  let inMovementSection = false;
+  let inMovementTable = false;
   let foundMovements = false;
   let currentCard: string | undefined;
 
@@ -250,18 +251,35 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
     for (const line of source) {
       const key = normalize(line.text);
       if (/^Lancamentos$/i.test(key)) {
-        inMovements = true;
+        inMovementSection = true;
+        inMovementTable = true;
         foundMovements = true;
         continue;
       }
-      if (inMovements && /^Total de lancamentos nacionais\b/i.test(key)) break;
-      if (!inMovements) continue;
+      if (!inMovementSection) continue;
+
+      // A fatura pode reunir vários cartões. Cada cartão encerra o próprio
+      // bloco com "Total de lançamentos nacionais", mas a seção continua no
+      // cartão seguinte. O fim real acontece em "Produtos, serviços e encargos".
+      if (/^Produtos,? servicos e encargos\b/i.test(key)) break;
+      if (/^Total de lancamentos nacionais\b/i.test(key)) {
+        inMovementTable = false;
+        continue;
+      }
 
       const card = key.match(/\bFINAL\s+(\d{4})\b/i);
       if (card) {
         currentCard = card[1];
+        inMovementTable = true;
         continue;
       }
+
+      if (/^Lancamentos nacionais$/i.test(key)) {
+        inMovementTable = true;
+        continue;
+      }
+
+      if (!inMovementTable) continue;
 
       const movement = parseMovement(line, closingDate, currentCard);
       if (movement) movements.push(movement);

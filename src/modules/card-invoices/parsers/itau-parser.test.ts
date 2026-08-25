@@ -94,4 +94,47 @@ describe("leitor de fatura do Itaú", () => {
     });
     expect(result.warnings).toEqual([]);
   });
+
+  it("continua a leitura quando uma única fatura possui mais de um cartão", () => {
+    const source = lines([
+      "ITAU EMPRESAS MASTERCARD - 0005.XXXX.XXXX.7209",
+      "fatura do cartão: vencimento: data de fechamento:",
+      "Fechada 20/08/2026 09 agosto",
+      "Total da fatura R$1.648,53",
+      "Lançamentos",
+      "EDUARDA REIS ARAUJO - FINAL 5561",
+      "Lançamentos nacionais",
+      "21/07 ANUIDADE DIFERENCI01/12 R$18,75",
+      "Total de lançamentos nacionais R$18,75",
+      "EDUARDA REIS ARAUJO - FINAL 3354",
+      "Lançamentos nacionais",
+      "23/08 EBN*Canva04617 35 12/12 R$108,51",
+      "12/03 Madeira*MadeiraMad05/05 R$371,55",
+      "17/03 CONTA AZUL 05/12 R$349,90",
+      "23/05 EBN*Canva04890 29 03/03 R$35,80",
+      "07/07 FACEBK* KPHY7XZK2 R$68,30",
+      "09/07 FACEBK* W3FCLWHZK2 R$68,38",
+      "11/07 FACEBK* YUWKTWHZK2 R$68,30",
+      "13/07 FACEBK* RX4GSWVZK2 R$42,23",
+      "14/07 AMAZON BR R$58,49",
+      "14/07 FACEBK* 7TNG3X52L2 R$68,69",
+      "15/07 FACEBK* JCAG2X92L2 R$68,59",
+      "23/07 FACEBK* EKH8UXD2L2 R$314,18",
+      "23/07 ESTORNO DE ANUIDADE DIF -R$18,75",
+      "24/07 AMAZON BR R$19,71",
+      "02/08 APPLE.COM/BILL R$5,90",
+      "Total de lançamentos nacionais R$1.629,78",
+      "Produtos, serviços e encargos",
+      "25/08 LINHA QUE NAO E COMPRA R$999,00",
+    ]);
+
+    const result = parseItauInvoice(source);
+
+    expect(result.items).toHaveLength(14);
+    expect(result.items.reduce((total, item) => total + item.amount, 0)).toBeCloseTo(1_648.53, 2);
+    expect(result.items.some((item) => item.cardLastDigits === "5561")).toBe(false);
+    expect(result.items.filter((item) => item.cardLastDigits === "3354")).toHaveLength(14);
+    expect(result.items.some((item) => item.description.includes("LINHA QUE NAO"))).toBe(false);
+    expect(result.warnings).toEqual([]);
+  });
 });
