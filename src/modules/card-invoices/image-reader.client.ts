@@ -21,6 +21,7 @@ type Crop = {
   width: number;
   height: number;
   scale: number;
+  enhance?: boolean;
 };
 
 type OcrWorker = Awaited<
@@ -124,7 +125,9 @@ function cropCanvas(image: HTMLImageElement, crop: Crop) {
 
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
-  context.filter = "grayscale(1) contrast(1.35)";
+  context.filter = crop.enhance === false
+    ? "none"
+    : "grayscale(1) contrast(1.35)";
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(
@@ -369,6 +372,11 @@ export async function parseCardInvoiceImages(
   const { createWorker, PSM } = await import("tesseract.js");
   const worker = await createWorker("por");
   const pages: InvoiceImagePage[] = [];
+  const preserveLightText = bank
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .includes("CORA");
 
   try {
     for (const file of files) {
@@ -376,10 +384,22 @@ export async function parseCardInvoiceImages(
       if (image.naturalWidth < 350 || image.naturalHeight < 350) {
         throw new Error(`${file.name} está pequena demais para uma leitura segura.`);
       }
-      const scale = Math.min(3, Math.max(1, 1800 / image.naturalWidth));
+      // O aplicativo Cora usa datas em cinza muito claro. A ampliação com
+      // contraste que ajuda outros layouts apaga esses caracteres, portanto
+      // o Cora é lido na resolução original e sem alteração de contraste.
+      const scale = preserveLightText
+        ? Math.min(2, Math.max(1, 700 / image.naturalWidth))
+        : Math.min(3, Math.max(1, 1800 / image.naturalWidth));
       const recognized = await recognizePositioned(
         worker,
-        cropCanvas(image, { left: 0, top: 0, width: 1, height: 1, scale }),
+        cropCanvas(image, {
+          left: 0,
+          top: 0,
+          width: 1,
+          height: 1,
+          scale,
+          enhance: !preserveLightText,
+        }),
         PSM.SPARSE_TEXT,
       );
       pages.push({
