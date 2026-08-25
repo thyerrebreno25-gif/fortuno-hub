@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { notifications } from "@mantine/notifications";
-import { parseCardInvoice } from "@/modules/card-invoices/parser";
+import { parseCardInvoiceFiles } from "@/modules/card-invoices/parser";
 import { CARD_INVOICE_IMAGE_ACCEPT } from "@/modules/card-invoices/image-reader.client";
 import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exporter";
 import { trackImport } from "@/modules/imports/import-tracker";
@@ -134,7 +134,7 @@ export default function FaturasPage() {
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
 
   const [competenceDate, setCompetenceDate] = useState("2026-07-01");
   const [dueDate, setDueDate] = useState("2026-07-15");
@@ -154,6 +154,13 @@ export default function FaturasPage() {
   const [creatingCategory, setCreatingCategory] = useState(false);
 
   const selectedClient = clients.find((client) => client.value === clientId);
+  const isImageImport =
+    files.length > 0 &&
+    files.every(
+      (item) =>
+        item.type.startsWith("image/") ||
+        /\.(png|jpe?g|webp)$/i.test(item.name),
+    );
 
   useEffect(() => {
     let cancelled = false;
@@ -269,11 +276,11 @@ export default function FaturasPage() {
   }, [items, search]);
 
   async function processInvoice() {
-    if (!clientId || !file || !bank) return;
+    if (!clientId || !files.length || !bank) return;
     setProcessing(true);
     setParseWarnings([]);
     try {
-      const parsed = await parseCardInvoice(file, bank, password);
+      const parsed = await parseCardInvoiceFiles(files, bank, password);
       const exportableItems: InvoiceItem[] = parsed.items
         .filter((item) => item.exportable)
         .filter((item) => !/PAGAMENTO\s+ON\s*LINE|PAGAMENTO\s+ONLINE|PAGAMENTO\s+DA\s+FATURA|^PAGAMENTO\b/i.test(item.description.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))
@@ -294,10 +301,13 @@ export default function FaturasPage() {
       setItems(exportableItems);
       setParseWarnings(parsed.warnings);
       if (parsed.invoiceTotal !== null) setInvoiceTotal(parsed.invoiceTotal);
-      if (parsed.dueDate) {
-        setDueDate(parsed.dueDate);
-        setPaymentDate(parsed.dueDate);
-        setCompetenceDate(parsed.dueDate.slice(0, 7) + "-01");
+      const referenceDate =
+        parsed.dueDate ??
+        exportableItems.map((item) => item.date).sort((left, right) => right.localeCompare(left))[0];
+      if (referenceDate) {
+        setDueDate(referenceDate);
+        setPaymentDate(referenceDate);
+        setCompetenceDate(referenceDate.slice(0, 7) + "-01");
       }
       setView("review");
       notifications.show({ color: "green", title: "Fatura lida", message: `${exportableItems.length} lançamentos reais identificados.` });
@@ -315,7 +325,7 @@ export default function FaturasPage() {
     setBank("Banco Inter");
     setParseWarnings([]);
     setPassword("");
-    setFile(null);
+    setFiles([]);
     setItems(exampleItems);
     setSelectedItem(null);
     setEditModalOpened(false);
@@ -429,7 +439,7 @@ export default function FaturasPage() {
   }
 
   async function exportContaAzul() {
-    if (!clientId || !file || !bank || !canExport) return;
+    if (!clientId || !files.length || !bank || !canExport) return;
     const clientName = clients.find((item) => item.value === clientId)?.label || "Cliente";
     try {
       exportInvoiceToContaAzul({
@@ -452,9 +462,16 @@ export default function FaturasPage() {
         clientId,
         module: "CREDIT_CARD_INVOICE",
         status: "EXPORTED",
-        originalName: file.name,
-        parserId: bank.toLowerCase().includes("inter") ? "inter-invoice" : "card-invoice",
-        parserVersion: "1.0.0",
+        originalName:
+          files.length === 1
+            ? files[0].name
+            : `${files[0].name} + ${files.length - 1} imagem(ns)`,
+        parserId: isImageImport
+          ? "image-invoice-ocr"
+          : bank.toLowerCase().includes("inter")
+            ? "inter-invoice"
+            : "card-invoice",
+        parserVersion: isImageImport ? "2.0.0" : "1.0.0",
         expectedTotal:
   normalizedInvoiceTotal !== null &&
   Number.isFinite(normalizedInvoiceTotal)
@@ -470,6 +487,7 @@ export default function FaturasPage() {
           itemCount: items.length,
           categorized: items.length - diagnostics.uncategorized,
           warnings: parseWarnings,
+          sourceFiles: files.map((item) => item.name),
           exportFormat: "XLSX_CONTA_AZUL",
         },
         transactions: items.map((item) => ({
@@ -619,8 +637,43 @@ export default function FaturasPage() {
 
                 <FileButton
                   resetRef={resetRef}
-                  onChange={setFile}
+                  onChange={(selected) => {
+                    const incoming = selected ?? [];
+                    const containsPdf = incoming.some(
+                      (item) =>
+                        item.type === "application/pdf" ||
+                        item.name.toLowerCase().endsWith(".pdf"),
+                    );
+                    if (containsPdf && incoming.length > 1) {
+                      notifications.show({
+                        color: "orange",
+                        title: "Seleção não combinada",
+                        message:
+                          "PDF deve ser enviado sozinho. Para combinar arquivos, selecione somente imagens.",
+                      });
+                      return;
+                    }
+                    setFiles((current) => {
+                      if (containsPdf) return incoming.slice(0, 1);
+                      const withoutPdf = current.filter(
+                        (item) =>
+                          item.type !== "application/pdf" &&
+                          !item.name.toLowerCase().endsWith(".pdf"),
+                      );
+                      const combined = [...withoutPdf, ...incoming];
+                      return combined.filter(
+                        (item, index) =>
+                          combined.findIndex(
+                            (candidate) =>
+                              candidate.name === item.name &&
+                              candidate.size === item.size &&
+                              candidate.lastModified === item.lastModified,
+                          ) === index,
+                      );
+                    });
+                  }}
                   accept={`.pdf,application/pdf,${CARD_INVOICE_IMAGE_ACCEPT}`}
+                  multiple
                 >
                   {(props) => (
                     <Button
@@ -628,7 +681,7 @@ export default function FaturasPage() {
                       leftSection={<IconUpload size={18} />}
                       size="md"
                     >
-                      Selecionar arquivo
+                      Selecionar arquivo(s)
                     </Button>
                   )}
                 </FileButton>
@@ -639,35 +692,58 @@ export default function FaturasPage() {
               </Stack>
             </Paper>
 
-            {file && (
+            {files.length > 0 && (
               <Card withBorder radius="lg">
-                <Group justify="space-between">
-                  <Group>
-                    <ThemeIcon variant="light" size={44} radius="md">
-                      <IconFileInvoice size={23} />
-                    </ThemeIcon>
-
-                    <Stack gap={1}>
-                      <Text fw={700}>{file.name}</Text>
-                      <Text size="sm" c="dimmed">
-                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                      </Text>
-                    </Stack>
+                <Stack gap="sm">
+                  <Group justify="space-between">
+                    <Text fw={800}>
+                      {files.length === 1
+                        ? "1 arquivo selecionado"
+                        : `${files.length} imagens selecionadas`}
+                    </Text>
+                    {files.length > 1 && (
+                      <Badge variant="light" color="blue">
+                        Leitura combinada
+                      </Badge>
+                    )}
                   </Group>
-
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    onClick={() => {
-                      setFile(null);
-                      resetRef.current?.();
-                    }}
-                    aria-label="Remover arquivo"
-                  >
-                    <IconX size={18} />
-                  </ActionIcon>
-                </Group>
+                  {files.map((selectedFile) => (
+                    <Group key={`${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`} justify="space-between">
+                      <Group wrap="nowrap">
+                        <ThemeIcon variant="light" size={38} radius="md">
+                          <IconFileInvoice size={20} />
+                        </ThemeIcon>
+                        <Stack gap={1}>
+                          <Text fw={700} size="sm" lineClamp={1}>{selectedFile.name}</Text>
+                          <Text size="xs" c="dimmed">
+                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                          </Text>
+                        </Stack>
+                      </Group>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => {
+                          setFiles((current) =>
+                            current.filter((item) => item !== selectedFile),
+                          );
+                          resetRef.current?.();
+                        }}
+                        aria-label={`Remover ${selectedFile.name}`}
+                      >
+                        <IconX size={18} />
+                      </ActionIcon>
+                    </Group>
+                  ))}
+                </Stack>
               </Card>
+            )}
+
+            {files.length > 1 && (
+              <Alert color="blue" variant="light" icon={<IconFileInvoice size={18} />}>
+                Os prints serão unidos na ordem selecionada. Lançamentos repetidos em
+                áreas sobrepostas serão removidos automaticamente.
+              </Alert>
             )}
 
             <Alert color="blue" variant="light" icon={<IconBrain size={18} />}>
@@ -679,7 +755,7 @@ export default function FaturasPage() {
             <Group justify="flex-end">
               <Button
                 size="md"
-                disabled={!clientId || !file || !bank}
+                disabled={!clientId || !files.length || !bank}
                 loading={processing}
                 onClick={processInvoice}
                 rightSection={<IconChevronRight size={18} />}
@@ -771,10 +847,16 @@ export default function FaturasPage() {
                     Cartão identificado
                   </Text>
                   <Text fw={800} fz={20}>
-                    Conforme PDF importado
+                    {isImageImport
+                      ? files.length === 1
+                        ? "1 imagem processada"
+                        : `${files.length} imagens combinadas`
+                      : "Conforme PDF importado"}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    Identificação automática por bloco
+                    {isImageImport
+                      ? "OCR com remoção de sobreposições"
+                      : "Identificação automática por bloco"}
                   </Text>
                 </Stack>
 
@@ -878,7 +960,11 @@ export default function FaturasPage() {
 
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <NumberInput
-                    label="Valor final da fatura"
+                    label={
+                      isImageImport
+                        ? "Total dos lançamentos importados"
+                        : "Valor final da fatura"
+                    }
                     value={invoiceTotal}
                     onChange={setInvoiceTotal}
                     prefix="R$ "

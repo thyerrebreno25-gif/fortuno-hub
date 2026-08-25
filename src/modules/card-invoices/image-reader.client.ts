@@ -1,16 +1,19 @@
 "use client";
 
 import type { PdfTextLine } from "./pdf-reader.client";
+import {
+  parseInvoiceImagePages,
+  type InvoiceImagePage,
+  type InvoiceImageTextLine,
+} from "./image-transactions";
+import type { ParsedInvoice } from "./types";
 
 export const CARD_INVOICE_IMAGE_ACCEPT =
   ".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp";
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"];
 
-type PositionedText = {
-  text: string;
-  y: number;
-};
+type PositionedText = InvoiceImageTextLine;
 
 type Crop = {
   left: number;
@@ -158,7 +161,11 @@ async function recognizePositioned(
       paragraph.lines.flatMap((line) => {
         const value = cleanText(line.text);
         return value
-          ? [{ text: value, y: ((line.bbox.y0 + line.bbox.y1) / 2) / canvas.height }]
+          ? [{
+              text: value,
+              x: line.bbox.x0 / canvas.width,
+              y: ((line.bbox.y0 + line.bbox.y1) / 2) / canvas.height,
+            }]
           : [];
       }),
     ),
@@ -349,4 +356,41 @@ export async function extractCardInvoiceImageText(file: File) {
   } finally {
     await worker.terminate();
   }
+}
+
+export async function parseCardInvoiceImages(
+  files: File[],
+  bank: string,
+): Promise<ParsedInvoice> {
+  if (!files.length || files.some((file) => !isCardInvoiceImage(file))) {
+    throw new Error("Selecione somente imagens PNG, JPG, JPEG ou WebP.");
+  }
+
+  const { createWorker, PSM } = await import("tesseract.js");
+  const worker = await createWorker("por");
+  const pages: InvoiceImagePage[] = [];
+
+  try {
+    for (const file of files) {
+      const image = await loadImage(file);
+      if (image.naturalWidth < 350 || image.naturalHeight < 350) {
+        throw new Error(`${file.name} está pequena demais para uma leitura segura.`);
+      }
+      const scale = Math.min(3, Math.max(1, 1800 / image.naturalWidth));
+      const recognized = await recognizePositioned(
+        worker,
+        cropCanvas(image, { left: 0, top: 0, width: 1, height: 1, scale }),
+        PSM.SPARSE_TEXT,
+      );
+      pages.push({
+        name: file.name,
+        text: recognized.text,
+        lines: recognized.lines,
+      });
+    }
+  } finally {
+    await worker.terminate();
+  }
+
+  return parseInvoiceImagePages(pages, bank);
 }

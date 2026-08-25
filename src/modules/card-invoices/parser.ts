@@ -2,6 +2,7 @@ import { extractPdfLines } from "./pdf-reader.client";
 import {
   extractInterInvoiceImageLines,
   isCardInvoiceImage,
+  parseCardInvoiceImages,
 } from "./image-reader.client";
 import { parseBancoDoBrasilInvoice } from "./parsers/banco-do-brasil-parser";
 import { parseInterInvoice } from "./parsers/inter-parser";
@@ -24,26 +25,32 @@ export async function parseCardInvoice(
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase();
 
-  /*
-   * Sicoob é um layout por imagem. Ele precisa receber o File original
-   * para renderizar a página e fazer OCR no parser dedicado.
-   *
-   * Os demais bancos continuam exatamente no fluxo atual por PdfTextLine[].
-   */
-  if (normalized.includes("SICOOB")) {
-    return parseSicoobInvoice(file, password);
-  }
-
   if (isCardInvoiceImage(file)) {
     if (normalized.includes("INTER")) {
-      const imageResult = await extractInterInvoiceImageLines(file);
-      const parsed = parseInterInvoice(imageResult.lines);
-      return {
-        ...parsed,
-        warnings: [...imageResult.warnings, ...parsed.warnings],
-      };
+      try {
+        const imageResult = await extractInterInvoiceImageLines(file);
+        const parsed = parseInterInvoice(imageResult.lines);
+        if (parsed.items.length) {
+          return {
+            ...parsed,
+            invoiceTotal: Number(
+              parsed.items.reduce((sum, item) => sum + item.amount, 0).toFixed(2),
+            ),
+            warnings: [...imageResult.warnings, ...parsed.warnings],
+          };
+        }
+      } catch {
+        // O leitor genérico abaixo cobre prints recortados e layouts móveis.
+      }
     }
-    throw new Error(`A leitura de imagem para ${bank} ainda não foi implementada.`);
+    if (normalized.includes("SICOOB")) {
+      try {
+        return await parseSicoobInvoice(file, password);
+      } catch {
+        // Um print parcial não tem todas as seções esperadas pelo leitor dedicado.
+      }
+    }
+    return parseCardInvoiceImages([file], bank);
   }
 
   if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
@@ -51,6 +58,10 @@ export async function parseCardInvoice(
   }
 
   const lines = await extractPdfLines(file, password);
+
+  if (normalized.includes("SICOOB")) {
+    return parseSicoobInvoice(file, password);
+  }
 
   if (normalized.includes("INTER")) {
     return parseInterInvoice(lines);
@@ -85,4 +96,19 @@ export async function parseCardInvoice(
   }
 
   throw new Error(`O parser de ${bank} ainda não foi implementado.`);
+}
+
+export async function parseCardInvoiceFiles(
+  files: File[],
+  bank: string,
+  password?: string,
+): Promise<ParsedInvoice> {
+  if (!files.length) throw new Error("Selecione ao menos um arquivo.");
+  if (files.length === 1) return parseCardInvoice(files[0], bank, password);
+  if (files.some((file) => !isCardInvoiceImage(file))) {
+    throw new Error(
+      "Para combinar vários arquivos, selecione somente imagens. PDFs devem ser enviados individualmente.",
+    );
+  }
+  return parseCardInvoiceImages(files, bank);
 }
