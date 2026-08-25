@@ -57,6 +57,12 @@ export async function parseCardInvoice(
     throw new Error("Selecione uma fatura em PDF, PNG, JPG, JPEG ou WebP.");
   }
 
+  if (normalized.includes("CORA")) {
+    throw new Error(
+      "O leitor do Cora aceita imagens. Envie um ou mais prints em PNG, JPG, JPEG ou WebP.",
+    );
+  }
+
   const lines = await extractPdfLines(file, password);
 
   if (normalized.includes("SICOOB")) {

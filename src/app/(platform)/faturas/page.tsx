@@ -88,6 +88,7 @@ const ACTIVE_INVOICE_BANKS = [
   "BTG",
   "Sicredi",
   "Sicoob",
+  "Cora",
 ];
 const PENDING_INVOICE_BANKS = [
   "Nubank",
@@ -573,7 +574,11 @@ export default function FaturasPage() {
 
               <Select
                 label="Banco da fatura"
-                description="Somente bancos com leitor ativo podem ser selecionados."
+                description={
+                  bank === "Cora"
+                    ? "Cora: envie um ou mais prints da fatura."
+                    : "Somente bancos com leitor ativo podem ser selecionados."
+                }
                 placeholder="Selecione o banco"
                 data={ACTIVE_INVOICE_BANKS}
                 value={bank}
@@ -775,7 +780,7 @@ export default function FaturasPage() {
                 <Group gap="xs">
                   {ACTIVE_INVOICE_BANKS.map((bank) => (
                     <Badge key={bank} variant="light" color="green">
-                      {bank} ativo
+                      {bank === "Cora" ? "Cora ativo para imagens" : `${bank} ativo`}
                     </Badge>
                   ))}
                 </Group>

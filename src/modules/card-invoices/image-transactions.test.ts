@@ -33,12 +33,23 @@ describe("leitor genérico de prints de fatura", () => {
       ],
     };
 
-    const result = parseInvoiceImagePages([page], "Itaú", new Date("2026-08-25"));
+    const result = parseInvoiceImagePages([page], "Cora", new Date("2026-08-25"));
 
+    expect(result.bank).toBe("Cora");
     expect(result.dueDate).toBe("2026-08-17");
     expect(result.invoiceTotal).toBe(2676.43);
     expect(result.items).toHaveLength(7);
+    expect(result.items.map((item) => item.amount)).toEqual([
+      704.14,
+      1639.56,
+      5.35,
+      39.9,
+      137.48,
+      51,
+      99,
+    ]);
     expect(result.items.some((item) => /Pagamento/i.test(item.description))).toBe(false);
+    expect(result.warnings).toEqual([]);
     expect(result.items[0]).toMatchObject({
       date: "2026-08-02",
       description: "VERCEL INC.",
