@@ -11,6 +11,7 @@ import { parseSicoobInvoice } from "./parsers/sicoob-parser";
 import { parseSantanderInvoice } from "./parsers/santander-parser";
 import { parseCaixaInvoice } from "./parsers/caixa-parser";
 import { parseBtgInvoice } from "./parsers/btg-parser";
+import { parseSicrediInvoice } from "./parsers/sicredi-parser";
 import type { ParsedInvoice } from "./types";
 
 export async function parseCardInvoice(
@@ -77,6 +78,10 @@ export async function parseCardInvoice(
 
   if (normalized.includes("BTG")) {
     return parseBtgInvoice(lines);
+  }
+
+  if (normalized.includes("SICREDI")) {
+    return parseSicrediInvoice(lines);
   }
 
   throw new Error(`O parser de ${bank} ainda não foi implementado.`);

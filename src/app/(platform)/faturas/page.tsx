@@ -86,12 +86,12 @@ const ACTIVE_INVOICE_BANKS = [
   "Santander",
   "Caixa",
   "BTG",
+  "Sicredi",
   "Sicoob",
 ];
 const PENDING_INVOICE_BANKS = [
   "Nubank",
   "C6",
-  "Sicredi",
   "XP",
 ];
 
