@@ -1,5 +1,6 @@
 import type { PdfTextLine } from "../pdf-reader.client";
 import type { ParsedInvoice, ParsedInvoiceItem } from "../types";
+import { isItauAzulLayout, parseItauAzulInvoice } from "./itau-azul-parser";
 
 const DATE_AT_START = /^\s*(\d{1,2})\/(\d{1,2})\b/;
 const FULL_DATE = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/;
@@ -236,6 +237,10 @@ function reconcileCredits(movements: RawMovement[]): RawMovement[] {
 }
 
 export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
+  if (isItauAzulLayout(source)) {
+    return parseItauAzulInvoice(source);
+  }
+
   const lines = source.map((line) => line.text.replace(/\s+/g, " ").trim()).filter(Boolean);
   const warnings: string[] = [];
   const dueDate = extractDueDate(lines);
