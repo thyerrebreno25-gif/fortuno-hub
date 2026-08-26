@@ -264,14 +264,16 @@ function descriptionSimilarity(left: string, right: string) {
   return (2 * intersection) / Math.max(1, leftCount + rightCount);
 }
 
-function deduplicateOverlappingPages(pageItems: ParsedImageItem[][]) {
-  type ItemGroup = { representative: ParsedImageItem; maximumOccurrences: number };
+export function deduplicateOverlappingImageItems<T extends ParsedImageItem>(
+  pageItems: T[][],
+) {
+  type ItemGroup = { representative: T; maximumOccurrences: number };
   const groups: ItemGroup[] = [];
   let totalRead = 0;
 
   for (const items of pageItems) {
     totalRead += items.length;
-    const pageGroups: Array<{ representative: ParsedImageItem; count: number }> = [];
+    const pageGroups: Array<{ representative: T; count: number }> = [];
     for (const item of items) {
       const existing = pageGroups.find((candidate) =>
         candidate.representative.date === item.date &&
@@ -340,7 +342,7 @@ export function parseInvoiceImagePages(
     return items;
   });
 
-  const deduplicated = deduplicateOverlappingPages(parsedPages);
+  const deduplicated = deduplicateOverlappingImageItems(parsedPages);
   const items = deduplicated.items.map((item, index) => ({ ...item, id: index + 1 }));
   if (!items.length) {
     throw new Error(

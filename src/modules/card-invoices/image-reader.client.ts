@@ -199,6 +199,20 @@ function nearestLine(
   return candidates[bestIndex];
 }
 
+function mergePositionedLines(
+  preferred: PositionedText[],
+  fallback: PositionedText[],
+) {
+  const merged = [...preferred];
+  for (const candidate of fallback) {
+    const sameVisualRow = merged.some(
+      (current) => Math.abs(current.y - candidate.y) <= 0.008,
+    );
+    if (!sameVisualRow) merged.push(candidate);
+  }
+  return merged.sort((left, right) => left.y - right.y);
+}
+
 function yearForInvoice(header: string) {
   const explicit = header.match(/\b(20\d{2})\b/);
   if (explicit) return Number(explicit[1]);
@@ -229,37 +243,55 @@ export async function extractInterInvoiceImageLines(file: File): Promise<{
       cropCanvas(image, { left: 0, top: 0, width: 1, height: 0.13, scale: 4 }),
       PSM.SPARSE_TEXT,
     );
-    const tableCrop = { top: 0.08, height: 0.89 };
+    const tableCrop = { top: 0, height: 1 };
     const dates = await recognizePositioned(
       worker,
       cropCanvas(image, { left: 0, width: 0.11, scale: 11, ...tableCrop }),
-      PSM.SINGLE_BLOCK,
+      PSM.SPARSE_TEXT,
     );
     const descriptions = await recognizePositioned(
       worker,
       cropCanvas(image, { left: 0.13, width: 0.58, scale: 6, ...tableCrop }),
-      PSM.SINGLE_BLOCK,
+      PSM.SPARSE_TEXT,
     );
     const values = await recognizePositioned(
       worker,
       cropCanvas(image, { left: 0.80, width: 0.19, scale: 10, ...tableCrop }),
-      PSM.SINGLE_BLOCK,
+      PSM.SPARSE_TEXT,
     );
 
     const dateLines = dates.lines.filter((line) => isDateLine(line.text));
     const descriptionLines = descriptions.lines
       .map((line) => ({ ...line, text: cleanDescriptionOcr(line.text) }))
       .filter((line) => isDescriptionLine(line.text));
-    const valueLines = values.lines
+    let valueLines = values.lines
       .map((line) => ({ ...line, text: normalizeMoneyOcr(line.text) }))
       .filter((line) => isMoneyLine(line.text));
+    if (valueLines.length < Math.min(dateLines.length, descriptionLines.length)) {
+      const blockValues = await recognizePositioned(
+        worker,
+        cropCanvas(image, { left: 0.80, width: 0.19, scale: 10, ...tableCrop }),
+        PSM.SINGLE_BLOCK,
+      );
+      const fallbackValueLines = blockValues.lines
+        .map((line) => ({ ...line, text: normalizeMoneyOcr(line.text) }))
+        .filter((line) => isMoneyLine(line.text));
+      valueLines = mergePositionedLines(valueLines, fallbackValueLines);
+    }
+    const transactionValueLines = valueLines.filter(
+      (valueLine) =>
+        dateLines.some((dateLine) => Math.abs(dateLine.y - valueLine.y) <= 0.035) &&
+        descriptionLines.some(
+          (descriptionLine) => Math.abs(descriptionLine.y - valueLine.y) <= 0.035,
+        ),
+    );
     const usedDates = new Set<number>();
     const usedDescriptions = new Set<number>();
     const year = yearForInvoice(header.text);
     const transactionLines: PdfTextLine[] = [];
     let matchedExpenseTotal = 0;
 
-    for (const valueLine of valueLines) {
+    for (const valueLine of transactionValueLines) {
       const dateLine = nearestLine(valueLine, dateLines, usedDates);
       const descriptionLine = nearestLine(valueLine, descriptionLines, usedDescriptions);
       if (!dateLine || !descriptionLine) continue;
@@ -280,9 +312,9 @@ export async function extractInterInvoiceImageLines(file: File): Promise<{
       .filter(Boolean)
       .map((text, index) => ({ page: 1, y: 20000 - index, text }));
     const warnings: string[] = [];
-    if (transactionLines.length < valueLines.length) {
+    if (transactionLines.length < transactionValueLines.length) {
       warnings.push(
-        `${valueLines.length - transactionLines.length} linha(s) da imagem não puderam ser associadas com segurança a uma data e descrição.`,
+        `${transactionValueLines.length - transactionLines.length} linha(s) da imagem não puderam ser associadas com segurança a uma data e descrição.`,
       );
     }
 
