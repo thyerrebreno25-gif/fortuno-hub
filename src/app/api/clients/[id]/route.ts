@@ -91,6 +91,14 @@ export async function GET(
           cards: {
             orderBy: { brand: "asc" },
           },
+          costCenters: {
+            where: { active: true },
+            orderBy: { name: "asc" },
+          },
+          categoryRules: {
+            where: { module: "CREDIT_CARD_INVOICE" },
+            orderBy: { updatedAt: "desc" },
+          },
           _count: {
             select: { imports: true },
           },
@@ -290,6 +298,14 @@ export async function PATCH(
         },
         banks: true,
         cards: true,
+        costCenters: {
+          where: { active: true },
+          orderBy: { name: "asc" },
+        },
+        categoryRules: {
+          where: { module: "CREDIT_CARD_INVOICE" },
+          orderBy: { updatedAt: "desc" },
+        },
         _count: {
           select: { imports: true },
         },

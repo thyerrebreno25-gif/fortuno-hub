@@ -16,6 +16,7 @@ export type TrackImportInput = {
     type: "CREDIT" | "DEBIT";
     document?: string | null;
     category?: string | null;
+    costCenter?: string | null;
     sourcePage?: number | null;
     metadata?: Record<string, unknown>;
   }>;

@@ -3,6 +3,7 @@ export type InvoiceCategoryRule = {
   merchantKey: string;
   merchantLabel: string;
   category: string;
+  costCenter?: string | null;
   updatedAt: string;
 };
 
@@ -22,7 +23,7 @@ export function normalizeInvoiceMerchant(description: string): string {
     .replace(/\b\d{1,2}\s*\/\s*\d{1,2}\b/g, " ")
     .replace(/\b20\d{2}\b/g, " ")
     .replace(/\b([A-Z]{3,})\d+\b/g, "$1")
-    .replace(/\b[A-Z0-9]{8,}\b/g, " ")
+    .replace(/\b(?=[A-Z0-9]{8,}\b)(?=[A-Z0-9]*\d)[A-Z0-9]+\b/g, " ")
     .replace(/[.*_#|\\/:-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -85,10 +86,44 @@ export function getInvoiceCategoryRules(clientId: string): InvoiceCategoryRule[]
   return readAllRules().filter((rule) => rule.clientId === clientId);
 }
 
+export function mergeInvoiceCategoryRules(
+  clientId: string,
+  incoming: Array<{
+    normalizedDescription: string;
+    category: string;
+    costCenter?: string | null;
+    updatedAt: string | Date;
+  }>,
+) {
+  const rules = readAllRules();
+  for (const item of incoming) {
+    const merchantLabel = item.normalizedDescription.trim();
+    if (!merchantLabel || !item.category.trim()) continue;
+    const merchantKey = merchantSignature(merchantLabel);
+    const rule: InvoiceCategoryRule = {
+      clientId,
+      merchantKey,
+      merchantLabel,
+      category: item.category.trim(),
+      costCenter: item.costCenter?.trim() || null,
+      updatedAt: new Date(item.updatedAt).toISOString(),
+    };
+    const index = rules.findIndex(
+      (current) =>
+        current.clientId === clientId &&
+        merchantSignature(current.merchantLabel) === merchantKey,
+    );
+    if (index < 0) rules.push(rule);
+    else if (rules[index].updatedAt <= rule.updatedAt) rules[index] = rule;
+  }
+  writeAllRules(rules);
+}
+
 export function learnInvoiceCategory(input: {
   clientId: string;
   description: string;
   category: string;
+  costCenter?: string | null;
 }): InvoiceCategoryRule {
   const merchantKey = merchantSignature(input.description);
   const rule: InvoiceCategoryRule = {
@@ -96,6 +131,7 @@ export function learnInvoiceCategory(input: {
     merchantKey,
     merchantLabel: input.description.trim(),
     category: input.category,
+    costCenter: input.costCenter?.trim() || null,
     updatedAt: new Date().toISOString(),
   };
   const rules = readAllRules();

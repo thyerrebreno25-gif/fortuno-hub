@@ -9,6 +9,7 @@ import { trackImport } from "@/modules/imports/import-tracker";
 import {
   findLearnedInvoiceCategory,
   learnInvoiceCategory,
+  mergeInvoiceCategoryRules,
 } from "@/modules/card-invoices/category-learning";
 import {
   ActionIcon,
@@ -68,12 +69,21 @@ type InvoiceItem = {
   amount: number;
   installment?: string;
   category: string | null;
+  costCenter: string | null;
   status: InvoiceStatus;
   learnedFromClient: boolean;
+  costCenterLearnedFromClient: boolean;
 };
 
 type ClientOption = { value: string; label: string };
 type CategoryOption = { id: string; name: string; code?: string | null; children?: CategoryOption[] };
+type CostCenterOption = { id: string; name: string; code?: string | null };
+type InvoiceRuleOption = {
+  normalizedDescription: string;
+  category: string;
+  costCenter?: string | null;
+  updatedAt: string;
+};
 
 
 const exampleItems: InvoiceItem[] = [];
@@ -136,6 +146,7 @@ export default function FaturasPage() {
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [useCostCenters, setUseCostCenters] = useState(false);
 
   const [competenceDate, setCompetenceDate] = useState("2026-07-01");
   const [dueDate, setDueDate] = useState("2026-07-15");
@@ -153,6 +164,12 @@ export default function FaturasPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryCode, setNewCategoryCode] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [costCenterOptions, setCostCenterOptions] = useState<string[]>([]);
+  const [costCenterModalOpened, setCostCenterModalOpened] = useState(false);
+  const [newCostCenterName, setNewCostCenterName] = useState("");
+  const [newCostCenterCode, setNewCostCenterCode] = useState("");
+  const [creatingCostCenter, setCreatingCostCenter] = useState(false);
+  const [savingItem, setSavingItem] = useState(false);
 
   const selectedClient = clients.find((client) => client.value === clientId);
   const isImageImport =
@@ -188,20 +205,26 @@ export default function FaturasPage() {
   useEffect(() => {
     if (!clientId) {
       setCategoryOptions([]);
+      setCostCenterOptions([]);
       return;
     }
+    const selectedClientId = clientId;
 
     const controller = new AbortController();
 
     async function loadCategories() {
       setCategoryLoading(true);
       try {
-        const response = await fetch(`/api/clients/${clientId}`, {
+        const response = await fetch(`/api/clients/${selectedClientId}`, {
           cache: "no-store",
           signal: controller.signal,
         });
         const result = (await response.json()) as {
           categories?: CategoryOption[];
+          client?: {
+            costCenters?: CostCenterOption[];
+            categoryRules?: InvoiceRuleOption[];
+          };
           error?: string;
         };
         if (!response.ok) {
@@ -219,6 +242,15 @@ export default function FaturasPage() {
           Array.from(new Set(names)).sort((a, b) =>
             a.localeCompare(b, "pt-BR"),
           ),
+        );
+        setCostCenterOptions(
+          Array.from(
+            new Set((result.client?.costCenters ?? []).map((item) => item.name)),
+          ).sort((a, b) => a.localeCompare(b, "pt-BR")),
+        );
+        mergeInvoiceCategoryRules(
+          selectedClientId,
+          result.client?.categoryRules ?? [],
         );
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
@@ -245,10 +277,17 @@ export default function FaturasPage() {
     const difference = identifiedTotal - Number(invoiceTotal || 0);
     const uncategorized = items.filter((item) => !item.category).length;
     const learned = items.filter((item) => item.learnedFromClient).length;
+    const missingCostCenters = useCostCenters
+      ? items.filter((item) => !item.costCenter).length
+      : 0;
+    const learnedCostCenters = useCostCenters
+      ? items.filter((item) => item.costCenterLearnedFromClient).length
+      : 0;
     const review = items.filter((item) => item.status === "REVIEW").length;
 
     let health = 100;
     health -= uncategorized * 8;
+    health -= missingCostCenters * 6;
     health -= review * 5;
     if (Math.abs(difference) >= 0.01) health -= 25;
 
@@ -257,11 +296,13 @@ export default function FaturasPage() {
       difference,
       uncategorized,
       learned,
+      learnedCostCenters,
+      missingCostCenters,
       review,
       validated: Math.abs(difference) < 0.01,
       health: Math.max(0, health),
     };
-  }, [items, invoiceTotal]);
+  }, [items, invoiceTotal, useCostCenters]);
 
   const filteredItems = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -272,6 +313,7 @@ export default function FaturasPage() {
       (item) =>
         item.description.toLowerCase().includes(normalized) ||
         item.category?.toLowerCase().includes(normalized) ||
+        item.costCenter?.toLowerCase().includes(normalized) ||
         item.date.includes(normalized),
     );
   }, [items, search]);
@@ -294,8 +336,12 @@ export default function FaturasPage() {
             amount: item.amount,
             installment: item.installment,
             category: learnedRule?.category ?? null,
+            costCenter: useCostCenters ? learnedRule?.costCenter ?? null : null,
             status: learnedRule ? "LEARNED" : "NEW",
             learnedFromClient: Boolean(learnedRule),
+            costCenterLearnedFromClient: Boolean(
+              useCostCenters && learnedRule?.costCenter,
+            ),
           };
         });
       if (!exportableItems.length) throw new Error(parsed.warnings[0] || "Nenhum lançamento foi encontrado na fatura.");
@@ -327,11 +373,15 @@ export default function FaturasPage() {
     setParseWarnings([]);
     setPassword("");
     setFiles([]);
+    setUseCostCenters(false);
     setItems(exampleItems);
     setSelectedItem(null);
     setEditModalOpened(false);
     setSearch("");
     setLearnForClient(true);
+    setCostCenterModalOpened(false);
+    setNewCostCenterName("");
+    setNewCostCenterCode("");
     resetRef.current?.();
   }
 
@@ -410,15 +460,88 @@ export default function FaturasPage() {
     }
   }
 
-  function saveItem() {
+  async function createCostCenter() {
+    const name = newCostCenterName.trim();
+    if (!clientId || name.length < 2) return;
+
+    setCreatingCostCenter(true);
+    try {
+      const response = await fetch(`/api/clients/${clientId}/cost-centers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          code: newCostCenterCode.trim() || null,
+        }),
+      });
+      const result = (await response.json()) as {
+        costCenter?: CostCenterOption;
+        error?: string;
+      };
+      if (!response.ok || !result.costCenter) {
+        throw new Error(result.error || "Não foi possível criar o centro de custo.");
+      }
+
+      const createdName = result.costCenter.name;
+      setCostCenterOptions((current) =>
+        Array.from(new Set([...current, createdName])).sort((a, b) =>
+          a.localeCompare(b, "pt-BR"),
+        ),
+      );
+      setSelectedItem((current) =>
+        current ? { ...current, costCenter: createdName } : current,
+      );
+      setNewCostCenterName("");
+      setNewCostCenterCode("");
+      setCostCenterModalOpened(false);
+      notifications.show({
+        color: "green",
+        title: "Centro de custo criado",
+        message: `${createdName} já foi selecionado neste lançamento.`,
+      });
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Não foi possível criar",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível criar o centro de custo.",
+      });
+    } finally {
+      setCreatingCostCenter(false);
+    }
+  }
+
+  async function saveItem() {
     if (!selectedItem) return;
 
+    setSavingItem(true);
+    let learningError: string | null = null;
     if (learnForClient && clientId && selectedItem.category) {
       learnInvoiceCategory({
         clientId,
         description: selectedItem.description,
         category: selectedItem.category,
+        costCenter: useCostCenters ? selectedItem.costCenter : null,
       });
+      try {
+        const response = await fetch(`/api/clients/${clientId}/invoice-rules`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: selectedItem.description,
+            category: selectedItem.category,
+            costCenter: useCostCenters ? selectedItem.costCenter : null,
+          }),
+        });
+        const result = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          learningError = result.error || "Não foi possível compartilhar o aprendizado.";
+        }
+      } catch {
+        learningError = "Não foi possível compartilhar o aprendizado com a equipe.";
+      }
     }
 
     setItems((current) =>
@@ -427,8 +550,12 @@ export default function FaturasPage() {
           return {
             ...item,
             category: selectedItem.category,
+            costCenter: useCostCenters ? selectedItem.costCenter : null,
             status: "CORRECTED",
             learnedFromClient: learnForClient,
+            costCenterLearnedFromClient: Boolean(
+              learnForClient && useCostCenters && selectedItem.costCenter,
+            ),
           };
         }
 
@@ -437,6 +564,14 @@ export default function FaturasPage() {
     );
 
     closeEditModal();
+    setSavingItem(false);
+    if (learningError) {
+      notifications.show({
+        color: "orange",
+        title: "Classificação salva",
+        message: `${learningError} A classificação desta importação foi mantida.`,
+      });
+    }
   }
 
   async function exportContaAzul() {
@@ -487,6 +622,10 @@ export default function FaturasPage() {
           paymentDate,
           itemCount: items.length,
           categorized: items.length - diagnostics.uncategorized,
+          costCenterEnabled: useCostCenters,
+          costCentersFilled: useCostCenters
+            ? items.length - diagnostics.missingCostCenters
+            : 0,
           warnings: parseWarnings,
           sourceFiles: files.map((item) => item.name),
           exportFormat: "XLSX_CONTA_AZUL",
@@ -497,6 +636,7 @@ export default function FaturasPage() {
           amount: item.amount,
           type: item.amount < 0 ? "CREDIT" : "DEBIT",
           category: item.category,
+          costCenter: useCostCenters ? item.costCenter : null,
           metadata: { installment: item.installment || null },
         })),
       });
@@ -507,7 +647,10 @@ export default function FaturasPage() {
   }
 
   const canExport =
-    diagnostics.validated && diagnostics.uncategorized === 0 && diagnostics.review === 0;
+    diagnostics.validated &&
+    diagnostics.uncategorized === 0 &&
+    diagnostics.missingCostCenters === 0 &&
+    diagnostics.review === 0;
 
   return (
     <Stack gap="xl">
@@ -617,6 +760,17 @@ export default function FaturasPage() {
                 }}
               />
             </SimpleGrid>
+
+            <Paper withBorder radius="lg" p="md">
+              <Checkbox
+                checked={useCostCenters}
+                onChange={(event) =>
+                  setUseCostCenters(event.currentTarget.checked)
+                }
+                label="Usar centro de custo nesta importação"
+                description="Quando marcado, cada lançamento deverá ter categoria e centro de custo antes da exportação."
+              />
+            </Paper>
 
             <Paper
               withBorder
@@ -1046,9 +1200,17 @@ export default function FaturasPage() {
                   existem <strong>{diagnostics.uncategorized} lançamentos sem
                   categoria</strong> e <strong>{diagnostics.review} lançamento
                   para revisão</strong>.
+                  {useCostCenters && (
+                    <>
+                      {" "}Também foram reaplicados automaticamente{" "}
+                      <strong>{diagnostics.learnedCostCenters} centros de custo</strong>,
+                      restando <strong>{diagnostics.missingCostCenters} sem
+                      preenchimento</strong>.
+                    </>
+                  )}
                 </Text>
 
-                <SimpleGrid cols={{ base: 2, sm: 3 }}>
+                <SimpleGrid cols={{ base: 2, sm: useCostCenters ? 4 : 3 }}>
                   <Card withBorder radius="md">
                     <Stack gap={0}>
                       <Text size="xs" c="dimmed">
@@ -1081,12 +1243,25 @@ export default function FaturasPage() {
                       </Text>
                     </Stack>
                   </Card>
+
+                  {useCostCenters && (
+                    <Card withBorder radius="md">
+                      <Stack gap={0}>
+                        <Text size="xs" c="dimmed">
+                          Sem centro de custo
+                        </Text>
+                        <Text fw={800} fz={24} c="violet">
+                          {diagnostics.missingCostCenters}
+                        </Text>
+                      </Stack>
+                    </Card>
+                  )}
                 </SimpleGrid>
 
                 <Alert color="blue" icon={<IconTag size={18} />}>
-                  Ao salvar uma categoria, o sistema poderá aplicá-la a todas
-                  as ocorrências iguais desta fatura e aprender a regra para
-                  as próximas faturas deste cliente.
+                  Ao salvar, o sistema poderá aprender a categoria
+                  {useCostCenters ? " e o centro de custo" : ""} para as
+                  próximas faturas deste cliente.
                 </Alert>
               </Stack>
             </Paper>
@@ -1103,13 +1278,17 @@ export default function FaturasPage() {
               <Stack gap={3}>
                 <Title order={4}>Lançamentos da fatura</Title>
                 <Text size="sm" c="dimmed">
-                  Revise as descrições e categorize os itens ainda não
+                  Revise as descrições e preencha os itens ainda não
                   reconhecidos.
                 </Text>
               </Stack>
 
               <TextInput
-                placeholder="Buscar descrição ou categoria"
+                placeholder={
+                  useCostCenters
+                    ? "Buscar descrição, categoria ou centro de custo"
+                    : "Buscar descrição ou categoria"
+                }
                 value={search}
                 onChange={(event) => setSearch(event.currentTarget.value)}
                 leftSection={<IconSearch size={17} />}
@@ -1119,7 +1298,7 @@ export default function FaturasPage() {
 
             <ScrollArea>
               <Table
-                miw={1050}
+                miw={useCostCenters ? 1250 : 1050}
                 verticalSpacing="sm"
                 horizontalSpacing="md"
                 highlightOnHover
@@ -1131,6 +1310,7 @@ export default function FaturasPage() {
                     <Table.Th>Descrição</Table.Th>
                     <Table.Th>Parcela</Table.Th>
                     <Table.Th>Categoria</Table.Th>
+                    {useCostCenters && <Table.Th>Centro de custo</Table.Th>}
                     <Table.Th ta="right">Valor</Table.Th>
                     <Table.Th />
                   </Table.Tr>
@@ -1159,6 +1339,11 @@ export default function FaturasPage() {
                               Categoria aprendida para este cliente
                             </Text>
                           )}
+                          {useCostCenters && item.costCenterLearnedFromClient && (
+                            <Text size="xs" c="violet">
+                              Centro de custo aprendido para este cliente
+                            </Text>
+                          )}
                         </Stack>
                       </Table.Td>
 
@@ -1175,6 +1360,20 @@ export default function FaturasPage() {
                           </Text>
                         )}
                       </Table.Td>
+
+                      {useCostCenters && (
+                        <Table.Td>
+                          {item.costCenter ? (
+                            <Badge variant="light" color="violet">
+                              {item.costCenter}
+                            </Badge>
+                          ) : (
+                            <Text size="sm" c="violet" fw={700}>
+                              Não definido
+                            </Text>
+                          )}
+                        </Table.Td>
+                      )}
 
                       <Table.Td ta="right" fw={700}>
                         {formatMoney(item.amount)}
@@ -1210,11 +1409,11 @@ export default function FaturasPage() {
           <Modal
             opened={editModalOpened}
             onClose={closeEditModal}
-            title="Categorizar lançamento"
+            title={useCostCenters ? "Categoria e centro de custo" : "Categorizar lançamento"}
             centered
             size="lg"
-            closeOnClickOutside={!categoryModalOpened}
-            closeOnEscape={!categoryModalOpened}
+            closeOnClickOutside={!categoryModalOpened && !costCenterModalOpened}
+            closeOnEscape={!categoryModalOpened && !costCenterModalOpened}
           >
             {selectedItem && (
               <Stack gap="lg">
@@ -1280,29 +1479,78 @@ export default function FaturasPage() {
                   </Button>
                 </Stack>
 
+                {useCostCenters && (
+                  <Stack gap={6}>
+                    <Select
+                      label="Centro de custo"
+                      description={`A opção ficará vinculada a ${
+                        selectedClient?.label ?? "este cliente"
+                      }.`}
+                      placeholder="Buscar ou selecionar centro de custo"
+                      data={costCenterOptions}
+                      searchable
+                      clearable
+                      value={selectedItem.costCenter}
+                      onChange={(value) =>
+                        setSelectedItem((current) =>
+                          current ? { ...current, costCenter: value } : current,
+                        )
+                      }
+                      leftSection={<IconBuildingBank size={17} />}
+                      nothingFoundMessage="Nenhum centro de custo encontrado"
+                      required
+                      comboboxProps={{ withinPortal: true }}
+                    />
+
+                    <Button
+                      variant="subtle"
+                      size="compact-sm"
+                      leftSection={<IconPlus size={15} />}
+                      onClick={() => setCostCenterModalOpened(true)}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      Criar novo centro de custo
+                    </Button>
+                  </Stack>
+                )}
+
                 <Stack gap="sm">
                   <Checkbox
                     checked={learnForClient}
                     onChange={(event) =>
                       setLearnForClient(event.currentTarget.checked)
                     }
-                    label={`Aprender esta categoria para as próximas faturas de ${
+                    label={`Aprender ${
+                      useCostCenters ? "a categoria e o centro de custo" : "esta categoria"
+                    } para as próximas faturas de ${
                       selectedClient?.label ?? "este cliente"
                     }`}
                   />
                 </Stack>
 
                 <Group justify="flex-end">
-                  <Button variant="default" onClick={closeEditModal}>
+                  <Button
+                    variant="default"
+                    disabled={savingItem}
+                    onClick={closeEditModal}
+                  >
                     Cancelar
                   </Button>
 
                   <Button
-                    disabled={!selectedItem.category}
+                    disabled={
+                      !selectedItem.category ||
+                      (useCostCenters && !selectedItem.costCenter)
+                    }
+                    loading={savingItem}
                     leftSection={<IconCheck size={17} />}
-                    onClick={saveItem}
+                    onClick={() => void saveItem()}
                   >
-                    {learnForClient ? "Salvar e aprender" : "Salvar categoria"}
+                    {learnForClient
+                      ? "Salvar e aprender"
+                      : useCostCenters
+                        ? "Salvar classificação"
+                        : "Salvar categoria"}
                   </Button>
                 </Group>
               </Stack>
@@ -1364,9 +1612,64 @@ export default function FaturasPage() {
             </Stack>
           </Modal>
 
+          <Modal
+            opened={costCenterModalOpened}
+            onClose={() => {
+              if (!creatingCostCenter) {
+                setCostCenterModalOpened(false);
+                setNewCostCenterName("");
+                setNewCostCenterCode("");
+              }
+            }}
+            title="Criar centro de custo"
+            centered
+          >
+            <Stack>
+              <Text size="sm" c="dimmed">
+                O centro de custo ficará disponível para as próximas
+                importações deste cliente.
+              </Text>
+              <TextInput
+                label="Nome do centro de custo"
+                placeholder="Ex.: Administrativo"
+                value={newCostCenterName}
+                onChange={(event) =>
+                  setNewCostCenterName(event.currentTarget.value)
+                }
+                required
+                autoFocus
+              />
+              <TextInput
+                label="Código (opcional)"
+                placeholder="Ex.: 01.02"
+                value={newCostCenterCode}
+                onChange={(event) =>
+                  setNewCostCenterCode(event.currentTarget.value)
+                }
+              />
+              <Group justify="flex-end">
+                <Button
+                  variant="default"
+                  disabled={creatingCostCenter}
+                  onClick={() => setCostCenterModalOpened(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  loading={creatingCostCenter}
+                  disabled={newCostCenterName.trim().length < 2}
+                  leftSection={<IconPlus size={16} />}
+                  onClick={() => void createCostCenter()}
+                >
+                  Criar e selecionar
+                </Button>
+              </Group>
+            </Stack>
+          </Modal>
+
           <Paper withBorder radius="lg" p="lg">
             <Group justify="space-between" align="flex-end">
-              <SimpleGrid cols={{ base: 2, md: 4 }}>
+              <SimpleGrid cols={{ base: 2, md: useCostCenters ? 5 : 4 }}>
                 <Stack gap={0}>
                   <Text size="xs" c="dimmed">
                     Lançamentos
@@ -1375,6 +1678,17 @@ export default function FaturasPage() {
                     {items.length}
                   </Text>
                 </Stack>
+
+                {useCostCenters && (
+                  <Stack gap={0}>
+                    <Text size="xs" c="dimmed">
+                      Centros preenchidos
+                    </Text>
+                    <Text fw={800} fz={20} c="violet">
+                      {items.length - diagnostics.missingCostCenters}
+                    </Text>
+                  </Stack>
+                )}
 
                 <Stack gap={0}>
                   <Text size="xs" c="dimmed">
@@ -1402,12 +1716,16 @@ export default function FaturasPage() {
                     fw={800}
                     fz={20}
                     c={
-                      diagnostics.uncategorized + diagnostics.review === 0
+                      diagnostics.uncategorized +
+                        diagnostics.missingCostCenters +
+                        diagnostics.review === 0
                         ? "green"
                         : "orange"
                     }
                   >
-                    {diagnostics.uncategorized + diagnostics.review}
+                    {diagnostics.uncategorized +
+                      diagnostics.missingCostCenters +
+                      diagnostics.review}
                   </Text>
                 </Stack>
               </SimpleGrid>
@@ -1427,8 +1745,9 @@ export default function FaturasPage() {
                 color="orange"
                 icon={<IconAlertTriangle size={18} />}
               >
-                Para liberar a exportação, categorize todos os lançamentos,
-                revise as pendências e valide o total da fatura.
+                Para liberar a exportação, preencha todas as categorias
+                {useCostCenters ? " e centros de custo" : ""}, revise as
+                pendências e valide o total da fatura.
               </Alert>
             )}
           </Paper>

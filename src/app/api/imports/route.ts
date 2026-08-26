@@ -84,13 +84,14 @@ export async function POST(request: Request) {
         difference: body.difference ?? null,
         metadata: body.metadata ?? undefined,
         transactions: Array.isArray(body.transactions) && body.transactions.length ? {
-          create: body.transactions.slice(0, 5000).map((item: { date: string; description?: string; amount?: number; type?: string; document?: string | null; category?: string | null; sourcePage?: number | null; metadata?: Record<string, unknown> }) => ({
+          create: body.transactions.slice(0, 5000).map((item: { date: string; description?: string; amount?: number; type?: string; document?: string | null; category?: string | null; costCenter?: string | null; sourcePage?: number | null; metadata?: Record<string, unknown> }) => ({
             date: new Date(item.date),
             description: String(item.description || "Movimentação"),
             amount: Math.abs(Number(item.amount || 0)),
             type: item.type === "CREDIT" ? TransactionType.CREDIT : TransactionType.DEBIT,
             document: item.document || null,
             category: item.category || null,
+            costCenter: item.costCenter || null,
             sourcePage: item.sourcePage ?? null,
             metadata: item.metadata ?? undefined,
           })),

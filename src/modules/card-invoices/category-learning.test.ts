@@ -3,7 +3,9 @@ import {
   areSimilarInvoiceMerchants,
   findLearnedInvoiceCategory,
   getInvoiceCategoryRules,
+  invoiceMerchantSimilarity,
   learnInvoiceCategory,
+  mergeInvoiceCategoryRules,
 } from "./category-learning";
 
 function useMemoryStorage() {
@@ -55,5 +57,39 @@ describe("aprendizado de categorias da fatura", () => {
     expect(getInvoiceCategoryRules("cliente-1")).toHaveLength(2);
     expect(findLearnedInvoiceCategory("cliente-1", "AMAZON PRIME BR")?.category).toBe("SISTEMAS");
     expect(findLearnedInvoiceCategory("cliente-1", "AMAZON PRIME VIDEOS")?.category).toBe("MARKETING");
+  });
+
+  it("aprende o centro de custo junto com a categoria para o mesmo cliente", () => {
+    useMemoryStorage();
+
+    learnInvoiceCategory({
+      clientId: "cliente-1",
+      description: "ADOBE 704",
+      category: "SISTEMAS",
+      costCenter: "ADMINISTRATIVO",
+    });
+
+    const learned = findLearnedInvoiceCategory("cliente-1", "ADOBE 981");
+    expect(learned?.category).toBe("SISTEMAS");
+    expect(learned?.costCenter).toBe("ADMINISTRATIVO");
+  });
+
+  it("sincroniza regras compartilhadas salvas no banco", () => {
+    useMemoryStorage();
+
+    mergeInvoiceCategoryRules("cliente-1", [
+      {
+        normalizedDescription: "MICROSOFT 365",
+        category: "SISTEMAS",
+        costCenter: "TECNOLOGIA",
+        updatedAt: "2026-08-25T12:00:00.000Z",
+      },
+    ]);
+
+    expect(getInvoiceCategoryRules("cliente-1")).toHaveLength(1);
+    expect(invoiceMerchantSimilarity("MICROSOFT 365", "Microsoft*Microsoft 365 P"))
+      .toBe(1);
+    expect(findLearnedInvoiceCategory("cliente-1", "Microsoft*Microsoft 365 P"))
+      .toMatchObject({ category: "SISTEMAS", costCenter: "TECNOLOGIA" });
   });
 });

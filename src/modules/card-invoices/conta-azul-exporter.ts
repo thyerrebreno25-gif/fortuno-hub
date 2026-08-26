@@ -6,6 +6,7 @@ export type ContaAzulInvoiceItem = {
   amount: number;
   installment?: string;
   category: string | null;
+  costCenter?: string | null;
 };
 
 function formatDate(value: string): string {
@@ -25,6 +26,36 @@ export function invoiceAmountToContaAzulValue(amount: number): number {
   return Number((amount < 0 ? Math.abs(amount) : -Math.abs(amount)).toFixed(2));
 }
 
+export function invoiceItemToContaAzulRow(
+  item: ContaAzulInvoiceItem,
+  input: {
+    bankName?: string;
+    competenceDate: string;
+    dueDate: string;
+    paymentDate: string;
+  },
+) {
+  return {
+    "Data de Competência": formatDate(item.date || input.competenceDate),
+    "Data de Vencimento": formatDate(input.dueDate),
+    "Data de Pagamento": formatDate(input.paymentDate),
+    Valor: invoiceAmountToContaAzulValue(item.amount),
+    Categoria: item.category ?? "",
+    Descrição: item.installment
+      ? `${item.description} ${item.installment}`.trim()
+      : item.description,
+    "Cliente/Fornecedor": "",
+    "CNPJ/CPF Cliente/Fornecedor": "",
+    "Centro de Custo": item.costCenter ?? "",
+    Observações: [
+      input.bankName ? `Banco: ${input.bankName}` : "",
+      item.installment ? `Parcela: ${item.installment}` : "",
+      item.amount < 0 ? "Crédito/estorno identificado na fatura" : "",
+      "Categoria aplicada pelo Fortuno Hub",
+    ].filter(Boolean).join(" | "),
+  };
+}
+
 export function exportInvoiceToContaAzul(input: {
   items: ContaAzulInvoiceItem[];
   clientName: string;
@@ -38,25 +69,7 @@ export function exportInvoiceToContaAzul(input: {
     throw new Error("Existem lançamentos sem categoria.");
   }
 
-  const rows = input.items.map((item) => ({
-    "Data de Competência": formatDate(item.date || input.competenceDate),
-    "Data de Vencimento": formatDate(input.dueDate),
-    "Data de Pagamento": formatDate(input.paymentDate),
-    Valor: invoiceAmountToContaAzulValue(item.amount),
-    Categoria: item.category ?? "",
-    Descrição: item.installment
-      ? `${item.description} ${item.installment}`.trim()
-      : item.description,
-    "Cliente/Fornecedor": "",
-    "CNPJ/CPF Cliente/Fornecedor": "",
-    "Centro de Custo": "",
-    Observações: [
-      input.bankName ? `Banco: ${input.bankName}` : "",
-      item.installment ? `Parcela: ${item.installment}` : "",
-      item.amount < 0 ? "Crédito/estorno identificado na fatura" : "",
-      "Categoria aplicada pelo Fortuno Hub",
-    ].filter(Boolean).join(" | "),
-  }));
+  const rows = input.items.map((item) => invoiceItemToContaAzulRow(item, input));
 
   const headers = [
     "Data de Competência",
