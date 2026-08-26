@@ -65,6 +65,15 @@ export function areSimilarInvoiceMerchants(left: string, right: string): boolean
   return invoiceMerchantSimilarity(left, right) >= SIMILARITY_THRESHOLD;
 }
 
+export function haveSameNormalizedInvoiceDescription(
+  left: string,
+  right: string,
+): boolean {
+  const leftKey = normalizeInvoiceMerchant(left);
+  const rightKey = normalizeInvoiceMerchant(right);
+  return Boolean(leftKey && leftKey === rightKey);
+}
+
 function readAllRules(): InvoiceCategoryRule[] {
   if (typeof window === "undefined") return [];
   try {

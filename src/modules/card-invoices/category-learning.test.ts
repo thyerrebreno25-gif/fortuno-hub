@@ -3,6 +3,7 @@ import {
   areSimilarInvoiceMerchants,
   findLearnedInvoiceCategory,
   getInvoiceCategoryRules,
+  haveSameNormalizedInvoiceDescription,
   invoiceMerchantSimilarity,
   learnInvoiceCategory,
   mergeInvoiceCategoryRules,
@@ -23,6 +24,21 @@ afterEach(() => {
 });
 
 describe("aprendizado de categorias da fatura", () => {
+  it("propaga somente descrições normalizadas exatamente iguais na fatura atual", () => {
+    expect(
+      haveSameNormalizedInvoiceDescription(
+        "IOF INTERNACIONAL",
+        "IOF INTERNACIONAL",
+      ),
+    ).toBe(true);
+    expect(
+      haveSameNormalizedInvoiceDescription(
+        "AMAZON PRIME BR",
+        "AMAZON PRIME VIDEOS",
+      ),
+    ).toBe(false);
+  });
+
   it("reconhece o mesmo lançamento quando apenas o identificador numérico muda", () => {
     expect(
       areSimilarInvoiceMerchants(

@@ -8,6 +8,7 @@ import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exp
 import { trackImport } from "@/modules/imports/import-tracker";
 import {
   findLearnedInvoiceCategory,
+  haveSameNormalizedInvoiceDescription,
   learnInvoiceCategory,
   mergeInvoiceCategoryRules,
 } from "@/modules/card-invoices/category-learning";
@@ -546,7 +547,13 @@ export default function FaturasPage() {
 
     setItems((current) =>
       current.map((item) => {
-        if (item.id === selectedItem.id) {
+        if (
+          item.id === selectedItem.id ||
+          haveSameNormalizedInvoiceDescription(
+            item.description,
+            selectedItem.description,
+          )
+        ) {
           return {
             ...item,
             category: selectedItem.category,
