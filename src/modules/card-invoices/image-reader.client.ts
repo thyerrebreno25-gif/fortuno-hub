@@ -28,6 +28,20 @@ type OcrWorker = Awaited<
   ReturnType<(typeof import("tesseract.js"))["createWorker"]>
 >;
 
+export function isReadableCardInvoiceImageSize(width: number, height: number) {
+  return width >= 350 && height >= 45 && width * height >= 60_000;
+}
+
+export function cardInvoiceImageScale(
+  width: number,
+  height: number,
+  preserveLightText = false,
+) {
+  return preserveLightText
+    ? Math.min(3, Math.max(1, 700 / width, 450 / height))
+    : Math.min(4, Math.max(1, 3000 / width, 900 / height));
+}
+
 export function isCardInvoiceImage(file: File) {
   const name = file.name.toLowerCase();
   return file.type.startsWith("image/") || IMAGE_EXTENSIONS.some((extension) => name.endsWith(extension));
@@ -231,7 +245,7 @@ export async function extractInterInvoiceImageLines(file: File): Promise<{
   }
 
   const image = await loadImage(file);
-  if (image.naturalWidth < 350 || image.naturalHeight < 350) {
+  if (!isReadableCardInvoiceImageSize(image.naturalWidth, image.naturalHeight)) {
     throw new Error("A imagem está pequena demais para uma leitura segura da fatura.");
   }
 
@@ -375,13 +389,16 @@ export async function extractCardInvoiceImageText(file: File) {
     throw new Error("Selecione uma imagem PNG, JPG, JPEG ou WebP.");
   }
   const image = await loadImage(file);
-  if (image.naturalWidth < 350 || image.naturalHeight < 350) {
+  if (!isReadableCardInvoiceImageSize(image.naturalWidth, image.naturalHeight)) {
     throw new Error("A imagem está pequena demais para uma leitura segura da fatura.");
   }
   const { createWorker, PSM } = await import("tesseract.js");
   const worker = await createWorker("por");
   try {
-    const scale = Math.min(4, Math.max(1, 3000 / image.naturalWidth));
+    const scale = Math.min(
+      4,
+      Math.max(1, 3000 / image.naturalWidth, 900 / image.naturalHeight),
+    );
     const result = await recognizePositioned(
       worker,
       cropCanvas(image, { left: 0, top: 0, width: 1, height: 1, scale }),
@@ -413,15 +430,17 @@ export async function parseCardInvoiceImages(
   try {
     for (const file of files) {
       const image = await loadImage(file);
-      if (image.naturalWidth < 350 || image.naturalHeight < 350) {
+      if (!isReadableCardInvoiceImageSize(image.naturalWidth, image.naturalHeight)) {
         throw new Error(`${file.name} está pequena demais para uma leitura segura.`);
       }
       // O aplicativo Cora usa datas em cinza muito claro. A ampliação com
       // contraste que ajuda outros layouts apaga esses caracteres, portanto
       // o Cora é lido na resolução original e sem alteração de contraste.
-      const scale = preserveLightText
-        ? Math.min(2, Math.max(1, 700 / image.naturalWidth))
-        : Math.min(3, Math.max(1, 1800 / image.naturalWidth));
+      const scale = cardInvoiceImageScale(
+        image.naturalWidth,
+        image.naturalHeight,
+        preserveLightText,
+      );
       const recognized = await recognizePositioned(
         worker,
         cropCanvas(image, {
@@ -432,7 +451,9 @@ export async function parseCardInvoiceImages(
           scale,
           enhance: !preserveLightText,
         }),
-        PSM.SPARSE_TEXT,
+        image.naturalWidth / image.naturalHeight >= 1.75
+          ? PSM.SINGLE_BLOCK
+          : PSM.SPARSE_TEXT,
       );
       pages.push({
         name: file.name,

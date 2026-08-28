@@ -136,4 +136,25 @@ describe("leitor genérico de prints de fatura", () => {
       amount: 45.9,
     });
   });
+
+  it("recupera centavos quando o OCR apaga a vírgula em recortes largos", () => {
+    const page: InvoiceImagePage = {
+      name: "recorte-largo.png",
+      text: "",
+      lines: [
+        ...row(0.2, [0.01, "10/08"], [0.16, "CAPPTA *A FERREIRA N"], [0.25, "BRASILIA"], [0.96, "1662"]),
+        ...row(0.4, [0.01, "12/08"], [0.16, "IOF SAQ/ROTATIVO DIARIO"], [0.96, "795"]),
+        ...row(0.6, [0.01, "12/05"], [0.16, "DESC ANUIDADE POR USO VIS"], [0.96, "-1100"]),
+      ],
+    };
+
+    const result = parseInvoiceImagePages(
+      [page],
+      "Banco do Brasil",
+      new Date("2026-08-28"),
+    );
+
+    expect(result.items).toHaveLength(3);
+    expect(result.items.map((item) => item.amount)).toEqual([16.62, 7.95, -11]);
+  });
 });

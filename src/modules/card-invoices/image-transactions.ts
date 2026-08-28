@@ -24,7 +24,7 @@ const NUMERIC_DATE_AT_START =
 const PORTUGUESE_DATE_AT_START =
   /^\s*(\d{1,2})\s+de\s+([a-zç.]+)(?:\s+(20\d{2}))?\b/i;
 const MONEY_AT_END =
-  /([+\-−–—]?)\s*(?:R\$\s*)?([\d.]+,\d{2})\s*([CD])?\s*$/i;
+  /([+\-−–—]?)\s*(?:R\$\s*)?([\d.]+(?:,\d{2})?)\s*([CD])?\s*$/i;
 const PORTUGUESE_MONTHS: Record<string, number> = {
   jan: 1,
   janeiro: 1,
@@ -72,6 +72,17 @@ function formatMoney(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function parseOcrMoney(value: string) {
+  const normalized = value.replace(/\./g, "");
+  const withDecimalSeparator = normalized.includes(",")
+    ? normalized.replace(",", ".")
+    : normalized.length >= 3
+      ? `${normalized.slice(0, -2)}.${normalized.slice(-2)}`
+      : "";
+  const parsed = Number(withDecimalSeparator);
+  return Number.isFinite(parsed) && parsed !== 0 ? parsed : null;
 }
 
 function groupVisualRows(lines: InvoiceImageTextLine[]): ImageRow[] {
@@ -218,8 +229,8 @@ function parseRow(
   }
   if (description.length < 2 || isPayment(description)) return null;
 
-  const parsedAmount = Number(moneyMatch[2].replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(parsedAmount) || parsedAmount === 0) return null;
+  const parsedAmount = parseOcrMoney(moneyMatch[2]);
+  if (parsedAmount === null) return null;
   const credit = isCredit(description, moneyMatch[1] ?? "", moneyMatch[3] ?? "");
   const international = followingRows.some((item) =>
     /\bUSD\b|CONVERS[AÃ]O.*D[ÓO]LAR|\bIOF\b/i.test(item.text),
