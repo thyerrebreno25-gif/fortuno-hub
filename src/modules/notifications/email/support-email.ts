@@ -1,3 +1,5 @@
+import { resolvePlatformEmailFrom } from "@/lib/email/platform-sender";
+
 type SupportPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 type NewSupportTicketEmailInput = {
@@ -148,7 +150,7 @@ function buildSupportTicketText(input: NewSupportTicketEmailInput): string {
 export async function sendNewSupportTicketEmail(input: NewSupportTicketEmailInput): Promise<EmailResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const recipients = parseRecipients();
-  const from = process.env.SUPPORT_FROM_EMAIL?.trim() || "Fortuno Hub <notificacoes@hubsuporte.shop>";
+  const from = resolvePlatformEmailFrom([process.env.SUPPORT_FROM_EMAIL]);
 
   if (!apiKey) return { sent: false, reason: "RESEND_API_KEY não configurada." };
   if (recipients.length === 0) return { sent: false, reason: "SUPPORT_NOTIFICATION_EMAIL ou SUPPORT_NOTIFICATION_EMAILS não configurado." };

@@ -1,3 +1,5 @@
+import { resolvePlatformEmailFrom } from "@/lib/email/platform-sender";
+
 type MemberRole = "ADMIN" | "MANAGER" | "OPERATOR" | "CLIENT";
 
 type MemberInviteEmailInput = {
@@ -198,11 +200,11 @@ export async function sendMemberInviteEmail(
     };
   }
 
-  const from =
-    process.env.MEMBERS_FROM_EMAIL?.trim() ||
-    process.env.SUPPORT_FROM_EMAIL?.trim() ||
-    process.env.OPERATIONS_FROM_EMAIL?.trim() ||
-    "Fortuno Hub <notificacoes@hubsuporte.shop>";
+  const from = resolvePlatformEmailFrom([
+    process.env.MEMBERS_FROM_EMAIL,
+    process.env.SUPPORT_FROM_EMAIL,
+    process.env.OPERATIONS_FROM_EMAIL,
+  ]);
 
   try {
     const response = await fetch("https://api.resend.com/emails", {

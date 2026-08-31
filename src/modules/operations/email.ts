@@ -1,3 +1,5 @@
+import { resolvePlatformEmailFrom } from "@/lib/email/platform-sender";
+
 type CompletionInput = {
   to: string[];
   activityId: string;
@@ -349,10 +351,10 @@ export async function sendOperationCompletionEmail(input: CompletionInput): Prom
   const key = process.env.RESEND_API_KEY?.trim();
   if (!key) return { sent: false, reason: "RESEND_API_KEY não configurada." };
 
-  const from =
-    process.env.OPERATIONS_FROM_EMAIL?.trim() ||
-    process.env.SUPPORT_FROM_EMAIL?.trim() ||
-    "Fortuno Hub <notificacoes@hubsuporte.shop>";
+  const from = resolvePlatformEmailFrom([
+    process.env.OPERATIONS_FROM_EMAIL,
+    process.env.SUPPORT_FROM_EMAIL,
+  ]);
 
   const recipients = input.to.map((email) => email.trim()).filter(Boolean);
   if (!recipients.length) return { sent: false, reason: "Cliente sem e-mail operacional cadastrado." };
