@@ -18,6 +18,7 @@ import {
 import {
   IconActivity,
   IconArrowRight,
+  IconBell,
   IconBuildingBank,
   IconCards,
   IconChartBar,
@@ -31,6 +32,7 @@ import {
   IconUsers,
   IconWorldDollar,
 } from "@tabler/icons-react";
+import { NoticeHomePanel } from "@/components/notices/notice-home-panel";
 import styles from "./inicio.module.css";
 
 type Permission = {
@@ -62,6 +64,15 @@ const features: Feature[] = [
     moduleCode: "DASHBOARD",
     group: "Visão geral",
     icon: <IconChartBar size={24} />,
+  },
+  {
+    title: "Avisos",
+    description:
+      "Acompanhe alertas de clientes, lembretes, notas pessoais e confirmações de leitura.",
+    href: "/avisos",
+    moduleCode: "NOTICES",
+    group: "Visão geral",
+    icon: <IconBell size={24} />,
   },
   {
     title: "Auditoria",
@@ -277,51 +288,55 @@ export default function InicioPage() {
         p={{ base: "lg", md: 28 }}
         className={styles.hero}
       >
-        <Stack gap="md">
-          <div>
-            <Text
-              size="xs"
-              fw={800}
-              c="blue"
-              tt="uppercase"
-              lts={1.2}
-            >
-              Fortuno Hub
-            </Text>
+        <div className={styles.heroLayout}>
+          <Stack gap="md" className={styles.heroContent}>
+            <div>
+              <Text
+                size="xs"
+                fw={800}
+                c="blue"
+                tt="uppercase"
+                lts={1.2}
+              >
+                Fortuno Hub
+              </Text>
 
-            <Title
-              order={1}
-              mt={4}
-              className={styles.heroTitle}
-            >
-              O que você deseja fazer hoje?
-            </Title>
+              <Title
+                order={1}
+                mt={4}
+                className={styles.heroTitle}
+              >
+                O que você deseja fazer hoje?
+              </Title>
 
-            <Text
-              c="dimmed"
-              mt={8}
-              maw={720}
-            >
-              Acesse rapidamente as ferramentas
-              disponíveis para o seu perfil e siga
-              direto para a atividade que precisa
-              executar.
-            </Text>
-          </div>
+              <Text
+                c="dimmed"
+                mt={8}
+                maw={720}
+              >
+                Acesse rapidamente as ferramentas
+                disponíveis para o seu perfil e siga
+                direto para a atividade que precisa
+                executar.
+              </Text>
+            </div>
 
-          <TextInput
-            size="md"
-            radius="md"
-            placeholder="Buscar uma funcionalidade..."
-            leftSection={<IconSearch size={18} />}
-            value={search}
-            onChange={(event) =>
-              setSearch(event.currentTarget.value)
-            }
-            maw={620}
-            className={styles.search}
-          />
-        </Stack>
+            <TextInput
+              size="md"
+              radius="md"
+              placeholder="Buscar uma funcionalidade..."
+              leftSection={<IconSearch size={18} />}
+              value={search}
+              onChange={(event) =>
+                setSearch(event.currentTarget.value)
+              }
+              maw={620}
+              className={styles.search}
+            />
+          </Stack>
+
+          {data?.permissions?.NOTICES?.canView !== false && <NoticeHomePanel />}
+        </div>
       </Paper>
 
       {groupOrder.map((group) => {

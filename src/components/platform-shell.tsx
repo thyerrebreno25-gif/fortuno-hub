@@ -40,6 +40,13 @@ const icons = {
     </svg>
   ),
 
+  notice: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </svg>
+  ),
+
   audit: (
   <svg viewBox="0 0 24 24">
     <path d="M9 11l2 2 4-4" />
@@ -156,6 +163,13 @@ const menuItems: MenuItem[] = [
     href: "/dashboard",
     moduleCode: "DASHBOARD",
     icon: icons.dashboard,
+    group: "Visão geral",
+  },
+  {
+    label: "Avisos",
+    href: "/avisos",
+    moduleCode: "NOTICES",
+    icon: icons.notice,
     group: "Visão geral",
   },
   {

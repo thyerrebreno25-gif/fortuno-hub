@@ -152,7 +152,6 @@ enum OperationHolidayBehavior {
   SKIP
 }
 
-
 enum ServiceTicketStatus {
   NEW
   IN_PROGRESS
@@ -226,6 +225,25 @@ enum AuditChecklistStatus {
   NOT_APPLICABLE
 }
 
+enum NoticeKind {
+  ALERT
+  REMINDER
+  NOTE
+}
+
+enum NoticeScope {
+  PERSONAL
+  CLIENTS
+  GENERAL
+}
+
+enum NoticePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -247,6 +265,7 @@ model Organization {
   audits                Audit[]
   emailConnections      EmailConnection[]
   serviceTickets        ServiceTicket[]
+  notices               Notice[]
 }
 
 model User {
@@ -278,9 +297,9 @@ model User {
   auditChecklistReviewed   AuditChecklistItem[]     @relation("AuditChecklistReviewer")
   assignedServiceTickets   ServiceTicket[]          @relation("ServiceTicketAssignee")
   serviceTicketHistory     ServiceTicketHistory[]   @relation("ServiceTicketHistoryUser")
-  payableClients    Client[] @relation("ClientPayableResponsible")
-  receivableClients Client[] @relation("ClientReceivableResponsible")
-  generalServiceClients Client[] @relation("ClientGeneralResponsible")
+  payableClients           Client[]                 @relation("ClientPayableResponsible")
+  receivableClients        Client[]                 @relation("ClientReceivableResponsible")
+  generalServiceClients    Client[]                 @relation("ClientGeneralResponsible")
 }
 
 model OrganizationMember {
@@ -292,11 +311,13 @@ model OrganizationMember {
   teamLeaderId   String?
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamLeader   OrganizationMember?  @relation("OrganizationTeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
-  teamMembers  OrganizationMember[] @relation("OrganizationTeamLeader")
-  inviteTokens OrganizationMemberInviteToken[]
+  organization     Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamLeader       OrganizationMember?             @relation("OrganizationTeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  teamMembers      OrganizationMember[]            @relation("OrganizationTeamLeader")
+  inviteTokens     OrganizationMemberInviteToken[]
+  authoredNotices  Notice[]                        @relation("NoticeAuthor")
+  noticeRecipients NoticeRecipient[]
 
   @@unique([organizationId, userId])
   @@index([userId])
@@ -315,29 +336,29 @@ model OrganizationMemberInviteToken {
 }
 
 model Client {
-  id                 String        @id @default(cuid())
-  organizationId     String
-  name               String
-  normalizedName     String
-  document           String?
-  active             Boolean       @default(true)
-  operationalEmail   String?
-  operationalEmailCc String?
-  cluster            ClientCluster @default(C)
-  operationLeaderId  String?
-  serviceSquad        ClientSquad?
-  payableResponsibleId String?
+  id                      String        @id @default(cuid())
+  organizationId          String
+  name                    String
+  normalizedName          String
+  document                String?
+  active                  Boolean       @default(true)
+  operationalEmail        String?
+  operationalEmailCc      String?
+  cluster                 ClientCluster @default(C)
+  operationLeaderId       String?
+  serviceSquad            ClientSquad?
+  payableResponsibleId    String?
   receivableResponsibleId String?
-  generalResponsibleId String?
-  serviceAliases       String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  generalResponsibleId    String?
+  serviceAliases          String?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  operationLeader User?        @relation("OperationClientLeader", fields: [operationLeaderId], references: [id], onDelete: SetNull)
-  payableResponsible User?     @relation("ClientPayableResponsible", fields: [payableResponsibleId], references: [id], onDelete: SetNull)
-  receivableResponsible User?  @relation("ClientReceivableResponsible", fields: [receivableResponsibleId], references: [id], onDelete: SetNull)
-  generalResponsible User?     @relation("ClientGeneralResponsible", fields: [generalResponsibleId], references: [id], onDelete: SetNull)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operationLeader       User?        @relation("OperationClientLeader", fields: [operationLeaderId], references: [id], onDelete: SetNull)
+  payableResponsible    User?        @relation("ClientPayableResponsible", fields: [payableResponsibleId], references: [id], onDelete: SetNull)
+  receivableResponsible User?        @relation("ClientReceivableResponsible", fields: [receivableResponsibleId], references: [id], onDelete: SetNull)
+  generalResponsible    User?        @relation("ClientGeneralResponsible", fields: [generalResponsibleId], references: [id], onDelete: SetNull)
 
   imports                 ImportJob[]
   employees               Employee[]
@@ -353,6 +374,7 @@ model Client {
   audits                  Audit[]
   serviceTickets          ServiceTicket[]
   emailIdentities         ClientEmailIdentity[]
+  noticeLinks             NoticeClient[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -1127,6 +1149,59 @@ model RoleModulePermission {
   @@index([organizationId, role])
 }
 
+model Notice {
+  id                String         @id @default(cuid())
+  organizationId    String
+  authorMemberId    String
+  kind              NoticeKind     @default(ALERT)
+  scope             NoticeScope    @default(PERSONAL)
+  priority          NoticePriority @default(NORMAL)
+  title             String
+  body              String?
+  targetsAllClients Boolean        @default(false)
+  dueAt             DateTime?
+  expiresAt         DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author       OrganizationMember @relation("NoticeAuthor", fields: [authorMemberId], references: [id], onDelete: Cascade)
+  clients      NoticeClient[]
+  recipients   NoticeRecipient[]
+
+  @@index([organizationId, scope, createdAt])
+  @@index([authorMemberId, createdAt])
+  @@index([expiresAt])
+}
+
+model NoticeClient {
+  noticeId String
+  clientId String
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, clientId])
+  @@index([clientId])
+}
+
+model NoticeRecipient {
+  id          String    @id @default(cuid())
+  noticeId    String
+  memberId    String
+  viewedAt    DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  notice Notice             @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, memberId])
+  @@index([memberId, completedAt, viewedAt])
+  @@index([noticeId, completedAt])
+}
+
 model Audit {
   id             String      @id @default(cuid())
   organizationId String
@@ -1243,21 +1318,21 @@ model AuditChecklistItem {
 }
 
 model EmailConnection {
-  id             String   @id @default(cuid())
-  organizationId String
-  provider       String   @default("GMAIL")
-  email          String
+  id                    String    @id @default(cuid())
+  organizationId        String
+  provider              String    @default("GMAIL")
+  email                 String
   externalId            String?
-  active                Boolean  @default(true)
+  active                Boolean   @default(true)
   encryptedAccessToken  String?
   encryptedRefreshToken String?
   tokenExpiresAt        DateTime?
-  scopes                String[] @default([])
+  scopes                String[]  @default([])
   lastSyncAt            DateTime?
   watchExpiresAt        DateTime?
-  metadata               Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1282,32 +1357,32 @@ model ClientEmailIdentity {
 }
 
 model ServiceTicket {
-  id               String                @id @default(cuid())
-  organizationId   String
-  clientId         String?
-  routingArea       ServiceRoutingArea @default(UNKNOWN)
+  id                String                @id @default(cuid())
+  organizationId    String
+  clientId          String?
+  routingArea       ServiceRoutingArea    @default(UNKNOWN)
   routingSquad      ClientSquad?
   routingConfidence Int?
   routingReason     String?
-  assignedToId     String?
-  externalThreadId String?
-  source           String                @default("MANUAL")
-  subject          String
-  senderName       String?
-  senderEmail      String
-  recipientEmail   String?
-  snippet          String?
-  status           ServiceTicketStatus   @default(NEW)
-  priority         ServiceTicketPriority @default(MEDIUM)
-  isSpam           Boolean               @default(false)
-  spamScore        Int?
-  assignedAt       DateTime?
-  receivedAt       DateTime              @default(now())
-  resolvedAt       DateTime?
-  firstResponseAt  DateTime?
-  lastMessageAt    DateTime              @default(now())
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  assignedToId      String?
+  externalThreadId  String?
+  source            String                @default("MANUAL")
+  subject           String
+  senderName        String?
+  senderEmail       String
+  recipientEmail    String?
+  snippet           String?
+  status            ServiceTicketStatus   @default(NEW)
+  priority          ServiceTicketPriority @default(MEDIUM)
+  isSpam            Boolean               @default(false)
+  spamScore         Int?
+  assignedAt        DateTime?
+  receivedAt        DateTime              @default(now())
+  resolvedAt        DateTime?
+  firstResponseAt   DateTime?
+  lastMessageAt     DateTime              @default(now())
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -1316,11 +1391,11 @@ model ServiceTicket {
   messages ServiceMessage[]
   history  ServiceTicketHistory[]
 
+  @@unique([organizationId, externalThreadId])
   @@index([organizationId, status, updatedAt])
   @@index([assignedToId, status, updatedAt])
   @@index([clientId, updatedAt])
   @@index([senderEmail])
-  @@unique([organizationId, externalThreadId])
 }
 
 model ServiceMessage {
@@ -1341,8 +1416,8 @@ model ServiceMessage {
   ticket      ServiceTicket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   attachments ServiceAttachment[]
 
-  @@index([ticketId, receivedAt])
   @@unique([ticketId, externalMessageId])
+  @@index([ticketId, receivedAt])
 }
 
 model ServiceAttachment {
@@ -1375,7 +1450,6 @@ model ServiceTicketHistory {
   @@index([ticketId, createdAt])
   @@index([userId, createdAt])
 }
-
 
 enum ClientSquad {
   SQUAD_1

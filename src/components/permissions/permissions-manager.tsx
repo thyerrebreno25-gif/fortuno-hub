@@ -19,6 +19,7 @@ import {
 
 const modules = [
   ["DASHBOARD", "Dashboard"],
+  ["NOTICES", "Avisos"],
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
   ["AUDIT", "Auditoria"],
@@ -216,6 +217,7 @@ export function PermissionsManager() {
         modules.map(([moduleCode]) => {
           const isAllowed =
             moduleCode === "DASHBOARD" ||
+            moduleCode === "NOTICES" ||
             moduleCode === "CLIENTS" ||
             moduleCode === "AUDIT";
 
@@ -223,11 +225,14 @@ export function PermissionsManager() {
             moduleCode,
             {
               canView: isAllowed,
-              canCreate: moduleCode === "CLIENTS",
+              canCreate:
+                moduleCode === "CLIENTS" ||
+                moduleCode === "NOTICES",
               canEdit:
+                moduleCode === "NOTICES" ||
                 moduleCode === "CLIENTS" ||
                 moduleCode === "AUDIT",
-              canDelete: false,
+              canDelete: moduleCode === "NOTICES",
               canImport: false,
               canExport: false,
               canManage: false,
@@ -244,7 +249,7 @@ export function PermissionsManager() {
 
     setMsgColor("blue");
     setMsg(
-      "Padrão de operador aplicado. Dashboard, Clientes e Auditoria foram liberados. Clique em Salvar permissões.",
+      "Padrão de operador aplicado. Dashboard, Avisos, Clientes e Auditoria foram liberados. Clique em Salvar permissões.",
     );
   }
 
@@ -435,8 +440,8 @@ export function PermissionsManager() {
         </ScrollArea>
 
         <Alert color="blue">
-          Para liberar inicialmente somente o cadastro de clientes ao perfil
-          Operador, selecione o perfil Operador e clique em
+          Para aplicar o conjunto inicial do perfil Operador, incluindo Avisos,
+          Clientes e Auditoria, selecione o perfil Operador e clique em
           <strong> Operador padrão</strong>. Depois clique em
           <strong> Salvar permissões</strong>.
         </Alert>

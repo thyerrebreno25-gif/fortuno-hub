@@ -52,6 +52,18 @@ describe("permissões do módulo de clientes", () => {
     });
   });
 
+  it("permite ao operador administrar os próprios avisos", () => {
+    expect(defaultPermission("OPERATOR", "NOTICES")).toEqual({
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: true,
+      canImport: false,
+      canExport: false,
+      canManage: false,
+    });
+  });
+
   it("mantém o perfil de cliente externo sem acesso ao cadastro operacional", () => {
     expect(defaultPermission("CLIENT", "CLIENTS")).toEqual({
       canView: false,

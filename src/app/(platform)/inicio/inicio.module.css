@@ -20,6 +20,19 @@
   line-height: 1.12;
 }
 
+.heroLayout {
+  display: flex;
+  gap: 28px;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.heroContent {
+  min-width: 0;
+  flex: 1;
+  justify-content: center;
+}
+
 .search {
   width: min(620px, 100%);
 }
@@ -82,5 +95,11 @@
 
   .featureCard {
     min-height: 160px;
+  }
+}
+
+@media (max-width: 70em) {
+  .heroLayout {
+    flex-direction: column;
   }
 }

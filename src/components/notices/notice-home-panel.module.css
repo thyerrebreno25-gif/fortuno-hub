@@ -1,0 +1,44 @@
+.panel {
+  width: min(100%, 430px);
+  flex: 0 0 430px;
+  background: rgb(255 255 255 / 78%);
+  backdrop-filter: blur(8px);
+}
+
+.noticeLink {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--mantine-radius-md);
+  background: white;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.noticeLink:hover {
+  border-color: var(--mantine-color-blue-2);
+  transform: translateX(2px);
+}
+
+.noticeText {
+  min-width: 0;
+  flex: 1;
+}
+
+.empty {
+  padding: 18px;
+  text-align: center;
+  border: 1px dashed var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-md);
+  background: white;
+}
+
+@media (max-width: 70em) {
+  .panel {
+    width: 100%;
+    flex-basis: auto;
+  }
+}
