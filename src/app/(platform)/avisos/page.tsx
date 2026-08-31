@@ -44,7 +44,7 @@ import styles from "./avisos.module.css";
 type Notice = {
   id: string;
   kind: "ALERT" | "REMINDER" | "NOTE";
-  scope: "PERSONAL" | "CLIENTS" | "GENERAL";
+  scope: "PERSONAL" | "MEMBERS" | "CLIENTS" | "GENERAL";
   priority: "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
   title: string;
   body: string | null;
@@ -76,6 +76,13 @@ type Options = {
   member: { id: string; role: string; isTeamLeader: boolean; name: string };
   capabilities: { canManage: boolean; canBroadcastOrganization: boolean };
   clients: Array<{ id: string; name: string; document: string | null }>;
+  members: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    isTeamLeader: boolean;
+  }>;
 };
 
 const kindLabels = {
@@ -166,6 +173,11 @@ function NoticeCard({
                   Geral
                 </Badge>
               )}
+              {notice.scope === "MEMBERS" && (
+                <Badge size="sm" variant="light" color="teal">
+                  Direcionado
+                </Badge>
+              )}
               {isExpired && <Badge color="gray">Expirado</Badge>}
             </Group>
             <Title order={4}>{notice.title}</Title>
@@ -205,6 +217,15 @@ function NoticeCard({
             {!notice.targetsAllClients && notice.clients.length > 3
               ? ` +${notice.clients.length - 3}`
               : ""}
+          </Text>
+        </Group>
+      )}
+
+      {notice.scope === "MEMBERS" && notice.audience.recipients.length > 0 && (
+        <Group gap={6} mt="md">
+          <IconUsers size={16} color="var(--mantine-color-teal-6)" />
+          <Text size="xs" fw={700}>
+            Para: {notice.audience.recipients.map((recipient) => recipient.name).join(", ")}
           </Text>
         </Group>
       )}
@@ -321,6 +342,7 @@ export default function AvisosPage() {
   const [expiresAt, setExpiresAt] = useState("");
   const [allClients, setAllClients] = useState(false);
   const [clientIds, setClientIds] = useState<string[]>([]);
+  const [targetMemberId, setTargetMemberId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -393,6 +415,7 @@ export default function AvisosPage() {
     setExpiresAt(toLocalInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
     setAllClients(false);
     setClientIds([]);
+    setTargetMemberId(null);
   };
 
   const openCreateModal = () => {
@@ -416,6 +439,7 @@ export default function AvisosPage() {
           expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
           allClients,
           clientIds,
+          memberIds: targetMemberId ? [targetMemberId] : [],
         }),
       });
       const payload = await response.json();
@@ -467,6 +491,15 @@ export default function AvisosPage() {
       (options?.clients || []).map((client) => ({
         value: client.id,
         label: client.document ? `${client.name} · ${client.document}` : client.name,
+      })),
+    [options],
+  );
+
+  const memberOptions = useMemo(
+    () =>
+      (options?.members || []).map((member) => ({
+        value: member.id,
+        label: `${member.name} · ${member.email}`,
       })),
     [options],
   );
@@ -598,6 +631,7 @@ export default function AvisosPage() {
               { value: "PERSONAL", label: "Somente eu" },
               ...(options?.capabilities.canManage
                 ? [
+                    { value: "MEMBERS", label: "Um colaborador específico" },
                     { value: "CLIENTS", label: "Responsáveis pelos clientes selecionados" },
                     {
                       value: "GENERAL",
@@ -609,6 +643,23 @@ export default function AvisosPage() {
                 : []),
             ]}
           />
+
+          {scope === "MEMBERS" && (
+            <Paper withBorder radius="md" p="md">
+              <Select
+                label="Colaborador"
+                description="Somente esta pessoa receberá o alerta. Você acompanhará a visualização e a conclusão."
+                placeholder="Selecione o colaborador"
+                searchable
+                clearable
+                data={memberOptions}
+                value={targetMemberId}
+                onChange={setTargetMemberId}
+                required
+                maxDropdownHeight={260}
+              />
+            </Paper>
+          )}
 
           {scope === "CLIENTS" && (
             <Paper withBorder radius="md" p="md">

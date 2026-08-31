@@ -7,9 +7,10 @@ import {
   canManageNotices,
   getNoticeMember,
 } from "@/modules/notices/server/notice-auth";
+import { targetableNoticeMemberWhere } from "@/modules/notices/server/notice-targeting";
 
 const VALID_KINDS = new Set(["ALERT", "REMINDER", "NOTE"]);
-const VALID_SCOPES = new Set(["PERSONAL", "CLIENTS", "GENERAL"]);
+const VALID_SCOPES = new Set(["PERSONAL", "MEMBERS", "CLIENTS", "GENERAL"]);
 const VALID_PRIORITIES = new Set(["LOW", "NORMAL", "HIGH", "CRITICAL"]);
 
 function parseDate(value: unknown) {
@@ -100,13 +101,34 @@ export async function GET(request: Request) {
 
   if (view === "options") {
     const canManage = canManageNotices(member) && permissions.NOTICES.canManage;
-    const clients = canManage
-      ? await prisma.client.findMany({
-          where: { organizationId: member.organizationId, active: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, document: true },
-        })
-      : [];
+    const [clients, targetableMembers] = canManage
+      ? await Promise.all([
+          prisma.client.findMany({
+            where: { organizationId: member.organizationId, active: true },
+            orderBy: { name: "asc" },
+            select: { id: true, name: true, document: true },
+          }),
+          prisma.organizationMember.findMany({
+            where: targetableNoticeMemberWhere(member),
+            select: {
+              id: true,
+              role: true,
+              isTeamLeader: true,
+              user: { select: { name: true, email: true } },
+            },
+          }),
+        ])
+      : [[], []];
+
+    const members = targetableMembers
+      .map((target) => ({
+        id: target.id,
+        role: target.role,
+        isTeamLeader: target.isTeamLeader,
+        name: target.user.name || target.user.email,
+        email: target.user.email,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
 
     return NextResponse.json({
       member: {
@@ -121,6 +143,7 @@ export async function GET(request: Request) {
           canBroadcastToOrganization(member) && permissions.NOTICES.canManage,
       },
       clients,
+      members,
     });
   }
 
@@ -263,6 +286,9 @@ export async function POST(request: Request) {
   const requestedClientIds = Array.isArray(body.clientIds)
     ? [...new Set(body.clientIds.filter((id): id is string => typeof id === "string"))]
     : [];
+  const requestedMemberIds = Array.isArray(body.memberIds)
+    ? [...new Set(body.memberIds.filter((id): id is string => typeof id === "string"))]
+    : [];
 
   if (title.length < 3 || title.length > 120) {
     return NextResponse.json(
@@ -315,6 +341,30 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (scope === "MEMBERS" && requestedMemberIds.length !== 1) {
+    return NextResponse.json(
+      { error: "Selecione um colaborador para receber o aviso." },
+      { status: 400 },
+    );
+  }
+
+  let targetedMemberIds: string[] = [];
+
+  if (scope === "MEMBERS") {
+    const targetedMembers = await prisma.organizationMember.findMany({
+      where: targetableNoticeMemberWhere(member, requestedMemberIds),
+      select: { id: true },
+    });
+
+    if (targetedMembers.length !== requestedMemberIds.length) {
+      return NextResponse.json(
+        { error: "O colaborador selecionado não pertence à sua equipe." },
+        { status: 400 },
+      );
+    }
+
+    targetedMemberIds = targetedMembers.map((target) => target.id);
+  }
 
   let clients: Array<{
     id: string;
@@ -348,7 +398,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const recipientIds = new Set<string>([member.id]);
+  const recipientIds = new Set<string>(scope === "MEMBERS" ? [] : [member.id]);
+
+  if (scope === "MEMBERS") {
+    targetedMemberIds.forEach((memberId) => recipientIds.add(memberId));
+  }
 
   if (scope === "GENERAL") {
     const recipientMembers = await prisma.organizationMember.findMany({
@@ -396,7 +450,7 @@ export async function POST(request: Request) {
       organizationId: member.organizationId,
       authorMemberId: member.id,
       kind: kind as "ALERT" | "REMINDER" | "NOTE",
-      scope: scope as "PERSONAL" | "CLIENTS" | "GENERAL",
+      scope: scope as "PERSONAL" | "MEMBERS" | "CLIENTS" | "GENERAL",
       priority: priority as "LOW" | "NORMAL" | "HIGH" | "CRITICAL",
       title,
       body: description || null,

@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 
-export const NOTICE_MANAGER_ROLES = new Set(["MASTER", "ADMIN", "MANAGER"]);
+export {
+  canBroadcastToOrganization,
+  canManageNotices,
+  NOTICE_MANAGER_ROLES,
+} from "./notice-permissions";
 
 export async function getNoticeMember() {
   const supabase = await createSupabaseClient();
@@ -27,15 +31,4 @@ export async function getNoticeMember() {
       },
     },
   });
-}
-
-export function canManageNotices(member: {
-  role: string;
-  isTeamLeader: boolean;
-}) {
-  return NOTICE_MANAGER_ROLES.has(member.role) || member.isTeamLeader;
-}
-
-export function canBroadcastToOrganization(member: { role: string }) {
-  return NOTICE_MANAGER_ROLES.has(member.role);
 }

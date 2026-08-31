@@ -233,6 +233,7 @@ enum NoticeKind {
 
 enum NoticeScope {
   PERSONAL
+  MEMBERS
   CLIENTS
   GENERAL
 }
