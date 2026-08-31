@@ -18,6 +18,23 @@ export const metadata: Metadata = {
   title: "Fortuno Hub",
   description:
     "Central de automação e gestão operacional da Fortuno",
+  icons: {
+    icon: [
+      {
+        url: "/fortuno-logo-v2.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
+    ],
+    shortcut: "/fortuno-logo-v2.png",
+    apple: [
+      {
+        url: "/fortuno-logo-v2.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({
