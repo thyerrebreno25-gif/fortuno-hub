@@ -23,6 +23,26 @@ enum ImportModule {
   BRASILMED_RECONCILIATION
 }
 
+enum ContaAzulConnectionStatus {
+  CONNECTED
+  EXPIRED
+  ERROR
+  DISCONNECTED
+}
+
+enum PurchaseInvoiceSource {
+  XML_UPLOAD
+  CONTA_AZUL
+}
+
+enum PurchaseInvoiceStatus {
+  PENDING_REVIEW
+  READY_TO_SEND
+  SENT
+  FAILED
+  IGNORED
+}
+
 enum ImportStatus {
   UPLOADED
   PROCESSING
@@ -267,6 +287,8 @@ model Organization {
   emailConnections      EmailConnection[]
   serviceTickets        ServiceTicket[]
   notices               Notice[]
+  contaAzulConnections  ContaAzulConnection[]
+  purchaseInvoices      PurchaseInvoice[]
 }
 
 model User {
@@ -301,6 +323,7 @@ model User {
   payableClients           Client[]                 @relation("ClientPayableResponsible")
   receivableClients        Client[]                 @relation("ClientReceivableResponsible")
   generalServiceClients    Client[]                 @relation("ClientGeneralResponsible")
+  purchaseInvoicesCreated  PurchaseInvoice[]        @relation("PurchaseInvoiceCreator")
 }
 
 model OrganizationMember {
@@ -376,6 +399,9 @@ model Client {
   serviceTickets          ServiceTicket[]
   emailIdentities         ClientEmailIdentity[]
   noticeLinks             NoticeClient[]
+  contaAzulConnection     ContaAzulConnection?
+  purchaseInvoices        PurchaseInvoice[]
+  purchaseInvoiceRules    PurchaseInvoiceRule[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -386,6 +412,128 @@ model Client {
   @@index([receivableResponsibleId])
   @@index([generalResponsibleId])
   @@index([cluster])
+}
+
+model ContaAzulConnection {
+  id                    String                    @id @default(cuid())
+  organizationId        String
+  clientId              String                    @unique
+  status                ContaAzulConnectionStatus @default(CONNECTED)
+  active                Boolean                   @default(true)
+  encryptedAccessToken  String
+  encryptedRefreshToken String
+  tokenExpiresAt        DateTime
+  scopes                String[]                  @default([])
+  externalTenantId      String?
+  externalTenantName    String?
+  connectedByUserId     String?
+  lastSyncAt            DateTime?
+  lastError             String?
+  metadata              Json?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoices     PurchaseInvoice[]
+
+  @@index([organizationId, active])
+  @@index([tokenExpiresAt])
+}
+
+model PurchaseInvoice {
+  id                        String                @id @default(cuid())
+  organizationId            String
+  clientId                  String
+  connectionId              String?
+  createdById               String
+  source                    PurchaseInvoiceSource @default(XML_UPLOAD)
+  sourceKey                 String
+  accessKey                 String?
+  number                    String
+  series                    String?
+  supplierName              String
+  supplierDocument          String?
+  supplierContaAzulId       String?
+  supplierContaAzulName     String?
+  issueDate                 DateTime
+  competenceDate            DateTime
+  dueDate                   DateTime
+  totalProducts             Decimal               @db.Decimal(18, 2)
+  totalInvoice              Decimal               @db.Decimal(18, 2)
+  financialAccountId        String?
+  financialAccountName      String?
+  paymentMethod             String                @default("OUTRO")
+  status                    PurchaseInvoiceStatus @default(PENDING_REVIEW)
+  externalPurchaseId        String?
+  externalPayableProtocolId String?
+  sentAt                    DateTime?
+  lastError                 String?
+  rawXml                    String?
+  metadata                  Json?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection   ContaAzulConnection?  @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  createdBy    User                  @relation("PurchaseInvoiceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items        PurchaseInvoiceItem[]
+
+  @@unique([clientId, sourceKey])
+  @@index([organizationId, status, createdAt])
+  @@index([clientId, issueDate])
+  @@index([accessKey])
+}
+
+model PurchaseInvoiceItem {
+  id                      String   @id @default(cuid())
+  invoiceId               String
+  lineNumber              Int
+  productCode             String?
+  description             String
+  normalizedDescription   String
+  ncm                     String?
+  cfop                    String?
+  unit                    String?
+  quantity                Decimal  @db.Decimal(18, 6)
+  unitValue               Decimal  @db.Decimal(18, 6)
+  totalValue              Decimal  @db.Decimal(18, 2)
+  allocationAmount        Decimal  @db.Decimal(18, 2)
+  contaAzulCategoryId     String?
+  contaAzulCategoryName   String?
+  contaAzulCostCenterId   String?
+  contaAzulCostCenterName String?
+  learned                 Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, lineNumber])
+  @@index([invoiceId])
+  @@index([normalizedDescription])
+}
+
+model PurchaseInvoiceRule {
+  id                      String   @id @default(cuid())
+  clientId                String
+  supplierDocument        String
+  productCode             String
+  normalizedDescription   String
+  contaAzulCategoryId     String
+  contaAzulCategoryName   String
+  contaAzulCostCenterId   String?
+  contaAzulCostCenterName String?
+  usageCount              Int      @default(1)
+  lastUsedAt              DateTime @default(now())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, supplierDocument, productCode, normalizedDescription])
+  @@index([clientId, supplierDocument, productCode])
 }
 
 model ClientBank {

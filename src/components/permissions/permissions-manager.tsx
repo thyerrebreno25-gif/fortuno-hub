@@ -22,6 +22,7 @@ const modules = [
   ["NOTICES", "Avisos"],
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
+  ["PURCHASE_INVOICES", "Notas fiscais de entrada"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],
   ["ONBOARDING", "Onboarding"],
@@ -219,6 +220,7 @@ export function PermissionsManager() {
             moduleCode === "DASHBOARD" ||
             moduleCode === "NOTICES" ||
             moduleCode === "CLIENTS" ||
+            moduleCode === "PURCHASE_INVOICES" ||
             moduleCode === "AUDIT";
 
           return [
@@ -227,14 +229,16 @@ export function PermissionsManager() {
               canView: isAllowed,
               canCreate:
                 moduleCode === "CLIENTS" ||
-                moduleCode === "NOTICES",
+                moduleCode === "NOTICES" ||
+                moduleCode === "PURCHASE_INVOICES",
               canEdit:
                 moduleCode === "NOTICES" ||
                 moduleCode === "CLIENTS" ||
+                moduleCode === "PURCHASE_INVOICES" ||
                 moduleCode === "AUDIT",
               canDelete: moduleCode === "NOTICES",
-              canImport: false,
-              canExport: false,
+              canImport: moduleCode === "PURCHASE_INVOICES",
+              canExport: moduleCode === "PURCHASE_INVOICES",
               canManage: false,
             },
           ];

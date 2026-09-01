@@ -187,6 +187,13 @@ const menuItems: MenuItem[] = [
     group: "Financeiro",
   },
   {
+    label: "Notas fiscais",
+    href: "/notas-fiscais",
+    moduleCode: "PURCHASE_INVOICES",
+    icon: icons.document,
+    group: "Financeiro",
+  },
+  {
     label: "Adquirentes",
     href: "/adquirentes",
     moduleCode: "IMPORTS",
