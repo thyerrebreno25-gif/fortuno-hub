@@ -173,6 +173,7 @@ export function resourceIdFromProtocol(body: unknown): string | null {
     "id_recurso",
     "idEvento",
     "id_evento",
+    "evento_financeiro_id",
     "eventId",
     "evento",
   ]) {

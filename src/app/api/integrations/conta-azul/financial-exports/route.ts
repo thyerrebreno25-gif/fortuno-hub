@@ -277,7 +277,13 @@ async function settleCreatedLines(input: {
   financialAccountId: string;
 }) {
   const created = await prisma.contaAzulFinancialExportLine.findMany({
-    where: { exportId: input.exportId, status: "CREATED" },
+    where: {
+      exportId: input.exportId,
+      OR: [
+        { status: "CREATED" },
+        { status: "FAILED", externalProtocolId: { not: null } },
+      ],
+    },
     orderBy: { updatedAt: "asc" },
     take: 20,
   });
@@ -304,6 +310,12 @@ async function settleCreatedLines(input: {
           throw new Error("O lançamento foi processado, mas o Conta Azul não informou seu identificador.");
         }
       }
+      if (eventId && eventId !== line.externalEventId) {
+        await prisma.contaAzulFinancialExportLine.update({
+          where: { id: line.id },
+          data: { externalEventId: eventId, status: "CREATED", lastError: null },
+        });
+      }
 
       let installmentId = line.externalInstallmentId;
       if (!installmentId && eventId) {
@@ -315,11 +327,25 @@ async function settleCreatedLines(input: {
         installmentId = installmentIdFrom(installments);
       }
       if (!installmentId) throw new Error("Não foi possível localizar a parcela criada no Conta Azul.");
+      if (installmentId !== line.externalInstallmentId) {
+        await prisma.contaAzulFinancialExportLine.update({
+          where: { id: line.id },
+          data: { externalInstallmentId: installmentId, status: "CREATED", lastError: null },
+        });
+      }
 
       const amount = Number(line.amount);
-      const settlement = await contaAzulRequest<Record<string, unknown>>(
+      const existingSettlements = await contaAzulRequest<unknown>(
         input.clientId,
         `/v1/financeiro/eventos-financeiros/parcelas/${installmentId}/baixa`,
+      );
+      await sleep(120);
+      const existingSettlementId = installmentIdFrom(existingSettlements);
+      const settlement = existingSettlementId
+        ? { id: existingSettlementId }
+        : await contaAzulRequest<Record<string, unknown>>(
+          input.clientId,
+          `/v1/financeiro/eventos-financeiros/parcelas/${installmentId}/baixa`,
         {
           method: "POST",
           body: JSON.stringify({

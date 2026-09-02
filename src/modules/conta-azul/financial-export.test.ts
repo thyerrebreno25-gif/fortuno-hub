@@ -63,9 +63,16 @@ describe("envio financeiro direto ao Conta Azul", () => {
 
   it("interpreta protocolo, recurso e parcela nas formas aceitas pela API", () => {
     const eventId = "35473eec-4e74-11ee-b500-9f61de8a8b8b";
+    const protocolId = "145fbbc7-5125-4cc4-be15-11cd04d84fa0";
     expect(protocolIdFrom({ protocolId: "protocol-1" })).toBe("protocol-1");
     expect(protocolState({ status: "SUCCESS" })).toBe("SUCCESS");
     expect(resourceIdFromProtocol({ status: "SUCCESS", data: { id: eventId } })).toBe(eventId);
+    expect(resourceIdFromProtocol({
+      id: protocolId,
+      status: "SUCCESS",
+      resposta: "O evento financeiro foi criado no contas a pagar da Conta Azul.",
+      evento_financeiro_id: eventId,
+    })).toBe(eventId);
     expect(installmentIdFrom([{ id: eventId }])).toBe(eventId);
   });
 });
