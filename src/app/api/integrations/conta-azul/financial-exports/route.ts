@@ -1,0 +1,451 @@
+import crypto from "node:crypto";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import type { Prisma } from "@/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
+import { getRolePermissions } from "@/modules/permissions/permissions";
+import {
+  findAuthorizedClient,
+  getPurchaseInvoiceMember,
+} from "@/modules/purchase-invoices/server/auth";
+import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
+import {
+  buildFinancialEventPayload,
+  contaAzulOptions,
+  findContaAzulOption,
+  installmentIdFrom,
+  protocolError,
+  protocolIdFrom,
+  protocolState,
+  resourceIdFromProtocol,
+} from "@/modules/conta-azul/financial-export";
+
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const lineSchema = z.object({
+  lineKey: z.string().trim().min(1).max(500),
+  direction: z.enum(["PAYABLE", "RECEIVABLE"]),
+  competenceDate: z.string().regex(datePattern),
+  dueDate: z.string().regex(datePattern),
+  paymentDate: z.string().regex(datePattern).nullable().optional(),
+  description: z.string().trim().min(1).max(500),
+  amount: z.number().finite().refine((value) => Math.abs(value) >= 0.01),
+  categoryName: z.string().trim().min(1).max(250),
+  costCenterName: z.string().trim().max(250).nullable().optional(),
+  observation: z.string().trim().max(2000).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+const payloadSchema = z.object({
+  clientId: z.string().trim().min(1),
+  module: z.enum(["CREDIT_CARD_INVOICE", "ACQUIRER"]),
+  sourceKey: z.string().trim().min(1).max(1000),
+  sourceName: z.string().trim().min(1).max(500),
+  contactId: z.string().uuid(),
+  contactName: z.string().trim().max(250).nullable().optional(),
+  financialAccountId: z.string().uuid(),
+  financialAccountName: z.string().trim().max(250).nullable().optional(),
+  settle: z.boolean(),
+  lines: z.array(lineSchema).min(1).max(5000),
+});
+
+type ParsedPayload = z.infer<typeof payloadSchema>;
+
+function stableHash(value: string) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function asDate(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function asJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function findOrCreateExport(input: {
+  body: ParsedPayload;
+  organizationId: string;
+  userId: string;
+  connectionId: string;
+}) {
+  const sourceKey = stableHash(`${input.body.module}|${input.body.sourceKey}`);
+  const existing = await prisma.contaAzulFinancialExport.findUnique({
+    where: {
+      clientId_module_sourceKey: {
+        clientId: input.body.clientId,
+        module: input.body.module,
+        sourceKey,
+      },
+    },
+    include: { lines: true },
+  });
+  if (existing) return existing;
+
+  try {
+    return await prisma.contaAzulFinancialExport.create({
+      data: {
+        organizationId: input.organizationId,
+        clientId: input.body.clientId,
+        connectionId: input.connectionId,
+        createdById: input.userId,
+        module: input.body.module,
+        sourceKey,
+        sourceName: input.body.sourceName,
+        contactId: input.body.contactId,
+        contactName: input.body.contactName || null,
+        financialAccountId: input.body.financialAccountId,
+        financialAccountName: input.body.financialAccountName || null,
+        settleRequested: input.body.settle,
+        metadata: asJson({
+          originalSourceKey: input.body.sourceKey,
+          requestedLineCount: input.body.lines.length,
+        }),
+        lines: {
+          create: input.body.lines.map((line) => ({
+            lineKey: stableHash(line.lineKey),
+            direction: line.direction,
+            competenceDate: asDate(line.competenceDate),
+            dueDate: asDate(line.dueDate),
+            paymentDate: line.paymentDate ? asDate(line.paymentDate) : null,
+            description: line.description,
+            amount: Math.abs(line.amount),
+            categoryName: line.categoryName,
+            costCenterName: line.costCenterName || null,
+            metadata: asJson({
+              originalLineKey: line.lineKey,
+              observation: line.observation || null,
+              source: line.metadata || null,
+            }),
+          })),
+        },
+      },
+      include: { lines: true },
+    });
+  } catch {
+    const raced = await prisma.contaAzulFinancialExport.findUnique({
+      where: {
+        clientId_module_sourceKey: {
+          clientId: input.body.clientId,
+          module: input.body.module,
+          sourceKey,
+        },
+      },
+      include: { lines: true },
+    });
+    if (!raced) throw new Error("Não foi possível preparar o envio ao Conta Azul.");
+    return raced;
+  }
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function createPendingLines(input: {
+  clientId: string;
+  exportId: string;
+  contactId: string;
+  financialAccountId: string;
+  categories: ReturnType<typeof contaAzulOptions>;
+  costCenters: ReturnType<typeof contaAzulOptions>;
+}) {
+  const pending = await prisma.contaAzulFinancialExportLine.findMany({
+    where: {
+      exportId: input.exportId,
+      OR: [
+        { status: "PENDING" },
+        { status: "FAILED", externalProtocolId: null },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    take: 20,
+  });
+
+  for (const line of pending) {
+    const category = findContaAzulOption(input.categories, line.categoryName);
+    const costCenter = line.costCenterName
+      ? findContaAzulOption(input.costCenters, line.costCenterName)
+      : null;
+    if (!category || (line.costCenterName && !costCenter)) continue;
+
+    const metadata = metadataRecord(line.metadata);
+    const observation = typeof metadata.observation === "string" && metadata.observation
+      ? metadata.observation
+      : "Lançamento revisado e enviado pelo Fortuno Hub.";
+    const payload = buildFinancialEventPayload({
+      direction: line.direction,
+      competenceDate: dateOnly(line.competenceDate),
+      dueDate: dateOnly(line.dueDate),
+      description: line.description,
+      observation,
+      amount: Number(line.amount),
+      contactId: input.contactId,
+      financialAccountId: input.financialAccountId,
+      categoryId: category.value,
+      costCenterId: costCenter?.value,
+    });
+    const endpoint = line.direction === "RECEIVABLE"
+      ? "/v1/financeiro/eventos-financeiros/contas-a-receber"
+      : "/v1/financeiro/eventos-financeiros/contas-a-pagar";
+
+    try {
+      const response = await contaAzulRequest<unknown>(input.clientId, endpoint, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const protocolId = protocolIdFrom(response);
+      if (!protocolId) throw new Error("O Conta Azul não devolveu o protocolo do lançamento.");
+      await prisma.contaAzulFinancialExportLine.update({
+        where: { id: line.id },
+        data: {
+          status: "CREATED",
+          contaAzulCategoryId: category.value,
+          contaAzulCostCenterId: costCenter?.value || null,
+          externalProtocolId: protocolId,
+          lastError: null,
+        },
+      });
+    } catch (error) {
+      await prisma.contaAzulFinancialExportLine.update({
+        where: { id: line.id },
+        data: {
+          status: "FAILED",
+          lastError: error instanceof Error ? error.message : "Falha ao criar o lançamento.",
+        },
+      });
+    }
+    // Limite oficial: 10 requisições por segundo por conta conectada.
+    await sleep(120);
+  }
+}
+
+async function settleCreatedLines(input: {
+  clientId: string;
+  exportId: string;
+  financialAccountId: string;
+}) {
+  const created = await prisma.contaAzulFinancialExportLine.findMany({
+    where: { exportId: input.exportId, status: "CREATED" },
+    orderBy: { updatedAt: "asc" },
+    take: 20,
+  });
+
+  for (const line of created) {
+    try {
+      let eventId = line.externalEventId;
+      if (!eventId && line.externalProtocolId) {
+        const protocol = await contaAzulRequest<unknown>(
+          input.clientId,
+          `/v1/protocolo/${line.externalProtocolId}`,
+        );
+        const state = protocolState(protocol);
+        if (state === "ERROR") {
+          throw new Error(protocolError(protocol) || "O Conta Azul rejeitou o lançamento.");
+        }
+        if (state === "PENDING") {
+          await sleep(120);
+          continue;
+        }
+        eventId = resourceIdFromProtocol(protocol);
+        if (!eventId) {
+          throw new Error("O lançamento foi processado, mas o Conta Azul não informou seu identificador.");
+        }
+      }
+
+      let installmentId = line.externalInstallmentId;
+      if (!installmentId && eventId) {
+        const installments = await contaAzulRequest<unknown>(
+          input.clientId,
+          `/v1/financeiro/eventos-financeiros/${eventId}/parcelas`,
+        );
+        installmentId = installmentIdFrom(installments);
+      }
+      if (!installmentId) throw new Error("Não foi possível localizar a parcela criada no Conta Azul.");
+
+      const amount = Number(line.amount);
+      const settlement = await contaAzulRequest<Record<string, unknown>>(
+        input.clientId,
+        `/v1/financeiro/eventos-financeiros/parcelas/${installmentId}/baixa`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            data_pagamento: dateOnly(line.paymentDate || line.dueDate),
+            composicao_valor: {
+              multa: 0,
+              juros: 0,
+              valor_bruto: amount,
+              desconto: 0,
+              taxa: 0,
+            },
+            conta_financeira: input.financialAccountId,
+            metodo_pagamento: "OUTRO",
+            observacao: "Baixa registrada pelo Fortuno Hub.",
+          }),
+        },
+      );
+      const settlementId = typeof settlement.id === "string" ? settlement.id : null;
+      await prisma.contaAzulFinancialExportLine.update({
+        where: { id: line.id },
+        data: {
+          status: "SETTLED",
+          externalEventId: eventId,
+          externalInstallmentId: installmentId,
+          externalSettlementId: settlementId,
+          lastError: null,
+        },
+      });
+    } catch (error) {
+      await prisma.contaAzulFinancialExportLine.update({
+        where: { id: line.id },
+        data: {
+          status: "FAILED",
+          lastError: error instanceof Error ? error.message : "Falha ao registrar a baixa.",
+        },
+      });
+    }
+    await sleep(120);
+  }
+}
+
+export async function POST(request: Request) {
+  const member = await getPurchaseInvoiceMember();
+  if (!member) return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
+  const permissions = await getRolePermissions(member.organizationId, member.role);
+  if (!permissions.IMPORTS.canExport && !permissions.PURCHASE_INVOICES.canExport) {
+    return NextResponse.json({ error: "Você não possui permissão para enviar lançamentos." }, { status: 403 });
+  }
+
+  const parsed = payloadSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Revise os dados do envio ao Conta Azul." }, { status: 400 });
+  }
+  const body = parsed.data;
+  const client = await findAuthorizedClient(member, body.clientId);
+  if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
+  const connection = await prisma.contaAzulConnection.findFirst({
+    where: {
+      clientId: body.clientId,
+      organizationId: member.organizationId,
+      active: true,
+      status: "CONNECTED",
+    },
+    select: { id: true },
+  });
+  if (!connection) {
+    return NextResponse.json({ error: "Conecte este cliente à Conta Azul antes de enviar." }, { status: 400 });
+  }
+
+  const exportBatch = await findOrCreateExport({
+    body,
+    organizationId: member.organizationId,
+    userId: member.userId,
+    connectionId: connection.id,
+  });
+  if (
+    exportBatch.contactId !== body.contactId
+    || exportBatch.financialAccountId !== body.financialAccountId
+    || exportBatch.settleRequested !== body.settle
+  ) {
+    return NextResponse.json({
+      error: "Este arquivo já começou a ser enviado com outro contato, conta ou situação de baixa.",
+    }, { status: 409 });
+  }
+  const persistedLineKeys = new Set(exportBatch.lines.map((line) => line.lineKey));
+  const requestedLineKeys = new Set(body.lines.map((line) => stableHash(line.lineKey)));
+  if (
+    persistedLineKeys.size !== requestedLineKeys.size
+    || Array.from(requestedLineKeys).some((lineKey) => !persistedLineKeys.has(lineKey))
+  ) {
+    return NextResponse.json({
+      error: "Este arquivo já começou a ser enviado com outro conjunto de lançamentos. Inicie uma nova importação para evitar duplicidades.",
+    }, { status: 409 });
+  }
+
+  const [categoriesBody, costCentersBody] = await Promise.all([
+    contaAzulRequest<unknown>(body.clientId, "/v1/categorias?pagina=1&tamanho_pagina=1000"),
+    contaAzulRequest<unknown>(body.clientId, "/v1/centro-de-custo?pagina=1&tamanho_pagina=1000"),
+  ]);
+  const categories = contaAzulOptions(categoriesBody);
+  const costCenters = contaAzulOptions(costCentersBody);
+  const unresolvedCategories = Array.from(new Set(
+    body.lines.filter((line) => !findContaAzulOption(categories, line.categoryName))
+      .map((line) => line.categoryName),
+  ));
+  const unresolvedCostCenters = Array.from(new Set(
+    body.lines.filter(
+      (line) => line.costCenterName && !findContaAzulOption(costCenters, line.costCenterName),
+    ).map((line) => line.costCenterName as string),
+  ));
+  if (unresolvedCategories.length || unresolvedCostCenters.length) {
+    return NextResponse.json({
+      error: "Existem classificações que não foram localizadas no Conta Azul.",
+      unresolvedCategories,
+      unresolvedCostCenters,
+    }, { status: 400 });
+  }
+
+  await createPendingLines({
+    clientId: body.clientId,
+    exportId: exportBatch.id,
+    contactId: body.contactId,
+    financialAccountId: body.financialAccountId,
+    categories,
+    costCenters,
+  });
+  if (body.settle) {
+    await settleCreatedLines({
+      clientId: body.clientId,
+      exportId: exportBatch.id,
+      financialAccountId: body.financialAccountId,
+    });
+  }
+
+  const grouped = await prisma.contaAzulFinancialExportLine.groupBy({
+    by: ["status"],
+    where: { exportId: exportBatch.id },
+    _count: { _all: true },
+  });
+  const counts = { PENDING: 0, CREATED: 0, SETTLED: 0, FAILED: 0 };
+  for (const item of grouped) counts[item.status] = item._count._all;
+  const done = counts.PENDING === 0
+    && counts.FAILED === 0
+    && (!body.settle || counts.CREATED === 0);
+  const hasProgress = counts.CREATED > 0 || counts.SETTLED > 0;
+  const status = done ? "COMPLETED" : counts.FAILED > 0 ? (hasProgress ? "PARTIAL" : "FAILED") : "PROCESSING";
+  const firstFailure = counts.FAILED > 0
+    ? await prisma.contaAzulFinancialExportLine.findFirst({
+      where: { exportId: exportBatch.id, status: "FAILED" },
+      select: { lastError: true },
+    })
+    : null;
+  await prisma.contaAzulFinancialExport.update({
+    where: { id: exportBatch.id },
+    data: {
+      status,
+      completedAt: done ? new Date() : null,
+      lastError: firstFailure?.lastError || null,
+    },
+  });
+
+  return NextResponse.json({
+    exportId: exportBatch.id,
+    status,
+    done,
+    needsContinue: !done && counts.FAILED === 0,
+    counts,
+    message: done
+      ? body.settle
+        ? "Todos os lançamentos foram criados e baixados no Conta Azul."
+        : "Todos os lançamentos foram criados como pendentes no Conta Azul."
+      : firstFailure?.lastError || "O Conta Azul ainda está processando o envio. O Fortuno Hub continuará automaticamente.",
+  });
+}

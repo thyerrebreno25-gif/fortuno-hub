@@ -52,6 +52,30 @@ enum ImportStatus {
   FAILED
 }
 
+enum ContaAzulFinancialExportModule {
+  CREDIT_CARD_INVOICE
+  ACQUIRER
+}
+
+enum ContaAzulFinancialExportStatus {
+  PROCESSING
+  PARTIAL
+  COMPLETED
+  FAILED
+}
+
+enum ContaAzulFinancialExportLineStatus {
+  PENDING
+  CREATED
+  SETTLED
+  FAILED
+}
+
+enum ContaAzulFinancialDirection {
+  PAYABLE
+  RECEIVABLE
+}
+
 enum TransactionType {
   CREDIT
   DEBIT
@@ -289,6 +313,7 @@ model Organization {
   notices               Notice[]
   contaAzulConnections  ContaAzulConnection[]
   purchaseInvoices      PurchaseInvoice[]
+  contaAzulFinancialExports ContaAzulFinancialExport[]
 }
 
 model User {
@@ -324,6 +349,7 @@ model User {
   receivableClients        Client[]                 @relation("ClientReceivableResponsible")
   generalServiceClients    Client[]                 @relation("ClientGeneralResponsible")
   purchaseInvoicesCreated  PurchaseInvoice[]        @relation("PurchaseInvoiceCreator")
+  contaAzulFinancialExportsCreated ContaAzulFinancialExport[] @relation("ContaAzulFinancialExportCreator")
 }
 
 model OrganizationMember {
@@ -402,6 +428,7 @@ model Client {
   contaAzulConnection     ContaAzulConnection?
   purchaseInvoices        PurchaseInvoice[]
   purchaseInvoiceRules    PurchaseInvoiceRule[]
+  contaAzulFinancialExports ContaAzulFinancialExport[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -436,6 +463,7 @@ model ContaAzulConnection {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   invoices     PurchaseInvoice[]
+  financialExports ContaAzulFinancialExport[]
 
   @@index([organizationId, active])
   @@index([tokenExpiresAt])
@@ -534,6 +562,69 @@ model PurchaseInvoiceRule {
 
   @@unique([clientId, supplierDocument, productCode, normalizedDescription])
   @@index([clientId, supplierDocument, productCode])
+}
+
+model ContaAzulFinancialExport {
+  id              String                         @id @default(cuid())
+  organizationId  String
+  clientId        String
+  connectionId    String
+  createdById     String
+  module          ContaAzulFinancialExportModule
+  sourceKey       String
+  sourceName      String
+  contactId       String
+  contactName     String?
+  financialAccountId   String
+  financialAccountName String?
+  settleRequested Boolean                        @default(false)
+  status          ContaAzulFinancialExportStatus @default(PROCESSING)
+  lastError       String?
+  metadata        Json?
+  completedAt     DateTime?
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection   ContaAzulConnection  @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("ContaAzulFinancialExportCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines        ContaAzulFinancialExportLine[]
+
+  @@unique([clientId, module, sourceKey])
+  @@index([organizationId, module, createdAt])
+  @@index([clientId, status])
+}
+
+model ContaAzulFinancialExportLine {
+  id                      String                             @id @default(cuid())
+  exportId                String
+  lineKey                 String
+  direction               ContaAzulFinancialDirection
+  status                  ContaAzulFinancialExportLineStatus @default(PENDING)
+  competenceDate          DateTime
+  dueDate                 DateTime
+  paymentDate             DateTime?
+  description             String
+  amount                  Decimal                            @db.Decimal(18, 2)
+  categoryName            String
+  contaAzulCategoryId     String?
+  costCenterName          String?
+  contaAzulCostCenterId   String?
+  externalProtocolId      String?
+  externalEventId         String?
+  externalInstallmentId   String?
+  externalSettlementId    String?
+  lastError               String?
+  metadata                Json?
+  createdAt               DateTime                           @default(now())
+  updatedAt               DateTime                           @updatedAt
+
+  export ContaAzulFinancialExport @relation(fields: [exportId], references: [id], onDelete: Cascade)
+
+  @@unique([exportId, lineKey])
+  @@index([exportId, status])
+  @@index([externalProtocolId])
 }
 
 model ClientBank {

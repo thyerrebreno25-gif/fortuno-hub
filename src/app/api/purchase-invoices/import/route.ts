@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const member = await getPurchaseInvoiceMember();
   if (!member) return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
   const permission = await getPurchaseInvoicePermission(member);
-  if (!permission.canImport) return NextResponse.json({ error: "Você não possui permissão para importar notas fiscais." }, { status: 403 });
+  if (!permission.canImport) return NextResponse.json({ error: "Você não possui permissão para importar notas de compra." }, { status: 403 });
 
   try {
     const formData = await request.formData();

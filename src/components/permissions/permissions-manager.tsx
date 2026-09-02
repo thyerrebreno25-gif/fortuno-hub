@@ -22,7 +22,7 @@ const modules = [
   ["NOTICES", "Avisos"],
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
-  ["PURCHASE_INVOICES", "Notas fiscais de entrada"],
+  ["PURCHASE_INVOICES", "Notas de compra"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],
   ["ONBOARDING", "Onboarding"],

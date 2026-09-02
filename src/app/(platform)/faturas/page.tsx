@@ -7,6 +7,10 @@ import { CARD_INVOICE_IMAGE_ACCEPT } from "@/modules/card-invoices/image-reader.
 import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exporter";
 import { trackImport } from "@/modules/imports/import-tracker";
 import {
+  DirectFinancialSend,
+  type DirectFinancialLine,
+} from "@/components/conta-azul/direct-financial-send";
+import {
   findLearnedInvoiceCategory,
   haveSameNormalizedInvoiceDescription,
   learnInvoiceCategory,
@@ -44,7 +48,6 @@ import {
   IconCheck,
   IconChevronRight,
   IconCreditCard,
-  IconDownload,
   IconEdit,
   IconEye,
   IconEyeOff,
@@ -581,27 +584,15 @@ export default function FaturasPage() {
     }
   }
 
-  async function exportContaAzul() {
-    if (!clientId || !files.length || !bank || !canExport) return;
-    const clientName = clients.find((item) => item.value === clientId)?.label || "Cliente";
-    try {
-      exportInvoiceToContaAzul({
-        items,
-        clientName,
-        bankName: bank,
-        competenceDate,
-        dueDate,
-        paymentDate,
-      });
-
-      const normalizedInvoiceTotal =
-  typeof invoiceTotal === "number"
-    ? invoiceTotal
-    : invoiceTotal.trim()
-      ? Number(invoiceTotal.replace(/\./g, "").replace(",", "."))
-      : null;
-
-      await trackImport({
+  async function saveExportHistory(exportFormat: "XLSX_CONTA_AZUL" | "API_CONTA_AZUL") {
+    if (!clientId || !bank) return;
+    const normalizedInvoiceTotal =
+      typeof invoiceTotal === "number"
+        ? invoiceTotal
+        : invoiceTotal.trim()
+          ? Number(invoiceTotal.replace(/\./g, "").replace(",", "."))
+          : null;
+    await trackImport({
         clientId,
         module: "CREDIT_CARD_INVOICE",
         status: "EXPORTED",
@@ -615,11 +606,9 @@ export default function FaturasPage() {
             ? "inter-invoice"
             : "card-invoice",
         parserVersion: isImageImport ? "2.0.0" : "1.0.0",
-        expectedTotal:
-  normalizedInvoiceTotal !== null &&
-  Number.isFinite(normalizedInvoiceTotal)
-    ? normalizedInvoiceTotal
-    : diagnostics.identifiedTotal,
+        expectedTotal: normalizedInvoiceTotal !== null && Number.isFinite(normalizedInvoiceTotal)
+          ? normalizedInvoiceTotal
+          : diagnostics.identifiedTotal,
         parsedTotal: diagnostics.identifiedTotal,
         difference: diagnostics.difference,
         metadata: {
@@ -635,7 +624,7 @@ export default function FaturasPage() {
             : 0,
           warnings: parseWarnings,
           sourceFiles: files.map((item) => item.name),
-          exportFormat: "XLSX_CONTA_AZUL",
+          exportFormat,
         },
         transactions: items.map((item) => ({
           date: item.date,
@@ -646,7 +635,22 @@ export default function FaturasPage() {
           costCenter: useCostCenters ? item.costCenter : null,
           metadata: { installment: item.installment || null },
         })),
+    });
+  }
+
+  async function exportContaAzul() {
+    if (!clientId || !files.length || !bank || !canExport) return;
+    const clientName = clients.find((item) => item.value === clientId)?.label || "Cliente";
+    try {
+      exportInvoiceToContaAzul({
+        items,
+        clientName,
+        bankName: bank,
+        competenceDate,
+        dueDate,
+        paymentDate,
       });
+      await saveExportHistory("XLSX_CONTA_AZUL");
       notifications.show({ color: "green", title: "Exportação concluída", message: "Planilha gerada e processamento salvo no histórico." });
     } catch (error) {
       notifications.show({ color: "red", title: "Não foi possível exportar", message: error instanceof Error ? error.message : "Erro desconhecido." });
@@ -658,6 +662,32 @@ export default function FaturasPage() {
     diagnostics.uncategorized === 0 &&
     diagnostics.missingCostCenters === 0 &&
     diagnostics.review === 0;
+
+  const directFinancialLines = useMemo<DirectFinancialLine[]>(() => items.map((item) => ({
+    lineKey: `${item.id}|${item.date}|${item.description}|${item.amount}`,
+    direction: item.amount < 0 ? "RECEIVABLE" : "PAYABLE",
+    competenceDate: item.date || competenceDate,
+    dueDate,
+    paymentDate,
+    description: item.installment
+      ? `${item.description} ${item.installment}`.trim()
+      : item.description,
+    amount: Math.abs(item.amount),
+    categoryName: item.category || "",
+    costCenterName: useCostCenters ? item.costCenter : null,
+    observation: [
+      bank ? `Banco: ${bank}` : "",
+      item.installment ? `Parcela: ${item.installment}` : "",
+      item.amount < 0 ? "Crédito/estorno identificado na fatura" : "",
+      "Classificação revisada no Fortuno Hub",
+    ].filter(Boolean).join(" | "),
+    metadata: { installment: item.installment || null },
+  })), [bank, competenceDate, dueDate, items, paymentDate, useCostCenters]);
+
+  const directSourceKey = [
+    bank || "cartao",
+    ...files.map((item) => `${item.name}:${item.size}:${item.lastModified}`),
+  ].join("|");
 
   return (
     <Stack gap="xl">
@@ -1737,13 +1767,25 @@ export default function FaturasPage() {
                 </Stack>
               </SimpleGrid>
 
-              <Button
-                leftSection={<IconFileSpreadsheet size={18} />}
-                disabled={!canExport}
-                onClick={exportContaAzul}
-              >
-                Exportar planilha Conta Azul
-              </Button>
+              <Group>
+                <DirectFinancialSend
+                  clientId={clientId}
+                  module="CREDIT_CARD_INVOICE"
+                  sourceKey={directSourceKey}
+                  sourceName={files.length === 1 ? files[0].name : `${files.length} imagens da fatura`}
+                  counterpartyHint={bank}
+                  lines={directFinancialLines}
+                  disabled={!canExport}
+                  onSuccess={() => saveExportHistory("API_CONTA_AZUL")}
+                />
+                <Button
+                  leftSection={<IconFileSpreadsheet size={18} />}
+                  disabled={!canExport}
+                  onClick={exportContaAzul}
+                >
+                  Exportar planilha Conta Azul
+                </Button>
+              </Group>
             </Group>
 
             {!canExport && (

@@ -187,7 +187,7 @@ const menuItems: MenuItem[] = [
     group: "Financeiro",
   },
   {
-    label: "Notas fiscais",
+    label: "Notas de compra",
     href: "/notas-fiscais",
     moduleCode: "PURCHASE_INVOICES",
     icon: icons.document,

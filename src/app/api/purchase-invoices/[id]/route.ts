@@ -24,7 +24,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     where: { id, organizationId: member.organizationId },
     include: { items: true },
   });
-  if (!invoice) return NextResponse.json({ error: "Nota fiscal não encontrada." }, { status: 404 });
+  if (!invoice) return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
   if (invoice.status === "SENT") return NextResponse.json({ error: "A despesa desta nota já foi enviada." }, { status: 409 });
 
   const body = (await request.json()) as {

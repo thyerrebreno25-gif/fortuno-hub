@@ -154,7 +154,7 @@ export default function NotasFiscaisPage() {
       setData(body);
       setSelectedId((current) => current && body.invoices.some((invoice: Invoice) => invoice.id === current) ? current : body.invoices[0]?.id || null);
     } catch (error) {
-      notifications.show({ color: "red", title: "Notas fiscais", message: error instanceof Error ? error.message : "Falha ao carregar." });
+      notifications.show({ color: "red", title: "Notas de compra", message: error instanceof Error ? error.message : "Falha ao carregar." });
     } finally {
       setLoading(false);
     }
@@ -282,7 +282,7 @@ export default function NotasFiscaisPage() {
       <div className={styles.header}>
         <div>
           <Text className={styles.eyebrow}>Financeiro</Text>
-          <Title order={1}>Notas fiscais de entrada</Title>
+          <Title order={1}>Notas de compra</Title>
           <Text c="dimmed">Revise os itens da NF-e, aprenda a categorização e gere a despesa rateada no Conta Azul.</Text>
         </div>
         <Group>
@@ -331,7 +331,7 @@ export default function NotasFiscaisPage() {
           ))}
         </div>
 
-        {loading && !data ? <Paper withBorder radius="lg" p={50}><Group justify="center"><Loader /><Text>Carregando notas fiscais…</Text></Group></Paper> : (
+        {loading && !data ? <Paper withBorder radius="lg" p={50}><Group justify="center"><Loader /><Text>Carregando notas de compra…</Text></Group></Paper> : (
           <div className={styles.workspace}>
             <Paper withBorder radius="lg" p="md">
               <Group justify="space-between" mb="md"><div><Title order={3}>Notas disponíveis</Title><Text size="sm" c="dimmed">Selecione uma nota para revisar.</Text></div><Badge>{data?.invoices.length || 0}</Badge></Group>

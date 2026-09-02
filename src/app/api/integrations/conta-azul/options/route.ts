@@ -30,12 +30,12 @@ export async function GET(request: Request) {
   if (!permission.canView) return NextResponse.json({ error: "Sem permissão para consultar a Conta Azul." }, { status: 403 });
   const url = new URL(request.url);
   const clientId = url.searchParams.get("clientId") || "";
-  const supplierTerm = url.searchParams.get("supplier")?.replace(/\D/g, "") || "";
+  const supplierTerm = url.searchParams.get("supplier")?.trim() || "";
   const client = await findAuthorizedClient(member, clientId);
   if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
 
   try {
-    const supplierParams = new URLSearchParams({ pagina: "1", tamanho_pagina: "100", tipo_perfil: "FORNECEDOR", status: "ATIVO" });
+    const supplierParams = new URLSearchParams({ pagina: "1", tamanho_pagina: "1000", tipo_perfil: "FORNECEDOR", status: "ATIVO" });
     if (supplierTerm) supplierParams.set("termo_busca", supplierTerm);
     // A Conta Azul rotaciona o refresh_token a cada renovação. As chamadas são
     // sequenciais para impedir que quatro requisições tentem renovar o mesmo

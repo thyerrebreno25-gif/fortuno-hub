@@ -23,7 +23,7 @@ export async function POST(_request: Request, context: RouteContext) {
     where: { id, organizationId: member.organizationId },
     include: { items: { orderBy: { lineNumber: "asc" } }, connection: true },
   });
-  if (!invoice) return NextResponse.json({ error: "Nota fiscal não encontrada." }, { status: 404 });
+  if (!invoice) return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
   if (invoice.status === "SENT" || invoice.externalPayableProtocolId) {
     return NextResponse.json({ error: "Esta nota já possui uma despesa enviada e não será duplicada." }, { status: 409 });
   }

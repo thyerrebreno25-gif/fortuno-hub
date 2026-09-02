@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const member = await getPurchaseInvoiceMember();
   if (!member) return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
   const permission = await getPurchaseInvoicePermission(member);
-  if (!permission.canView) return NextResponse.json({ error: "Você não possui permissão para visualizar notas fiscais." }, { status: 403 });
+  if (!permission.canView) return NextResponse.json({ error: "Você não possui permissão para visualizar notas de compra." }, { status: 403 });
 
   const clientId = new URL(request.url).searchParams.get("clientId") || "";
   const client = await findAuthorizedClient(member, clientId);

@@ -26,7 +26,7 @@ function dateForContaAzul(value: string): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
-function eventLabel(eventType: ContaAzulAcquirerLine["eventType"]): string {
+export function contaAzulAcquirerEventLabel(eventType: ContaAzulAcquirerLine["eventType"]): string {
   return {
     SALE: "Venda bruta",
     FEE: "Taxa MDR",
@@ -57,7 +57,7 @@ function rateStatusLabel(value?: ContaAzulAcquirerLine["rateValidation"]): strin
   }[value ?? "NOT_APPLICABLE"];
 }
 
-function buildObservation(line: ContaAzulAcquirerLine): string {
+export function buildContaAzulAcquirerObservation(line: ContaAzulAcquirerLine): string {
   const source = line.sourceMetadata ?? {};
   const sourceValue = (...keys: string[]) => {
     for (const key of keys) {
@@ -108,7 +108,7 @@ function buildObservation(line: ContaAzulAcquirerLine): string {
   return details.join(" | ");
 }
 
-function simplifiedDescription(line: ContaAzulAcquirerLine): string {
+export function contaAzulAcquirerDescription(line: ContaAzulAcquirerLine): string {
   const modality = modalityLabel(line.transactionType);
   const brand = line.cardBrand || (line.transactionType === "PIX" ? "PIX" : "");
   const detail = [brand, modality].filter(Boolean).join(" ");
@@ -146,11 +146,11 @@ export function exportAcquirerToContaAzul(
     "Data de Pagamento": dateForContaAzul(line.paymentDate),
     Valor: Number(line.amount.toFixed(2)),
     Categoria: line.category,
-    Descrição: simplifiedDescription(line),
+    Descrição: contaAzulAcquirerDescription(line),
     "Cliente/Fornecedor": "",
     "CNPJ/CPF Cliente/Fornecedor": "",
     "Centro de Custo": "",
-    Observações: `${eventLabel(line.eventType)} | ${buildObservation(line)}`,
+    Observações: `${contaAzulAcquirerEventLabel(line.eventType)} | ${buildContaAzulAcquirerObservation(line)}`,
   }));
 
   const headers = [

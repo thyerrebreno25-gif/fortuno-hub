@@ -13,9 +13,18 @@ import {
   type SupportedAcquirer,
 } from "@/modules/acquirers/parse-acquirer-workbook";
 import { interpretReadingInstructions } from "@/modules/acquirers/reading-instructions";
-import { exportAcquirerToContaAzul } from "@/modules/acquirers/conta-azul-exporter";
+import {
+  buildContaAzulAcquirerObservation,
+  contaAzulAcquirerDescription,
+  contaAzulAcquirerEventLabel,
+  exportAcquirerToContaAzul,
+} from "@/modules/acquirers/conta-azul-exporter";
 import { AcquirerAuditDashboard } from "@/modules/acquirers/components/acquirer-audit-dashboard";
 import { trackImport } from "@/modules/imports/import-tracker";
+import {
+  DirectFinancialSend,
+  type DirectFinancialLine,
+} from "@/components/conta-azul/direct-financial-send";
 import {
   Accordion,
   ActionIcon,
@@ -565,14 +574,8 @@ export default function AdquirentesPage() {
     }
   }
 
-  async function exportContaAzul() {
-    try {
-      exportAcquirerToContaAzul(
-        lines,
-        selectedClient?.label ?? "Cliente",
-        detectedAcquirer ?? "ADQUIRENTE",
-      );
-      await trackImport({
+  async function saveExportHistory(exportFormat: "XLSX_CONTA_AZUL" | "API_CONTA_AZUL") {
+    await trackImport({
         clientId,
         module: "ACQUIRER",
         status: "EXPORTED",
@@ -601,7 +604,7 @@ export default function AdquirentesPage() {
           cancellations: totals.cancellations,
           divergentSales: totals.divergentSales,
           requiresRateReview: totals.divergentSales > 0,
-          exportFormat: "XLSX_CONTA_AZUL",
+          exportFormat,
           readingInstructions: readingInstructions.trim() || null,
           readingRules: instructionSummary?.rules.map((rule) => ({
             action: rule.action,
@@ -625,12 +628,48 @@ export default function AdquirentesPage() {
             sourceMetadata: line.sourceMetadata ?? null,
           },
         })),
-      });
+    });
+  }
+
+  async function exportContaAzul() {
+    try {
+      exportAcquirerToContaAzul(
+        lines,
+        selectedClient?.label ?? "Cliente",
+        detectedAcquirer ?? "ADQUIRENTE",
+      );
+      await saveExportHistory("XLSX_CONTA_AZUL");
     } catch (error) {
       console.error("Erro ao exportar Conta Azul:", error);
       window.alert(error instanceof Error ? error.message : "Não foi possível exportar a planilha.");
     }
   }
+
+  const directFinancialLines = useMemo<DirectFinancialLine[]>(() => lines.map((line) => ({
+    lineKey: `${line.sourceSheet}|${line.sourceRow}|${line.eventType}|${line.description}|${line.amount}`,
+    direction: line.amount >= 0 ? "RECEIVABLE" : "PAYABLE",
+    competenceDate: line.saleDate || line.paymentDate || manualPaymentDate,
+    dueDate: line.dueDate || line.paymentDate || manualPaymentDate,
+    paymentDate: line.paymentDate || manualPaymentDate,
+    description: contaAzulAcquirerDescription(line),
+    amount: Math.abs(line.amount),
+    categoryName: line.category,
+    observation: `${contaAzulAcquirerEventLabel(line.eventType)} | ${buildContaAzulAcquirerObservation(line)} | Linha revisada no Fortuno Hub`,
+    metadata: {
+      eventType: line.eventType,
+      feeCategory: line.feeCategory ?? null,
+      sourceSheet: line.sourceSheet,
+      sourceRow: line.sourceRow,
+      sourceMetadata: line.sourceMetadata ?? null,
+    },
+  })), [lines, manualPaymentDate]);
+
+  const directSourceKey = [
+    file ? `${file.name}:${file.size}:${file.lastModified}` : "adquirente",
+    detectedAcquirer || "ADQUIRENTE",
+    processedSheets.join(","),
+    sourceRows,
+  ].join("|");
 
   function resetPage() {
     setView("upload");
@@ -1303,17 +1342,32 @@ export default function AdquirentesPage() {
                 <Stack gap={0}><Text size="xs" c="dimmed">Custos e descontos</Text><Text fw={800} fz={20} c="red">-{formatMoney(totals.totalCosts)}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Líquido conferido</Text><Text fw={800} fz={20}>{formatMoney(totals.expectedNet)}</Text></Stack>
               </SimpleGrid>
-              <Button
-                leftSection={<IconDownload size={18} />}
-                size="md"
-                disabled={
-                  lines.length === 0
-                  || (unmatchedInstructionRules.length > 0 && !instructionReviewConfirmed)
-                }
-                onClick={exportContaAzul}
-              >
-                Exportar planilha Conta Azul
-              </Button>
+              <Group>
+                <DirectFinancialSend
+                  clientId={clientId}
+                  module="ACQUIRER"
+                  sourceKey={directSourceKey}
+                  sourceName={file?.name || "Planilha da adquirente"}
+                  counterpartyHint={detectedAcquirer}
+                  lines={directFinancialLines}
+                  disabled={
+                    lines.length === 0
+                    || (unmatchedInstructionRules.length > 0 && !instructionReviewConfirmed)
+                  }
+                  onSuccess={() => saveExportHistory("API_CONTA_AZUL")}
+                />
+                <Button
+                  leftSection={<IconDownload size={18} />}
+                  size="md"
+                  disabled={
+                    lines.length === 0
+                    || (unmatchedInstructionRules.length > 0 && !instructionReviewConfirmed)
+                  }
+                  onClick={exportContaAzul}
+                >
+                  Exportar planilha Conta Azul
+                </Button>
+              </Group>
             </Group>
             <Alert mt="lg" color="green" icon={<IconReceipt size={18} />}>A exportação conterá venda bruta, taxa, ajustes, cancelamentos, chargebacks e antecipações em linhas independentes.</Alert>
           </Paper>
