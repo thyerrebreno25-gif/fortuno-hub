@@ -171,7 +171,11 @@ async function createPendingLines(input: {
   });
 
   for (const line of pending) {
-    const category = findContaAzulOption(input.categories, line.categoryName);
+    const category = findContaAzulOption(
+      input.categories,
+      line.categoryName,
+      line.direction === "RECEIVABLE" ? "RECEITA" : "DESPESA",
+    );
     const costCenter = line.costCenterName
       ? findContaAzulOption(input.costCenters, line.costCenterName)
       : null;
@@ -377,7 +381,11 @@ export async function POST(request: Request) {
   const categories = contaAzulOptions(categoriesBody);
   const costCenters = contaAzulOptions(costCentersBody);
   const unresolvedCategories = Array.from(new Set(
-    body.lines.filter((line) => !findContaAzulOption(categories, line.categoryName))
+    body.lines.filter((line) => !findContaAzulOption(
+      categories,
+      line.categoryName,
+      line.direction === "RECEIVABLE" ? "RECEITA" : "DESPESA",
+    ))
       .map((line) => line.categoryName),
   ));
   const unresolvedCostCenters = Array.from(new Set(

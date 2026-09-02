@@ -1,6 +1,7 @@
 export type ContaAzulOption = {
   value: string;
   label: string;
+  type?: "RECEITA" | "DESPESA";
 };
 
 export type FinancialDirection = "PAYABLE" | "RECEIVABLE";
@@ -18,18 +19,25 @@ export function normalizeContaAzulLabel(value: string): string {
 export function findContaAzulOption(
   options: ContaAzulOption[],
   requestedLabel: string,
+  expectedType?: ContaAzulOption["type"],
 ): ContaAzulOption | null {
   const requested = normalizeContaAzulLabel(requestedLabel);
   if (!requested) return null;
 
-  const exact = options.find((option) => normalizeContaAzulLabel(option.label) === requested);
+  const compatibleOptions = expectedType
+    ? options.filter((option) => !option.type || option.type === expectedType)
+    : options;
+
+  const exact = compatibleOptions.find(
+    (option) => normalizeContaAzulLabel(option.label) === requested,
+  );
   if (exact) return exact;
 
   // Categorias internas podem ser exibidas como "Categoria > Subcategoria".
   // O Conta Azul normalmente devolve apenas o nome da folha.
   const leaf = requestedLabel.split(/\s*>\s*/).at(-1) || requestedLabel;
   const normalizedLeaf = normalizeContaAzulLabel(leaf);
-  const leafMatches = options.filter(
+  const leafMatches = compatibleOptions.filter(
     (option) => normalizeContaAzulLabel(option.label) === normalizedLeaf,
   );
   return leafMatches.length === 1 ? leafMatches[0] : null;
@@ -61,8 +69,12 @@ export function contaAzulOptions(body: unknown): ContaAzulOption[] {
     const label = [item.nome, item.descricao, item.name, item.razao_social].find(
       (candidate) => typeof candidate === "string",
     );
+    const rawType = typeof item.tipo === "string" ? item.tipo.toUpperCase() : "";
+    const type = rawType === "RECEITA" || rawType === "DESPESA"
+      ? rawType
+      : undefined;
     return typeof value === "string" && typeof label === "string"
-      ? [{ value, label }]
+      ? [{ value, label, ...(type ? { type } : {}) }]
       : [];
   });
 }

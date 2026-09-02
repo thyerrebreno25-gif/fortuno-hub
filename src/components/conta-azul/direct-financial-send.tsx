@@ -18,7 +18,9 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconCloudUpload,
+  IconExternalLink,
   IconLinkOff,
+  IconRefresh,
 } from "@tabler/icons-react";
 import {
   findContaAzulOption,
@@ -68,6 +70,14 @@ type ProgressCounts = {
 
 const emptyCounts: ProgressCounts = { PENDING: 0, CREATED: 0, SETTLED: 0, FAILED: 0 };
 
+function categoryType(direction: FinancialDirection): ContaAzulOption["type"] {
+  return direction === "RECEIVABLE" ? "RECEITA" : "DESPESA";
+}
+
+function categoryRequirementKey(direction: FinancialDirection, categoryName: string) {
+  return `${direction}:${categoryName}`;
+}
+
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -91,6 +101,8 @@ export function DirectFinancialSend({
   const [financialAccountId, setFinancialAccountId] = useState<string | null>(null);
   const [settle, setSettle] = useState(true);
   const [counts, setCounts] = useState<ProgressCounts>(emptyCounts);
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => {
     if (!opened || !clientId) return;
@@ -99,8 +111,6 @@ export function DirectFinancialSend({
       setLoading(true);
       setConnected(false);
       setOptions({});
-      setContactId(null);
-      setFinancialAccountId(null);
       try {
         const statusResponse = await fetch(
           `/api/integrations/conta-azul/status?clientId=${encodeURIComponent(clientId!)}`,
@@ -139,23 +149,51 @@ export function DirectFinancialSend({
     }
     void loadContaAzul();
     return () => { cancelled = true; };
-  }, [clientId, counterpartyHint, opened]);
+  }, [clientId, counterpartyHint, opened, refreshVersion]);
+
+  const categoryRequirements = useMemo(() => {
+    const categories = options.categories || [];
+    const unique = new Map<string, { key: string; name: string; direction: FinancialDirection }>();
+    for (const line of lines) {
+      if (findContaAzulOption(categories, line.categoryName, categoryType(line.direction))) continue;
+      const key = categoryRequirementKey(line.direction, line.categoryName);
+      unique.set(key, { key, name: line.categoryName, direction: line.direction });
+    }
+    return Array.from(unique.values());
+  }, [lines, options.categories]);
+
+  const effectiveLines = useMemo(() => {
+    const categories = options.categories || [];
+    return lines.map((line) => {
+      const key = categoryRequirementKey(line.direction, line.categoryName);
+      const overrideId = categoryOverrides[key];
+      if (!overrideId) return line;
+      const replacement = categories.find(
+        (option) => option.value === overrideId
+          && (!option.type || option.type === categoryType(line.direction)),
+      );
+      return replacement ? { ...line, categoryName: replacement.label } : line;
+    });
+  }, [categoryOverrides, lines, options.categories]);
 
   const unresolved = useMemo(() => {
     const categories = options.categories || [];
     const costCenters = options.costCenters || [];
     return {
-      categories: Array.from(new Set(
-        lines.filter((line) => !findContaAzulOption(categories, line.categoryName))
-          .map((line) => line.categoryName),
-      )),
+      categories: categoryRequirements.filter((requirement) => {
+        const overrideId = categoryOverrides[requirement.key];
+        return !overrideId || !categories.some(
+          (option) => option.value === overrideId
+            && (!option.type || option.type === categoryType(requirement.direction)),
+        );
+      }),
       costCenters: Array.from(new Set(
-        lines.filter(
+        effectiveLines.filter(
           (line) => line.costCenterName && !findContaAzulOption(costCenters, line.costCenterName),
         ).map((line) => line.costCenterName as string),
       )),
     };
-  }, [lines, options.categories, options.costCenters]);
+  }, [categoryOverrides, categoryRequirements, effectiveLines, options.categories, options.costCenters]);
 
   const progress = lines.length
     ? Math.min(100, ((counts.CREATED + counts.SETTLED) / lines.length) * 100)
@@ -189,7 +227,7 @@ export function DirectFinancialSend({
             financialAccountId,
             financialAccountName: account?.label || null,
             settle,
-            lines,
+            lines: effectiveLines,
           }),
         });
         const result = await response.json().catch(() => ({}));
@@ -237,7 +275,12 @@ export function DirectFinancialSend({
         variant="light"
         leftSection={<IconCloudUpload size={18} />}
         disabled={disabled || !clientId || lines.length === 0}
-        onClick={() => setOpened(true)}
+        onClick={() => {
+          setContactId(null);
+          setFinancialAccountId(null);
+          setCategoryOverrides({});
+          setOpened(true);
+        }}
       >
         Enviar direto ao Conta Azul
       </Button>
@@ -293,16 +336,63 @@ export function DirectFinancialSend({
                   : "Os lançamentos serão criados em aberto, sem baixa."}
               />
 
-              {(unresolved.categories.length > 0 || unresolved.costCenters.length > 0) && (
-                <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="Classificações não localizadas">
+              {(categoryRequirements.length > 0 || unresolved.costCenters.length > 0) && (
+                <Alert
+                  color={unresolved.categories.length || unresolved.costCenters.length ? "orange" : "blue"}
+                  icon={<IconAlertTriangle size={18} />}
+                  title="Classificações não localizadas"
+                >
                   <Stack gap={4}>
-                    {unresolved.categories.length > 0 && (
-                      <Text size="sm">Categorias: {unresolved.categories.join(", ")}</Text>
-                    )}
+                    {categoryRequirements.map((requirement) => (
+                      <Select
+                        key={requirement.key}
+                        label={`${requirement.name} (${requirement.direction === "RECEIVABLE" ? "receita" : "despesa"})`}
+                        description="Selecione uma categoria equivalente já existente no Conta Azul."
+                        placeholder="Selecionar categoria existente"
+                        data={(options.categories || []).filter(
+                          (option) => !option.type || option.type === categoryType(requirement.direction),
+                        )}
+                        value={categoryOverrides[requirement.key] || null}
+                        onChange={(value) => setCategoryOverrides((current) => {
+                          const next = { ...current };
+                          if (value) next[requirement.key] = value;
+                          else delete next[requirement.key];
+                          return next;
+                        })}
+                        searchable
+                        clearable
+                        nothingFoundMessage="Nenhuma categoria compatível localizada"
+                      />
+                    ))}
                     {unresolved.costCenters.length > 0 && (
                       <Text size="sm">Centros de custo: {unresolved.costCenters.join(", ")}</Text>
                     )}
-                    <Text size="sm">Cadastre ou ajuste esses nomes no Conta Azul antes do envio direto.</Text>
+                    <Text size="sm">
+                      A API do Conta Azul não permite criar categorias. Você pode selecionar uma equivalente acima
+                      ou cadastrá-la no Conta Azul e atualizar a lista.
+                    </Text>
+                    <Group gap="xs">
+                      <Button
+                        component="a"
+                        href="https://app.contaazul.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        variant="default"
+                        size="xs"
+                        leftSection={<IconExternalLink size={14} />}
+                      >
+                        Abrir Conta Azul
+                      </Button>
+                      <Button
+                        variant="light"
+                        size="xs"
+                        loading={loading}
+                        leftSection={<IconRefresh size={14} />}
+                        onClick={() => setRefreshVersion((current) => current + 1)}
+                      >
+                        Atualizar categorias
+                      </Button>
+                    </Group>
                   </Stack>
                 </Alert>
               )}

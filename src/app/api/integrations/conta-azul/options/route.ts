@@ -20,7 +20,14 @@ function optionFrom(item: ApiItem) {
   const id = [item.id, item.uuid, item.id_categoria, item.id_centro_custo].find((value) => typeof value === "string") as string | undefined;
   const label = [item.nome, item.descricao, item.name, item.razao_social].find((value) => typeof value === "string") as string | undefined;
   if (!id || !label) return null;
-  return { value: id, label, document: typeof item.documento === "string" ? item.documento : null };
+  const rawType = typeof item.tipo === "string" ? item.tipo.toUpperCase() : "";
+  const type = rawType === "RECEITA" || rawType === "DESPESA" ? rawType : undefined;
+  return {
+    value: id,
+    label,
+    document: typeof item.documento === "string" ? item.documento : null,
+    ...(type ? { type } : {}),
+  };
 }
 
 export async function GET(request: Request) {

@@ -18,6 +18,16 @@ describe("envio financeiro direto ao Conta Azul", () => {
     expect(findContaAzulOption(options, "DESPESAS > Sistemas e Softwares")?.value).toBe("category-2");
   });
 
+  it("não mistura categorias de receita e despesa com o mesmo nome", () => {
+    const options = [
+      { value: "income", label: "Taxas", type: "RECEITA" as const },
+      { value: "expense", label: "Taxas", type: "DESPESA" as const },
+    ];
+
+    expect(findContaAzulOption(options, "Taxas", "RECEITA")?.value).toBe("income");
+    expect(findContaAzulOption(options, "Taxas", "DESPESA")?.value).toBe("expense");
+  });
+
   it("mantém um lançamento e seu rateio em uma única linha financeira", () => {
     const payload = buildFinancialEventPayload({
       direction: "PAYABLE",
