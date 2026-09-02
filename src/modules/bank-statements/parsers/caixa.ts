@@ -53,7 +53,9 @@ export function parseCaixaStatement(source: string[]): ParsedStatement {
   const lines = source.map(clean).filter(Boolean);
   const joined = lines.join("\n");
   const normalized = normalize(joined);
-  if (!normalized.includes("CAIXA") || !normalized.includes("EXTRATO POR PERIODO")) {
+  const isPeriodStatement = normalized.includes("EXTRATO POR PERIODO");
+  const isAccountStatement = normalized.includes("EXTRATO DA CONTA");
+  if (!normalized.includes("CAIXA") || (!isPeriodStatement && !isAccountStatement)) {
     throw new Error("O arquivo não corresponde ao layout de extrato da Caixa configurado.");
   }
 
@@ -65,10 +67,13 @@ export function parseCaixaStatement(source: string[]): ParsedStatement {
   const periodMatch = joined.match(
     /Per[ií]odo dos lan[cç]amentos\s+(\d{2}\/\d{2}\/\d{4})\s+at[eé]\s+(\d{2}\/\d{2}\/\d{4})/i,
   );
+  const statementDate = joined.match(
+    /(?:^|\n)Data\s+(\d{2}\/\d{2}\/\d{4})(?:\s*-\s*\d{2}:\d{2})?/i,
+  )?.[1];
   const openingMatch = joined.match(
     new RegExp(`SALDO ANTERIOR\\s+(?:R\\$\\s*)?(${MONEY})\\s*([CD])`, "i"),
   );
-  if (!periodMatch) {
+  if (isPeriodStatement && !periodMatch) {
     throw new Error("O período do extrato da Caixa não foi identificado.");
   }
   if (!openingMatch) {
@@ -134,13 +139,22 @@ export function parseCaixaStatement(source: string[]): ParsedStatement {
     );
   }
 
+  const firstTransactionDate = transactions[0]?.date;
+  const lastTransactionDate = transactions.at(-1)?.date;
+  const periodStart = periodMatch ? iso(periodMatch[1]) : firstTransactionDate;
+  const periodEnd = periodMatch
+    ? iso(periodMatch[2])
+    : statementDate
+      ? iso(statementDate)
+      : lastTransactionDate;
+
   return {
     bank: "Caixa",
     accountHolder: holder,
     branch: accountMatch?.[1],
     account: accountMatch?.[2],
-    periodStart: iso(periodMatch[1]),
-    periodEnd: iso(periodMatch[2]),
+    periodStart,
+    periodEnd,
     detectedOpeningBalance,
     detectedClosingBalance: latestBalance,
     transactions,

@@ -54,4 +54,33 @@ describe("leitor de extrato da Caixa", () => {
     const incomplete = REAL_LAYOUT_LINES.filter((line) => !line.includes("PIX RECEBIDO"));
     expect(() => parseCaixaStatement(incomplete)).toThrow("leitura do extrato da Caixa ficou incompleta");
   });
+
+  it('lê o layout "Extrato da conta" e infere o período pela emissão e movimentações', () => {
+    const result = parseCaixaStatement([
+      "CAIXA #PESSOAL",
+      "Extrato da conta",
+      "Cliente GUIMARAES SERVICOS LTDA",
+      "Conta 1502 / 1292.000568008508-5",
+      "Data 27/08/2026 - 11:02",
+      "SALDO ANTERIOR R$ 1,41 C",
+      "25/08/2026 - 00:00:00 000000 SALDO DIA 0,00 C 1.691,41 D",
+      "25/08/2026 - 02:32:18 000000 DEB PARC EMPREST PESSOAL 1.625,22D 1.691,41 D",
+      "20/08/2026 - 00:00:00 000000 SALDO DIA 0,00 C 66,19 D",
+      "20/08/2026 - 05:25:30 202607 PLANO MAIS VALOR 2 67,60 D 66,19 D",
+    ]);
+
+    expect(result).toMatchObject({
+      bank: "Caixa",
+      accountHolder: "GUIMARAES SERVICOS LTDA",
+      branch: "1502",
+      account: "1292.000568008508-5",
+      periodStart: "2026-08-20",
+      periodEnd: "2026-08-27",
+      detectedOpeningBalance: 1.41,
+      detectedClosingBalance: -1691.41,
+    });
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions.map((item) => item.amount)).toEqual([67.6, 1625.22]);
+    expect(result.transactions.every((item) => item.type === "DEBIT")).toBe(true);
+  });
 });

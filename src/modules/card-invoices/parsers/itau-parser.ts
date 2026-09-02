@@ -28,7 +28,10 @@ type RawMovement = {
   amount: number;
   installment?: string;
   cardLastDigits?: string;
+  transactionType?: ParsedInvoiceItem["transactionType"];
 };
+
+type MovementSection = "NONE" | "DOMESTIC" | "INTERNATIONAL";
 
 function normalize(value: string): string {
   return String(value ?? "")
@@ -165,6 +168,64 @@ function parseMovement(
     amount,
     installment: installment.value,
     cardLastDigits,
+    transactionType: installment.value ? "INSTALLMENT_PURCHASE" : "PURCHASE",
+  };
+}
+
+function internationalDescription(
+  source: PdfTextLine[],
+  index: number,
+  datePartX: number,
+): string {
+  const line = source[index];
+  const descriptionFrom = (candidate: PdfTextLine) => normalize(
+    (candidate.parts ?? [])
+      .filter((part) => part.x > datePartX && part.x < 290)
+      .map((part) => part.text)
+      .join(" "),
+  );
+
+  const inline = descriptionFrom(line);
+  if (inline) return inline;
+
+  for (const nearby of [index - 1, index + 1]) {
+    const candidate = source[nearby];
+    if (!candidate || candidate.page !== line.page || Math.abs(candidate.y - line.y) > 5) continue;
+    const description = descriptionFrom(candidate);
+    if (description && !DATE_AT_START.test(description)) return description;
+  }
+
+  return "COMPRA INTERNACIONAL";
+}
+
+function parseInternationalMovement(
+  source: PdfTextLine[],
+  index: number,
+  closingDate: string,
+  cardLastDigits: string | undefined,
+): RawMovement | null {
+  const line = source[index];
+  const dateMatch = line.text.match(DATE_AT_START);
+  if (!dateMatch) return null;
+
+  const parts = line.parts ?? [];
+  const datePart = parts.find((part) => DATE_AT_START.test(part.text));
+  const amountPart = [...parts]
+    .reverse()
+    .find((part) => /^-?\s*R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}$/i.test(part.text));
+  const fallbackAmounts = [...line.text.matchAll(MONEY)];
+  const fallbackAmount = fallbackAmounts.at(-1)?.[0];
+  const amount = parseMoney(amountPart?.text ?? fallbackAmount ?? "");
+  if (amount === null || amount === 0) return null;
+
+  const day = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  return {
+    date: toIsoDate(day, month, resolveYear(day, month, closingDate)),
+    description: internationalDescription(source, index, datePart?.x ?? -1),
+    amount,
+    cardLastDigits,
+    transactionType: "INTERNATIONAL_PURCHASE",
   };
 }
 
@@ -248,16 +309,19 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
   const invoiceTotal = extractInvoiceTotal(source);
   const movements: RawMovement[] = [];
   let inMovementSection = false;
-  let inMovementTable = false;
+  let movementSection: MovementSection = "NONE";
   let foundMovements = false;
   let currentCard: string | undefined;
 
   if (closingDate) {
-    for (const line of source) {
+    for (let index = 0; index < source.length; index += 1) {
+      const line = source[index];
       const key = normalize(line.text);
       if (/^Lancamentos$/i.test(key)) {
         inMovementSection = true;
-        inMovementTable = true;
+        // Alguns PDFs antigos iniciam as compras nacionais logo após este
+        // título, sem repetir o subtítulo "Lançamentos nacionais".
+        movementSection = "DOMESTIC";
         foundMovements = true;
         continue;
       }
@@ -268,25 +332,34 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
       // cartão seguinte. O fim real acontece em "Produtos, serviços e encargos".
       if (/^Produtos,? servicos e encargos\b/i.test(key)) break;
       if (/^Total de lancamentos nacionais\b/i.test(key)) {
-        inMovementTable = false;
+        movementSection = "NONE";
+        continue;
+      }
+      if (/^Total de lancamentos internacionais\b/i.test(key)) {
+        movementSection = "NONE";
         continue;
       }
 
       const card = key.match(/\bFINAL\s+(\d{4})\b/i);
       if (card) {
         currentCard = card[1];
-        inMovementTable = true;
         continue;
       }
 
       if (/^Lancamentos nacionais$/i.test(key)) {
-        inMovementTable = true;
+        movementSection = "DOMESTIC";
+        continue;
+      }
+      if (/^Lancamentos internacionais$/i.test(key)) {
+        movementSection = "INTERNATIONAL";
         continue;
       }
 
-      if (!inMovementTable) continue;
+      if (movementSection === "NONE") continue;
 
-      const movement = parseMovement(line, closingDate, currentCard);
+      const movement = movementSection === "INTERNATIONAL"
+        ? parseInternationalMovement(source, index, closingDate, currentCard)
+        : parseMovement(line, closingDate, currentCard);
       if (movement) movements.push(movement);
     }
   }
@@ -299,7 +372,8 @@ export function parseItauInvoice(source: PdfTextLine[]): ParsedInvoice {
     amount: movement.amount,
     installment: movement.installment,
     cardLastDigits: movement.cardLastDigits,
-    transactionType: movement.installment ? "INSTALLMENT_PURCHASE" : "PURCHASE",
+    transactionType: movement.transactionType
+      ?? (movement.installment ? "INSTALLMENT_PURCHASE" : "PURCHASE"),
     exportable: true,
   }));
   const identifiedTotal = Number(items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));

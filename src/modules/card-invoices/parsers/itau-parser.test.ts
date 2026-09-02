@@ -137,4 +137,52 @@ describe("leitor de fatura do Itaú", () => {
     expect(result.items.some((item) => item.description.includes("LINHA QUE NAO"))).toBe(false);
     expect(result.warnings).toEqual([]);
   });
+
+  it("lê compras internacionais quando descrição e valores ficam em linhas próximas", () => {
+    const source: PdfTextLine[] = [
+      { page: 1, y: 700, text: "ITAU EMPRESAS VISA - 0004.XXXX.XXXX.0445" },
+      { page: 1, y: 680, text: "fatura do cartão: vencimento: data de fechamento:" },
+      { page: 1, y: 660, text: "Fechada 15/08/2026 04 agosto" },
+      { page: 1, y: 640, text: "Total da fatura R$683,77" },
+      { page: 1, y: 620, text: "Lançamentos" },
+      { page: 1, y: 600, text: "JOAO VITOR - FINAL 0543" },
+      { page: 1, y: 580, text: "Lançamentos nacionais" },
+      { page: 1, y: 560, text: "01/07 COMPRA NACIONAL R$100,00" },
+      { page: 1, y: 540, text: "Total de lançamentos nacionais R$100,00" },
+      { page: 1, y: 520, text: "Lançamentos internacionais" },
+      {
+        page: 1,
+        y: 498,
+        text: "07/07 BRL550,00 US$107,31 R$5,44 R$583,77",
+        parts: [
+          { x: 36, text: "07/07" },
+          { x: 305, text: "BRL550,00" },
+          { x: 375, text: "US$107,31" },
+          { x: 452, text: "R$5,44" },
+          { x: 531, text: "R$583,77" },
+        ],
+      },
+      {
+        page: 1,
+        y: 496,
+        text: "ANTHROPIC* CLAUDE SUB",
+        parts: [{ x: 79, text: "ANTHROPIC* CLAUDE SUB" }],
+      },
+      { page: 1, y: 470, text: "Total de lançamentos internacionais R$583,77" },
+      { page: 1, y: 450, text: "Produtos, serviços e encargos" },
+    ];
+
+    const result = parseItauInvoice(source);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.find((item) => item.transactionType === "INTERNATIONAL_PURCHASE"))
+      .toMatchObject({
+        date: "2026-07-07",
+        description: "ANTHROPIC* CLAUDE SUB",
+        amount: 583.77,
+        cardLastDigits: "0543",
+      });
+    expect(result.items.reduce((total, item) => total + item.amount, 0)).toBeCloseTo(683.77, 2);
+    expect(result.warnings).toEqual([]);
+  });
 });
