@@ -57,7 +57,6 @@ type OptionsResponse = {
   categories?: ContaAzulOption[];
   costCenters?: ContaAzulOption[];
   financialAccounts?: ContaAzulOption[];
-  suppliers?: ContaAzulOption[];
   error?: string;
 };
 
@@ -97,7 +96,6 @@ export function DirectFinancialSend({
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [options, setOptions] = useState<OptionsResponse>({});
-  const [contactId, setContactId] = useState<string | null>(null);
   const [technicalContactId, setTechnicalContactId] = useState<string | null>(null);
   const [technicalContactName, setTechnicalContactName] = useState<string | null>(null);
   const [financialAccountId, setFinancialAccountId] = useState<string | null>(null);
@@ -125,7 +123,10 @@ export function DirectFinancialSend({
           if (!cancelled) setConnected(false);
           return;
         }
-        const params = new URLSearchParams({ clientId: clientId! });
+        const params = new URLSearchParams({
+          clientId: clientId!,
+          scope: "financial-export",
+        });
         const optionsResponse = await fetch(
           `/api/integrations/conta-azul/options?${params.toString()}`,
           { cache: "no-store" },
@@ -135,13 +136,6 @@ export function DirectFinancialSend({
         if (!cancelled) {
           setConnected(true);
           setOptions(result);
-          if (module !== "ACQUIRER") {
-            const suggestedContact = counterpartyHint
-              ? findContaAzulOption(result.suppliers || [], counterpartyHint)
-              : null;
-            if (suggestedContact) setContactId(suggestedContact.value);
-            else if (result.suppliers?.length === 1) setContactId(result.suppliers[0].value);
-          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -203,7 +197,6 @@ export function DirectFinancialSend({
     ? Math.min(100, ((counts.CREATED + counts.SETTLED) / lines.length) * 100)
     : 0;
   const canSend = connected
-    && (module === "ACQUIRER" || Boolean(contactId))
     && Boolean(financialAccountId)
     && unresolved.categories.length === 0
     && unresolved.costCenters.length === 0
@@ -214,8 +207,9 @@ export function DirectFinancialSend({
     setSending(true);
     setCounts(emptyCounts);
     try {
-      const contact = options.suppliers?.find((item) => item.value === contactId);
       const account = options.financialAccounts?.find((item) => item.value === financialAccountId);
+      let resolvedContactId = technicalContactId;
+      let resolvedContactName = technicalContactName;
       let completed = false;
       for (let attempt = 0; attempt < 80; attempt += 1) {
         const response = await fetch("/api/integrations/conta-azul/financial-exports", {
@@ -226,9 +220,9 @@ export function DirectFinancialSend({
             module,
             sourceKey,
             sourceName,
-            contactId: module === "ACQUIRER" ? technicalContactId : contactId,
-            contactName: module === "ACQUIRER" ? technicalContactName : contact?.label || null,
-            counterpartyHint: module === "ACQUIRER" ? counterpartyHint || account?.label || null : null,
+            contactId: resolvedContactId,
+            contactName: resolvedContactName,
+            counterpartyHint: counterpartyHint || account?.label || null,
             financialAccountId,
             financialAccountName: account?.label || null,
             settle,
@@ -252,9 +246,11 @@ export function DirectFinancialSend({
             `${result.error || "Não foi possível enviar ao Conta Azul."}${details.length ? ` Não encontrados: ${details.join(", ")}.` : ""}`,
           );
         }
-        if (module === "ACQUIRER" && typeof result.contactId === "string") {
-          setTechnicalContactId(result.contactId);
-          setTechnicalContactName(typeof result.contactName === "string" ? result.contactName : null);
+        if (typeof result.contactId === "string") {
+          resolvedContactId = result.contactId;
+          resolvedContactName = typeof result.contactName === "string" ? result.contactName : null;
+          setTechnicalContactId(resolvedContactId);
+          setTechnicalContactName(resolvedContactName);
         }
         setCounts(result.counts || emptyCounts);
         if (result.done) {
@@ -292,7 +288,6 @@ export function DirectFinancialSend({
         leftSection={<IconCloudUpload size={18} />}
         disabled={disabled || !clientId || lines.length === 0}
         onClick={() => {
-          setContactId(null);
           setTechnicalContactId(null);
           setTechnicalContactName(null);
           setFinancialAccountId(null);
@@ -325,25 +320,17 @@ export function DirectFinancialSend({
                 <Text size="sm" c="dimmed">{lines.length} lançamento(s) em linhas separadas</Text>
               </Group>
 
-              {module === "ACQUIRER" ? (
-                <Alert color="blue" title="Vínculo automático da adquirente">
-                  Você escolhe somente a conta financeira. Como a API do Conta Azul exige um contato técnico,
-                  o Fortuno Hub localizará ou criará automaticamente o cadastro de cliente
-                  {counterpartyHint ? ` “${counterpartyHint}”` : " da adquirente"} para concluir o envio,
-                  sem pedir a seleção de um fornecedor.
-                </Alert>
-              ) : (
-                <Select
-                  label="Cliente/fornecedor no Conta Azul"
-                  description="Contato que ficará vinculado a cada lançamento."
-                  data={options.suppliers || []}
-                  value={contactId}
-                  onChange={setContactId}
-                  searchable
-                  nothingFoundMessage="Nenhum contato localizado"
-                  required
-                />
-              )}
+              <Alert
+                color="blue"
+                title={module === "ACQUIRER"
+                  ? "Vínculo automático da adquirente"
+                  : "Vínculo automático da fatura"}
+              >
+                Você escolhe somente a conta financeira. Como a API do Conta Azul exige um contato técnico,
+                o Fortuno Hub localizará ou criará automaticamente o cadastro
+                {counterpartyHint ? ` “${counterpartyHint}”` : module === "ACQUIRER" ? " da adquirente" : " do cartão"}
+                {" "}para concluir o envio, sem pedir a seleção de um fornecedor.
+              </Alert>
               <Select
                 label="Conta financeira"
                 description="Conta usada nos lançamentos e, quando marcado, também nas baixas."

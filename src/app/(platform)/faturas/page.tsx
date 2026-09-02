@@ -11,6 +11,10 @@ import {
   type DirectFinancialLine,
 } from "@/components/conta-azul/direct-financial-send";
 import {
+  normalizeContaAzulLabel,
+  type ContaAzulOption,
+} from "@/modules/conta-azul/financial-export";
+import {
   findLearnedInvoiceCategory,
   haveSameNormalizedInvoiceDescription,
   learnInvoiceCategory,
@@ -163,6 +167,7 @@ export default function FaturasPage() {
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [learnForClient, setLearnForClient] = useState(true);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [contaAzulCategoryOptions, setContaAzulCategoryOptions] = useState<ContaAzulOption[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [categoryModalOpened, setCategoryModalOpened] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -183,6 +188,44 @@ export default function FaturasPage() {
         item.type.startsWith("image/") ||
         /\.(png|jpe?g|webp)$/i.test(item.name),
     );
+  const availableContaAzulCategories = useMemo(() => {
+    const expectedType = selectedItem?.amount && selectedItem.amount < 0
+      ? "RECEITA"
+      : "DESPESA";
+    return contaAzulCategoryOptions.filter(
+      (option) => !option.type || option.type === expectedType,
+    );
+  }, [contaAzulCategoryOptions, selectedItem?.amount]);
+  const categorySelectData = useMemo(() => {
+    const seen = new Set<string>();
+    const contaAzulItems = availableContaAzulCategories
+      .filter((option) => {
+        const key = normalizeContaAzulLabel(option.label);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((option) => ({ value: option.label, label: option.label }))
+      .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+    const localItems = categoryOptions
+      .filter((name) => {
+        const key = normalizeContaAzulLabel(name);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((name) => ({ value: name, label: name }));
+    const selectedName = selectedItem?.category?.trim();
+    const selectedItems = selectedName && !seen.has(normalizeContaAzulLabel(selectedName))
+      ? [{ value: selectedName, label: selectedName }]
+      : [];
+
+    return [
+      ...(contaAzulItems.length ? [{ group: "Conta Azul", items: contaAzulItems }] : []),
+      ...(localItems.length ? [{ group: "Fortuno Hub", items: localItems }] : []),
+      ...(selectedItems.length ? [{ group: "Categoria aprendida", items: selectedItems }] : []),
+    ];
+  }, [availableContaAzulCategories, categoryOptions, selectedItem?.category]);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +252,7 @@ export default function FaturasPage() {
   useEffect(() => {
     if (!clientId) {
       setCategoryOptions([]);
+      setContaAzulCategoryOptions([]);
       setCostCenterOptions([]);
       return;
     }
@@ -218,6 +262,7 @@ export default function FaturasPage() {
 
     async function loadCategories() {
       setCategoryLoading(true);
+      setContaAzulCategoryOptions([]);
       try {
         const response = await fetch(`/api/clients/${selectedClientId}`, {
           cache: "no-store",
@@ -256,6 +301,38 @@ export default function FaturasPage() {
           selectedClientId,
           result.client?.categoryRules ?? [],
         );
+
+        try {
+          const statusResponse = await fetch(
+            `/api/integrations/conta-azul/status?clientId=${encodeURIComponent(selectedClientId)}`,
+            { cache: "no-store", signal: controller.signal },
+          );
+          const status = await statusResponse.json();
+          const connected = statusResponse.ok
+            && status?.connection?.active
+            && status?.connection?.status === "CONNECTED";
+          if (connected) {
+            const params = new URLSearchParams({
+              clientId: selectedClientId,
+              scope: "categories",
+            });
+            const optionsResponse = await fetch(
+              `/api/integrations/conta-azul/options?${params.toString()}`,
+              { cache: "no-store", signal: controller.signal },
+            );
+            const optionsResult = (await optionsResponse.json()) as {
+              categories?: ContaAzulOption[];
+            };
+            if (optionsResponse.ok && !controller.signal.aborted) {
+              setContaAzulCategoryOptions(optionsResult.categories ?? []);
+            }
+          }
+        } catch (error) {
+          if ((error as Error).name === "AbortError") throw error;
+          // As categorias internas continuam disponíveis quando a conexão
+          // externa está indisponível temporariamente.
+          setContaAzulCategoryOptions([]);
+        }
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           notifications.show({
@@ -1481,15 +1558,15 @@ export default function FaturasPage() {
                 <Stack gap={6}>
                   <Select
                     label="Categoria"
-                    description={`A regra será exclusiva de ${
-                      selectedClient?.label ?? "este cliente"
-                    }.`}
+                    description={availableContaAzulCategories.length
+                      ? `${availableContaAzulCategories.length} categorias do Conta Azul disponíveis. A regra será exclusiva de ${selectedClient?.label ?? "este cliente"}.`
+                      : `A regra será exclusiva de ${selectedClient?.label ?? "este cliente"}.`}
                     placeholder={
                       categoryLoading
                         ? "Carregando categorias..."
                         : "Buscar ou selecionar categoria"
                     }
-                    data={categoryOptions}
+                    data={categorySelectData}
                     searchable
                     clearable
                     disabled={categoryLoading}
@@ -1512,7 +1589,7 @@ export default function FaturasPage() {
                     onClick={() => setCategoryModalOpened(true)}
                     style={{ alignSelf: "flex-start" }}
                   >
-                    Criar nova categoria
+                    Criar categoria no Fortuno Hub
                   </Button>
                 </Stack>
 

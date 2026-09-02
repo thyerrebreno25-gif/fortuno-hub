@@ -146,8 +146,13 @@ async function findOrCreateExport(input: {
   }
 }
 
-async function resolveAcquirerContact(clientId: string, requestedName?: string | null) {
-  const name = requestedName?.trim() || "MOVIMENTAÇÕES DE ADQUIRENTES";
+async function resolveTechnicalContact(
+  clientId: string,
+  module: ParsedPayload["module"],
+  requestedName?: string | null,
+) {
+  const name = requestedName?.trim()
+    || (module === "ACQUIRER" ? "MOVIMENTAÇÕES DE ADQUIRENTES" : "FATURAS DE CARTÃO");
   const params = new URLSearchParams({
     pagina: "1",
     tamanho_pagina: "100",
@@ -164,7 +169,9 @@ async function resolveAcquirerContact(clientId: string, requestedName?: string |
     body: JSON.stringify({
       ativo: true,
       nome: name,
-      observacao: "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes.",
+      observacao: module === "ACQUIRER"
+        ? "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes."
+        : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.",
       perfis: [{ tipo_perfil: "Cliente" }],
       tipo_pessoa: "Jurídica",
     }),
@@ -383,36 +390,31 @@ export async function POST(request: Request) {
   }
 
   let body: ResolvedPayload;
-  if (requestedBody.module === "ACQUIRER") {
-    if (requestedBody.contactId) {
+  if (requestedBody.contactId) {
+    body = {
+      ...requestedBody,
+      contactId: requestedBody.contactId,
+    };
+  } else {
+    try {
+      const technicalContact = await resolveTechnicalContact(
+        requestedBody.clientId,
+        requestedBody.module,
+        requestedBody.counterpartyHint || requestedBody.financialAccountName,
+      );
       body = {
         ...requestedBody,
-        contactId: requestedBody.contactId,
+        contactId: technicalContact.value,
+        contactName: technicalContact.label,
       };
-    } else {
-      try {
-        const technicalContact = await resolveAcquirerContact(
-          requestedBody.clientId,
-          requestedBody.counterpartyHint || requestedBody.financialAccountName,
-        );
-        body = {
-          ...requestedBody,
-          contactId: technicalContact.value,
-          contactName: technicalContact.label,
-        };
-      } catch (error) {
-        return NextResponse.json({
-          error: error instanceof Error
-            ? `Não foi possível preparar o vínculo técnico da adquirente: ${error.message}`
-            : "Não foi possível preparar o vínculo técnico da adquirente.",
-        }, { status: 502 });
-      }
+    } catch (error) {
+      const context = requestedBody.module === "ACQUIRER" ? "da adquirente" : "da fatura";
+      return NextResponse.json({
+        error: error instanceof Error
+          ? `Não foi possível preparar o vínculo técnico ${context}: ${error.message}`
+          : `Não foi possível preparar o vínculo técnico ${context}.`,
+      }, { status: 502 });
     }
-  } else {
-    if (!requestedBody.contactId) {
-      return NextResponse.json({ error: "Selecione o cliente ou fornecedor no Conta Azul." }, { status: 400 });
-    }
-    body = { ...requestedBody, contactId: requestedBody.contactId };
   }
   const exportBatch = await findOrCreateExport({
     body,

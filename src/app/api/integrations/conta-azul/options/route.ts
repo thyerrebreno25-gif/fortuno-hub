@@ -37,6 +37,7 @@ export async function GET(request: Request) {
   if (!permission.canView) return NextResponse.json({ error: "Sem permissão para consultar a Conta Azul." }, { status: 403 });
   const url = new URL(request.url);
   const clientId = url.searchParams.get("clientId") || "";
+  const scope = url.searchParams.get("scope") || "all";
   const supplierTerm = url.searchParams.get("supplier")?.trim() || "";
   const client = await findAuthorizedClient(member, clientId);
   if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
@@ -48,11 +49,21 @@ export async function GET(request: Request) {
     // sequenciais para impedir que quatro requisições tentem renovar o mesmo
     // token simultaneamente quando a conexão estiver expirada.
     const categoriesBody = await contaAzulRequest<unknown>(clientId, "/v1/categorias?pagina=1&tamanho_pagina=1000");
+    const normalize = (body: unknown) => itemsFrom(body).map(optionFrom).filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (scope === "categories") {
+      return NextResponse.json({ categories: normalize(categoriesBody) });
+    }
     const costCentersBody = await contaAzulRequest<unknown>(clientId, "/v1/centro-de-custo?pagina=1&tamanho_pagina=1000");
     const accountsBody = await contaAzulRequest<unknown>(clientId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true");
+    if (scope === "financial-export") {
+      return NextResponse.json({
+        categories: normalize(categoriesBody),
+        costCenters: normalize(costCentersBody),
+        financialAccounts: normalize(accountsBody),
+      });
+    }
     const suppliersBody = await contaAzulRequest<unknown>(clientId, `/v1/pessoa?${supplierParams.toString()}`);
 
-    const normalize = (body: unknown) => itemsFrom(body).map(optionFrom).filter((item): item is NonNullable<typeof item> => Boolean(item));
     return NextResponse.json({
       categories: normalize(categoriesBody),
       costCenters: normalize(costCentersBody),
