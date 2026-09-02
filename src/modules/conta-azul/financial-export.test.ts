@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFinancialEventPayload,
+  contaAzulOptions,
   findContaAzulOption,
   installmentIdFrom,
   protocolIdFrom,
@@ -26,6 +27,16 @@ describe("envio financeiro direto ao Conta Azul", () => {
 
     expect(findContaAzulOption(options, "Taxas", "RECEITA")?.value).toBe("income");
     expect(findContaAzulOption(options, "Taxas", "DESPESA")?.value).toBe("expense");
+  });
+
+  it("interpreta também uma pessoa criada devolvida como objeto único", () => {
+    expect(contaAzulOptions({
+      id: "35473eec-4e74-11ee-b500-9f61de8a8b8b",
+      nome: "REDE",
+    })).toEqual([{
+      value: "35473eec-4e74-11ee-b500-9f61de8a8b8b",
+      label: "REDE",
+    }]);
   });
 
   it("mantém um lançamento e seu rateio em uma única linha financeira", () => {

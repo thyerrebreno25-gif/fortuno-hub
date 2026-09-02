@@ -157,10 +157,22 @@ export async function contaAzulRequest<T>(
   }
 
   const text = await response.text();
-  const body = text ? (JSON.parse(text) as T & { message?: string; error?: string }) : ({} as T);
+  let body: T & { message?: string; error?: string };
+  try {
+    body = text
+      ? JSON.parse(text) as T & { message?: string; error?: string }
+      : {} as T & { message?: string; error?: string };
+  } catch {
+    body = {} as T & { message?: string; error?: string };
+  }
   if (!response.ok) {
     const apiError = body as { message?: string; error?: string };
-    throw new Error(apiError.message || apiError.error || `Conta Azul respondeu com erro ${response.status}.`);
+    throw new Error(
+      apiError.message
+      || apiError.error
+      || (text && text.length <= 500 ? text : "")
+      || `Conta Azul respondeu com erro ${response.status}.`,
+    );
   }
 
   await prisma.contaAzulConnection.update({

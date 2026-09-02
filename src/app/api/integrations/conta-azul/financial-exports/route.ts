@@ -39,8 +39,9 @@ const payloadSchema = z.object({
   module: z.enum(["CREDIT_CARD_INVOICE", "ACQUIRER"]),
   sourceKey: z.string().trim().min(1).max(1000),
   sourceName: z.string().trim().min(1).max(500),
-  contactId: z.string().uuid(),
+  contactId: z.string().uuid().nullable().optional(),
   contactName: z.string().trim().max(250).nullable().optional(),
+  counterpartyHint: z.string().trim().max(250).nullable().optional(),
   financialAccountId: z.string().uuid(),
   financialAccountName: z.string().trim().max(250).nullable().optional(),
   settle: z.boolean(),
@@ -48,6 +49,7 @@ const payloadSchema = z.object({
 });
 
 type ParsedPayload = z.infer<typeof payloadSchema>;
+type ResolvedPayload = ParsedPayload & { contactId: string };
 
 function stableHash(value: string) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -70,7 +72,7 @@ function sleep(milliseconds: number) {
 }
 
 async function findOrCreateExport(input: {
-  body: ParsedPayload;
+  body: ResolvedPayload;
   organizationId: string;
   userId: string;
   connectionId: string;
@@ -142,6 +144,36 @@ async function findOrCreateExport(input: {
     if (!raced) throw new Error("Não foi possível preparar o envio ao Conta Azul.");
     return raced;
   }
+}
+
+async function resolveAcquirerContact(clientId: string, requestedName?: string | null) {
+  const name = requestedName?.trim() || "MOVIMENTAÇÕES DE ADQUIRENTES";
+  const params = new URLSearchParams({
+    pagina: "1",
+    tamanho_pagina: "100",
+    busca: name,
+    tipo_perfil: "Cliente",
+    com_endereco: "false",
+  });
+  const peopleBody = await contaAzulRequest<unknown>(clientId, `/v1/pessoas?${params.toString()}`);
+  const existing = findContaAzulOption(contaAzulOptions(peopleBody), name);
+  if (existing) return existing;
+
+  const created = await contaAzulRequest<Record<string, unknown>>(clientId, "/v1/pessoas", {
+    method: "POST",
+    body: JSON.stringify({
+      ativo: true,
+      nome: name,
+      observacao: "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes.",
+      perfis: [{ tipo_perfil: "Cliente" }],
+      tipo_pessoa: "Jurídica",
+    }),
+  });
+  const createdOption = contaAzulOptions(created)[0];
+  if (!createdOption) {
+    throw new Error("O Conta Azul criou o contato técnico, mas não devolveu seu identificador.");
+  }
+  return createdOption;
 }
 
 function metadataRecord(value: unknown): Record<string, unknown> {
@@ -251,6 +283,7 @@ async function settleCreatedLines(input: {
           input.clientId,
           `/v1/protocolo/${line.externalProtocolId}`,
         );
+        await sleep(120);
         const state = protocolState(protocol);
         if (state === "ERROR") {
           throw new Error(protocolError(protocol) || "O Conta Azul rejeitou o lançamento.");
@@ -271,6 +304,7 @@ async function settleCreatedLines(input: {
           input.clientId,
           `/v1/financeiro/eventos-financeiros/${eventId}/parcelas`,
         );
+        await sleep(120);
         installmentId = installmentIdFrom(installments);
       }
       if (!installmentId) throw new Error("Não foi possível localizar a parcela criada no Conta Azul.");
@@ -332,12 +366,12 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Revise os dados do envio ao Conta Azul." }, { status: 400 });
   }
-  const body = parsed.data;
-  const client = await findAuthorizedClient(member, body.clientId);
+  const requestedBody = parsed.data;
+  const client = await findAuthorizedClient(member, requestedBody.clientId);
   if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
   const connection = await prisma.contaAzulConnection.findFirst({
     where: {
-      clientId: body.clientId,
+      clientId: requestedBody.clientId,
       organizationId: member.organizationId,
       active: true,
       status: "CONNECTED",
@@ -348,6 +382,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conecte este cliente à Conta Azul antes de enviar." }, { status: 400 });
   }
 
+  let body: ResolvedPayload;
+  if (requestedBody.module === "ACQUIRER") {
+    if (requestedBody.contactId) {
+      body = {
+        ...requestedBody,
+        contactId: requestedBody.contactId,
+      };
+    } else {
+      try {
+        const technicalContact = await resolveAcquirerContact(
+          requestedBody.clientId,
+          requestedBody.counterpartyHint || requestedBody.financialAccountName,
+        );
+        body = {
+          ...requestedBody,
+          contactId: technicalContact.value,
+          contactName: technicalContact.label,
+        };
+      } catch (error) {
+        return NextResponse.json({
+          error: error instanceof Error
+            ? `Não foi possível preparar o vínculo técnico da adquirente: ${error.message}`
+            : "Não foi possível preparar o vínculo técnico da adquirente.",
+        }, { status: 502 });
+      }
+    }
+  } else {
+    if (!requestedBody.contactId) {
+      return NextResponse.json({ error: "Selecione o cliente ou fornecedor no Conta Azul." }, { status: 400 });
+    }
+    body = { ...requestedBody, contactId: requestedBody.contactId };
+  }
   const exportBatch = await findOrCreateExport({
     body,
     organizationId: member.organizationId,
@@ -374,10 +440,14 @@ export async function POST(request: Request) {
     }, { status: 409 });
   }
 
-  const [categoriesBody, costCentersBody] = await Promise.all([
-    contaAzulRequest<unknown>(body.clientId, "/v1/categorias?pagina=1&tamanho_pagina=1000"),
-    contaAzulRequest<unknown>(body.clientId, "/v1/centro-de-custo?pagina=1&tamanho_pagina=1000"),
-  ]);
+  const categoriesBody = await contaAzulRequest<unknown>(
+    body.clientId,
+    "/v1/categorias?pagina=1&tamanho_pagina=1000",
+  );
+  const costCentersBody = await contaAzulRequest<unknown>(
+    body.clientId,
+    "/v1/centro-de-custo?pagina=1&tamanho_pagina=1000",
+  );
   const categories = contaAzulOptions(categoriesBody);
   const costCenters = contaAzulOptions(costCentersBody);
   const unresolvedCategories = Array.from(new Set(
@@ -446,6 +516,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     exportId: exportBatch.id,
+    contactId: body.contactId,
+    contactName: body.contactName || null,
     status,
     done,
     needsContinue: !done && counts.FAILED === 0,

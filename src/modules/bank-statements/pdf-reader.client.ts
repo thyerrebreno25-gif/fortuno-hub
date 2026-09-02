@@ -1,6 +1,13 @@
 "use client";
 
-export async function extractPdfLines(file: File, password?: string): Promise<string[]> {
+export type PdfTextLine = {
+  page: number;
+  y: number;
+  text: string;
+  parts: Array<{ x: number; text: string }>;
+};
+
+export async function extractPdfTextLines(file: File, password?: string): Promise<PdfTextLine[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   if (typeof window !== "undefined") {
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -22,7 +29,7 @@ export async function extractPdfLines(file: File, password?: string): Promise<st
     throw error;
   }
 
-  const lines: string[] = [];
+  const lines: PdfTextLine[] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
@@ -39,10 +46,15 @@ export async function extractPdfLines(file: File, password?: string): Promise<st
 
     [...grouped.entries()]
       .sort((a, b) => b[0] - a[0])
-      .forEach(([, row]) => {
-        const text = row.sort((a, b) => a.x - b.x).map((part) => part.text).join(" ").replace(/\s+/g, " ").trim();
-        if (text) lines.push(text);
+      .forEach(([y, row]) => {
+        const parts = row.sort((a, b) => a.x - b.x);
+        const text = parts.map((part) => part.text).join(" ").replace(/\s+/g, " ").trim();
+        if (text) lines.push({ page: pageNumber, y, text, parts });
       });
   }
   return lines;
+}
+
+export async function extractPdfLines(file: File, password?: string): Promise<string[]> {
+  return (await extractPdfTextLines(file, password)).map((line) => line.text);
 }

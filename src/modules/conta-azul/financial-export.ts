@@ -58,6 +58,7 @@ export function apiItems(body: unknown): Array<Record<string, unknown>> {
       );
     }
   }
+  if (typeof record.id === "string" || typeof record.uuid === "string") return [record];
   return [];
 }
 

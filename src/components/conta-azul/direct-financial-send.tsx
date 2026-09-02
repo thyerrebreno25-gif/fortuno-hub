@@ -98,6 +98,8 @@ export function DirectFinancialSend({
   const [connected, setConnected] = useState(false);
   const [options, setOptions] = useState<OptionsResponse>({});
   const [contactId, setContactId] = useState<string | null>(null);
+  const [technicalContactId, setTechnicalContactId] = useState<string | null>(null);
+  const [technicalContactName, setTechnicalContactName] = useState<string | null>(null);
   const [financialAccountId, setFinancialAccountId] = useState<string | null>(null);
   const [settle, setSettle] = useState(true);
   const [counts, setCounts] = useState<ProgressCounts>(emptyCounts);
@@ -133,11 +135,13 @@ export function DirectFinancialSend({
         if (!cancelled) {
           setConnected(true);
           setOptions(result);
-          const suggestedContact = counterpartyHint
-            ? findContaAzulOption(result.suppliers || [], counterpartyHint)
-            : null;
-          if (suggestedContact) setContactId(suggestedContact.value);
-          else if (result.suppliers?.length === 1) setContactId(result.suppliers[0].value);
+          if (module !== "ACQUIRER") {
+            const suggestedContact = counterpartyHint
+              ? findContaAzulOption(result.suppliers || [], counterpartyHint)
+              : null;
+            if (suggestedContact) setContactId(suggestedContact.value);
+            else if (result.suppliers?.length === 1) setContactId(result.suppliers[0].value);
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -149,7 +153,7 @@ export function DirectFinancialSend({
     }
     void loadContaAzul();
     return () => { cancelled = true; };
-  }, [clientId, counterpartyHint, opened, refreshVersion]);
+  }, [clientId, counterpartyHint, module, opened, refreshVersion]);
 
   const categoryRequirements = useMemo(() => {
     const categories = options.categories || [];
@@ -199,14 +203,14 @@ export function DirectFinancialSend({
     ? Math.min(100, ((counts.CREATED + counts.SETTLED) / lines.length) * 100)
     : 0;
   const canSend = connected
-    && Boolean(contactId)
+    && (module === "ACQUIRER" || Boolean(contactId))
     && Boolean(financialAccountId)
     && unresolved.categories.length === 0
     && unresolved.costCenters.length === 0
     && lines.length > 0;
 
   async function send() {
-    if (!clientId || !contactId || !financialAccountId || !canSend) return;
+    if (!clientId || !financialAccountId || !canSend) return;
     setSending(true);
     setCounts(emptyCounts);
     try {
@@ -222,15 +226,23 @@ export function DirectFinancialSend({
             module,
             sourceKey,
             sourceName,
-            contactId,
-            contactName: contact?.label || null,
+            contactId: module === "ACQUIRER" ? technicalContactId : contactId,
+            contactName: module === "ACQUIRER" ? technicalContactName : contact?.label || null,
+            counterpartyHint: module === "ACQUIRER" ? counterpartyHint || account?.label || null : null,
             financialAccountId,
             financialAccountName: account?.label || null,
             settle,
             lines: effectiveLines,
           }),
         });
-        const result = await response.json().catch(() => ({}));
+        const responseText = await response.text();
+        const result = (() => {
+          try {
+            return responseText ? JSON.parse(responseText) : {};
+          } catch {
+            return { error: responseText || `O servidor respondeu com erro ${response.status}.` };
+          }
+        })();
         if (!response.ok) {
           const details = [
             ...(Array.isArray(result.unresolvedCategories) ? result.unresolvedCategories : []),
@@ -239,6 +251,10 @@ export function DirectFinancialSend({
           throw new Error(
             `${result.error || "Não foi possível enviar ao Conta Azul."}${details.length ? ` Não encontrados: ${details.join(", ")}.` : ""}`,
           );
+        }
+        if (module === "ACQUIRER" && typeof result.contactId === "string") {
+          setTechnicalContactId(result.contactId);
+          setTechnicalContactName(typeof result.contactName === "string" ? result.contactName : null);
         }
         setCounts(result.counts || emptyCounts);
         if (result.done) {
@@ -277,6 +293,8 @@ export function DirectFinancialSend({
         disabled={disabled || !clientId || lines.length === 0}
         onClick={() => {
           setContactId(null);
+          setTechnicalContactId(null);
+          setTechnicalContactName(null);
           setFinancialAccountId(null);
           setCategoryOverrides({});
           setOpened(true);
@@ -307,16 +325,25 @@ export function DirectFinancialSend({
                 <Text size="sm" c="dimmed">{lines.length} lançamento(s) em linhas separadas</Text>
               </Group>
 
-              <Select
-                label="Cliente/fornecedor no Conta Azul"
-                description="Contato que ficará vinculado a cada lançamento."
-                data={options.suppliers || []}
-                value={contactId}
-                onChange={setContactId}
-                searchable
-                nothingFoundMessage="Nenhum contato localizado"
-                required
-              />
+              {module === "ACQUIRER" ? (
+                <Alert color="blue" title="Vínculo automático da adquirente">
+                  Você escolhe somente a conta financeira. Como a API do Conta Azul exige um contato técnico,
+                  o Fortuno Hub localizará ou criará automaticamente o cadastro de cliente
+                  {counterpartyHint ? ` “${counterpartyHint}”` : " da adquirente"} para concluir o envio,
+                  sem pedir a seleção de um fornecedor.
+                </Alert>
+              ) : (
+                <Select
+                  label="Cliente/fornecedor no Conta Azul"
+                  description="Contato que ficará vinculado a cada lançamento."
+                  data={options.suppliers || []}
+                  value={contactId}
+                  onChange={setContactId}
+                  searchable
+                  nothingFoundMessage="Nenhum contato localizado"
+                  required
+                />
+              )}
               <Select
                 label="Conta financeira"
                 description="Conta usada nos lançamentos e, quando marcado, também nas baixas."
