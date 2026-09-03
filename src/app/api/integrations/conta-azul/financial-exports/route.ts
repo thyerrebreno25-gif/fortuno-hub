@@ -10,10 +10,12 @@ import {
 } from "@/modules/purchase-invoices/server/auth";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
 import {
+  apiItems,
   buildFinancialEventPayload,
   contaAzulOptions,
   findContaAzulOption,
   installmentIdFrom,
+  normalizeContaAzulLabel,
   protocolError,
   protocolIdFrom,
   protocolState,
@@ -150,29 +152,88 @@ async function resolveTechnicalContact(
   clientId: string,
   module: ParsedPayload["module"],
   requestedName?: string | null,
+  requestedContactId?: string | null,
+  requestedContactName?: string | null,
 ) {
   const name = requestedName?.trim()
     || (module === "ACQUIRER" ? "MOVIMENTAÇÕES DE ADQUIRENTES" : "FATURAS DE CARTÃO");
-  const params = new URLSearchParams({
-    pagina: "1",
-    tamanho_pagina: "100",
-    busca: name,
-    tipo_perfil: "Cliente",
-    com_endereco: "false",
-  });
-  const peopleBody = await contaAzulRequest<unknown>(clientId, `/v1/pessoas?${params.toString()}`);
-  const existing = findContaAzulOption(contaAzulOptions(peopleBody), name);
-  if (existing) return existing;
+  const technicalObservation = module === "ACQUIRER"
+    ? "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes."
+    : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
+
+  async function ensureRequiredProfiles(option: { value: string; label: string }) {
+    const person = await contaAzulRequest<Record<string, unknown>>(
+      clientId,
+      `/v1/pessoas/${option.value}`,
+    );
+    const profiles = Array.isArray(person.perfis)
+      ? person.perfis.flatMap((profile) => {
+        if (typeof profile === "string") return [profile.toLowerCase()];
+        if (!profile || typeof profile !== "object") return [];
+        const type = (profile as Record<string, unknown>).tipo_perfil;
+        return typeof type === "string" ? [type.toLowerCase()] : [];
+      })
+      : [];
+    if (profiles.includes("cliente") && profiles.includes("fornecedor")) return option;
+
+    const observation = typeof person.observacao === "string" ? person.observacao : "";
+    if (!observation.includes("Contato técnico criado pelo Fortuno Hub")) return null;
+
+    await contaAzulRequest<unknown>(clientId, `/v1/pessoas/${option.value}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        perfis: [
+          { tipo_perfil: "Cliente" },
+          { tipo_perfil: "Fornecedor" },
+        ],
+      }),
+    });
+    return option;
+  }
+
+  async function findPerson(candidateName: string) {
+    const params = new URLSearchParams({
+      pagina: "1",
+      tamanho_pagina: "100",
+      busca: candidateName,
+      tipo_perfil: "Cliente",
+      com_endereco: "false",
+    });
+    const peopleBody = await contaAzulRequest<unknown>(clientId, `/v1/pessoas?${params.toString()}`);
+    return findContaAzulOption(contaAzulOptions(peopleBody), candidateName);
+  }
+
+  if (requestedContactId) {
+    const compatible = await ensureRequiredProfiles({
+      value: requestedContactId,
+      label: requestedContactName?.trim() || name,
+    });
+    if (compatible) return compatible;
+  }
+
+  const existing = await findPerson(name);
+  if (existing) {
+    const compatible = await ensureRequiredProfiles(existing);
+    if (compatible) return compatible;
+  }
+
+  const technicalName = existing ? `FORTUNO HUB - ${name}` : name;
+  const existingTechnical = existing ? await findPerson(technicalName) : null;
+  if (existingTechnical) {
+    const compatible = await ensureRequiredProfiles(existingTechnical);
+    if (compatible) return compatible;
+  }
 
   const created = await contaAzulRequest<Record<string, unknown>>(clientId, "/v1/pessoas", {
     method: "POST",
     body: JSON.stringify({
       ativo: true,
-      nome: name,
-      observacao: module === "ACQUIRER"
-        ? "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes."
-        : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.",
-      perfis: [{ tipo_perfil: "Cliente" }],
+      nome: technicalName,
+      observacao: technicalObservation,
+      perfis: [
+        { tipo_perfil: "Cliente" },
+        { tipo_perfil: "Fornecedor" },
+      ],
       tipo_pessoa: "Jurídica",
     }),
   });
@@ -181,6 +242,40 @@ async function resolveTechnicalContact(
     throw new Error("O Conta Azul criou o contato técnico, mas não devolveu seu identificador.");
   }
   return createdOption;
+}
+
+async function findFinancialInstallment(input: {
+  clientId: string;
+  direction: "PAYABLE" | "RECEIVABLE";
+  competenceDate: Date;
+  dueDate: Date;
+  description: string;
+  amount: number;
+}) {
+  const params = new URLSearchParams({
+    pagina: "1",
+    tamanho_pagina: "100",
+    data_competencia_de: dateOnly(input.competenceDate),
+    data_competencia_ate: dateOnly(input.competenceDate),
+    data_vencimento_de: dateOnly(input.dueDate),
+    data_vencimento_ate: dateOnly(input.dueDate),
+    valor_de: input.amount.toFixed(2),
+    valor_ate: input.amount.toFixed(2),
+    descricao: input.description,
+  });
+  const endpoint = input.direction === "RECEIVABLE"
+    ? "/v1/financeiro/eventos-financeiros/contas-a-receber/buscar"
+    : "/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar";
+  const body = await contaAzulRequest<unknown>(input.clientId, `${endpoint}?${params.toString()}`);
+  const requestedDescription = normalizeContaAzulLabel(input.description);
+  const matching = apiItems(body).filter((item) => {
+    const description = typeof item.descricao === "string" ? item.descricao : "";
+    return normalizeContaAzulLabel(description) === requestedDescription;
+  });
+  return {
+    installmentId: matching.length === 1 ? installmentIdFrom(matching) : null,
+    ambiguous: matching.length > 1,
+  };
 }
 
 function metadataRecord(value: unknown): Record<string, unknown> {
@@ -319,12 +414,41 @@ async function settleCreatedLines(input: {
 
       let installmentId = line.externalInstallmentId;
       if (!installmentId && eventId) {
-        const installments = await contaAzulRequest<unknown>(
-          input.clientId,
-          `/v1/financeiro/eventos-financeiros/${eventId}/parcelas`,
-        );
-        await sleep(120);
-        installmentId = installmentIdFrom(installments);
+        for (let attempt = 0; attempt < 3 && !installmentId; attempt += 1) {
+          const installments = await contaAzulRequest<unknown>(
+            input.clientId,
+            `/v1/financeiro/eventos-financeiros/${eventId}/parcelas`,
+          );
+          installmentId = installmentIdFrom(installments);
+          if (!installmentId) await sleep(500);
+        }
+      }
+      if (!installmentId) {
+        const found = await findFinancialInstallment({
+          clientId: input.clientId,
+          direction: line.direction,
+          competenceDate: line.competenceDate,
+          dueDate: line.dueDate,
+          description: line.description,
+          amount: Number(line.amount),
+        });
+        installmentId = found.installmentId;
+        if (found.ambiguous) {
+          throw new Error("O Conta Azul devolveu mais de uma parcela possível para este lançamento. A retomada foi interrompida para evitar duplicidade.");
+        }
+        if (!installmentId && Date.now() - line.createdAt.getTime() >= 120_000) {
+          await prisma.contaAzulFinancialExportLine.update({
+            where: { id: line.id },
+            data: {
+              status: "PENDING",
+              externalProtocolId: null,
+              externalEventId: null,
+              externalInstallmentId: null,
+              lastError: null,
+            },
+          });
+          continue;
+        }
       }
       if (!installmentId) throw new Error("Não foi possível localizar a parcela criada no Conta Azul.");
       if (installmentId !== line.externalInstallmentId) {
@@ -416,31 +540,26 @@ export async function POST(request: Request) {
   }
 
   let body: ResolvedPayload;
-  if (requestedBody.contactId) {
+  try {
+    const technicalContact = await resolveTechnicalContact(
+      requestedBody.clientId,
+      requestedBody.module,
+      requestedBody.counterpartyHint || requestedBody.financialAccountName,
+      requestedBody.contactId,
+      requestedBody.contactName,
+    );
     body = {
       ...requestedBody,
-      contactId: requestedBody.contactId,
+      contactId: technicalContact.value,
+      contactName: technicalContact.label,
     };
-  } else {
-    try {
-      const technicalContact = await resolveTechnicalContact(
-        requestedBody.clientId,
-        requestedBody.module,
-        requestedBody.counterpartyHint || requestedBody.financialAccountName,
-      );
-      body = {
-        ...requestedBody,
-        contactId: technicalContact.value,
-        contactName: technicalContact.label,
-      };
-    } catch (error) {
-      const context = requestedBody.module === "ACQUIRER" ? "da adquirente" : "da fatura";
-      return NextResponse.json({
-        error: error instanceof Error
-          ? `Não foi possível preparar o vínculo técnico ${context}: ${error.message}`
-          : `Não foi possível preparar o vínculo técnico ${context}.`,
-      }, { status: 502 });
-    }
+  } catch (error) {
+    const context = requestedBody.module === "ACQUIRER" ? "da adquirente" : "da fatura";
+    return NextResponse.json({
+      error: error instanceof Error
+        ? `Não foi possível preparar o vínculo técnico ${context}: ${error.message}`
+        : `Não foi possível preparar o vínculo técnico ${context}.`,
+    }, { status: 502 });
   }
   const exportBatch = await findOrCreateExport({
     body,
