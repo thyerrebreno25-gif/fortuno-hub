@@ -19,7 +19,9 @@ import {
   protocolError,
   protocolIdFrom,
   protocolState,
+  requiredContactProfiles,
   resourceIdFromProtocol,
+  technicalContactProfileSuffix,
 } from "@/modules/conta-azul/financial-export";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -151,6 +153,7 @@ async function findOrCreateExport(input: {
 async function resolveTechnicalContact(
   clientId: string,
   module: ParsedPayload["module"],
+  direction: "PAYABLE" | "RECEIVABLE",
   requestedName?: string | null,
   requestedContactId?: string | null,
   requestedContactName?: string | null,
@@ -160,35 +163,29 @@ async function resolveTechnicalContact(
   const technicalObservation = module === "ACQUIRER"
     ? "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes."
     : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
+  const requiredProfiles = requiredContactProfiles([direction]);
+  const requiredProfile = requiredProfiles[0];
+  const technicalName = `FORTUNO HUB - ${name} - ${technicalContactProfileSuffix(requiredProfiles)}`;
 
-  async function ensureRequiredProfiles(option: { value: string; label: string }) {
-    const person = await contaAzulRequest<Record<string, unknown>>(
+  async function compatiblePerson(option: { value: string; label: string }) {
+    const body = await contaAzulRequest<Record<string, unknown>>(
       clientId,
       `/v1/pessoas/${option.value}`,
     );
+    const person = apiItems(body)[0] ?? body;
     const profiles = Array.isArray(person.perfis)
       ? person.perfis.flatMap((profile) => {
-        if (typeof profile === "string") return [profile.toLowerCase()];
+        if (typeof profile === "string") {
+          return [normalizeContaAzulLabel(profile)];
+        }
         if (!profile || typeof profile !== "object") return [];
         const type = (profile as Record<string, unknown>).tipo_perfil;
-        return typeof type === "string" ? [type.toLowerCase()] : [];
+        return typeof type === "string" ? [normalizeContaAzulLabel(type)] : [];
       })
       : [];
-    if (profiles.includes("cliente") && profiles.includes("fornecedor")) return option;
-
-    const observation = typeof person.observacao === "string" ? person.observacao : "";
-    if (!observation.includes("Contato técnico criado pelo Fortuno Hub")) return null;
-
-    await contaAzulRequest<unknown>(clientId, `/v1/pessoas/${option.value}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        perfis: [
-          { tipo_perfil: "Cliente" },
-          { tipo_perfil: "Fornecedor" },
-        ],
-      }),
-    });
-    return option;
+    return requiredProfiles.every(
+      (profile) => profiles.includes(normalizeContaAzulLabel(profile)),
+    ) ? option : null;
   }
 
   async function findPerson(candidateName: string) {
@@ -196,31 +193,27 @@ async function resolveTechnicalContact(
       pagina: "1",
       tamanho_pagina: "100",
       busca: candidateName,
-      tipo_perfil: "Cliente",
+      tipo_perfil: requiredProfile,
       com_endereco: "false",
     });
-    const peopleBody = await contaAzulRequest<unknown>(clientId, `/v1/pessoas?${params.toString()}`);
+    const peopleBody = await contaAzulRequest<unknown>(
+      clientId,
+      `/v1/pessoas?${params.toString()}`,
+    );
     return findContaAzulOption(contaAzulOptions(peopleBody), candidateName);
   }
 
   if (requestedContactId) {
-    const compatible = await ensureRequiredProfiles({
+    const compatible = await compatiblePerson({
       value: requestedContactId,
       label: requestedContactName?.trim() || name,
     });
     if (compatible) return compatible;
   }
 
-  const existing = await findPerson(name);
+  const existing = await findPerson(technicalName);
   if (existing) {
-    const compatible = await ensureRequiredProfiles(existing);
-    if (compatible) return compatible;
-  }
-
-  const technicalName = existing ? `FORTUNO HUB - ${name}` : name;
-  const existingTechnical = existing ? await findPerson(technicalName) : null;
-  if (existingTechnical) {
-    const compatible = await ensureRequiredProfiles(existingTechnical);
+    const compatible = await compatiblePerson(existing);
     if (compatible) return compatible;
   }
 
@@ -230,10 +223,7 @@ async function resolveTechnicalContact(
       ativo: true,
       nome: technicalName,
       observacao: technicalObservation,
-      perfis: [
-        { tipo_perfil: "Cliente" },
-        { tipo_perfil: "Fornecedor" },
-      ],
+      perfis: [{ tipo_perfil: requiredProfile }],
       tipo_pessoa: "Jurídica",
     }),
   });
@@ -287,7 +277,7 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 async function createPendingLines(input: {
   clientId: string;
   exportId: string;
-  contactId: string;
+  contactIds: Record<"PAYABLE" | "RECEIVABLE", string>;
   financialAccountId: string;
   categories: ReturnType<typeof contaAzulOptions>;
   costCenters: ReturnType<typeof contaAzulOptions>;
@@ -326,7 +316,7 @@ async function createPendingLines(input: {
       description: line.description,
       observation,
       amount: Number(line.amount),
-      contactId: input.contactId,
+      contactId: input.contactIds[line.direction],
       financialAccountId: input.financialAccountId,
       categoryId: category.value,
       costCenterId: costCenter?.value,
@@ -540,18 +530,33 @@ export async function POST(request: Request) {
   }
 
   let body: ResolvedPayload;
+  const contactIds: Record<"PAYABLE" | "RECEIVABLE", string> = {
+    PAYABLE: "",
+    RECEIVABLE: "",
+  };
   try {
-    const technicalContact = await resolveTechnicalContact(
-      requestedBody.clientId,
-      requestedBody.module,
-      requestedBody.counterpartyHint || requestedBody.financialAccountName,
-      requestedBody.contactId,
-      requestedBody.contactName,
-    );
+    const directions = Array.from(new Set(
+      requestedBody.lines.map((line) => line.direction),
+    ));
+    const primaryDirection = directions[0];
+    let primaryContact: { value: string; label: string } | null = null;
+    for (const direction of directions) {
+      const technicalContact = await resolveTechnicalContact(
+        requestedBody.clientId,
+        requestedBody.module,
+        direction,
+        requestedBody.counterpartyHint || requestedBody.financialAccountName,
+        direction === primaryDirection ? requestedBody.contactId : null,
+        direction === primaryDirection ? requestedBody.contactName : null,
+      );
+      contactIds[direction] = technicalContact.value;
+      if (direction === primaryDirection) primaryContact = technicalContact;
+    }
+    if (!primaryContact) throw new Error("Nenhum vínculo técnico foi preparado.");
     body = {
       ...requestedBody,
-      contactId: technicalContact.value,
-      contactName: technicalContact.label,
+      contactId: primaryContact.value,
+      contactName: primaryContact.label,
     };
   } catch (error) {
     const context = requestedBody.module === "ACQUIRER" ? "da adquirente" : "da fatura";
@@ -568,13 +573,21 @@ export async function POST(request: Request) {
     connectionId: connection.id,
   });
   if (
-    exportBatch.contactId !== body.contactId
-    || exportBatch.financialAccountId !== body.financialAccountId
+    exportBatch.financialAccountId !== body.financialAccountId
     || exportBatch.settleRequested !== body.settle
   ) {
     return NextResponse.json({
       error: "Este arquivo já começou a ser enviado com outro contato, conta ou situação de baixa.",
     }, { status: 409 });
+  }
+  if (exportBatch.contactId !== body.contactId) {
+    await prisma.contaAzulFinancialExport.update({
+      where: { id: exportBatch.id },
+      data: {
+        contactId: body.contactId,
+        contactName: body.contactName || null,
+      },
+    });
   }
   const persistedLineKeys = new Set(exportBatch.lines.map((line) => line.lineKey));
   const requestedLineKeys = new Set(body.lines.map((line) => stableHash(line.lineKey)));
@@ -621,7 +634,7 @@ export async function POST(request: Request) {
   await createPendingLines({
     clientId: body.clientId,
     exportId: exportBatch.id,
-    contactId: body.contactId,
+    contactIds,
     financialAccountId: body.financialAccountId,
     categories,
     costCenters,

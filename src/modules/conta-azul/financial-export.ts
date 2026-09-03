@@ -5,6 +5,24 @@ export type ContaAzulOption = {
 };
 
 export type FinancialDirection = "PAYABLE" | "RECEIVABLE";
+export type ContaAzulPersonProfile = "Cliente" | "Fornecedor";
+
+export function requiredContactProfiles(
+  directions: FinancialDirection[],
+): ContaAzulPersonProfile[] {
+  const profiles = new Set<ContaAzulPersonProfile>();
+  directions.forEach((direction) => {
+    profiles.add(direction === "RECEIVABLE" ? "Cliente" : "Fornecedor");
+  });
+  return (["Cliente", "Fornecedor"] as const).filter((profile) => profiles.has(profile));
+}
+
+export function technicalContactProfileSuffix(
+  profiles: ContaAzulPersonProfile[],
+) {
+  if (profiles.length > 1) return "FINANCEIRO";
+  return profiles[0] === "Cliente" ? "RECEITAS" : "DESPESAS";
+}
 
 export function normalizeContaAzulLabel(value: string): string {
   return value

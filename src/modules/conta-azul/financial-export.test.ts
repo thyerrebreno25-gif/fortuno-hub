@@ -6,10 +6,27 @@ import {
   installmentIdFrom,
   protocolIdFrom,
   protocolState,
+  requiredContactProfiles,
   resourceIdFromProtocol,
+  technicalContactProfileSuffix,
 } from "./financial-export";
 
 describe("envio financeiro direto ao Conta Azul", () => {
+  it("exige apenas os perfis necessários para cada direção financeira", () => {
+    expect(requiredContactProfiles(["PAYABLE", "PAYABLE"]))
+      .toEqual(["Fornecedor"]);
+    expect(requiredContactProfiles(["RECEIVABLE"]))
+      .toEqual(["Cliente"]);
+    expect(requiredContactProfiles(["PAYABLE", "RECEIVABLE"]))
+      .toEqual(["Cliente", "Fornecedor"]);
+    expect(technicalContactProfileSuffix(["Fornecedor"]))
+      .toBe("DESPESAS");
+    expect(technicalContactProfileSuffix(["Cliente"]))
+      .toBe("RECEITAS");
+    expect(technicalContactProfileSuffix(["Cliente", "Fornecedor"]))
+      .toBe("FINANCEIRO");
+  });
+
   it("localiza categorias ignorando acentos, caixa e hierarquia interna", () => {
     const options = [
       { value: "category-1", label: "Taxas de antecipação" },
