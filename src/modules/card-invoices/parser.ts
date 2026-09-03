@@ -14,6 +14,7 @@ import { parseSantanderInvoice } from "./parsers/santander-parser";
 import { parseCaixaInvoice } from "./parsers/caixa-parser";
 import { parseBtgInvoice } from "./parsers/btg-parser";
 import { parseSicrediInvoice } from "./parsers/sicredi-parser";
+import { parseNubankInvoice } from "./parsers/nubank-parser";
 import type { ParsedInvoice } from "./types";
 
 function formatMoney(value: number) {
@@ -185,6 +186,10 @@ export async function parseCardInvoice(
 
   if (normalized.includes("SICREDI")) {
     return parseSicrediInvoice(lines);
+  }
+
+  if (normalized.includes("NUBANK")) {
+    return parseNubankInvoice(lines);
   }
 
   throw new Error(`O parser de ${bank} ainda não foi implementado.`);

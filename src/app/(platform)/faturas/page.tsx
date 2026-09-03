@@ -107,9 +107,9 @@ const ACTIVE_INVOICE_BANKS = [
   "Sicredi",
   "Sicoob",
   "Cora",
+  "Nubank",
 ];
 const PENDING_INVOICE_BANKS = [
-  "Nubank",
   "C6",
   "XP",
 ];
