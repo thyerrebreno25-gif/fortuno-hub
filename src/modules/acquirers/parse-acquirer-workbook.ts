@@ -9,6 +9,10 @@ import {
   parseGetnetWorkbook,
 } from "./getnet-workbook-parser";
 import {
+  isPagarmeMovementSheet,
+  parsePagarmeWorkbook,
+} from "./pagarme-workbook-parser";
+import {
   parseRedeWorkbook,
   type Categories,
   type ContractedRate,
@@ -16,7 +20,7 @@ import {
   type ReadingInstructionSummary,
 } from "./rede-workbook-parser";
 
-export type SupportedAcquirer = "REDE" | "CIELO" | "GETNET";
+export type SupportedAcquirer = "REDE" | "CIELO" | "GETNET" | "PAGARME";
 export type AcquirerSourceTotals = CieloSourceTotals;
 
 export type ConfiguredAcquirerRates = {
@@ -53,6 +57,10 @@ function detectAcquirer(workbook: XLSX.WorkBook): SupportedAcquirer | null {
 
     if (isGetnetDetailedSheet(sheetName, matrix)) {
       return "GETNET";
+    }
+
+    if (isPagarmeMovementSheet(sheetName, matrix)) {
+      return "PAGARME";
     }
 
     for (const values of matrix) {
@@ -92,6 +100,7 @@ function ratesForAcquirer(
     REDE: ["rede", "redecard"],
     CIELO: ["cielo"],
     GETNET: ["getnet"],
+    PAGARME: ["pagarme", "pagar.me"],
   }[acquirer];
   const matched = configuredAcquirers.find((item) => {
     const name = normalize(item.name).replace(/[^a-z0-9]/g, "");
@@ -115,7 +124,7 @@ export async function parseAcquirerWorkbook(
 
   if (!acquirer) {
     throw new Error(
-      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo e GETNET.",
+      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET e Pagar.me.",
     );
   }
 
@@ -149,6 +158,21 @@ export async function parseAcquirerWorkbook(
       ...result,
       acquirer,
       parserId: "getnet-recebiveis-detalhado",
+      parserVersion: "1.0.0",
+    };
+  }
+
+  if (acquirer === "PAGARME") {
+    const result = await parsePagarmeWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "pagarme-extrato-movimentacoes",
       parserVersion: "1.0.0",
     };
   }

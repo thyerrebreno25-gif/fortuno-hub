@@ -820,10 +820,10 @@ export default function AdquirentesPage() {
             <Stack gap="sm">
               <Text fw={700}>Leitores disponíveis</Text>
               <Group gap="xs">
-                {["REDE", "Cielo", "GETNET"].map((brand) => (
+                {["REDE", "Cielo", "GETNET", "Pagar.me"].map((brand) => (
                   <Badge key={brand} variant="light" color="green">{brand} ativo</Badge>
                 ))}
-                {["Getnet", "Pagar.me", "Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => (
+                {["Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => (
                   <Badge key={brand} variant="outline" color="gray">{brand} em preparação</Badge>
                 ))}
               </Group>
