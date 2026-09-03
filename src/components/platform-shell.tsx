@@ -148,6 +148,14 @@ const icons = {
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
     </svg>
   ),
+
+  integration: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 12h8" />
+      <path d="M10 8H7a4 4 0 0 0 0 8h3" />
+      <path d="M14 8h3a4 4 0 0 1 0 8h-3" />
+    </svg>
+  ),
 };
 
 const menuItems: MenuItem[] = [
@@ -247,6 +255,13 @@ const menuItems: MenuItem[] = [
     href: "/suporte",
     moduleCode: "SUPPORT",
     icon: icons.support,
+    group: "Administração",
+  },
+  {
+    label: "Conta Azul",
+    href: "/integracoes/conta-azul",
+    moduleCode: "PURCHASE_INVOICES",
+    icon: icons.integration,
     group: "Administração",
   },
   {

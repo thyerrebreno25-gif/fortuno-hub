@@ -384,6 +384,14 @@ export default function NotasFiscaisPage() {
                   <Text size="sm" c="dimmed" mt={7}>{connected ? data?.connection?.externalTenantName || "Autorização OAuth 2.0 ativa" : "Autorize o acesso seguro para consultar cadastros e gerar despesas."}</Text>
                 </div>
                 <Group gap="xs">
+                  <Button
+                    component="a"
+                    href="/integracoes/conta-azul"
+                    variant="default"
+                    leftSection={<IconLink size={16} />}
+                  >
+                    Gerenciar vínculos
+                  </Button>
                   {connected && data?.permission.canManage && <Button color="red" variant="light" leftSection={<IconUnlink size={16} />} onClick={() => void disconnect()}>Desconectar</Button>}
                   {!connected && data?.permission.canManage && clientId && <Button component="a" href={`/api/integrations/conta-azul/connect?clientId=${encodeURIComponent(clientId)}`} leftSection={<IconLink size={16} />} disabled={!data?.configured}>Vincular cliente</Button>}
                 </Group>

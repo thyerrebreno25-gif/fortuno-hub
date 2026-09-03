@@ -6,8 +6,46 @@ import { decodeTokenProfile, exchangeContaAzulCode, getContaAzulRedirectUri } fr
 
 const STATE_COOKIE = "fortuno_conta_azul_oauth_state";
 
-function redirectBack(request: Request, clientId: string, key: string, value: string) {
-  const url = new URL("/notas-fiscais", request.url);
+type OAuthReturnTarget = "connections" | "invoices";
+
+function parseOAuthState(state: string): {
+  clientId: string;
+  returnTarget: OAuthReturnTarget;
+} {
+  const separator = state.indexOf(".");
+  const payload = separator >= 0 ? state.slice(separator + 1) : "";
+
+  if (payload.endsWith(".connections")) {
+    return {
+      clientId: payload.slice(0, -".connections".length),
+      returnTarget: "connections",
+    };
+  }
+
+  if (payload.endsWith(".invoices")) {
+    return {
+      clientId: payload.slice(0, -".invoices".length),
+      returnTarget: "invoices",
+    };
+  }
+
+  // Compatibilidade com autorizações iniciadas antes da central de vínculos.
+  return { clientId: payload, returnTarget: "invoices" };
+}
+
+function redirectBack(
+  request: Request,
+  clientId: string,
+  key: string,
+  value: string,
+  returnTarget: OAuthReturnTarget,
+) {
+  const url = new URL(
+    returnTarget === "connections"
+      ? "/integracoes/conta-azul"
+      : "/notas-fiscais",
+    request.url,
+  );
   if (clientId) url.searchParams.set("clientId", clientId);
   url.searchParams.set(key, value);
   const response = NextResponse.redirect(url);
@@ -18,25 +56,56 @@ export async function GET(request: Request) {
   const member = await getPurchaseInvoiceMember();
   if (!member) return NextResponse.redirect(new URL("/login", request.url));
   const permission = await getPurchaseInvoicePermission(member);
-  if (!permission.canManage) return redirectBack(request, "", "ca_error", "permission");
 
   const url = new URL(request.url);
   const code = url.searchParams.get("code") || "";
   const state = url.searchParams.get("state") || "";
+  const { clientId, returnTarget } = parseOAuthState(state);
+
+  if (!permission.canManage) {
+    return redirectBack(
+      request,
+      clientId,
+      "ca_error",
+      "permission",
+      returnTarget,
+    );
+  }
+
   const cookieState = request.headers.get("cookie")
     ?.split(";")
     .map((entry) => entry.trim())
     .find((entry) => entry.startsWith(`${STATE_COOKIE}=`))
     ?.slice(STATE_COOKIE.length + 1);
-  const clientId = state.split(".").at(-1) || "";
-
-  if (url.searchParams.get("error")) return redirectBack(request, clientId, "ca_error", url.searchParams.get("error") || "oauth");
+  if (url.searchParams.get("error")) {
+    return redirectBack(
+      request,
+      clientId,
+      "ca_error",
+      url.searchParams.get("error") || "oauth",
+      returnTarget,
+    );
+  }
   if (!code || !state || !cookieState || decodeURIComponent(cookieState) !== state) {
-    return redirectBack(request, clientId, "ca_error", "invalid_state");
+    return redirectBack(
+      request,
+      clientId,
+      "ca_error",
+      "invalid_state",
+      returnTarget,
+    );
   }
 
   const client = await findAuthorizedClient(member, clientId);
-  if (!client) return redirectBack(request, "", "ca_error", "client");
+  if (!client) {
+    return redirectBack(
+      request,
+      "",
+      "ca_error",
+      "client",
+      returnTarget,
+    );
+  }
 
   try {
     const tokens = await exchangeContaAzulCode({ code, redirectUri: getContaAzulRedirectUri(request) });
@@ -69,9 +138,21 @@ export async function GET(request: Request) {
         lastError: null,
       },
     });
-    return redirectBack(request, client.id, "ca", "connected");
+    return redirectBack(
+      request,
+      client.id,
+      "ca",
+      "connected",
+      returnTarget,
+    );
   } catch (error) {
     console.error("Callback OAuth Conta Azul:", error);
-    return redirectBack(request, client.id, "ca_error", "callback");
+    return redirectBack(
+      request,
+      client.id,
+      "ca_error",
+      "callback",
+      returnTarget,
+    );
   }
 }
