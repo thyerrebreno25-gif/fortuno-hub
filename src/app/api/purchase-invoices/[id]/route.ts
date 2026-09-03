@@ -10,10 +10,27 @@ type ItemInput = {
   costCenterId?: unknown;
   costCenterName?: unknown;
 };
+type InstallmentInput = {
+  externalNumber?: unknown;
+  dueDate?: unknown;
+  amount?: unknown;
+  source?: unknown;
+};
 
 function textOrNull(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
+
+function dateAtNoon(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T12:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function money(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   const member = await getPurchaseInvoiceMember();
   if (!member) return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
@@ -22,7 +39,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const invoice = await prisma.purchaseInvoice.findFirst({
     where: { id, organizationId: member.organizationId },
-    include: { items: true },
+    include: { items: true, installments: { orderBy: { installmentNumber: "asc" } } },
   });
   if (!invoice) return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
   if (invoice.status === "SENT") return NextResponse.json({ error: "A despesa desta nota já foi enviada." }, { status: 409 });
@@ -32,10 +49,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     supplierName?: unknown;
     financialAccountId?: unknown;
     financialAccountName?: unknown;
-    competenceDate?: unknown;
-    dueDate?: unknown;
     paymentMethod?: unknown;
     items?: ItemInput[];
+    installments?: InstallmentInput[];
   };
   const itemInputs = Array.isArray(body.items) ? body.items : [];
   const byId = new Map(itemInputs.map((item) => [String(item.id || ""), item]));
@@ -54,8 +70,37 @@ export async function PATCH(request: Request, context: RouteContext) {
   const supplierName = textOrNull(body.supplierName);
   const financialAccountId = textOrNull(body.financialAccountId);
   const financialAccountName = textOrNull(body.financialAccountName);
+  const installmentInputs = Array.isArray(body.installments) ? body.installments.slice(0, 120) : [];
+  const installments = installmentInputs.flatMap((installment, index) => {
+    const dueDate = dateAtNoon(installment.dueDate);
+    const rawAmount = String(installment.amount || "").trim();
+    const amount = typeof installment.amount === "number"
+      ? installment.amount
+      : Number(rawAmount.includes(",") ? rawAmount.replace(/\./g, "").replace(",", ".") : rawAmount);
+    if (!dueDate || !Number.isFinite(amount) || amount <= 0) return [];
+    const source = installment.source === "XML"
+      ? "XML" as const
+      : installment.source === "MANUAL"
+        ? "MANUAL" as const
+        : "MANUAL_REQUIRED" as const;
+    return [{
+      installmentNumber: index + 1,
+      externalNumber: textOrNull(installment.externalNumber),
+      dueDate,
+      amount: money(amount),
+      source,
+    }];
+  });
+  if (!installments.length || installments.length !== installmentInputs.length) {
+    return NextResponse.json({ error: "Revise as datas e os valores de todas as parcelas." }, { status: 400 });
+  }
+  const installmentTotal = money(installments.reduce((sum, installment) => sum + installment.amount, 0));
+  const paymentsConfirmed = installments.every((installment) => installment.source !== "MANUAL_REQUIRED");
+  const installmentsBalanced = Math.abs(installmentTotal - Number(invoice.totalInvoice)) <= 0.01;
   const allCategorized = updatedItems.every((item) => item.contaAzulCategoryId);
-  const nextStatus = allCategorized && supplierId && financialAccountId ? "READY_TO_SEND" : "PENDING_REVIEW";
+  const nextStatus = allCategorized && supplierId && financialAccountId && paymentsConfirmed && installmentsBalanced
+    ? "READY_TO_SEND"
+    : "PENDING_REVIEW";
 
   await prisma.$transaction(async (tx) => {
     await tx.purchaseInvoice.update({
@@ -65,12 +110,17 @@ export async function PATCH(request: Request, context: RouteContext) {
         supplierContaAzulName: supplierName,
         financialAccountId,
         financialAccountName,
-        competenceDate: typeof body.competenceDate === "string" ? new Date(`${body.competenceDate}T12:00:00.000Z`) : invoice.competenceDate,
-        dueDate: typeof body.dueDate === "string" ? new Date(`${body.dueDate}T12:00:00.000Z`) : invoice.dueDate,
+        competenceDate: invoice.issueDate,
+        dueDate: installments[0].dueDate,
         paymentMethod: typeof body.paymentMethod === "string" && body.paymentMethod ? body.paymentMethod : invoice.paymentMethod,
         status: nextStatus,
         lastError: null,
       },
+    });
+
+    await tx.purchaseInvoiceInstallment.deleteMany({ where: { invoiceId: invoice.id } });
+    await tx.purchaseInvoiceInstallment.createMany({
+      data: installments.map((installment) => ({ invoiceId: invoice.id, ...installment })),
     });
 
     for (const item of updatedItems) {
@@ -114,5 +164,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   });
 
-  return NextResponse.json({ message: nextStatus === "READY_TO_SEND" ? "Nota pronta para gerar a despesa." : "Revisão salva." });
+  const paymentMessage = !paymentsConfirmed
+    ? " Confirme os vencimentos que não vieram na NF-e."
+    : !installmentsBalanced
+      ? ` As parcelas somam R$ ${installmentTotal.toFixed(2)}, mas a nota totaliza R$ ${Number(invoice.totalInvoice).toFixed(2)}.`
+      : "";
+  return NextResponse.json({
+    message: nextStatus === "READY_TO_SEND" ? "Nota pronta para gerar a despesa." : `Revisão salva.${paymentMessage}`,
+  });
 }

@@ -3,13 +3,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
   Card,
+  Divider,
   FileButton,
   Group,
   Loader,
+  NumberInput,
   Paper,
   ScrollArea,
   Select,
@@ -23,12 +26,16 @@ import { notifications } from "@mantine/notifications";
 import {
   IconAlertTriangle,
   IconBuildingBank,
+  IconCalendar,
   IconCheck,
   IconCloudUpload,
   IconFileInvoice,
   IconLink,
+  IconPlus,
+  IconReceipt,
   IconRefresh,
   IconSend,
+  IconTrash,
   IconUnlink,
 } from "@tabler/icons-react";
 import styles from "./notas-fiscais.module.css";
@@ -53,6 +60,14 @@ type InvoiceItem = {
   contaAzulCostCenterName: string | null;
   learned: boolean;
 };
+type InvoiceInstallment = {
+  id?: string;
+  installmentNumber: number;
+  externalNumber: string | null;
+  dueDate: string;
+  amount: number;
+  source: "XML" | "MANUAL_REQUIRED" | "MANUAL";
+};
 type Invoice = {
   id: string;
   number: string;
@@ -74,6 +89,7 @@ type Invoice = {
   externalPayableProtocolId: string | null;
   lastError: string | null;
   items: InvoiceItem[];
+  installments: InvoiceInstallment[];
 };
 type Bootstrap = {
   configured: boolean;
@@ -109,6 +125,16 @@ function statusInfo(status: Invoice["status"]) {
   if (status === "FAILED") return { color: "red", label: "Falha no envio" };
   if (status === "IGNORED") return { color: "gray", label: "Ignorada" };
   return { color: "orange", label: "Revisão pendente" };
+}
+
+function installmentSourceInfo(source: InvoiceInstallment["source"]) {
+  if (source === "XML") return { color: "green", label: "Lida da NF-e" };
+  if (source === "MANUAL") return { color: "blue", label: "Revisada" };
+  return { color: "orange", label: "Confirmar data" };
+}
+
+function roundedMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 export default function NotasFiscaisPage() {
@@ -195,6 +221,42 @@ export default function NotasFiscaisPage() {
     setData((current) => current ? { ...current, invoices: current.invoices.map((invoice) => invoice.id === selectedId ? updater(invoice) : invoice) } : current);
   }
 
+  function updateInstallment(index: number, changes: Partial<InvoiceInstallment>) {
+    patchSelected((invoice) => ({
+      ...invoice,
+      installments: invoice.installments.map((installment, currentIndex) => currentIndex === index
+        ? { ...installment, ...changes }
+        : installment),
+    }));
+  }
+
+  function addInstallment() {
+    patchSelected((invoice) => {
+      const currentTotal = roundedMoney(invoice.installments.reduce((sum, installment) => sum + Number(installment.amount || 0), 0));
+      const remaining = roundedMoney(Math.max(invoice.totalInvoice - currentTotal, 0));
+      const lastDueDate = invoice.installments.at(-1)?.dueDate || invoice.issueDate;
+      return {
+        ...invoice,
+        installments: [...invoice.installments, {
+          installmentNumber: invoice.installments.length + 1,
+          externalNumber: null,
+          dueDate: lastDueDate,
+          amount: remaining,
+          source: "MANUAL",
+        }],
+      };
+    });
+  }
+
+  function removeInstallment(index: number) {
+    patchSelected((invoice) => ({
+      ...invoice,
+      installments: invoice.installments
+        .filter((_, currentIndex) => currentIndex !== index)
+        .map((installment, currentIndex) => ({ ...installment, installmentNumber: currentIndex + 1 })),
+    }));
+  }
+
   async function importXml(files: File[]) {
     if (!clientId || !files.length) return;
     setUploading(true);
@@ -226,9 +288,13 @@ export default function NotasFiscaisPage() {
           supplierName: selected.supplierContaAzulName,
           financialAccountId: selected.financialAccountId,
           financialAccountName: selected.financialAccountName,
-          competenceDate: dateInput(selected.competenceDate),
-          dueDate: dateInput(selected.dueDate),
           paymentMethod: selected.paymentMethod,
+          installments: selected.installments.map((installment) => ({
+            externalNumber: installment.externalNumber,
+            dueDate: dateInput(installment.dueDate),
+            amount: installment.amount,
+            source: installment.source,
+          })),
           items: selected.items.map((item) => ({
             id: item.id,
             categoryId: item.contaAzulCategoryId,
@@ -277,6 +343,12 @@ export default function NotasFiscaisPage() {
     await load();
   }
 
+  const selectedInstallmentTotal = roundedMoney(selected?.installments.reduce(
+    (sum, installment) => sum + Number(installment.amount || 0),
+    0,
+  ) || 0);
+  const selectedInstallmentDifference = roundedMoney((selected?.totalInvoice || 0) - selectedInstallmentTotal);
+
   return (
     <main className={styles.page}>
       <div className={styles.header}>
@@ -322,7 +394,7 @@ export default function NotasFiscaisPage() {
         </Paper>
 
         <Alert color="yellow" icon={<IconAlertTriangle size={18} />} title="Fluxo seguro enquanto a API de compras não está disponível">
-          {data?.limitations.message || "A API pública ainda não entrega as notas de entrada."} No Conta Azul, gere a compra sem gerar o financeiro; depois importe aqui o XML original da NF-e e crie uma única despesa rateada.
+          {data?.limitations.message || "A API pública ainda não entrega as notas de entrada."} No Conta Azul, gere a compra sem gerar o financeiro; depois importe aqui o XML original da NF-e e crie a despesa rateada com todos os vencimentos.
         </Alert>
 
         <div className={styles.summaryGrid}>
@@ -349,14 +421,119 @@ export default function NotasFiscaisPage() {
             <Paper withBorder radius="lg" p="lg">
               {!selected ? <Stack align="center" py={70}><IconFileInvoice size={52} color="#9aa7ba" /><Text c="dimmed">Selecione uma nota para abrir a revisão.</Text></Stack> : (
                 <Stack gap="lg">
-                  <Group justify="space-between" align="flex-start"><div><Group gap="xs"><Title order={2}>NF-e {selected.number}</Title><Badge color={statusInfo(selected.status).color}>{statusInfo(selected.status).label}</Badge></Group><Text c="dimmed">{selected.supplierName}{selected.supplierDocument ? ` · ${selected.supplierDocument}` : ""}</Text></div><div style={{ textAlign: "right" }}><Text size="sm" c="dimmed">Total da nota</Text><Title order={2}>{money(selected.totalInvoice)}</Title></div></Group>
+                  <div className={styles.invoiceHeader}>
+                    <Group justify="space-between" align="flex-start" gap="lg">
+                      <div>
+                        <Group gap="xs">
+                          <IconReceipt size={24} />
+                          <Title order={2}>NF-e {selected.number}</Title>
+                          <Badge color={statusInfo(selected.status).color}>{statusInfo(selected.status).label}</Badge>
+                        </Group>
+                        <Text c="dimmed" mt={4}>{selected.supplierName}{selected.supplierDocument ? ` · ${selected.supplierDocument}` : ""}</Text>
+                      </div>
+                      <div className={styles.invoiceTotal}>
+                        <Text size="sm" c="dimmed">Total da nota</Text>
+                        <Title order={2}>{money(selected.totalInvoice)}</Title>
+                      </div>
+                    </Group>
+                    <div className={styles.invoiceMeta}>
+                      <div>
+                        <Text size="xs" c="dimmed">Emissão da NF-e</Text>
+                        <Text fw={800}>{formatDate(selected.issueDate)}</Text>
+                      </div>
+                      <div>
+                        <Text size="xs" c="dimmed">Entrada / competência</Text>
+                        <Group gap={5}><Text fw={800}>{formatDate(selected.issueDate)}</Text><Badge size="xs" color="blue" variant="light">Automática</Badge></Group>
+                      </div>
+                      <div>
+                        <Text size="xs" c="dimmed">Parcelamento</Text>
+                        <Text fw={800}>{selected.installments.length === 1 ? "À vista / 1 parcela" : `${selected.installments.length} parcelas`}</Text>
+                      </div>
+                      <div>
+                        <Text size="xs" c="dimmed">Itens identificados</Text>
+                        <Text fw={800}>{selected.items.length}</Text>
+                      </div>
+                    </div>
+                  </div>
                   {selected.lastError && <Alert color="red" title="Último envio não foi concluído">{selected.lastError}</Alert>}
-                  <SimpleGrid cols={{ base: 1, md: 2 }}>
+                  <div>
+                    <Title order={3}>Dados para o lançamento</Title>
+                    <Text size="sm" c="dimmed">Vincule fornecedor, conta e forma de pagamento antes do envio.</Text>
+                  </div>
+                  <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                     <Select label="Fornecedor no Conta Azul" searchable data={suppliers} value={selected.supplierContaAzulId} placeholder={connected ? "Selecione o fornecedor" : "Conecte a Conta Azul"} disabled={!connected || selected.status === "SENT"} onChange={(value) => patchSelected((invoice) => ({ ...invoice, supplierContaAzulId: value, supplierContaAzulName: suppliers.find((item) => item.value === value)?.label || null }))} />
                     <Select label="Conta financeira" searchable data={financialAccounts} value={selected.financialAccountId} placeholder={connected ? "Selecione a conta" : "Conecte a Conta Azul"} disabled={!connected || selected.status === "SENT"} onChange={(value) => patchSelected((invoice) => ({ ...invoice, financialAccountId: value, financialAccountName: financialAccounts.find((item) => item.value === value)?.label || null }))} />
                     <Select label="Forma de pagamento" data={paymentMethods} value={selected.paymentMethod} disabled={selected.status === "SENT"} onChange={(value) => patchSelected((invoice) => ({ ...invoice, paymentMethod: value || "OUTRO" }))} />
-                    <div><Text size="sm" fw={600} mb={6}>Datas</Text><Group gap="xs"><input aria-label="Competência" type="date" value={dateInput(selected.competenceDate)} disabled={selected.status === "SENT"} onChange={(event) => patchSelected((invoice) => ({ ...invoice, competenceDate: `${event.target.value}T12:00:00.000Z` }))} /><input aria-label="Vencimento" type="date" value={dateInput(selected.dueDate)} disabled={selected.status === "SENT"} onChange={(event) => patchSelected((invoice) => ({ ...invoice, dueDate: `${event.target.value}T12:00:00.000Z` }))} /></Group></div>
                   </SimpleGrid>
+                  <Divider />
+                  <div>
+                    <Group justify="space-between" align="flex-start" gap="md">
+                      <div>
+                        <Group gap="xs"><IconCalendar size={21} /><Title order={3}>Pagamento e parcelas</Title></Group>
+                        <Text size="sm" c="dimmed">Confira os vencimentos previstos na NF-e. Cada parcela gerará um título a pagar no Conta Azul.</Text>
+                      </div>
+                      <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addInstallment} disabled={selected.status === "SENT"}>Adicionar parcela</Button>
+                    </Group>
+                    <Stack gap="sm" mt="md">
+                      {selected.installments.map((installment, index) => {
+                        const sourceInfo = installmentSourceInfo(installment.source);
+                        return (
+                          <div className={styles.installmentCard} key={installment.id || `${index}-${installment.dueDate}`}>
+                            <Group justify="space-between" align="center" mb="sm">
+                              <Group gap="xs">
+                                <Text fw={800}>Parcela {index + 1}/{selected.installments.length}</Text>
+                                {installment.externalNumber && <Badge variant="outline" color="gray">Nº {installment.externalNumber}</Badge>}
+                                <Badge color={sourceInfo.color} variant="light">{sourceInfo.label}</Badge>
+                              </Group>
+                              <Group gap="xs">
+                                {installment.source === "MANUAL_REQUIRED" && (
+                                  <Button size="compact-sm" variant="light" color="orange" onClick={() => updateInstallment(index, { source: "MANUAL" })} disabled={selected.status === "SENT"}>Confirmar</Button>
+                                )}
+                                <ActionIcon color="red" variant="subtle" aria-label={`Excluir parcela ${index + 1}`} onClick={() => removeInstallment(index)} disabled={selected.status === "SENT" || selected.installments.length === 1}>
+                                  <IconTrash size={17} />
+                                </ActionIcon>
+                              </Group>
+                            </Group>
+                            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                              <div>
+                                <Text size="sm" fw={600} mb={6}>Vencimento / pagamento previsto</Text>
+                                <input
+                                  className={styles.dateInput}
+                                  aria-label={`Vencimento da parcela ${index + 1}`}
+                                  type="date"
+                                  value={dateInput(installment.dueDate)}
+                                  disabled={selected.status === "SENT"}
+                                  onChange={(event) => updateInstallment(index, { dueDate: `${event.target.value}T12:00:00.000Z`, source: "MANUAL" })}
+                                />
+                              </div>
+                              <NumberInput
+                                label="Valor da parcela"
+                                value={installment.amount}
+                                min={0}
+                                decimalScale={2}
+                                fixedDecimalScale
+                                decimalSeparator=","
+                                thousandSeparator="."
+                                prefix="R$ "
+                                disabled={selected.status === "SENT"}
+                                onChange={(value) => updateInstallment(index, { amount: typeof value === "number" ? value : 0, source: "MANUAL" })}
+                              />
+                            </SimpleGrid>
+                          </div>
+                        );
+                      })}
+                    </Stack>
+                    <Group justify="flex-end" mt="sm" gap="xl">
+                      <div className={styles.paymentSummary}><Text size="xs" c="dimmed">Soma das parcelas</Text><Text fw={800}>{money(selectedInstallmentTotal)}</Text></div>
+                      <div className={styles.paymentSummary}><Text size="xs" c="dimmed">Diferença</Text><Text fw={800} c={Math.abs(selectedInstallmentDifference) <= 0.01 ? "green" : "red"}>{money(selectedInstallmentDifference)}</Text></div>
+                    </Group>
+                    {Math.abs(selectedInstallmentDifference) > 0.01 && <Alert color="orange" mt="sm" icon={<IconAlertTriangle size={17} />}>A soma das parcelas precisa fechar com o total da nota antes do envio.</Alert>}
+                  </div>
+                  <Divider />
+                  <div>
+                    <Title order={3}>Itens e classificação</Title>
+                    <Text size="sm" c="dimmed">Revise as categorias e os centros de custo que compõem o rateio da despesa.</Text>
+                  </div>
                   <ScrollArea>
                     <Table striped highlightOnHover className={styles.itemTable} miw={900}>
                       <Table.Thead><Table.Tr><Table.Th>Item da nota</Table.Th><Table.Th>Qtd.</Table.Th><Table.Th>Valor NF-e</Table.Th><Table.Th>Valor no rateio</Table.Th><Table.Th>Categoria Conta Azul</Table.Th><Table.Th>Centro de custo</Table.Th></Table.Tr></Table.Thead>
@@ -368,7 +545,27 @@ export default function NotasFiscaisPage() {
                       </Table.Tr>)}</Table.Tbody>
                     </Table>
                   </ScrollArea>
-                  <Group justify="space-between"><Text size="sm" c="dimmed">O valor da nota é distribuído proporcionalmente entre os itens para que o rateio feche exatamente, inclusive quando há frete, impostos ou descontos.</Text><Group><Button variant="default" onClick={() => void saveReview()} loading={saving} disabled={selected.status === "SENT" || !data?.permission.canEdit}>Salvar revisão</Button><Button color="green" leftSection={selected.status === "SENT" ? <IconCheck size={17} /> : <IconSend size={17} />} onClick={() => void sendExpense()} loading={sending} disabled={selected.status === "SENT" || !connected || !data?.permission.canExport}>{selected.status === "SENT" ? "Despesa enviada" : "Gerar despesa no Conta Azul"}</Button></Group></Group>
+                  <Group justify="space-between" align="flex-end">
+                    <Text size="sm" c="dimmed" maw={650}>O valor da nota é distribuído proporcionalmente entre os itens para que o rateio feche exatamente, inclusive quando há frete, impostos ou descontos.</Text>
+                    <Group>
+                      <Button variant="default" onClick={() => void saveReview()} loading={saving} disabled={selected.status === "SENT" || !data?.permission.canEdit}>Salvar revisão</Button>
+                      <Button
+                        color="green"
+                        leftSection={selected.status === "SENT" ? <IconCheck size={17} /> : <IconSend size={17} />}
+                        onClick={() => void sendExpense()}
+                        loading={sending}
+                        disabled={
+                          selected.status === "SENT"
+                          || !connected
+                          || !data?.permission.canExport
+                          || Math.abs(selectedInstallmentDifference) > 0.01
+                          || selected.installments.some((installment) => installment.source === "MANUAL_REQUIRED")
+                        }
+                      >
+                        {selected.status === "SENT" ? "Despesa enviada" : `Gerar ${selected.installments.length} título(s) no Conta Azul`}
+                      </Button>
+                    </Group>
+                  </Group>
                 </Stack>
               )}
             </Paper>

@@ -21,7 +21,11 @@ export async function POST(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   const invoice = await prisma.purchaseInvoice.findFirst({
     where: { id, organizationId: member.organizationId },
-    include: { items: { orderBy: { lineNumber: "asc" } }, connection: true },
+    include: {
+      items: { orderBy: { lineNumber: "asc" } },
+      installments: { orderBy: { installmentNumber: "asc" } },
+      connection: true,
+    },
   });
   if (!invoice) return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
   if (invoice.status === "SENT" || invoice.externalPayableProtocolId) {
@@ -31,6 +35,10 @@ export async function POST(_request: Request, context: RouteContext) {
   if (!invoice.supplierContaAzulId) return NextResponse.json({ error: "Selecione o fornecedor da Conta Azul." }, { status: 400 });
   if (!invoice.financialAccountId) return NextResponse.json({ error: "Selecione a conta financeira da despesa." }, { status: 400 });
   if (invoice.items.some((item) => !item.contaAzulCategoryId)) return NextResponse.json({ error: "Categorize todos os itens antes de enviar." }, { status: 400 });
+  if (!invoice.installments.length) return NextResponse.json({ error: "Cadastre ao menos uma parcela para esta nota." }, { status: 400 });
+  if (invoice.installments.some((installment) => installment.source === "MANUAL_REQUIRED")) {
+    return NextResponse.json({ error: "Confirme os vencimentos das parcelas que não vieram informados na NF-e." }, { status: 400 });
+  }
 
   const grouped = new Map<string, { value: number; centers: Map<string, number> }>();
   for (const item of invoice.items) {
@@ -53,6 +61,10 @@ export async function POST(_request: Request, context: RouteContext) {
   if (Math.abs(allocated - totalInvoice) > 0.01) {
     return NextResponse.json({ error: `O rateio soma R$ ${allocated.toFixed(2)}, mas a nota totaliza R$ ${totalInvoice.toFixed(2)}.` }, { status: 400 });
   }
+  const installmentTotal = money(invoice.installments.reduce((sum, installment) => sum + Number(installment.amount), 0));
+  if (Math.abs(installmentTotal - totalInvoice) > 0.01) {
+    return NextResponse.json({ error: `As parcelas somam R$ ${installmentTotal.toFixed(2)}, mas a nota totaliza R$ ${totalInvoice.toFixed(2)}.` }, { status: 400 });
+  }
 
   const payload = {
     data_competencia: dateOnly(invoice.competenceDate),
@@ -63,14 +75,23 @@ export async function POST(_request: Request, context: RouteContext) {
     conta_financeira: invoice.financialAccountId,
     rateio,
     condicao_pagamento: {
-      parcelas: [{
-        descricao: `NF-e ${invoice.number} - ${invoice.supplierName}`,
-        data_vencimento: dateOnly(invoice.dueDate),
-        nota: "Despesa rateada e revisada no Fortuno Hub.",
+      parcelas: invoice.installments.map((installment, index) => ({
+        descricao: invoice.installments.length > 1
+          ? `NF-e ${invoice.number} - parcela ${index + 1}/${invoice.installments.length} - ${invoice.supplierName}`
+          : `NF-e ${invoice.number} - ${invoice.supplierName}`,
+        data_vencimento: dateOnly(installment.dueDate),
+        nota: `Parcela ${index + 1}/${invoice.installments.length} da despesa rateada e revisada no Fortuno Hub.`,
         conta_financeira: invoice.financialAccountId,
-        detalhe_valor: { multa: 0, juros: 0, valor_bruto: totalInvoice, valor_liquido: totalInvoice, desconto: 0, taxa: 0 },
+        detalhe_valor: {
+          multa: 0,
+          juros: 0,
+          valor_bruto: Number(installment.amount),
+          valor_liquido: Number(installment.amount),
+          desconto: 0,
+          taxa: 0,
+        },
         metodo_pagamento: invoice.paymentMethod,
-      }],
+      })),
     },
   };
 
@@ -86,7 +107,13 @@ export async function POST(_request: Request, context: RouteContext) {
       where: { id: invoice.id },
       data: { status: "SENT", externalPayableProtocolId: protocolId, sentAt: new Date(), lastError: null },
     });
-    return NextResponse.json({ message: "Despesa enviada à Conta Azul com sucesso.", protocolId, status: result.status });
+    return NextResponse.json({
+      message: invoice.installments.length > 1
+        ? `Despesa parcelada em ${invoice.installments.length} títulos enviada à Conta Azul com sucesso.`
+        : "Despesa enviada à Conta Azul com sucesso.",
+      protocolId,
+      status: result.status,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível gerar a despesa.";
     await prisma.purchaseInvoice.update({ where: { id: invoice.id }, data: { status: "FAILED", lastError: message } });

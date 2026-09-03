@@ -14,6 +14,14 @@ export type ParsedNfeItem = {
   allocationAmount: number;
 };
 
+export type ParsedNfeInstallment = {
+  installmentNumber: number;
+  externalNumber: string | null;
+  dueDate: Date;
+  amount: number;
+  source: "XML" | "MANUAL_REQUIRED" | "MANUAL";
+};
+
 export type ParsedNfe = {
   sourceKey: string;
   accessKey: string | null;
@@ -23,9 +31,11 @@ export type ParsedNfe = {
   supplierDocument: string | null;
   issueDate: Date;
   dueDate: Date;
+  paymentMethod: string;
   totalProducts: number;
   totalInvoice: number;
   items: ParsedNfeItem[];
+  installments: ParsedNfeInstallment[];
   metadata: Record<string, string | number | null>;
 };
 
@@ -46,6 +56,11 @@ function tag(source: string, name: string) {
 
 function block(source: string, name: string) {
   return source.match(new RegExp(`<(?:\\w+:)?${name}(?:\\s[^>]*)?>[\\s\\S]*?<\\/(?:\\w+:)?${name}>`, "i"))?.[0] || "";
+}
+
+function blocks(source: string, name: string) {
+  return Array.from(source.matchAll(new RegExp(`<(?:\\w+:)?${name}(?:\\s[^>]*)?>[\\s\\S]*?<\\/(?:\\w+:)?${name}>`, "gi")))
+    .map((match) => match[0]);
 }
 
 function numberValue(value: string) {
@@ -89,6 +104,60 @@ function allocateTotal(items: Omit<ParsedNfeItem, "allocationAmount">[], totalIn
   });
 }
 
+function paymentMethodFromXml(xml: string) {
+  const code = tag(block(xml, "detPag"), "tPag");
+  if (code === "01") return "DINHEIRO";
+  if (code === "15") return "BOLETO_BANCARIO";
+  if (code === "17") return "PIX_PAGAMENTO_INSTANTANEO";
+  if (code === "18") return "TRANSFERENCIA_BANCARIA";
+  return "OUTRO";
+}
+
+function parseInstallments(xml: string, issueDate: Date, totalInvoice: number): ParsedNfeInstallment[] {
+  const duplicates = blocks(block(xml, "cobr"), "dup");
+  if (!duplicates.length) {
+    return [{
+      installmentNumber: 1,
+      externalNumber: null,
+      dueDate: issueDate,
+      amount: totalInvoice,
+      source: "MANUAL_REQUIRED",
+    }];
+  }
+
+  const parsed = duplicates.map((duplicate, index) => {
+    const dueDateText = tag(duplicate, "dVenc");
+    return {
+      installmentNumber: index + 1,
+      externalNumber: tag(duplicate, "nDup") || null,
+      dueDate: dueDateText ? parseDate(dueDateText) : issueDate,
+      amount: money(numberValue(tag(duplicate, "vDup"))),
+      source: dueDateText ? "XML" as const : "MANUAL_REQUIRED" as const,
+    };
+  });
+
+  const informedTotal = money(parsed.reduce((sum, installment) => sum + installment.amount, 0));
+  const missing = parsed.filter((installment) => installment.amount <= 0);
+  if (missing.length) {
+    const remaining = money(Math.max(totalInvoice - informedTotal, 0));
+    let distributed = 0;
+    const share = money(remaining / missing.length);
+    parsed.forEach((installment) => {
+      if (installment.amount > 0) return;
+      const isLast = installment === missing.at(-1);
+      installment.amount = isLast ? money(remaining - distributed) : share;
+      distributed = money(distributed + installment.amount);
+      installment.source = "MANUAL_REQUIRED";
+    });
+  }
+
+  const parsedTotal = money(parsed.reduce((sum, installment) => sum + installment.amount, 0));
+  if (Math.abs(parsedTotal - totalInvoice) <= 0.02) {
+    parsed[parsed.length - 1].amount = money(parsed[parsed.length - 1].amount + totalInvoice - parsedTotal);
+  }
+  return parsed;
+}
+
 export function parseNfeXml(xml: string): ParsedNfe {
   if (!/<(?:\w+:)?infNFe\b/i.test(xml) || !/<(?:\w+:)?det\b/i.test(xml)) {
     throw new Error("O arquivo não parece ser um XML válido de NF-e de produtos.");
@@ -99,10 +168,7 @@ export function parseNfeXml(xml: string): ParsedNfe {
   const ide = block(xml, "ide");
   const emit = block(xml, "emit");
   const totals = block(xml, "ICMSTot");
-  const cobr = block(xml, "cobr");
   const issueDate = parseDate(tag(ide, "dhEmi") || tag(ide, "dEmi"));
-  const dueDateText = tag(cobr, "dVenc");
-  const dueDate = dueDateText ? parseDate(dueDateText) : issueDate;
 
   const rawItems = Array.from(xml.matchAll(/<(?:\w+:)?det\b[^>]*>[\s\S]*?<\/(?:\w+:)?det>/gi));
   const itemsWithoutAllocation = rawItems.map((match, index) => {
@@ -127,6 +193,7 @@ export function parseNfeXml(xml: string): ParsedNfe {
   const totalProducts = money(numberValue(tag(totals, "vProd")) || itemsWithoutAllocation.reduce((sum, item) => sum + item.totalValue, 0));
   const totalInvoice = money(numberValue(tag(totals, "vNF")) || totalProducts);
   if (totalInvoice <= 0) throw new Error("O valor total da NF-e não pôde ser identificado.");
+  const installments = parseInstallments(xml, issueDate, totalInvoice);
 
   const supplierDocument = tag(emit, "CNPJ") || tag(emit, "CPF") || null;
   const sourceKey = accessKey || crypto.createHash("sha256").update(xml).digest("hex");
@@ -139,16 +206,20 @@ export function parseNfeXml(xml: string): ParsedNfe {
     supplierName: tag(emit, "xNome") || "FORNECEDOR NÃO IDENTIFICADO",
     supplierDocument,
     issueDate,
-    dueDate,
+    dueDate: installments[0].dueDate,
+    paymentMethod: paymentMethodFromXml(xml),
     totalProducts,
     totalInvoice,
     items: allocateTotal(itemsWithoutAllocation, totalInvoice),
+    installments,
     metadata: {
       natureOperation: tag(ide, "natOp") || null,
       freight: money(numberValue(tag(totals, "vFrete"))),
       discount: money(numberValue(tag(totals, "vDesc"))),
       otherExpenses: money(numberValue(tag(totals, "vOutro"))),
       ipi: money(numberValue(tag(totals, "vIPI"))),
+      installmentCount: installments.length,
+      paymentDatesIdentified: installments.filter((installment) => installment.source === "XML").length,
     },
   };
 }

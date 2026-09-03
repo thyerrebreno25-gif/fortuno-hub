@@ -88,10 +88,12 @@ export async function POST(request: Request) {
           dueDate: parsed.dueDate,
           totalProducts: parsed.totalProducts,
           totalInvoice: parsed.totalInvoice,
+          paymentMethod: parsed.paymentMethod,
           status: allCategorized ? "PENDING_REVIEW" : "PENDING_REVIEW",
           rawXml: xml,
           metadata: { ...parsed.metadata, originalName: file.name },
           items: { create: preparedItems },
+          installments: { create: parsed.installments },
         },
       });
       created.push(invoice.id);

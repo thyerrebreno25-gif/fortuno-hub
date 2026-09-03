@@ -21,7 +21,10 @@ export async function GET(request: Request) {
     prisma.purchaseInvoice.findMany({
       where: { clientId, organizationId: member.organizationId },
       orderBy: [{ status: "asc" }, { issueDate: "desc" }, { createdAt: "desc" }],
-      include: { items: { orderBy: { lineNumber: "asc" } } },
+      include: {
+        items: { orderBy: { lineNumber: "asc" } },
+        installments: { orderBy: { installmentNumber: "asc" } },
+      },
       take: 100,
     }),
   ]);
@@ -40,6 +43,10 @@ export async function GET(request: Request) {
       ...invoice,
       totalProducts: Number(invoice.totalProducts),
       totalInvoice: Number(invoice.totalInvoice),
+      installments: invoice.installments.map((installment) => ({
+        ...installment,
+        amount: Number(installment.amount),
+      })),
       items: invoice.items.map((item) => ({
         ...item,
         quantity: Number(item.quantity),

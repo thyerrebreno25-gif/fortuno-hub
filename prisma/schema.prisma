@@ -43,6 +43,12 @@ enum PurchaseInvoiceStatus {
   IGNORED
 }
 
+enum PurchaseInvoiceInstallmentSource {
+  XML
+  MANUAL_REQUIRED
+  MANUAL
+}
+
 enum ImportStatus {
   UPLOADED
   PROCESSING
@@ -507,11 +513,29 @@ model PurchaseInvoice {
   connection   ContaAzulConnection?  @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   createdBy    User                  @relation("PurchaseInvoiceCreator", fields: [createdById], references: [id], onDelete: Restrict)
   items        PurchaseInvoiceItem[]
+  installments PurchaseInvoiceInstallment[]
 
   @@unique([clientId, sourceKey])
   @@index([organizationId, status, createdAt])
   @@index([clientId, issueDate])
   @@index([accessKey])
+}
+
+model PurchaseInvoiceInstallment {
+  id                String                           @id @default(cuid())
+  invoiceId         String
+  installmentNumber Int
+  externalNumber    String?
+  dueDate            DateTime
+  amount             Decimal                          @db.Decimal(18, 2)
+  source             PurchaseInvoiceInstallmentSource @default(MANUAL_REQUIRED)
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, installmentNumber])
+  @@index([invoiceId, dueDate])
 }
 
 model PurchaseInvoiceItem {
