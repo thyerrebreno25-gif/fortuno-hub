@@ -19,6 +19,7 @@ import {
   IconCheck,
   IconCloudUpload,
   IconExternalLink,
+  IconLink,
   IconLinkOff,
   IconRefresh,
 } from "@tabler/icons-react";
@@ -311,7 +312,30 @@ export function DirectFinancialSend({
             <Text c="dimmed">Validando a conexão e carregando os cadastros...</Text>
           ) : !connected ? (
             <Alert color="orange" icon={<IconLinkOff size={18} />} title="Cliente não conectado">
-              Vincule este cliente ao Conta Azul na aba Notas de compra antes de continuar.
+              <Stack gap="sm">
+                <Text size="sm">
+                  Este cliente ainda não possui um vínculo com o Conta Azul.
+                  Autorize a empresa para continuar o envio.
+                </Text>
+                <Group gap="xs">
+                  <Button
+                    component="a"
+                    href={`/api/integrations/conta-azul/connect?clientId=${encodeURIComponent(clientId!)}&returnTo=connections`}
+                    size="xs"
+                    leftSection={<IconLink size={14} />}
+                  >
+                    Vincular agora
+                  </Button>
+                  <Button
+                    component="a"
+                    href="/integracoes/conta-azul"
+                    size="xs"
+                    variant="default"
+                  >
+                    Gerenciar todos os vínculos
+                  </Button>
+                </Group>
+              </Stack>
             </Alert>
           ) : (
             <>

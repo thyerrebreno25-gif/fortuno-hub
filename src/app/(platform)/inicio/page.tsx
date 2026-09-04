@@ -24,8 +24,10 @@ import {
   IconChartBar,
   IconClipboardCheck,
   IconFileAnalytics,
+  IconFileInvoice,
   IconHeadset,
   IconHistory,
+  IconLink,
   IconRocket,
   IconSearch,
   IconSettings,
@@ -103,6 +105,16 @@ const features: Feature[] = [
     icon: <IconCards size={24} />,
   },
   {
+    title: "Notas de compra",
+    description:
+      "Importe NF-e, revise itens e parcelas e gere as despesas diretamente no Conta Azul.",
+    href: "/notas-fiscais",
+    moduleCode: "PURCHASE_INVOICES",
+    group: "Operação financeira",
+    icon: <IconFileInvoice size={24} />,
+    badge: "Integrado",
+  },
+  {
     title: "Adquirentes",
     description:
       "Analise recebimentos, vendas, tarifas e informações das adquirentes.",
@@ -110,6 +122,16 @@ const features: Feature[] = [
     moduleCode: "IMPORTS",
     group: "Operação financeira",
     icon: <IconActivity size={24} />,
+  },
+  {
+    title: "Conta Azul",
+    description:
+      "Vincule as empresas dos clientes e acompanhe todas as conexões em um só lugar.",
+    href: "/integracoes/conta-azul",
+    moduleCode: "PURCHASE_INVOICES",
+    group: "Operação financeira",
+    icon: <IconLink size={24} />,
+    badge: "Integração",
   },
   {
     title: "Motor Cambial",
