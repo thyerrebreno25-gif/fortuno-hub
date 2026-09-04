@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findAuthorizedClient, getPurchaseInvoiceMember, getPurchaseInvoicePermission } from "@/modules/purchase-invoices/server/auth";
 import { parseNfeXml } from "@/modules/purchase-invoices/server/nfe-parser";
+import { findPurchaseInvoiceRule } from "@/modules/purchase-invoices/server/rule-matcher";
 
 const MAX_XML_SIZE = 8 * 1024 * 1024;
 
@@ -45,20 +46,11 @@ export async function POST(request: Request) {
 
       const supplierDocument = parsed.supplierDocument || "";
       const preparedItems = parsed.items.map((item) => {
-        const productCode = item.productCode || "";
-        const matchingRule =
-          rules.find((rule) =>
-            rule.supplierDocument === supplierDocument &&
-            rule.productCode === productCode &&
-            rule.normalizedDescription === item.normalizedDescription,
-          ) ||
-          (productCode
-            ? rules.find((rule) => rule.supplierDocument === supplierDocument && rule.productCode === productCode)
-            : undefined) ||
-          rules.find((rule) =>
-            rule.supplierDocument === supplierDocument &&
-            rule.normalizedDescription === item.normalizedDescription,
-          );
+        const matchingRule = findPurchaseInvoiceRule(
+          rules,
+          supplierDocument,
+          item,
+        );
         return {
           ...item,
           contaAzulCategoryId: matchingRule?.contaAzulCategoryId || null,
