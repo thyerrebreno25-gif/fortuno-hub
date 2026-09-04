@@ -73,8 +73,8 @@ export default function ExtratosPage() {
     const isMercadoPago = statement.bank === "Mercado Pago";
     const bankSlug = isC6 ? "c6" : isCaixa ? "caixa" : isMercadoPago ? "mercado_pago" : "sicredi";
     const bankId = isC6 ? "336" : isCaixa ? "104" : isMercadoPago ? "323" : "748";
-    const content = generateOfx({ bankId, branch: statement.branch, account: statement.account, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
-    download(`${bankSlug}_${statement.account || "extrato"}_${statement.periodStart || ""}.ofx`, content, "application/x-ofx;charset=utf-8");
+    const content = generateOfx({ bankId, institutionName: statement.bank, branch: statement.branch, account: statement.account, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
+    download(`${bankSlug}_${statement.account || "extrato"}_${statement.periodStart || ""}.ofx`, content, "application/x-ofx");
     try {
       await trackImport({
         module: "BANK_STATEMENT",
