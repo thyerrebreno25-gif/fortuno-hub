@@ -11,6 +11,7 @@ type GenerateOfxInput = {
 };
 
 const institutionNames: Record<string, string> = {
+  "001": "Banco do Brasil S.A.",
   "104": "Caixa Economica Federal",
   "323": "Mercado Pago",
   "336": "Banco C6 S.A.",

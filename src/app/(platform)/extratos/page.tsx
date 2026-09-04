@@ -7,13 +7,14 @@ import { extractPdfLines, extractPdfTextLines } from "@/modules/bank-statements/
 import { extractCaixaPdfOcrLines } from "@/modules/bank-statements/caixa-reader.client";
 import { parseC6 } from "@/modules/bank-statements/parsers/c6";
 import { parseCaixaStatement } from "@/modules/bank-statements/parsers/caixa";
+import { parseBancoDoBrasilStatement } from "@/modules/bank-statements/parsers/banco-do-brasil";
 import { parseSicredi } from "@/modules/bank-statements/parsers/sicredi";
 import { parseMercadoPagoStatement } from "@/modules/bank-statements/parsers/mercado-pago";
 import { generateOfx } from "@/modules/bank-statements/ofx";
 import type { ParsedStatement, StatementTransaction } from "@/modules/bank-statements/types";
 import { trackImport } from "@/modules/imports/import-tracker";
 
-const BANKS = [{ value: "SICREDI", label: "Sicredi" }, { value: "C6", label: "C6 Bank" }, { value: "CAIXA", label: "Caixa" }, { value: "MERCADO_PAGO", label: "Mercado Pago" }, { value: "BB", label: "Banco do Brasil (em breve)" }, { value: "ITAU", label: "Itaú (em breve)" }, { value: "INTER", label: "Inter (em breve)" }];
+const BANKS = [{ value: "SICREDI", label: "Sicredi" }, { value: "C6", label: "C6 Bank" }, { value: "CAIXA", label: "Caixa" }, { value: "MERCADO_PAGO", label: "Mercado Pago" }, { value: "BB", label: "Banco do Brasil" }, { value: "ITAU", label: "Itaú (em breve)" }, { value: "INTER", label: "Inter (em breve)" }];
 const money = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 const date = (v?: string) => v ? v.split("-").reverse().join("/") : "-";
 function download(name: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
@@ -43,9 +44,9 @@ export default function ExtratosPage() {
     if (!file || !bank) return;
     setProcessing(true); setError("");
     try {
-      if (!(["SICREDI", "C6", "CAIXA", "MERCADO_PAGO"] as string[]).includes(bank)) throw new Error("Esse banco ainda não possui um leitor configurado.");
+      if (!(["SICREDI", "C6", "CAIXA", "MERCADO_PAGO", "BB"] as string[]).includes(bank)) throw new Error("Esse banco ainda não possui um leitor configurado.");
       if (file.type.startsWith("image/") || /\.(png|jpe?g)$/i.test(file.name)) throw new Error("A leitura de extratos por imagem ainda não está disponível. Envie o PDF original do banco.");
-      const structuredLines = bank === "MERCADO_PAGO" ? await extractPdfTextLines(file, password) : null;
+      const structuredLines = bank === "MERCADO_PAGO" || bank === "BB" ? await extractPdfTextLines(file, password) : null;
       const lines = bank === "CAIXA"
         ? await extractCaixaPdfOcrLines(file, password)
         : structuredLines
@@ -55,11 +56,13 @@ export default function ExtratosPage() {
         ? parseC6(lines)
         : bank === "CAIXA"
           ? parseCaixaStatement(lines)
+          : bank === "BB"
+            ? parseBancoDoBrasilStatement(structuredLines ?? [])
           : bank === "MERCADO_PAGO"
             ? parseMercadoPagoStatement(structuredLines ?? [])
             : parseSicredi(lines);
       setStatement(parsed); setTransactions(parsed.transactions);
-      setInitialBalance(bank === "C6" || bank === "CAIXA" || bank === "MERCADO_PAGO" ? parsed.detectedOpeningBalance ?? "" : "");
+      setInitialBalance(bank === "C6" || bank === "CAIXA" || bank === "MERCADO_PAGO" || bank === "BB" ? parsed.detectedOpeningBalance ?? "" : "");
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ler o arquivo."); }
     finally { setProcessing(false); }
   }
@@ -71,8 +74,9 @@ export default function ExtratosPage() {
     const isC6 = statement.bank === "C6 Bank";
     const isCaixa = statement.bank === "Caixa";
     const isMercadoPago = statement.bank === "Mercado Pago";
-    const bankSlug = isC6 ? "c6" : isCaixa ? "caixa" : isMercadoPago ? "mercado_pago" : "sicredi";
-    const bankId = isC6 ? "336" : isCaixa ? "104" : isMercadoPago ? "323" : "748";
+    const isBancoDoBrasil = statement.bank === "Banco do Brasil";
+    const bankSlug = isC6 ? "c6" : isCaixa ? "caixa" : isMercadoPago ? "mercado_pago" : isBancoDoBrasil ? "banco_do_brasil" : "sicredi";
+    const bankId = isC6 ? "336" : isCaixa ? "104" : isMercadoPago ? "323" : isBancoDoBrasil ? "001" : "748";
     const content = generateOfx({ bankId, institutionName: statement.bank, branch: statement.branch, account: statement.account, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
     download(`${bankSlug}_${statement.account || "extrato"}_${statement.periodStart || ""}.ofx`, content, "application/x-ofx");
     try {
@@ -80,7 +84,7 @@ export default function ExtratosPage() {
         module: "BANK_STATEMENT",
         status: "EXPORTED",
         originalName: file?.name || `${bankSlug}_${statement.account || "extrato"}.pdf`,
-        parserId: isC6 ? "c6-conta-corrente" : isCaixa ? "caixa-extrato-periodo-ocr" : isMercadoPago ? "mercado-pago-extrato-conta" : "sicredi-conta-corrente",
+        parserId: isC6 ? "c6-conta-corrente" : isCaixa ? "caixa-extrato-periodo-ocr" : isMercadoPago ? "mercado-pago-extrato-conta" : isBancoDoBrasil ? "banco-do-brasil-extrato-conta" : "sicredi-conta-corrente",
         parserVersion: "1.0.0",
         expectedTotal: totals.detected,
         parsedTotal: totals.calculated,
@@ -116,10 +120,10 @@ export default function ExtratosPage() {
       <Center><Stack align="center" gap="sm"><ThemeIcon size={68} radius="xl" variant="light"><IconUpload size={34}/></ThemeIcon><Title order={3}>Importe o extrato bancário</Title><Text c="dimmed" ta="center">O banco é selecionado manualmente. Cada opção utiliza uma lógica própria de leitura.</Text></Stack></Center>
       <Select label="Banco *" description="Escolha o banco antes de anexar o arquivo." data={BANKS} value={bank} onChange={setBank} searchable required maw={520}/>
       <PasswordInput label="Senha do PDF" description="Preencha somente quando o banco proteger o extrato com senha." placeholder="Digite a senha do arquivo" value={password} onChange={(event) => setPassword(event.currentTarget.value)} maw={520}/>
-      <Paper withBorder radius="xl" p={34} style={{ borderStyle: "dashed" }}><Stack align="center"><Group><Badge leftSection={<IconFileAnalytics size={13}/>}>PDF</Badge><Badge leftSection={<IconPhoto size={13}/>} variant="light">JPG / PNG</Badge></Group><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}/><Button leftSection={<IconUpload size={18}/>} onClick={() => fileInputRef.current?.click()}>Selecionar arquivo</Button><Text size="sm" c="dimmed">Layouts ativos: Sicredi, C6 Bank, Caixa e Mercado Pago - Extrato de conta corrente.</Text></Stack></Paper>
+      <Paper withBorder radius="xl" p={34} style={{ borderStyle: "dashed" }}><Stack align="center"><Group><Badge leftSection={<IconFileAnalytics size={13}/>}>PDF</Badge><Badge leftSection={<IconPhoto size={13}/>} variant="light">JPG / PNG</Badge></Group><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}/><Button leftSection={<IconUpload size={18}/>} onClick={() => fileInputRef.current?.click()}>Selecionar arquivo</Button><Text size="sm" c="dimmed">Layouts ativos: Sicredi, C6 Bank, Caixa, Mercado Pago e Banco do Brasil - Extrato de conta corrente.</Text></Stack></Paper>
       {file && <Card withBorder><Group justify="space-between"><Stack gap={0}><Text fw={700}>{file.name}</Text><Text size="sm" c="dimmed">{(file.size/1024/1024).toFixed(2)} MB</Text></Stack><ActionIcon color="red" variant="subtle" onClick={()=>{setFile(null);if (fileInputRef.current) fileInputRef.current.value = "";}}><IconX size={18}/></ActionIcon></Group></Card>}
       {error && <Alert color="red" icon={<IconAlertTriangle size={18}/>}>{error}</Alert>}
-      <Alert color="blue">O sistema somará entradas e subtrairá saídas para comparar o saldo final calculado com o saldo apresentado no extrato. No C6, na Caixa e no Mercado Pago, o saldo inicial também é identificado automaticamente.</Alert>
+      <Alert color="blue">O sistema somará entradas e subtrairá saídas para comparar o saldo final calculado com o saldo apresentado no extrato. No C6, na Caixa, no Mercado Pago e no Banco do Brasil, o saldo inicial também é identificado automaticamente.</Alert>
       <Group justify="flex-end"><Button disabled={!file || !bank} loading={processing} onClick={processFile} rightSection={<IconChevronRight size={18}/>}>Ler extrato</Button></Group>
     </Stack></Paper> : <>
       <SimpleGrid cols={{ base:1, sm:2, xl:4 }}>
