@@ -54,6 +54,38 @@ describe("aprendizado de categorias da fatura", () => {
     expect(areSimilarInvoiceMerchants("NOTION LABS INC.", "NOTION LABS")).toBe(true);
   });
 
+  it("ignora valores e variações de escrita nos pagamentos da OpenAI", () => {
+    expect(
+      invoiceMerchantSimilarity(
+        "OPEN AI *CHAT GPT USD 20,00",
+        "OPENAI*CHATGPT USD 200,00",
+      ),
+    ).toBe(1);
+    expect(
+      areSimilarInvoiceMerchants(
+        "OPEN IA CHATGPT R$ 99,90",
+        "OPENAI CHATGPT R$ 1.249,00",
+      ),
+    ).toBe(true);
+  });
+
+  it("reaplica a categoria aprendida da OpenAI mesmo quando o valor muda", () => {
+    useMemoryStorage();
+
+    learnInvoiceCategory({
+      clientId: "cliente-openai",
+      description: "OPEN AI *CHATGPT USD 20,00",
+      category: "SISTEMAS",
+    });
+
+    expect(
+      findLearnedInvoiceCategory(
+        "cliente-openai",
+        "OPENAI*CHATGPT USD 200,00",
+      )?.category,
+    ).toBe("SISTEMAS");
+  });
+
   it("mantém regras separadas e retorna a categoria exata de cada descrição", () => {
     useMemoryStorage();
 

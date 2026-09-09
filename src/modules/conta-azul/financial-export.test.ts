@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  automaticFinancialContactName,
   buildFinancialEventPayload,
   contaAzulOptions,
   findContaAzulOption,
@@ -25,6 +26,10 @@ describe("envio financeiro direto ao Conta Azul", () => {
       .toBe("RECEITAS");
     expect(technicalContactProfileSuffix(["Cliente", "Fornecedor"]))
       .toBe("FINANCEIRO");
+    expect(automaticFinancialContactName(["Fornecedor"]))
+      .toBe("LANÇAMENTO AUTOMÁTICO");
+    expect(automaticFinancialContactName(["Cliente"]))
+      .toBe("LANÇAMENTO AUTOMÁTICO - RECEITAS");
   });
 
   it("localiza categorias ignorando acentos, caixa e hierarquia interna", () => {

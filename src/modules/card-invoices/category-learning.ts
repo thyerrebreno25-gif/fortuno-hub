@@ -12,6 +12,7 @@ const SIMILARITY_THRESHOLD = 0.62;
 const IGNORED_TOKENS = new Set([
   "COMPRA", "CARTAO", "CREDITO", "DEBITO", "PARCELA", "PAGAMENTO",
   "BRASIL", "BR", "BRA", "LTDA", "ME", "SA", "EIRELI", "INC", "LLC", "SLU",
+  "VALOR", "USD", "BRL", "DOLAR", "DOLLAR", "REAL", "REAIS", "COM",
 ]);
 
 export function normalizeInvoiceMerchant(description: string): string {
@@ -19,9 +20,16 @@ export function normalizeInvoiceMerchant(description: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
+    .replace(/\bOPEN\s+(?:AI|IA)\b/g, "OPENAI")
+    .replace(/\bCHAT\s+GPT\b/g, "CHATGPT")
     .replace(/\(\s*PARCELA\s+\d+\s+DE\s+\d+\s*\)/gi, " ")
     .replace(/\b\d{1,2}\s*\/\s*\d{1,2}\b/g, " ")
     .replace(/\b20\d{2}\b/g, " ")
+    .replace(/(?:R|US|U)\s*\$\s*-?\s*\d[\d.,]*/g, " ")
+    .replace(/\b(?:USD|BRL|DOLAR|DOLLAR|REAIS?)\s*-?\s*\d[\d.,]*/g, " ")
+    .replace(/\b\d{1,3}(?:\.\d{3})+,\d{1,4}\b/g, " ")
+    .replace(/\b\d{1,3}(?:,\d{3})+\.\d{1,4}\b/g, " ")
+    .replace(/\b\d+[.,]\d{1,4}\b/g, " ")
     .replace(/\b([A-Z]{3,})\d+\b/g, "$1")
     .replace(/\b(?=[A-Z0-9]{8,}\b)(?=[A-Z0-9]*\d)[A-Z0-9]+\b/g, " ")
     .replace(/[.*_#|\\/:-]+/g, " ")
@@ -38,7 +46,7 @@ function merchantTokens(description: string): string[] {
 }
 
 function merchantSignature(description: string): string {
-  return merchantTokens(description).join(" ") || normalizeInvoiceMerchant(description);
+  return Array.from(new Set(merchantTokens(description))).join(" ") || normalizeInvoiceMerchant(description);
 }
 
 export function invoiceMerchantSimilarity(left: string, right: string): number {

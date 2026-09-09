@@ -10,6 +10,7 @@ import {
 } from "@/modules/purchase-invoices/server/auth";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
 import {
+  automaticFinancialContactName,
   apiItems,
   buildFinancialEventPayload,
   contaAzulOptions,
@@ -21,7 +22,6 @@ import {
   protocolState,
   requiredContactProfiles,
   resourceIdFromProtocol,
-  technicalContactProfileSuffix,
 } from "@/modules/conta-azul/financial-export";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -165,7 +165,7 @@ async function resolveTechnicalContact(
     : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
   const requiredProfiles = requiredContactProfiles([direction]);
   const requiredProfile = requiredProfiles[0];
-  const technicalName = `FORTUNO HUB - ${name} - ${technicalContactProfileSuffix(requiredProfiles)}`;
+  const technicalName = automaticFinancialContactName(requiredProfiles);
 
   async function compatiblePerson(option: { value: string; label: string }) {
     const body = await contaAzulRequest<Record<string, unknown>>(

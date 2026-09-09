@@ -351,8 +351,7 @@ export function DirectFinancialSend({
                   : "Vínculo automático da fatura"}
               >
                 Você escolhe somente a conta financeira. Como a API do Conta Azul exige um contato técnico,
-                o Fortuno Hub localizará ou criará automaticamente o cadastro
-                {counterpartyHint ? ` “${counterpartyHint}”` : module === "ACQUIRER" ? " da adquirente" : " do cartão"}
+                o Fortuno Hub localizará ou criará automaticamente o cadastro “LANÇAMENTO AUTOMÁTICO”
                 {" "}para concluir o envio, sem pedir a seleção de um fornecedor.
               </Alert>
               <Select

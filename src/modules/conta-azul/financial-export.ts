@@ -24,6 +24,15 @@ export function technicalContactProfileSuffix(
   return profiles[0] === "Cliente" ? "RECEITAS" : "DESPESAS";
 }
 
+export function automaticFinancialContactName(
+  profiles: ContaAzulPersonProfile[],
+) {
+  if (profiles.length > 1) return "LANÇAMENTO AUTOMÁTICO - FINANCEIRO";
+  return profiles[0] === "Cliente"
+    ? "LANÇAMENTO AUTOMÁTICO - RECEITAS"
+    : "LANÇAMENTO AUTOMÁTICO";
+}
+
 export function normalizeContaAzulLabel(value: string): string {
   return value
     .normalize("NFD")
