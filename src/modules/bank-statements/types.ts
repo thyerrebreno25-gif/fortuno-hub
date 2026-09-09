@@ -15,6 +15,7 @@ export type StatementTransaction = {
 
 export type ParsedStatement = {
   bank: string;
+  layout?: string;
   accountHolder?: string;
   branch?: string;
   account?: string;
