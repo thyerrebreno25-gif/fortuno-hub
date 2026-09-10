@@ -280,9 +280,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 className={styles.forgotPassword}
-                onClick={() =>
-                  alert("A recuperação de senha será configurada na próxima etapa.")
-                }
+                onClick={() => router.push("/recuperar-senha")}
               >
                 Esqueci minha senha
               </button>

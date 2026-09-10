@@ -20,6 +20,90 @@ const header = [
 ];
 
 describe("leitor de extrato do Banco do Brasil", () => {
+  it("lê o layout Jasper com data e detalhes separados e sinais entre parênteses", () => {
+    const result = parseBancoDoBrasilStatement([
+      line(810, [{ x: 70, text: "Extrato de Conta Corrente" }]),
+      line(788, [{ x: 71, text: "Cliente" }, { x: 110, text: "ABISMO ANHUMAS" }]),
+      line(768, [
+        { x: 220, text: "Agência: 1031-6" },
+        { x: 304, text: "Conta: 8621-5" },
+      ]),
+      line(746, [{ x: 30, text: "Lançamentos" }]),
+      line(732, [
+        { x: 30, text: "Dia" },
+        { x: 91, text: "Lote" },
+        { x: 152, text: "Documento" },
+        { x: 266, text: "Histórico" },
+        { x: 547, text: "Valor" },
+      ]),
+      line(720, [{ x: 30, text: "31/07/2026" }]),
+      line(714, [{ x: 266, text: "Saldo Anterior" }, { x: 539, text: "0,00 (+)" }]),
+      line(698, [{ x: 266, text: "Pix - Recebido" }]),
+      line(694, [{ x: 30, text: "03/08/2026" }]),
+      line(688, [
+        { x: 91, text: "14397" },
+        { x: 152, text: "22317546424791" },
+        { x: 266, text: "02/08 23:17 CLIENTE" },
+        { x: 521, text: "4.895,00 (+)" },
+      ]),
+      line(668, [
+        { x: 30, text: "03/08/2026" },
+        { x: 266, text: "BB Rende Fácil" },
+      ]),
+      line(662, [{ x: 152, text: "9903" }, { x: 521, text: "4.895,00 (-)" }]),
+      line(656, [{ x: 266, text: "Rende Facil" }]),
+      line(648, [{ x: 30, text: "00/00/0000" }]),
+      line(642, [
+        { x: 91, text: "14024" },
+        { x: 266, text: "Saldo do dia" },
+        { x: 539, text: "0,00 (+)" },
+      ]),
+      line(810, [{ x: 70, text: "Extrato de Conta Corrente" }], 2),
+      line(750, [{ x: 30, text: "Lançamentos" }], 2),
+      line(282, [{ x: 30, text: "28/08/2026" }], 2),
+      line(276, [
+        { x: 91, text: "12024" },
+        { x: 152, text: "112400100004300" },
+        { x: 266, text: "BMG Granito crédito" },
+        { x: 521, text: "5.728,34 (+)" },
+      ], 2),
+      line(262, [
+        { x: 30, text: "28/08/2026" },
+        { x: 266, text: "S A L D O" },
+        { x: 521, text: "5.728,34 (+)" },
+      ], 2),
+      line(236, [{ x: 30, text: "Informações Adicionais" }], 2),
+    ]);
+
+    expect(result).toMatchObject({
+      bank: "Banco do Brasil",
+      layout: "bb-jasper-conta-corrente",
+      accountHolder: "ABISMO ANHUMAS",
+      branch: "1031-6",
+      account: "8621-5",
+      periodStart: "2026-08-03",
+      periodEnd: "2026-08-28",
+      detectedOpeningBalance: 0,
+      detectedClosingBalance: 5728.34,
+    });
+    expect(result.transactions).toHaveLength(3);
+    expect(result.transactions[0]).toMatchObject({
+      date: "2026-08-03",
+      description: "Pix - Recebido 02/08 23:17 CLIENTE",
+      document: "22317546424791",
+      type: "CREDIT",
+      amount: 4895,
+      balance: 4895,
+    });
+    expect(result.transactions[1]).toMatchObject({
+      description: "BB Rende Fácil",
+      document: "9903",
+      type: "DEBIT",
+      amount: 4895,
+      balance: 0,
+    });
+  });
+
   it("lê as movimentações, continua descrições entre páginas e fecha o saldo", () => {
     const result = parseBancoDoBrasilStatement([
       ...header,

@@ -2,8 +2,11 @@ import type { PdfTextLine } from "../pdf-reader.client";
 import type { ParsedStatement, StatementTransaction } from "../types";
 
 const DATE = /^\d{2}\/\d{2}\/\d{4}$/;
+const ZERO_DATE = /^00\/00\/0000$/;
 const HISTORY = /^(\d{5})\s+(\d{3})\s+(.+)$/;
 const MONEY_WITH_INDICATOR = "(\\d{1,3}(?:\\.\\d{3})*,\\d{2})\\s*([CD])";
+const MONEY_WITH_PARENTHESIS_INDICATOR =
+  "(\\d{1,3}(?:\\.\\d{3})*,\\d{2})\\s*\\(([+-])\\)";
 
 type AmountWithIndicator = {
   value: number;
@@ -38,6 +41,18 @@ function amountsFrom(value: string): AmountWithIndicator[] {
   }));
 }
 
+function parenthesisAmountsFrom(value: string): AmountWithIndicator[] {
+  return [
+    ...value.matchAll(new RegExp(MONEY_WITH_PARENTHESIS_INDICATOR, "gi")),
+  ].map((match) => ({
+    value:
+      match[2] === "-"
+        ? -Math.abs(money(match[1], "C"))
+        : Math.abs(money(match[1], "C")),
+    indicator: match[2] === "-" ? "D" : "C",
+  }));
+}
+
 function sourceType(description: string) {
   const key = normalize(description);
   if (key.includes("PIX - RECEBIDO") || key.includes("PIX-RECEBIDO")) return "PIX recebido";
@@ -50,8 +65,16 @@ function sourceType(description: string) {
   if (key.includes("IMPOSTOS")) return "Impostos";
   if (key.includes("TARIFA")) return "Tarifa bancária";
   if (key.includes("SEGURO")) return "Seguro";
+  if (key.includes("BB RENDE FACIL")) return "Aplicação automática";
+  if (key.includes("CIELO VENDAS")) return "Recebimento";
   if (key.includes("CONSORCIO")) return "Consórcio";
-  if (key.includes("AMORTIZACAO") || key.includes("GIRO")) return "Financiamento";
+  if (
+    key.includes("AMORTIZACAO") ||
+    key.includes("EMPRESTIMO") ||
+    key.includes("GIRO")
+  ) {
+    return "Financiamento";
+  }
   return "Movimentação";
 }
 
@@ -78,10 +101,242 @@ function continuationText(line: PdfTextLine) {
   return value;
 }
 
+type JasperRecord = {
+  date: string;
+  lot?: string;
+  document?: string;
+  descriptions: string[];
+  signedAmount?: number;
+};
+
+function addJasperDescription(record: JasperRecord, value: string) {
+  const description = clean(value);
+  const normalizedDescription = normalize(description);
+  if (!normalizedDescription) return;
+
+  const alreadyCovered = record.descriptions.some((current) => {
+    const normalizedCurrent = normalize(current);
+    return (
+      normalizedCurrent === normalizedDescription ||
+      normalizedCurrent.includes(normalizedDescription)
+    );
+  });
+  if (!alreadyCovered) record.descriptions.push(description);
+}
+
+function jasperDescriptionParts(line: PdfTextLine) {
+  return line.parts
+    .filter((part) => part.x >= 250 && part.x < 500)
+    .map((part) => clean(part.text))
+    .filter((value) => {
+      const key = normalize(value);
+      return (
+        Boolean(value) &&
+        key !== "HISTORICO" &&
+        !parenthesisAmountsFrom(value).length
+      );
+    });
+}
+
+function addJasperLine(record: JasperRecord, line: PdfTextLine) {
+  const lot = line.parts.find(
+    (part) => part.x >= 70 && part.x < 140 && /^\d+$/.test(clean(part.text)),
+  );
+  const document = line.parts.find(
+    (part) => part.x >= 140 && part.x < 250 && /^\d+$/.test(clean(part.text)),
+  );
+  const amounts = parenthesisAmountsFrom(line.text);
+
+  if (!record.lot && lot) record.lot = clean(lot.text);
+  if (!record.document && document) record.document = clean(document.text);
+  if (record.signedAmount === undefined && amounts.length) {
+    record.signedAmount = amounts.at(-1)?.value;
+  }
+  jasperDescriptionParts(line).forEach((value) =>
+    addJasperDescription(record, value),
+  );
+}
+
+function parseJasperBancoDoBrasilStatement(
+  lines: PdfTextLine[],
+): ParsedStatement {
+  const accountHeader = lines.find((line) => {
+    const key = normalize(line.text);
+    return key.includes("AGENCIA:") && key.includes("CONTA:");
+  });
+  const accountHeaderMatch = accountHeader?.text.match(
+    /Ag[eê]ncia:\s*([\d.-]+).*?Conta:\s*([\d.-]+)/i,
+  );
+  const accountHolder = labelValue(lines, "Cliente");
+  const branch = accountHeaderMatch?.[1];
+  const account = accountHeaderMatch?.[2];
+
+  let detectedOpeningBalance: number | undefined;
+  let detectedClosingBalance: number | undefined;
+  let insideTransactions = false;
+  let current: JasperRecord | undefined;
+  let pendingDescriptions: string[] = [];
+  const transactions: StatementTransaction[] = [];
+
+  function finishCurrent() {
+    if (!current) return;
+
+    const description = clean(current.descriptions.join(" "));
+    const descriptionKey = normalize(description).replace(/\s/g, "");
+    const signedAmount = current.signedAmount;
+
+    if (descriptionKey === "SALDOANTERIOR") {
+      detectedOpeningBalance = signedAmount;
+    } else if (descriptionKey === "SALDO") {
+      detectedClosingBalance = signedAmount;
+    } else if (
+      descriptionKey !== "SALDODODIA" &&
+      signedAmount !== undefined
+    ) {
+      const id = transactions.length + 1;
+      transactions.push({
+        id,
+        selected: true,
+        date: iso(current.date),
+        description: description || "Movimentação Banco do Brasil",
+        document:
+          current.document ||
+          [current.lot, String(id)].filter(Boolean).join("-") ||
+          String(id),
+        sourceType: sourceType(description),
+        type: signedAmount >= 0 ? "CREDIT" : "DEBIT",
+        amount: Math.abs(signedAmount),
+        balance: null,
+        status: description.length >= 3 ? "OK" : "REVIEW",
+        warning: description.length >= 3 ? undefined : "Descrição incompleta",
+      });
+    }
+
+    current = undefined;
+  }
+
+  for (const line of lines) {
+    const lineKey = normalize(line.text);
+
+    if (lineKey === "LANCAMENTOS") {
+      insideTransactions = true;
+      continue;
+    }
+    if (!insideTransactions) continue;
+    if (lineKey.startsWith("INFORMACOES ADICIONAIS")) {
+      finishCurrent();
+      break;
+    }
+    if (
+      lineKey === "DIA LOTE DOCUMENTO HISTORICO VALOR" ||
+      lineKey === "DIA" ||
+      lineKey === "LOTE" ||
+      lineKey === "DOCUMENTO" ||
+      lineKey === "HISTORICO" ||
+      lineKey === "VALOR"
+    ) {
+      continue;
+    }
+
+    const datePart = line.parts.find(
+      (part) => part.x < 80 && (DATE.test(clean(part.text)) || ZERO_DATE.test(clean(part.text))),
+    );
+    const descriptions = jasperDescriptionParts(line);
+
+    if (datePart && ZERO_DATE.test(clean(datePart.text))) {
+      finishCurrent();
+      pendingDescriptions = [];
+      continue;
+    }
+
+    if (datePart && DATE.test(clean(datePart.text))) {
+      finishCurrent();
+      current = {
+        date: clean(datePart.text),
+        descriptions: pendingDescriptions,
+      };
+      pendingDescriptions = [];
+      addJasperLine(current, line);
+      continue;
+    }
+
+    if (!descriptions.length && !parenthesisAmountsFrom(line.text).length) {
+      continue;
+    }
+
+    const startsNextPix = descriptions.some((description) =>
+      /^PIX\s*-?\s*RECEBIDO$/i.test(normalize(description)),
+    );
+    if (current?.signedAmount !== undefined && startsNextPix) {
+      finishCurrent();
+      pendingDescriptions = descriptions;
+      continue;
+    }
+
+    if (current) {
+      addJasperLine(current, line);
+    } else if (descriptions.length) {
+      pendingDescriptions = descriptions;
+    }
+  }
+  finishCurrent();
+
+  if (detectedOpeningBalance === undefined) {
+    throw new Error("O saldo anterior do extrato do Banco do Brasil não foi identificado.");
+  }
+  if (detectedClosingBalance === undefined) {
+    throw new Error("O saldo final do extrato do Banco do Brasil não foi identificado.");
+  }
+  if (!transactions.length) {
+    throw new Error("Nenhuma movimentação foi encontrada no extrato do Banco do Brasil.");
+  }
+
+  let runningBalance = detectedOpeningBalance;
+  for (const transaction of transactions) {
+    runningBalance = Number(
+      (
+        runningBalance +
+        (transaction.type === "CREDIT" ? transaction.amount : -transaction.amount)
+      ).toFixed(2),
+    );
+    transaction.balance = runningBalance;
+  }
+
+  if (Math.abs(runningBalance - detectedClosingBalance) >= 0.01) {
+    throw new Error(
+      `A leitura do novo layout do Banco do Brasil ficou incompleta: o saldo calculado foi R$ ${formatMoney(runningBalance)}, mas o extrato informa R$ ${formatMoney(detectedClosingBalance)}.`,
+    );
+  }
+
+  return {
+    bank: "Banco do Brasil",
+    layout: "bb-jasper-conta-corrente",
+    accountHolder,
+    branch,
+    account,
+    periodStart: transactions[0].date,
+    periodEnd: transactions.at(-1)?.date,
+    detectedOpeningBalance,
+    detectedClosingBalance,
+    transactions,
+  };
+}
+
 export function parseBancoDoBrasilStatement(source: PdfTextLine[]): ParsedStatement {
   const lines = source.filter((line) => clean(line.text));
   const joined = lines.map((line) => line.text).join("\n");
   const normalized = normalize(joined);
+
+  const isJasperLayout =
+    normalized.includes("EXTRATO DE CONTA CORRENTE") &&
+    normalized.includes("CLIENTE") &&
+    normalized.includes("LANCAMENTOS") &&
+    normalized.includes("SALDO DO DIA") &&
+    /\(\s*[+-]\s*\)/.test(joined);
+  if (isJasperLayout) {
+    return parseJasperBancoDoBrasilStatement(lines);
+  }
+
   if (
     !normalized.includes("EXTRATO DE CONTA CORRENTE") ||
     !normalized.includes("AGENCIA") ||

@@ -7,6 +7,7 @@ import {
 
 const PUBLIC_ROUTES = [
   "/login",
+  "/recuperar-senha",
   "/ativar-acesso",
   "/api/auth/member-invite",
   "/api/atendimento/gmail/webhook",

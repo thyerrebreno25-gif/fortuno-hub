@@ -1,0 +1,127 @@
+.card {
+  max-width: 560px;
+}
+
+.steps {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 190px;
+  margin: -12px 0 28px;
+}
+
+.steps::before {
+  position: absolute;
+  right: 20px;
+  left: 20px;
+  height: 2px;
+  background: #dfe6f0;
+  content: "";
+}
+
+.steps > span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #dfe6f0;
+  border-radius: 50%;
+  color: #8795aa;
+  background: #fff;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.steps > .stepActive {
+  border-color: #0b66df;
+  color: #fff;
+  background: #0b66df;
+  box-shadow: 0 5px 12px rgba(11, 102, 223, 0.2);
+}
+
+.codeInput input {
+  text-align: center;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.34em;
+}
+
+.message {
+  display: flex;
+  min-height: 330px;
+  padding: 34px 10px 10px;
+  align-items: center;
+  text-align: center;
+  flex-direction: column;
+}
+
+.messageIcon,
+.messageIconSuccess {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 22px;
+  border-radius: 22px;
+  color: #0b66df;
+  background: #eaf3ff;
+  place-items: center;
+}
+
+.messageIconSuccess {
+  color: #138347;
+  background: #e7f8ee;
+}
+
+.message h1 {
+  margin: 0 0 10px;
+  color: #071a3a;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.message p {
+  max-width: 410px;
+  margin: 0;
+  color: #6f7f99;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.messageAction {
+  width: 100%;
+  margin-top: 30px;
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 22px auto 0;
+  padding: 5px 8px;
+  border: 0;
+  color: #64748b;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  gap: 7px;
+}
+
+.backButton:hover {
+  color: #075bd8;
+}
+
+@media (max-width: 560px) {
+  .steps {
+    margin-top: -4px;
+  }
+
+  .message {
+    min-height: 300px;
+  }
+}
