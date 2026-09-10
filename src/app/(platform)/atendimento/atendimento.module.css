@@ -422,3 +422,72 @@
 .sentHtml ol {
   padding-left: 22px;
 }
+
+:global(html[data-mantine-color-scheme="dark"]) .pageDescription {
+  color: var(--fortuno-muted);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .gmailCard :global(.mantine-Paper-root),
+:global(html[data-mantine-color-scheme="dark"]) .layout {
+  border-color: var(--fortuno-line);
+  box-shadow: none;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .layout,
+:global(html[data-mantine-color-scheme="dark"]) .list,
+:global(html[data-mantine-color-scheme="dark"]) .emailTopbar,
+:global(html[data-mantine-color-scheme="dark"]) .ticketPanel,
+:global(html[data-mantine-color-scheme="dark"]) .emailMessage,
+:global(html[data-mantine-color-scheme="dark"]) .outboundMessage,
+:global(html[data-mantine-color-scheme="dark"]) .messageBody,
+:global(html[data-mantine-color-scheme="dark"]) .attachments,
+:global(html[data-mantine-color-scheme="dark"]) .replyComposer {
+  color: var(--fortuno-ink);
+  background: var(--fortuno-surface);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .sidebar,
+:global(html[data-mantine-color-scheme="dark"]) .searchBar,
+:global(html[data-mantine-color-scheme="dark"]) .emailView {
+  background: var(--fortuno-canvas);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .searchBar :global(.mantine-Input-input) {
+  background: var(--fortuno-surface-raised);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .ticketRow,
+:global(html[data-mantine-color-scheme="dark"]) .searchBar,
+:global(html[data-mantine-color-scheme="dark"]) .emailTopbar,
+:global(html[data-mantine-color-scheme="dark"]) .messageHeader,
+:global(html[data-mantine-color-scheme="dark"]) .attachments,
+:global(html[data-mantine-color-scheme="dark"]) .replyToolbar {
+  border-color: var(--fortuno-line);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .ticketRow:hover {
+  background: #142944;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .ticketRowActive {
+  background: #173250;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .internalMessage,
+:global(html[data-mantine-color-scheme="dark"]) .internalNoteBox,
+:global(html[data-mantine-color-scheme="dark"]) .replyAttachment,
+:global(html[data-mantine-color-scheme="dark"]) .attachmentChip {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-raised);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .plainTextEmail,
+:global(html[data-mantine-color-scheme="dark"]) .richReplyEditor,
+:global(html[data-mantine-color-scheme="dark"]) .sentHtml {
+  color: var(--fortuno-ink);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .emailIframe {
+  background: var(--fortuno-surface);
+}

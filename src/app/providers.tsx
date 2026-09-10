@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { MantineProvider, createTheme } from "@mantine/core";
+import {
+  MantineProvider,
+  createTheme,
+  localStorageColorSchemeManager,
+} from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 import {
@@ -14,9 +18,22 @@ const appFontFamily =
 
 const theme = createTheme({
   primaryColor: "blue",
+  primaryShade: { light: 6, dark: 5 },
   defaultRadius: "md",
 
   colors: {
+    dark: [
+      "#eef3fa",
+      "#d7e0ed",
+      "#b5c1d3",
+      "#8e9db3",
+      "#66768e",
+      "#43536a",
+      "#29394f",
+      "#18283d",
+      "#0f1d30",
+      "#091423",
+    ],
     convertBlue: [
       "#eef3ff",
       "#dce6ff",
@@ -37,6 +54,10 @@ const theme = createTheme({
     fontFamily: appFontFamily,
     fontWeight: "700",
   },
+});
+
+const colorSchemeManager = localStorageColorSchemeManager({
+  key: "fortuno-theme",
 });
 
 export default function Providers({
@@ -66,6 +87,7 @@ export default function Providers({
       <MantineProvider
         theme={theme}
         defaultColorScheme="light"
+        colorSchemeManager={colorSchemeManager}
       >
         <ModalsProvider>
           <Notifications

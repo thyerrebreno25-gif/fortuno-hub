@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMantineColorScheme } from "@mantine/core";
 import styles from "@/app/dashboard.module.css";
 
 type ProfileData = {
@@ -45,6 +46,7 @@ function timeAgo(value: string) {
 export function DashboardTopbar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -52,8 +54,18 @@ export function DashboardTopbar() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [readIds, setReadIds] = useState<string[]>([]);
-  const [darkMode, setDarkMode] = useState(false);
+  const [readIds, setReadIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    const stored = window.localStorage.getItem("fortuno-notifications-read");
+    if (!stored) return [];
+    try {
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const darkMode = colorScheme === "dark";
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -75,36 +87,32 @@ export function DashboardTopbar() {
       })
       .catch(() => undefined);
 
-    const stored = window.localStorage.getItem("fortuno-notifications-read");
-    if (stored) {
-      try {
-        setReadIds(JSON.parse(stored));
-      } catch {
-        setReadIds([]);
-      }
-    }
-
-    const theme = window.localStorage.getItem("fortuno-theme") === "dark";
-    setDarkMode(theme);
-    document.documentElement.dataset.theme = theme ? "dark" : "light";
   }, []);
 
   useEffect(() => {
-    void loadNotifications();
+    document.documentElement.dataset.theme = colorScheme;
+  }, [colorScheme]);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => void loadNotifications(), 0);
     const interval = window.setInterval(() => void loadNotifications(), 30000);
     const handleVisibility = () => {
       if (document.visibilityState === "visible") void loadNotifications();
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [loadNotifications]);
 
   useEffect(() => {
-    setProfileOpen(false);
-    setNotificationsOpen(false);
+    const timeout = window.setTimeout(() => {
+      setProfileOpen(false);
+      setNotificationsOpen(false);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [pathname]);
 
   useEffect(() => {
@@ -147,9 +155,8 @@ export function DashboardTopbar() {
 
   function toggleTheme() {
     const next = !darkMode;
-    setDarkMode(next);
     document.documentElement.dataset.theme = next ? "dark" : "light";
-    window.localStorage.setItem("fortuno-theme", next ? "dark" : "light");
+    setColorScheme(next ? "dark" : "light");
   }
 
   const profileName = profile?.user.name || "Usuário";
@@ -263,7 +270,14 @@ export function DashboardTopbar() {
           onClick={toggleTheme}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M20 15.5A8.5 8.5 0 1 1 8.5 4 7 7 0 0 0 20 15.5Z" />
+            {darkMode ? (
+              <>
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41" />
+              </>
+            ) : (
+              <path d="M20 15.5A8.5 8.5 0 1 1 8.5 4 7 7 0 0 0 20 15.5Z" />
+            )}
           </svg>
         </button>
 

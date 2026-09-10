@@ -181,8 +181,9 @@ export function SessionTimeout() {
         style={{
           width: "min(460px, 100%)",
           borderRadius: 20,
-          background: "#ffffff",
-          border: "1px solid #e2e8f0",
+          background: "var(--fortuno-surface-raised)",
+          color: "var(--fortuno-ink)",
+          border: "1px solid var(--fortuno-line)",
           boxShadow:
             "0 24px 70px rgba(15, 23, 42, 0.22)",
           padding: 24,
@@ -208,7 +209,7 @@ export function SessionTimeout() {
           id="session-warning-title"
           style={{
             margin: 0,
-            color: "#0f172a",
+            color: "var(--fortuno-ink)",
             fontSize: 22,
           }}
         >
@@ -218,7 +219,7 @@ export function SessionTimeout() {
         <p
           style={{
             margin: "10px 0 0",
-            color: "#64748b",
+            color: "var(--fortuno-muted)",
             lineHeight: 1.55,
           }}
         >
@@ -233,9 +234,9 @@ export function SessionTimeout() {
             marginTop: 18,
             padding: 14,
             borderRadius: 14,
-            background: "#f8fafc",
+            background: "var(--fortuno-surface-soft)",
             textAlign: "center",
-            color: "#0f172a",
+            color: "var(--fortuno-ink)",
             fontWeight: 800,
             fontSize: 24,
           }}
@@ -256,9 +257,9 @@ export function SessionTimeout() {
             type="button"
             onClick={() => void signOut()}
             style={{
-              border: "1px solid #dbe3ec",
-              background: "#ffffff",
-              color: "#334155",
+              border: "1px solid var(--fortuno-line)",
+              background: "var(--fortuno-surface)",
+              color: "var(--fortuno-ink)",
               borderRadius: 10,
               padding: "10px 16px",
               fontWeight: 700,

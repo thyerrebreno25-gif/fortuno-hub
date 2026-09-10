@@ -122,6 +122,51 @@
   text-align: right;
 }
 
+:global(html[data-mantine-color-scheme="dark"]) .page {
+  background: var(--fortuno-canvas);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .summaryValue,
+:global(html[data-mantine-color-scheme="dark"]) .dateInput {
+  color: var(--fortuno-ink);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .invoiceButton,
+:global(html[data-mantine-color-scheme="dark"]) .dateInput {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-raised);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .invoiceButton:hover,
+:global(html[data-mantine-color-scheme="dark"]) .invoiceButtonActive {
+  border-color: #3a83c6;
+  background: #162a44;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .itemTable th {
+  color: #aebbd0;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .invoiceHeader {
+  border-color: #2d4767;
+  background: linear-gradient(135deg, #142b47 0%, #101e32 72%);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .invoiceMeta {
+  border-color: #2d4767;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .installmentCard {
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-soft);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .dateInput:disabled {
+  color: #718096;
+  background: #0d1828;
+}
+
 @media (max-width: 1100px) {
   .summaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace { grid-template-columns: 1fr; }

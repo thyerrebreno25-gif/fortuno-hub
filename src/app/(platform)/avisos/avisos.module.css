@@ -40,6 +40,25 @@
   background: var(--mantine-color-blue-0);
 }
 
+:global(html[data-mantine-color-scheme="dark"]) .noticeCard {
+  border-color: var(--fortuno-line);
+  background: linear-gradient(145deg, #14243a 0%, #0f1d30 100%);
+  box-shadow: none;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .noticeCard:hover {
+  box-shadow: 0 12px 28px rgb(0 0 0 / 20%);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .noticeBody {
+  color: var(--fortuno-ink);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .audienceBox {
+  border-color: rgba(51, 133, 230, 0.35);
+  background: rgba(34, 113, 211, 0.12);
+}
+
 @media (max-width: 48em) {
   .page {
     padding-top: 0;

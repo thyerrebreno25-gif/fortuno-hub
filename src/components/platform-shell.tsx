@@ -440,7 +440,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
           ) : currentAllowed ? (
             children
           ) : (
-            <div style={{ maxWidth: 720, margin: "48px auto", padding: 32, border: "1px solid #dce3ec", borderRadius: 16, background: "white" }}>
+            <div style={{ maxWidth: 720, margin: "48px auto", padding: 32, border: "1px solid var(--fortuno-line)", borderRadius: 16, background: "var(--fortuno-surface)" }}>
               <h2 style={{ marginTop: 0 }}>Acesso não autorizado</h2>
               <p>Seu perfil não possui acesso a este módulo. Solicite a liberação a um administrador.</p>
               <Link href="/inicio">Voltar para Início</Link>

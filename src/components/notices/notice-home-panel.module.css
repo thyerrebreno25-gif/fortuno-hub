@@ -36,6 +36,22 @@
   background: white;
 }
 
+:global(html[data-mantine-color-scheme="dark"]) .panel {
+  border-color: var(--fortuno-line);
+  background: rgb(15 29 48 / 86%);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .noticeLink,
+:global(html[data-mantine-color-scheme="dark"]) .empty {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-raised);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .noticeLink:hover {
+  border-color: #3d6699;
+}
+
 @media (max-width: 70em) {
   .panel {
     width: 100%;

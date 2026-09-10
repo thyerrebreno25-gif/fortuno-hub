@@ -88,6 +88,31 @@
   width: fit-content;
 }
 
+:global(html[data-mantine-color-scheme="dark"]) .hero {
+  border-color: var(--fortuno-line);
+  background:
+    radial-gradient(circle at 92% 18%, rgba(242, 165, 70, 0.1), transparent 28%),
+    radial-gradient(circle at 78% 84%, rgba(45, 124, 239, 0.14), transparent 34%),
+    var(--fortuno-surface);
+  box-shadow: none;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .search :global(.mantine-Input-input),
+:global(html[data-mantine-color-scheme="dark"]) .featureCard {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-raised);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .sectionTitle {
+  color: var(--fortuno-muted);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .featureCard:hover {
+  border-color: #3d6699;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.2);
+}
+
 @media (max-width: 620px) {
   .heroTitle {
     font-size: 27px;

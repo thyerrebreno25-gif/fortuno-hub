@@ -5,6 +5,22 @@
   --fortuno-muted: #66748a;
   --fortuno-line: #e1e7ef;
   --fortuno-canvas: #f5f7fb;
+  --fortuno-surface: #ffffff;
+  --fortuno-surface-raised: #ffffff;
+  --fortuno-surface-soft: #f8fafc;
+  --fortuno-shadow: 0 12px 32px rgba(15, 35, 70, 0.07);
+}
+
+html[data-mantine-color-scheme="dark"] {
+  color-scheme: dark;
+  --fortuno-ink: #eef3fa;
+  --fortuno-muted: #9eacc0;
+  --fortuno-line: #293a52;
+  --fortuno-canvas: #091423;
+  --fortuno-surface: #0f1d30;
+  --fortuno-surface-raised: #14243a;
+  --fortuno-surface-soft: #111f33;
+  --fortuno-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
 }
 
 html {
@@ -28,6 +44,7 @@ body {
   font-optical-sizing: auto;
   font-weight: 400;
   letter-spacing: 0;
+  transition: color 160ms ease, background-color 160ms ease;
 }
 
 h1,
@@ -58,6 +75,46 @@ h6,
 .mantine-Input-input::placeholder {
   color: #8a96a8;
   opacity: 1;
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Paper-root,
+html[data-mantine-color-scheme="dark"] .mantine-Card-root {
+  border-color: var(--fortuno-line);
+  box-shadow: none;
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Input-input {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background-color: var(--fortuno-surface-soft);
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Input-input::placeholder {
+  color: #77869d;
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Modal-content,
+html[data-mantine-color-scheme="dark"] .mantine-Drawer-content,
+html[data-mantine-color-scheme="dark"] .mantine-Popover-dropdown,
+html[data-mantine-color-scheme="dark"] .mantine-Menu-dropdown,
+html[data-mantine-color-scheme="dark"] .mantine-Combobox-dropdown {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-raised);
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Table-th {
+  color: #aebbd0;
+  background: #132239;
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Table-tr {
+  border-color: var(--fortuno-line);
+}
+
+html[data-mantine-color-scheme="dark"] ::selection {
+  color: #f5f9ff;
+  background: #245da9;
 }
 
 ::selection {

@@ -1386,35 +1386,145 @@
   font-weight: 700;
 }
 
-:global(html[data-theme="dark"]) .topbar {
+:global(html[data-mantine-color-scheme="dark"]) .app {
+  --sidebar-background: #06111f;
+  --background: #091423;
+  --card: #0f1d30;
+  --text: #eef3fa;
+  --muted: #9eacc0;
+  --border: #293a52;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .topbar {
   border-color: #26344c;
   background: rgba(9, 22, 45, 0.93);
 }
 
-:global(html[data-theme="dark"]) .searchBox,
-:global(html[data-theme="dark"]) .profileMenu,
-:global(html[data-theme="dark"]) .notificationsMenu {
+:global(html[data-mantine-color-scheme="dark"]) .searchBox,
+:global(html[data-mantine-color-scheme="dark"]) .profileMenu,
+:global(html[data-mantine-color-scheme="dark"]) .notificationsMenu {
   border-color: #2b3b56;
   color: #e9eef7;
   background: #101f38;
 }
 
-:global(html[data-theme="dark"]) .searchBox input,
-:global(html[data-theme="dark"]) .profileText strong {
+:global(html[data-mantine-color-scheme="dark"]) .searchBox input,
+:global(html[data-mantine-color-scheme="dark"]) .profileText strong {
   color: #edf3fb;
 }
 
-:global(html[data-theme="dark"]) .iconButton,
-:global(html[data-theme="dark"]) .profileButton {
+:global(html[data-mantine-color-scheme="dark"]) .iconButton,
+:global(html[data-mantine-color-scheme="dark"]) .profileButton {
   color: #edf3fb;
 }
 
-:global(html[data-theme="dark"]) .notificationItem,
-:global(html[data-theme="dark"]) .notificationRead {
+:global(html[data-mantine-color-scheme="dark"]) .notificationItem,
+:global(html[data-mantine-color-scheme="dark"]) .notificationRead {
   border-color: #23334e;
   background: #101f38;
 }
 
-:global(html[data-theme="dark"]) .notificationContent strong {
+:global(html[data-mantine-color-scheme="dark"]) .notificationContent strong {
   color: #edf3fb;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .main,
+:global(html[data-mantine-color-scheme="dark"]) .content {
+  background: var(--background);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .iconButton:hover,
+:global(html[data-mantine-color-scheme="dark"]) .profileButton:hover,
+:global(html[data-mantine-color-scheme="dark"]) .profileMenu button:hover,
+:global(html[data-mantine-color-scheme="dark"]) .profileMenu a:hover,
+:global(html[data-mantine-color-scheme="dark"]) .importMenu button:hover {
+  background: #1a2b43;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .notificationBadge {
+  border-color: #09162a;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .metricCard,
+:global(html[data-mantine-color-scheme="dark"]) .chartCard,
+:global(html[data-mantine-color-scheme="dark"]) .tableCard,
+:global(html[data-mantine-color-scheme="dark"]) .sideCard,
+:global(html[data-mantine-color-scheme="dark"]) .aiCard {
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: none;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .metricTop > div span,
+:global(html[data-mantine-color-scheme="dark"]) .chartLegend span,
+:global(html[data-mantine-color-scheme="dark"]) .tableWrapper th,
+:global(html[data-mantine-color-scheme="dark"]) .tableWrapper td,
+:global(html[data-mantine-color-scheme="dark"]) .timelineItem time {
+  color: #aebbd0;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .chartFilters button,
+:global(html[data-mantine-color-scheme="dark"]) .secondaryButton {
+  color: var(--text);
+  border-color: var(--border);
+  background: #132239;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .chartGridLines span,
+:global(html[data-mantine-color-scheme="dark"]) .timeline::before,
+:global(html[data-mantine-color-scheme="dark"]) .alertItem,
+:global(html[data-mantine-color-scheme="dark"]) .tableWrapper td {
+  border-color: #26374f;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .timelineDot {
+  border-color: var(--card);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .aiCard {
+  background:
+    radial-gradient(circle at 90% 85%, rgba(54, 126, 239, 0.2), transparent 32%),
+    linear-gradient(145deg, #111f34, #102440);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .metricIconblue,
+:global(html[data-mantine-color-scheme="dark"]) .typeExtrato,
+:global(html[data-mantine-color-scheme="dark"]) .alertIconBlue {
+  color: #78adff;
+  background: rgba(39, 104, 239, 0.18);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .metricIcongreen,
+:global(html[data-mantine-color-scheme="dark"]) .typeBrasil,
+:global(html[data-mantine-color-scheme="dark"]) .statussuccess {
+  color: #65d6a5;
+  background: rgba(24, 166, 116, 0.16);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .metricIconorange,
+:global(html[data-mantine-color-scheme="dark"]) .typeAdquirente,
+:global(html[data-mantine-color-scheme="dark"]) .statuswarning,
+:global(html[data-mantine-color-scheme="dark"]) .alertIconOrange {
+  color: #ffad70;
+  background: rgba(245, 134, 53, 0.16);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .metricIconpurple,
+:global(html[data-mantine-color-scheme="dark"]) .typeFatura {
+  color: #b49aff;
+  background: rgba(124, 80, 236, 0.18);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .statuserror {
+  color: #ff929c;
+  background: rgba(220, 67, 82, 0.18);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .notificationsFooter {
+  color: #78adff;
+  background: #132239;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .notificationItem:hover {
+  background: #172842;
 }

@@ -45,7 +45,10 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" {...mantineHtmlProps}>
       <head>
-        <ColorSchemeScript defaultColorScheme="light" />
+        <ColorSchemeScript
+          defaultColorScheme="light"
+          localStorageKey="fortuno-theme"
+        />
       </head>
 
       <body>
