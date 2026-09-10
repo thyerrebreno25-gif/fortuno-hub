@@ -1,5 +1,9 @@
 import * as XLSX from "xlsx";
 import {
+  isAleloWorkbook,
+  parseAleloWorkbook,
+} from "./alelo-workbook-parser";
+import {
   parseCieloWorkbook,
   type CieloSourceTotals,
 } from "./cielo-workbook-parser";
@@ -19,8 +23,18 @@ import {
   type ParsedAcquirerLine,
   type ReadingInstructionSummary,
 } from "./rede-workbook-parser";
+import {
+  isVrBenefitsWorkbook,
+  parseVrBenefitsWorkbook,
+} from "./vr-workbook-parser";
 
-export type SupportedAcquirer = "REDE" | "CIELO" | "GETNET" | "PAGARME";
+export type SupportedAcquirer =
+  | "REDE"
+  | "CIELO"
+  | "GETNET"
+  | "PAGARME"
+  | "ALELO"
+  | "VR BENEFÍCIOS";
 export type AcquirerSourceTotals = CieloSourceTotals;
 
 export type ConfiguredAcquirerRates = {
@@ -46,6 +60,10 @@ const normalize = (value: unknown) => String(value ?? "")
   .toLowerCase();
 
 function detectAcquirer(workbook: XLSX.WorkBook): SupportedAcquirer | null {
+  if (isAleloWorkbook(workbook)) {
+    return "ALELO";
+  }
+
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -61,6 +79,10 @@ function detectAcquirer(workbook: XLSX.WorkBook): SupportedAcquirer | null {
 
     if (isPagarmeMovementSheet(sheetName, matrix)) {
       return "PAGARME";
+    }
+
+    if (isVrBenefitsWorkbook(sheetName, matrix)) {
+      return "VR BENEFÍCIOS";
     }
 
     for (const values of matrix) {
@@ -101,6 +123,8 @@ function ratesForAcquirer(
     CIELO: ["cielo"],
     GETNET: ["getnet"],
     PAGARME: ["pagarme", "pagar.me"],
+    ALELO: ["alelo"],
+    "VR BENEFÍCIOS": ["vr beneficios", "vrbeneficios", "vr"],
   }[acquirer];
   const matched = configuredAcquirers.find((item) => {
     const name = normalize(item.name).replace(/[^a-z0-9]/g, "");
@@ -124,7 +148,7 @@ export async function parseAcquirerWorkbook(
 
   if (!acquirer) {
     throw new Error(
-      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET e Pagar.me.",
+      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET, Pagar.me, Alelo e VR Benefícios.",
     );
   }
 
@@ -173,6 +197,39 @@ export async function parseAcquirerWorkbook(
       ...result,
       acquirer,
       parserId: "pagarme-extrato-movimentacoes",
+      parserVersion: "1.0.0",
+    };
+  }
+
+
+  if (acquirer === "ALELO") {
+    const result = await parseAleloWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      contractedRates,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "alelo-recebimentos",
+      parserVersion: "1.0.0",
+    };
+  }
+
+  if (acquirer === "VR BENEFÍCIOS") {
+    const result = await parseVrBenefitsWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      contractedRates,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "vr-beneficios-guias-reembolso",
       parserVersion: "1.0.0",
     };
   }
