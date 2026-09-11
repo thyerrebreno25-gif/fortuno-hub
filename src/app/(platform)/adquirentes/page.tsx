@@ -37,6 +37,7 @@ import {
   Checkbox,
   FileButton,
   Group,
+  NumberInput,
   Paper,
   Progress,
   ScrollArea,
@@ -115,6 +116,8 @@ type ClientCategories = {
   chargeback: string;
   anticipation: string;
 };
+
+const IFOOD_ALL_PAYMENT_DATES = "__ALL__";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -272,6 +275,7 @@ export default function AdquirentesPage() {
   const [sourceTotals, setSourceTotals] = useState<AcquirerSourceTotals | null>(null);
   const [paymentBatches, setPaymentBatches] = useState<AcquirerPaymentBatch[]>([]);
   const [ifoodPaymentDate, setIfoodPaymentDate] = useState<string | null>(null);
+  const [ifoodExtraPayout, setIfoodExtraPayout] = useState(0);
   const [readingInstructions, setReadingInstructions] = useState("");
   const [instructionSummary, setInstructionSummary] = useState<ReadingInstructionSummary | null>(null);
   const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
@@ -417,7 +421,9 @@ export default function AdquirentesPage() {
 
   const activeLines = useMemo(
     () => detectedAcquirer === "IFOOD"
-      ? ifoodPaymentDate
+      ? ifoodPaymentDate === IFOOD_ALL_PAYMENT_DATES
+        ? lines
+        : ifoodPaymentDate
         ? lines.filter((line) => line.paymentDate === ifoodPaymentDate)
         : []
       : lines,
@@ -436,6 +442,11 @@ export default function AdquirentesPage() {
   const displayedSourceRows = detectedAcquirer === "IFOOD" && selectedIfoodBatch
     ? selectedIfoodBatch.sourceRows
     : sourceRows;
+
+  const ifoodReportedPayout = detectedAcquirer === "IFOOD"
+    ? displayedSourceTotals?.net ?? 0
+    : 0;
+  const ifoodTotalReceived = ifoodReportedPayout + ifoodExtraPayout;
 
   const totals = useMemo(() => {
     const gross = activeLines
@@ -649,7 +660,15 @@ export default function AdquirentesPage() {
           })) ?? [],
           excludedSourceRows: instructionSummary?.excludedRows ?? 0,
           sourceTotals: displayedSourceTotals,
-          paymentDateFilter: detectedAcquirer === "IFOOD" ? ifoodPaymentDate : null,
+          paymentDateFilter: detectedAcquirer === "IFOOD"
+            ? ifoodPaymentDate === IFOOD_ALL_PAYMENT_DATES
+              ? "ALL"
+              : ifoodPaymentDate
+            : null,
+          externalPayoutAmount: detectedAcquirer === "IFOOD" ? ifoodExtraPayout : null,
+          totalReceivedWithExternalPayout: detectedAcquirer === "IFOOD"
+            ? ifoodTotalReceived
+            : null,
         },
         transactions: activeLines.map((line) => ({
           date: line.paymentDate || line.dueDate || line.saleDate || new Date().toISOString().slice(0, 10),
@@ -724,6 +743,7 @@ export default function AdquirentesPage() {
     setSourceTotals(null);
     setPaymentBatches([]);
     setIfoodPaymentDate(null);
+    setIfoodExtraPayout(0);
     setReadingInstructions("");
     setInstructionSummary(null);
     setInstructionReviewConfirmed(false);
@@ -883,22 +903,45 @@ export default function AdquirentesPage() {
                     <Stack gap={2}>
                       <Title order={4}>Selecione o repasse do iFood</Title>
                       <Text size="sm" c="dimmed">
-                        A planilha completa foi lida. Escolha a data paga pelo iFood para revisar e importar somente aquele período de apuração.
+                        A planilha completa foi lida. Escolha uma data específica ou importe todos os repasses encontrados no arquivo.
                       </Text>
                     </Stack>
                   </Group>
-                  <Select
-                    label="Data do repasse a importar"
-                    value={ifoodPaymentDate}
-                    onChange={setIfoodPaymentDate}
-                    data={paymentBatches.map((batch) => ({
-                      value: batch.paymentDate,
-                      label: `${formatDate(batch.paymentDate)} — ${formatMoney(batch.declaredNet)} — apuração ${formatDate(batch.periodStart)} a ${formatDate(batch.periodEnd)}`,
-                    }))}
-                    allowDeselect={false}
-                    searchable
-                    w={{ base: "100%", md: 390 }}
-                  />
+                  <Group align="flex-end">
+                    <Select
+                      label="Repasses a importar"
+                      value={ifoodPaymentDate}
+                      onChange={setIfoodPaymentDate}
+                      data={[
+                        {
+                          value: IFOOD_ALL_PAYMENT_DATES,
+                          label: `TODOS — ${paymentBatches.length} repasse(s) — ${formatMoney(sourceTotals?.net ?? 0)}`,
+                        },
+                        ...paymentBatches.map((batch) => ({
+                          value: batch.paymentDate,
+                          label: `${formatDate(batch.paymentDate)} — ${formatMoney(batch.declaredNet)} — apuração ${formatDate(batch.periodStart)} a ${formatDate(batch.periodEnd)}`,
+                        })),
+                      ]}
+                      allowDeselect={false}
+                      searchable
+                      w={{ base: "100%", md: 390 }}
+                    />
+                    <NumberInput
+                      label="Repasse extra fora do relatório"
+                      description="Opcional; usado somente na conferência."
+                      value={ifoodExtraPayout}
+                      onChange={(value) => setIfoodExtraPayout(
+                        typeof value === "number" && Number.isFinite(value) ? value : 0,
+                      )}
+                      min={0}
+                      prefix="R$ "
+                      decimalScale={2}
+                      fixedDecimalScale
+                      thousandSeparator="."
+                      decimalSeparator=","
+                      w={250}
+                    />
+                  </Group>
                 </Group>
 
                 {selectedIfoodBatch && (
@@ -935,6 +978,30 @@ export default function AdquirentesPage() {
                     </Alert>
                   </>
                 )}
+                {ifoodPaymentDate === IFOOD_ALL_PAYMENT_DATES && (
+                  <Alert color="blue" icon={<IconTable size={18} />}>
+                    Todos os {paymentBatches.length} repasses foram selecionados. A revisão e a importação considerarão as {lines.length} linhas do arquivo.
+                  </Alert>
+                )}
+                {ifoodExtraPayout > 0 && (
+                  <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                    <Card withBorder radius="md">
+                      <Text size="xs" c="dimmed">Repasse presente na planilha</Text>
+                      <Text fw={800}>{formatMoney(ifoodReportedPayout)}</Text>
+                    </Card>
+                    <Card withBorder radius="md">
+                      <Text size="xs" c="dimmed">Repasse extra informado</Text>
+                      <Text fw={800} c="blue">{formatMoney(ifoodExtraPayout)}</Text>
+                    </Card>
+                    <Card withBorder radius="md">
+                      <Text size="xs" c="dimmed">Total recebido para conferência</Text>
+                      <Text fw={800}>{formatMoney(ifoodTotalReceived)}</Text>
+                    </Card>
+                  </SimpleGrid>
+                )}
+                <Text size="xs" c="dimmed">
+                  O repasse extra não cria lançamento e não bloqueia o envio. Somente os valores efetivamente presentes na planilha serão enviados ao Conta Azul.
+                </Text>
               </Stack>
             </Paper>
           )}
