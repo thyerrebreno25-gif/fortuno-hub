@@ -38,10 +38,11 @@ import {
   IconTrash,
   IconUnlink,
 } from "@tabler/icons-react";
+import { beginSessionKeepAlive } from "@/modules/session/client-activity";
 import styles from "./notas-fiscais.module.css";
 
 type Option = { value: string; label: string; document?: string | null };
-type Permission = { canView: boolean; canEdit: boolean; canImport: boolean; canExport: boolean; canManage: boolean };
+type Permission = { canView: boolean; canEdit: boolean; canDelete: boolean; canImport: boolean; canExport: boolean; canManage: boolean };
 type InvoiceItem = {
   id: string;
   lineNumber: number;
@@ -145,6 +146,7 @@ export default function NotasFiscaisPage() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Option[]>([]);
   const [costCenters, setCostCenters] = useState<Option[]>([]);
@@ -319,18 +321,86 @@ export default function NotasFiscaisPage() {
 
   async function sendExpense() {
     if (!selected) return;
+    const invoice = selected;
+    const notificationId = `purchase-invoice-send-${invoice.id}`;
+    const releaseSessionKeepAlive = beginSessionKeepAlive();
     setSending(true);
     try {
       if (!(await saveReview())) return;
-      const response = await fetch(`/api/purchase-invoices/${selected.id}/send`, { method: "POST" });
+      notifications.hide(notificationId);
+      notifications.show({
+        id: notificationId,
+        loading: true,
+        autoClose: false,
+        withCloseButton: false,
+        color: "blue",
+        title: "Envio ao Conta Azul em andamento",
+        message: `A NF-e ${invoice.number} está sendo processada. Você pode continuar usando o sistema.`,
+      });
+      const response = await fetch(`/api/purchase-invoices/${invoice.id}/send`, {
+        method: "POST",
+        keepalive: true,
+      });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível gerar a despesa.");
-      notifications.show({ color: "green", title: "Despesa gerada", message: `${body.message} Protocolo: ${body.protocolId}` });
+      notifications.update({
+        id: notificationId,
+        loading: false,
+        autoClose: 6000,
+        withCloseButton: true,
+        color: "green",
+        title: "Despesa gerada",
+        message: `${body.message} Protocolo: ${body.protocolId}`,
+      });
       await load();
     } catch (error) {
-      notifications.show({ color: "red", title: "Conta Azul", message: error instanceof Error ? error.message : "Falha ao enviar." });
+      notifications.update({
+        id: notificationId,
+        loading: false,
+        autoClose: 10000,
+        withCloseButton: true,
+        color: "red",
+        title: "Envio não concluído",
+        message: error instanceof Error ? error.message : "Falha ao enviar.",
+      });
     } finally {
+      releaseSessionKeepAlive();
       setSending(false);
+    }
+  }
+
+  async function deleteInvoice(invoice: Invoice) {
+    if (invoice.status === "SENT" || invoice.externalPayableProtocolId) {
+      notifications.show({
+        color: "orange",
+        title: "Nota já enviada",
+        message: "A despesa desta nota já foi criada no Conta Azul e não pode ser excluída por aqui.",
+      });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Excluir a NF-e ${invoice.number} de ${invoice.supplierName}? O XML, os itens e as parcelas importadas serão removidos do Fortuno Hub.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(invoice.id);
+    try {
+      const response = await fetch(`/api/purchase-invoices/${invoice.id}`, {
+        method: "DELETE",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Não foi possível excluir a nota.");
+      setSelectedId((current) => current === invoice.id ? null : current);
+      notifications.show({ color: "green", title: "Nota excluída", message: body.message });
+      await load();
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Exclusão não concluída",
+        message: error instanceof Error ? error.message : "Não foi possível excluir a nota.",
+      });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -439,10 +509,29 @@ export default function NotasFiscaisPage() {
                         </Group>
                         <Text c="dimmed" mt={4}>{selected.supplierName}{selected.supplierDocument ? ` · ${selected.supplierDocument}` : ""}</Text>
                       </div>
-                      <div className={styles.invoiceTotal}>
-                        <Text size="sm" c="dimmed">Total da nota</Text>
-                        <Title order={2}>{money(selected.totalInvoice)}</Title>
-                      </div>
+                      <Group align="flex-start" gap="md">
+                        <div className={styles.invoiceTotal}>
+                          <Text size="sm" c="dimmed">Total da nota</Text>
+                          <Title order={2}>{money(selected.totalInvoice)}</Title>
+                        </div>
+                        {data?.permission.canDelete && (
+                          <Button
+                            color="red"
+                            variant="light"
+                            leftSection={<IconTrash size={16} />}
+                            loading={deletingId === selected.id}
+                            disabled={sending || selected.status === "SENT" || Boolean(selected.externalPayableProtocolId)}
+                            title={sending
+                              ? "Aguarde o envio desta nota terminar."
+                              : selected.status === "SENT" || selected.externalPayableProtocolId
+                                ? "A nota já foi enviada ao Conta Azul."
+                                : "Excluir o XML importado e esta nota."}
+                            onClick={() => void deleteInvoice(selected)}
+                          >
+                            Excluir nota
+                          </Button>
+                        )}
+                      </Group>
                     </Group>
                     <div className={styles.invoiceMeta}>
                       <div>
@@ -570,7 +659,11 @@ export default function NotasFiscaisPage() {
                           || selected.installments.some((installment) => installment.source === "MANUAL_REQUIRED")
                         }
                       >
-                        {selected.status === "SENT" ? "Despesa enviada" : `Gerar ${selected.installments.length} título(s) no Conta Azul`}
+                        {selected.status === "SENT"
+                          ? "Despesa enviada"
+                          : sending
+                            ? "Enviando em segundo plano..."
+                            : `Gerar ${selected.installments.length} título(s) no Conta Azul`}
                       </Button>
                     </Group>
                   </Group>

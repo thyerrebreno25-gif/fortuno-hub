@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getPurchaseInvoiceMember, getPurchaseInvoicePermission } from "@/modules/purchase-invoices/server/auth";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
 
+export const maxDuration = 300;
+
 type RouteContext = { params: Promise<{ id: string }> };
 type Rateio = { id_categoria: string; valor: number; rateio_centro_custo: Array<{ id_centro_custo: string; valor: number }> };
 

@@ -24,6 +24,8 @@ import {
   resourceIdFromProtocol,
 } from "@/modules/conta-azul/financial-export";
 
+export const maxDuration = 300;
+
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const lineSchema = z.object({
   lineKey: z.string().trim().min(1).max(500),

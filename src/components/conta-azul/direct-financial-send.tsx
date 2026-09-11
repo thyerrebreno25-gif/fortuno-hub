@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   Alert,
   Badge,
@@ -28,6 +28,7 @@ import {
   type ContaAzulOption,
   type FinancialDirection,
 } from "@/modules/conta-azul/financial-export";
+import { beginSessionKeepAlive } from "@/modules/session/client-activity";
 
 export type DirectFinancialLine = {
   lineKey: string;
@@ -92,6 +93,8 @@ export function DirectFinancialSend({
   disabled,
   onSuccess,
 }: Props) {
+  const notificationSuffix = useId();
+  const sendNotificationId = `conta-azul-financial-${notificationSuffix}`;
   const [opened, setOpened] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -205,8 +208,20 @@ export function DirectFinancialSend({
 
   async function send() {
     if (!clientId || !financialAccountId || !canSend) return;
+    const releaseSessionKeepAlive = beginSessionKeepAlive();
     setSending(true);
     setCounts(emptyCounts);
+    setOpened(false);
+    notifications.hide(sendNotificationId);
+    notifications.show({
+      id: sendNotificationId,
+      loading: true,
+      autoClose: false,
+      withCloseButton: false,
+      color: "blue",
+      title: "Envio ao Conta Azul em andamento",
+      message: `${lines.length} lançamento(s) sendo processado(s). Você pode continuar usando o sistema.`,
+    });
     try {
       const account = options.financialAccounts?.find((item) => item.value === financialAccountId);
       let resolvedContactId = technicalContactId;
@@ -253,16 +268,33 @@ export function DirectFinancialSend({
           setTechnicalContactId(resolvedContactId);
           setTechnicalContactName(resolvedContactName);
         }
-        setCounts(result.counts || emptyCounts);
+        const nextCounts = result.counts || emptyCounts;
+        setCounts(nextCounts);
+        notifications.update({
+          id: sendNotificationId,
+          loading: true,
+          autoClose: false,
+          withCloseButton: false,
+          color: "blue",
+          title: "Envio ao Conta Azul em andamento",
+          message: `Criados: ${nextCounts.CREATED + nextCounts.SETTLED} de ${lines.length}${settle ? ` • baixados: ${nextCounts.SETTLED}` : ""}. Você pode continuar usando o sistema.`,
+        });
         if (result.done) {
           completed = true;
-          notifications.show({
+          notifications.update({
+            id: sendNotificationId,
+            loading: false,
+            autoClose: 6000,
+            withCloseButton: true,
             color: "green",
             title: "Envio concluído",
             message: result.message,
           });
-          await onSuccess?.();
-          setOpened(false);
+          try {
+            await onSuccess?.();
+          } catch {
+            // O envio já terminou; uma eventual falha ao atualizar a tela não altera o resultado.
+          }
           break;
         }
         if (!result.needsContinue) throw new Error(result.message || "O envio ficou incompleto.");
@@ -272,12 +304,17 @@ export function DirectFinancialSend({
         throw new Error("O Conta Azul ainda está processando os lançamentos. Tente continuar o envio em instantes.");
       }
     } catch (error) {
-      notifications.show({
+      notifications.update({
+        id: sendNotificationId,
+        loading: false,
+        autoClose: 10000,
+        withCloseButton: true,
         color: "red",
         title: "Envio não concluído",
-        message: error instanceof Error ? error.message : "Não foi possível enviar ao Conta Azul.",
+        message: `${error instanceof Error ? error.message : "Não foi possível enviar ao Conta Azul."} O progresso concluído foi preservado; reabra o envio para continuar.`,
       });
     } finally {
+      releaseSessionKeepAlive();
       setSending(false);
     }
   }
@@ -287,7 +324,8 @@ export function DirectFinancialSend({
       <Button
         variant="light"
         leftSection={<IconCloudUpload size={18} />}
-        disabled={disabled || !clientId || lines.length === 0}
+        loading={sending}
+        disabled={disabled || !clientId || lines.length === 0 || sending}
         onClick={() => {
           setTechnicalContactId(null);
           setTechnicalContactName(null);
@@ -296,16 +334,16 @@ export function DirectFinancialSend({
           setOpened(true);
         }}
       >
-        Enviar direto ao Conta Azul
+        {sending
+          ? `Enviando ${counts.CREATED + counts.SETTLED}/${lines.length}...`
+          : "Enviar direto ao Conta Azul"}
       </Button>
 
       <Modal
         opened={opened}
-        onClose={() => !sending && setOpened(false)}
+        onClose={() => setOpened(false)}
         title="Enviar lançamentos ao Conta Azul"
         size="lg"
-        closeOnClickOutside={!sending}
-        closeOnEscape={!sending}
       >
         <Stack>
           {loading ? (
@@ -445,12 +483,12 @@ export function DirectFinancialSend({
               )}
 
               <Group justify="flex-end">
-                <Button variant="default" disabled={sending} onClick={() => setOpened(false)}>
+                <Button variant="default" onClick={() => setOpened(false)}>
                   Cancelar
                 </Button>
                 <Button
                   loading={sending}
-                  disabled={!canSend}
+                  disabled={!canSend || sending}
                   leftSection={<IconCloudUpload size={18} />}
                   onClick={() => void send()}
                 >

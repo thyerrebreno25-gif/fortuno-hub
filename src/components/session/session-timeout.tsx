@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { SESSION_KEEP_ALIVE_EVENT } from "@/modules/session/client-activity";
 
 const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
 const WARNING_BEFORE_MS = 2 * 60 * 1000;
@@ -19,6 +20,7 @@ export function SessionTimeout() {
   const lastActivityRef = useRef(0);
   const lastWriteRef = useRef(0);
   const signingOutRef = useRef(false);
+  const keepAliveCountRef = useRef(0);
 
   const persistActivity = useCallback((timestamp: number) => {
     lastActivityRef.current = timestamp;
@@ -114,8 +116,23 @@ export function SessionTimeout() {
 
     window.addEventListener("storage", onStorage);
 
+    const onKeepAlive = (event: Event) => {
+      const delta = (event as CustomEvent<{ delta?: number }>).detail?.delta;
+      if (delta !== 1 && delta !== -1) return;
+      keepAliveCountRef.current = Math.max(0, keepAliveCountRef.current + delta);
+      if (keepAliveCountRef.current > 0) markActivity();
+    };
+
+    window.addEventListener(SESSION_KEEP_ALIVE_EVENT, onKeepAlive);
+
     const interval = window.setInterval(() => {
       const now = Date.now();
+      if (keepAliveCountRef.current > 0) {
+        persistActivity(now);
+        setWarningOpen(false);
+        setRemainingSeconds(Math.floor(WARNING_BEFORE_MS / 1000));
+        return;
+      }
       const idleFor =
         now - lastActivityRef.current;
 
@@ -150,9 +167,14 @@ export function SessionTimeout() {
         onStorage,
       );
 
+      window.removeEventListener(
+        SESSION_KEEP_ALIVE_EVENT,
+        onKeepAlive,
+      );
+
       window.clearInterval(interval);
     };
-  }, [markActivity, signOut]);
+  }, [markActivity, persistActivity, signOut]);
 
   if (!warningOpen) return null;
 

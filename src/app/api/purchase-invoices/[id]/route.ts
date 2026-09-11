@@ -173,3 +173,40 @@ export async function PATCH(request: Request, context: RouteContext) {
     message: nextStatus === "READY_TO_SEND" ? "Nota pronta para gerar a despesa." : `Revisão salva.${paymentMessage}`,
   });
 }
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const member = await getPurchaseInvoiceMember();
+  if (!member) return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
+  const permission = await getPurchaseInvoicePermission(member);
+  if (!permission.canDelete) {
+    return NextResponse.json(
+      { error: "Você não possui permissão para excluir notas de compra." },
+      { status: 403 },
+    );
+  }
+
+  const { id } = await context.params;
+  const invoice = await prisma.purchaseInvoice.findFirst({
+    where: { id, organizationId: member.organizationId },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      externalPayableProtocolId: true,
+    },
+  });
+  if (!invoice) {
+    return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
+  }
+  if (invoice.status === "SENT" || invoice.externalPayableProtocolId) {
+    return NextResponse.json(
+      { error: "Esta nota já gerou uma despesa no Conta Azul e não pode ser excluída por aqui." },
+      { status: 409 },
+    );
+  }
+
+  await prisma.purchaseInvoice.delete({ where: { id: invoice.id } });
+  return NextResponse.json({
+    message: `NF-e ${invoice.number} e o XML importado foram excluídos.`,
+  });
+}
