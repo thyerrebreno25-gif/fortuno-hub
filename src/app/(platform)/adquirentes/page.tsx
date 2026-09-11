@@ -118,6 +118,7 @@ type ClientCategories = {
 };
 
 const IFOOD_ALL_PAYMENT_DATES = "__ALL__";
+const IFOOD_EXTRA_LINE_ID = -1;
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -276,6 +277,7 @@ export default function AdquirentesPage() {
   const [paymentBatches, setPaymentBatches] = useState<AcquirerPaymentBatch[]>([]);
   const [ifoodPaymentDate, setIfoodPaymentDate] = useState<string | null>(null);
   const [ifoodExtraPayout, setIfoodExtraPayout] = useState(0);
+  const [ifoodExtraPayoutDate, setIfoodExtraPayoutDate] = useState("");
   const [readingInstructions, setReadingInstructions] = useState("");
   const [instructionSummary, setInstructionSummary] = useState<ReadingInstructionSummary | null>(null);
   const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
@@ -419,7 +421,7 @@ export default function AdquirentesPage() {
     [ifoodPaymentDate, paymentBatches],
   );
 
-  const activeLines = useMemo(
+  const payoutFilteredLines = useMemo(
     () => detectedAcquirer === "IFOOD"
       ? ifoodPaymentDate === IFOOD_ALL_PAYMENT_DATES
         ? lines
@@ -447,6 +449,44 @@ export default function AdquirentesPage() {
     ? displayedSourceTotals?.net ?? 0
     : 0;
   const ifoodTotalReceived = ifoodReportedPayout + ifoodExtraPayout;
+  const displayedComparisonNet = (displayedSourceTotals?.net ?? 0)
+    + (detectedAcquirer === "IFOOD" ? ifoodExtraPayout : 0);
+  const effectiveIfoodExtraPayoutDate = detectedAcquirer === "IFOOD"
+    && ifoodPaymentDate
+    && ifoodPaymentDate !== IFOOD_ALL_PAYMENT_DATES
+    ? ifoodPaymentDate
+    : ifoodExtraPayoutDate || manualPaymentDate;
+  const ifoodExtraLine = useMemo<ConvertedLine | null>(() => {
+    if (detectedAcquirer !== "IFOOD" || ifoodExtraPayout <= 0) return null;
+    return {
+      id: IFOOD_EXTRA_LINE_ID,
+      sourceSheet: "Repasse extra iFood",
+      sourceRow: 0,
+      eventType: "ADJUSTMENT",
+      saleDate: effectiveIfoodExtraPayoutDate,
+      dueDate: effectiveIfoodExtraPayoutDate,
+      paymentDate: effectiveIfoodExtraPayoutDate,
+      description: "IFOOD - REPASSE EXTRA FORA DO RELATÓRIO",
+      category: categories?.adjustment ?? "Ajustes financeiros",
+      amount: ifoodExtraPayout,
+      anticipated: false,
+      status: "OK",
+      rateValidation: "NOT_APPLICABLE",
+      acquirer: "IFOOD",
+      transactionType: "OTHER",
+      installments: 1,
+      feeCategory: "ADJUSTMENT",
+      sourceMetadata: {
+        inclusao_manual: true,
+        fora_do_relatorio: true,
+        data_repasse_extra: effectiveIfoodExtraPayoutDate,
+      },
+    };
+  }, [categories?.adjustment, detectedAcquirer, effectiveIfoodExtraPayoutDate, ifoodExtraPayout]);
+  const activeLines = useMemo(
+    () => ifoodExtraLine ? [...payoutFilteredLines, ifoodExtraLine] : payoutFilteredLines,
+    [ifoodExtraLine, payoutFilteredLines],
+  );
 
   const totals = useMemo(() => {
     const gross = activeLines
@@ -608,6 +648,11 @@ export default function AdquirentesPage() {
           ? result.paymentBatches?.[0]?.paymentDate ?? null
           : null,
       );
+      setIfoodExtraPayoutDate(
+        result.acquirer === "IFOOD"
+          ? result.paymentBatches?.[0]?.paymentDate ?? manualPaymentDate
+          : "",
+      );
       setInstructionSummary(result.instructionSummary);
       setInstructionReviewConfirmed(false);
       setView("review");
@@ -726,6 +771,8 @@ export default function AdquirentesPage() {
     processedSheets.join(","),
     displayedSourceRows,
     ifoodPaymentDate || "todos",
+    ifoodExtraPayout,
+    effectiveIfoodExtraPayoutDate,
   ].join("|");
 
   function resetPage() {
@@ -744,6 +791,7 @@ export default function AdquirentesPage() {
     setPaymentBatches([]);
     setIfoodPaymentDate(null);
     setIfoodExtraPayout(0);
+    setIfoodExtraPayoutDate("");
     setReadingInstructions("");
     setInstructionSummary(null);
     setInstructionReviewConfirmed(false);
@@ -928,7 +976,7 @@ export default function AdquirentesPage() {
                     />
                     <NumberInput
                       label="Repasse extra fora do relatório"
-                      description="Opcional; usado somente na conferência."
+                      description="Opcional; cria uma linha adicional."
                       value={ifoodExtraPayout}
                       onChange={(value) => setIfoodExtraPayout(
                         typeof value === "number" && Number.isFinite(value) ? value : 0,
@@ -940,6 +988,17 @@ export default function AdquirentesPage() {
                       thousandSeparator="."
                       decimalSeparator=","
                       w={250}
+                    />
+                    <TextInput
+                      type="date"
+                      label="Data do repasse extra"
+                      description={ifoodPaymentDate === IFOOD_ALL_PAYMENT_DATES
+                        ? "Informe o dia em que o valor foi recebido."
+                        : "Usa automaticamente o repasse selecionado."}
+                      value={effectiveIfoodExtraPayoutDate}
+                      onChange={(event) => setIfoodExtraPayoutDate(event.currentTarget.value)}
+                      disabled={ifoodPaymentDate !== IFOOD_ALL_PAYMENT_DATES}
+                      w={220}
                     />
                   </Group>
                 </Group>
@@ -1000,7 +1059,7 @@ export default function AdquirentesPage() {
                   </SimpleGrid>
                 )}
                 <Text size="xs" c="dimmed">
-                  O repasse extra não cria lançamento e não bloqueia o envio. Somente os valores efetivamente presentes na planilha serão enviados ao Conta Azul.
+                  Quando preenchido, o repasse extra cria uma linha positiva de ajuste no mesmo dia informado e também será enviado ao Conta Azul. Deixar o campo vazio não bloqueia o envio.
                 </Text>
               </Stack>
             </Paper>
@@ -1294,12 +1353,14 @@ export default function AdquirentesPage() {
                   </Alert>
                 ) : (
                   <Alert
-                    color={Math.abs(totals.identifiedNet - displayedSourceTotals.net) < 0.01 ? "green" : "red"}
-                    icon={Math.abs(totals.identifiedNet - displayedSourceTotals.net) < 0.01 ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
+                    color={Math.abs(totals.identifiedNet - displayedComparisonNet) < 0.01 ? "green" : "red"}
+                    icon={Math.abs(totals.identifiedNet - displayedComparisonNet) < 0.01 ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
                   >
-                    {Math.abs(totals.identifiedNet - displayedSourceTotals.net) < 0.01
-                      ? "O valor líquido calculado confere com o totalizador do arquivo."
-                      : `Há uma diferença de ${formatMoney(totals.identifiedNet - displayedSourceTotals.net)} entre a leitura e o totalizador.`}
+                    {Math.abs(totals.identifiedNet - displayedComparisonNet) < 0.01
+                      ? ifoodExtraPayout > 0
+                        ? "O valor líquido calculado confere com o arquivo somado ao repasse extra."
+                        : "O valor líquido calculado confere com o totalizador do arquivo."
+                      : `Há uma diferença de ${formatMoney(totals.identifiedNet - displayedComparisonNet)} entre a leitura e o totalizador.`}
                   </Alert>
                 )
               )}
@@ -1402,7 +1463,9 @@ export default function AdquirentesPage() {
                                   <Table.Td>
                                     <Stack gap={0}>
                                       <Text fw={700}>{line.sourceSheet}</Text>
-                                      <Text size="xs" c="dimmed">Linha {line.sourceRow}</Text>
+                                      <Text size="xs" c="dimmed">
+                                        {line.sourceRow > 0 ? `Linha ${line.sourceRow}` : "Inclusão manual"}
+                                      </Text>
                                     </Stack>
                                   </Table.Td>
                                   <Table.Td>{formatDate(line.saleDate)}</Table.Td>
@@ -1489,9 +1552,13 @@ export default function AdquirentesPage() {
                                     <ActionIcon
                                       variant="subtle"
                                       color="red"
-                                      onClick={() =>
-                                        setLines((current) => current.filter((item) => item.id !== line.id))
-                                      }
+                                      onClick={() => {
+                                        if (line.id === IFOOD_EXTRA_LINE_ID) {
+                                          setIfoodExtraPayout(0);
+                                          return;
+                                        }
+                                        setLines((current) => current.filter((item) => item.id !== line.id));
+                                      }}
                                     >
                                       <IconTrash size={17} />
                                     </ActionIcon>
