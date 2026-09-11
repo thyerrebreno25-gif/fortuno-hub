@@ -13,6 +13,11 @@ import {
   parseGetnetWorkbook,
 } from "./getnet-workbook-parser";
 import {
+  isIfoodReconciliationSheet,
+  parseIfoodWorkbook,
+  type IfoodPaymentBatch,
+} from "./ifood-workbook-parser";
+import {
   isPagarmeMovementSheet,
   parsePagarmeWorkbook,
 } from "./pagarme-workbook-parser";
@@ -33,9 +38,11 @@ export type SupportedAcquirer =
   | "CIELO"
   | "GETNET"
   | "PAGARME"
+  | "IFOOD"
   | "ALELO"
   | "VR BENEFÍCIOS";
 export type AcquirerSourceTotals = CieloSourceTotals;
+export type AcquirerPaymentBatch = IfoodPaymentBatch;
 
 export type ConfiguredAcquirerRates = {
   name: string;
@@ -51,6 +58,7 @@ export type AcquirerWorkbookResult = {
   acquirer: SupportedAcquirer;
   parserId: string;
   parserVersion: string;
+  paymentBatches?: AcquirerPaymentBatch[];
 };
 
 const normalize = (value: unknown) => String(value ?? "")
@@ -79,6 +87,10 @@ function detectAcquirer(workbook: XLSX.WorkBook): SupportedAcquirer | null {
 
     if (isPagarmeMovementSheet(sheetName, matrix)) {
       return "PAGARME";
+    }
+
+    if (isIfoodReconciliationSheet(matrix)) {
+      return "IFOOD";
     }
 
     if (isVrBenefitsWorkbook(sheetName, matrix)) {
@@ -123,6 +135,7 @@ function ratesForAcquirer(
     CIELO: ["cielo"],
     GETNET: ["getnet"],
     PAGARME: ["pagarme", "pagar.me"],
+    IFOOD: ["ifood"],
     ALELO: ["alelo"],
     "VR BENEFÍCIOS": ["vr beneficios", "vrbeneficios", "vr"],
   }[acquirer];
@@ -148,7 +161,7 @@ export async function parseAcquirerWorkbook(
 
   if (!acquirer) {
     throw new Error(
-      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET, Pagar.me, Alelo e VR Benefícios.",
+      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET, Pagar.me, iFood, Alelo e VR Benefícios.",
     );
   }
 
@@ -197,6 +210,21 @@ export async function parseAcquirerWorkbook(
       ...result,
       acquirer,
       parserId: "pagarme-extrato-movimentacoes",
+      parserVersion: "1.0.0",
+    };
+  }
+
+  if (acquirer === "IFOOD") {
+    const result = await parseIfoodWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "ifood-relatorio-conciliacao",
       parserVersion: "1.0.0",
     };
   }

@@ -8,6 +8,7 @@ import {
 } from "@/modules/acquirers/rede-workbook-parser";
 import {
   parseAcquirerWorkbook,
+  type AcquirerPaymentBatch,
   type AcquirerSourceTotals,
   type ConfiguredAcquirerRates,
   type SupportedAcquirer,
@@ -269,6 +270,8 @@ export default function AdquirentesPage() {
   const [detectedAcquirer, setDetectedAcquirer] = useState<SupportedAcquirer | null>(null);
   const [activeParser, setActiveParser] = useState({ id: "", version: "" });
   const [sourceTotals, setSourceTotals] = useState<AcquirerSourceTotals | null>(null);
+  const [paymentBatches, setPaymentBatches] = useState<AcquirerPaymentBatch[]>([]);
+  const [ifoodPaymentDate, setIfoodPaymentDate] = useState<string | null>(null);
   const [readingInstructions, setReadingInstructions] = useState("");
   const [instructionSummary, setInstructionSummary] = useState<ReadingInstructionSummary | null>(null);
   const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
@@ -407,26 +410,53 @@ export default function AdquirentesPage() {
     };
   }, [clientId]);
 
+  const selectedIfoodBatch = useMemo(
+    () => paymentBatches.find((batch) => batch.paymentDate === ifoodPaymentDate) ?? null,
+    [ifoodPaymentDate, paymentBatches],
+  );
+
+  const activeLines = useMemo(
+    () => detectedAcquirer === "IFOOD"
+      ? ifoodPaymentDate
+        ? lines.filter((line) => line.paymentDate === ifoodPaymentDate)
+        : []
+      : lines,
+    [detectedAcquirer, ifoodPaymentDate, lines],
+  );
+
+  const displayedSourceTotals = detectedAcquirer === "IFOOD" && selectedIfoodBatch
+    ? {
+        rows: selectedIfoodBatch.sourceRows,
+        gross: selectedIfoodBatch.gross,
+        fees: selectedIfoodBatch.fees,
+        net: selectedIfoodBatch.declaredNet,
+      }
+    : sourceTotals;
+
+  const displayedSourceRows = detectedAcquirer === "IFOOD" && selectedIfoodBatch
+    ? selectedIfoodBatch.sourceRows
+    : sourceRows;
+
   const totals = useMemo(() => {
-    const gross = lines
+    const gross = activeLines
       .filter((line) => line.eventType === "SALE")
       .reduce((sum, line) => sum + line.amount, 0);
-    const fees = lines
+    const fees = activeLines
       .filter((line) => line.eventType === "FEE" || line.eventType === "ANTICIPATION")
       .reduce((sum, line) => sum + Math.abs(line.amount), 0);
-    const adjustments = lines
+    const adjustments = activeLines
       .filter((line) => line.eventType === "ADJUSTMENT")
       .reduce((sum, line) => sum + line.amount, 0);
-    const cancellations = lines
+    const cancellations = activeLines
       .filter((line) => line.eventType === "CANCELLATION" || line.eventType === "CHARGEBACK")
       .reduce((sum, line) => sum + Math.abs(line.amount), 0);
     const expectedNet = gross - fees + adjustments - cancellations;
-    const identifiedNet = lines.reduce((sum, line) => sum + line.amount, 0);
+    const identifiedNet = activeLines.reduce((sum, line) => sum + line.amount, 0);
     const difference = identifiedNet - expectedNet;
 
-    const saleAudits = lines
+    const saleAudits = activeLines
       .filter((line) => line.eventType === "SALE")
-      .map((line) => getSaleRateInfo(line, lines));
+      .map((line) => getSaleRateInfo(line, activeLines));
 
     const financialImpact = saleAudits.reduce(
       (sum, audit) => sum + (audit.impact ?? 0),
@@ -446,7 +476,7 @@ export default function AdquirentesPage() {
       (audit) => audit.validation === "NOT_CONFIGURED",
     ).length;
 
-    const costLines = lines.filter(
+    const costLines = activeLines.filter(
       (line) => line.eventType !== "SALE" && line.amount < 0,
     );
 
@@ -501,16 +531,16 @@ export default function AdquirentesPage() {
       anticipationFees,
       equipmentFees,
     };
-  }, [lines]);
+  }, [activeLines]);
 
   const sourceSheets = processedSheets.length
     ? processedSheets
-    : Array.from(new Set(lines.map((line) => line.sourceSheet)));
+    : Array.from(new Set(activeLines.map((line) => line.sourceSheet)));
 
   const filteredLines = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return lines.filter((line) => {
-      const rateInfo = getSaleRateInfo(line, lines);
+    return activeLines.filter((line) => {
+      const rateInfo = getSaleRateInfo(line, activeLines);
       const matches =
         !term ||
         line.description.toLowerCase().includes(term) ||
@@ -520,7 +550,7 @@ export default function AdquirentesPage() {
         line.status === "REVIEW" || rateInfo.validation === "DIVERGENT";
       return matches && (!onlyProblems || isProblem);
     });
-  }, [lines, search, onlyProblems]);
+  }, [activeLines, search, onlyProblems]);
 
   const groupedLines = useMemo(() => {
     const groups = filteredLines.reduce<
@@ -561,6 +591,12 @@ export default function AdquirentesPage() {
       setDetectedAcquirer(result.acquirer);
       setActiveParser({ id: result.parserId, version: result.parserVersion });
       setSourceTotals(result.sourceTotals);
+      setPaymentBatches(result.paymentBatches ?? []);
+      setIfoodPaymentDate(
+        result.acquirer === "IFOOD"
+          ? result.paymentBatches?.[0]?.paymentDate ?? null
+          : null,
+      );
       setInstructionSummary(result.instructionSummary);
       setInstructionReviewConfirmed(false);
       setView("review");
@@ -587,7 +623,7 @@ export default function AdquirentesPage() {
         difference: totals.difference,
         metadata: {
           acquirer: detectedAcquirer,
-          sourceRows,
+          sourceRows: displayedSourceRows,
           sheets: processedSheets,
           gross: totals.gross,
           fees: totals.fees,
@@ -612,9 +648,10 @@ export default function AdquirentesPage() {
             value: rule.value,
           })) ?? [],
           excludedSourceRows: instructionSummary?.excludedRows ?? 0,
-          sourceTotals,
+          sourceTotals: displayedSourceTotals,
+          paymentDateFilter: detectedAcquirer === "IFOOD" ? ifoodPaymentDate : null,
         },
-        transactions: lines.map((line) => ({
+        transactions: activeLines.map((line) => ({
           date: line.paymentDate || line.dueDate || line.saleDate || new Date().toISOString().slice(0, 10),
           description: line.description,
           amount: Math.abs(line.amount),
@@ -634,7 +671,7 @@ export default function AdquirentesPage() {
   async function exportContaAzul() {
     try {
       exportAcquirerToContaAzul(
-        lines,
+        activeLines,
         selectedClient?.label ?? "Cliente",
         detectedAcquirer ?? "ADQUIRENTE",
       );
@@ -645,7 +682,7 @@ export default function AdquirentesPage() {
     }
   }
 
-  const directFinancialLines = useMemo<DirectFinancialLine[]>(() => lines.map((line) => ({
+  const directFinancialLines = useMemo<DirectFinancialLine[]>(() => activeLines.map((line) => ({
     lineKey: `${line.sourceSheet}|${line.sourceRow}|${line.eventType}|${line.description}|${line.amount}`,
     direction: line.amount >= 0 ? "RECEIVABLE" : "PAYABLE",
     competenceDate: line.saleDate || line.paymentDate || manualPaymentDate,
@@ -662,13 +699,14 @@ export default function AdquirentesPage() {
       sourceRow: line.sourceRow,
       sourceMetadata: line.sourceMetadata ?? null,
     },
-  })), [lines, manualPaymentDate]);
+  })), [activeLines, manualPaymentDate]);
 
   const directSourceKey = [
     file ? `${file.name}:${file.size}:${file.lastModified}` : "adquirente",
     detectedAcquirer || "ADQUIRENTE",
     processedSheets.join(","),
-    sourceRows,
+    displayedSourceRows,
+    ifoodPaymentDate || "todos",
   ].join("|");
 
   function resetPage() {
@@ -684,6 +722,8 @@ export default function AdquirentesPage() {
     setDetectedAcquirer(null);
     setActiveParser({ id: "", version: "" });
     setSourceTotals(null);
+    setPaymentBatches([]);
+    setIfoodPaymentDate(null);
     setReadingInstructions("");
     setInstructionSummary(null);
     setInstructionReviewConfirmed(false);
@@ -820,7 +860,7 @@ export default function AdquirentesPage() {
             <Stack gap="sm">
               <Text fw={700}>Leitores disponíveis</Text>
               <Group gap="xs">
-                {["REDE", "Cielo", "GETNET", "Pagar.me", "Alelo", "VR Benefícios"].map((brand) => (
+                {["REDE", "Cielo", "GETNET", "Pagar.me", "iFood", "Alelo", "VR Benefícios"].map((brand) => (
                   <Badge key={brand} variant="light" color="green">{brand} ativo</Badge>
                 ))}
                 {["Stone", "PagBank", "Mercado Pago", "SafraPay", "BIN", "Fiserv"].map((brand) => (
@@ -832,6 +872,73 @@ export default function AdquirentesPage() {
         </Paper>
       ) : (
         <>
+          {detectedAcquirer === "IFOOD" && (
+            <Paper withBorder radius="lg" p="lg">
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-end">
+                  <Group align="flex-start" wrap="nowrap">
+                    <ThemeIcon variant="light" size={42} radius="md">
+                      <IconCalendar size={22} />
+                    </ThemeIcon>
+                    <Stack gap={2}>
+                      <Title order={4}>Selecione o repasse do iFood</Title>
+                      <Text size="sm" c="dimmed">
+                        A planilha completa foi lida. Escolha a data paga pelo iFood para revisar e importar somente aquele período de apuração.
+                      </Text>
+                    </Stack>
+                  </Group>
+                  <Select
+                    label="Data do repasse a importar"
+                    value={ifoodPaymentDate}
+                    onChange={setIfoodPaymentDate}
+                    data={paymentBatches.map((batch) => ({
+                      value: batch.paymentDate,
+                      label: `${formatDate(batch.paymentDate)} — ${formatMoney(batch.declaredNet)} — apuração ${formatDate(batch.periodStart)} a ${formatDate(batch.periodEnd)}`,
+                    }))}
+                    allowDeselect={false}
+                    searchable
+                    w={{ base: "100%", md: 390 }}
+                  />
+                </Group>
+
+                {selectedIfoodBatch && (
+                  <>
+                    <SimpleGrid cols={{ base: 2, md: 5 }}>
+                      <Card withBorder radius="md">
+                        <Text size="xs" c="dimmed">Período apurado</Text>
+                        <Text fw={800}>{formatDate(selectedIfoodBatch.periodStart)} a {formatDate(selectedIfoodBatch.periodEnd)}</Text>
+                      </Card>
+                      <Card withBorder radius="md">
+                        <Text size="xs" c="dimmed">Linhas do lote</Text>
+                        <Text fw={800}>{selectedIfoodBatch.sourceRows}</Text>
+                      </Card>
+                      <Card withBorder radius="md">
+                        <Text size="xs" c="dimmed">Venda bruta</Text>
+                        <Text fw={800} c="green">{formatMoney(selectedIfoodBatch.gross)}</Text>
+                      </Card>
+                      <Card withBorder radius="md">
+                        <Text size="xs" c="dimmed">Custos e descontos</Text>
+                        <Text fw={800} c="red">-{formatMoney(selectedIfoodBatch.fees)}</Text>
+                      </Card>
+                      <Card withBorder radius="md">
+                        <Text size="xs" c="dimmed">Repasse líquido</Text>
+                        <Text fw={800}>{formatMoney(selectedIfoodBatch.declaredNet)}</Text>
+                      </Card>
+                    </SimpleGrid>
+                    <Alert
+                      color={Math.abs(selectedIfoodBatch.difference) < 0.01 ? "green" : "red"}
+                      icon={Math.abs(selectedIfoodBatch.difference) < 0.01 ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
+                    >
+                      {Math.abs(selectedIfoodBatch.difference) < 0.01
+                        ? "O lote selecionado confere exatamente com o valor de repasse informado pelo iFood."
+                        : `O lote selecionado possui diferença de ${formatMoney(selectedIfoodBatch.difference)} em relação ao repasse informado.`}
+                    </Alert>
+                  </>
+                )}
+              </Stack>
+            </Paper>
+          )}
+
           {instructionSummary && instructionSummary.rules.length > 0 && (
             <Alert
               color={unmatchedInstructionRules.length > 0 ? "yellow" : "teal"}
@@ -1087,32 +1194,32 @@ export default function AdquirentesPage() {
                 {detectedAcquirer && <Badge variant="light">{detectedAcquirer}</Badge>}
               </Group>
               <Text size="sm" c="dimmed">
-                {sourceSheets.length} aba(s) processada(s) • {sourceRows} linhas-fonte lidas
+                {sourceSheets.length} aba(s) processada(s) • {displayedSourceRows} linhas-fonte consideradas
               </Text>
               <Text size="sm" c="dimmed">{sourceSheets.join(" • ")}</Text>
-              {sourceTotals && sourceTotals.net != null && (
+              {displayedSourceTotals && displayedSourceTotals.net != null && (
                 <Card withBorder radius="md" mt="xs">
                   <SimpleGrid cols={{ base: 2, md: 4 }}>
                     <Stack gap={0}>
                       <Text size="xs" c="dimmed">Linhas no totalizador</Text>
-                      <Text fw={800}>{sourceTotals.rows ?? "—"}</Text>
+                      <Text fw={800}>{displayedSourceTotals.rows ?? "—"}</Text>
                     </Stack>
                     <Stack gap={0}>
                       <Text size="xs" c="dimmed">Bruto do arquivo</Text>
-                      <Text fw={800}>{formatMoney(sourceTotals.gross ?? 0)}</Text>
+                      <Text fw={800}>{formatMoney(displayedSourceTotals.gross ?? 0)}</Text>
                     </Stack>
                     <Stack gap={0}>
                       <Text size="xs" c="dimmed">Custos e descontos</Text>
-                      <Text fw={800} c="red">-{formatMoney(sourceTotals.fees ?? 0)}</Text>
+                      <Text fw={800} c="red">-{formatMoney(displayedSourceTotals.fees ?? 0)}</Text>
                     </Stack>
                     <Stack gap={0}>
                       <Text size="xs" c="dimmed">Líquido do arquivo</Text>
-                      <Text fw={800} c="green">{formatMoney(sourceTotals.net)}</Text>
+                      <Text fw={800} c="green">{formatMoney(displayedSourceTotals.net)}</Text>
                     </Stack>
                   </SimpleGrid>
                 </Card>
               )}
-              {sourceTotals && sourceTotals.net != null && (
+              {displayedSourceTotals && displayedSourceTotals.net != null && (
                 instructionSummary?.excludedRows ? (
                   <Alert color="blue" icon={<IconTable size={18} />}>
                     O totalizador original foi preservado como referência. Como existem linhas
@@ -1120,12 +1227,12 @@ export default function AdquirentesPage() {
                   </Alert>
                 ) : (
                   <Alert
-                    color={Math.abs(totals.identifiedNet - sourceTotals.net) < 0.01 ? "green" : "red"}
-                    icon={Math.abs(totals.identifiedNet - sourceTotals.net) < 0.01 ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
+                    color={Math.abs(totals.identifiedNet - displayedSourceTotals.net) < 0.01 ? "green" : "red"}
+                    icon={Math.abs(totals.identifiedNet - displayedSourceTotals.net) < 0.01 ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
                   >
-                    {Math.abs(totals.identifiedNet - sourceTotals.net) < 0.01
+                    {Math.abs(totals.identifiedNet - displayedSourceTotals.net) < 0.01
                       ? "O valor líquido calculado confere com o totalizador do arquivo."
-                      : `Há uma diferença de ${formatMoney(totals.identifiedNet - sourceTotals.net)} entre a leitura e o totalizador.`}
+                      : `Há uma diferença de ${formatMoney(totals.identifiedNet - displayedSourceTotals.net)} entre a leitura e o totalizador.`}
                   </Alert>
                 )
               )}
@@ -1137,7 +1244,7 @@ export default function AdquirentesPage() {
             </Stack>
           </Paper>
 
-          <AcquirerAuditDashboard lines={lines} acquirer={detectedAcquirer ?? "Adquirente"} />
+          <AcquirerAuditDashboard lines={activeLines} acquirer={detectedAcquirer ?? "Adquirente"} />
 
           <Paper withBorder radius="lg">
             <Group justify="space-between" p="lg" align="flex-end">
@@ -1215,7 +1322,7 @@ export default function AdquirentesPage() {
                           </Table.Thead>
                           <Table.Tbody>
                             {group.lines.map((line) => {
-                              const rateInfo = getSaleRateInfo(line, lines);
+                              const rateInfo = getSaleRateInfo(line, activeLines);
                               const isSale = line.eventType === "SALE";
 
                               return (
@@ -1237,6 +1344,7 @@ export default function AdquirentesPage() {
                                     <TextInput
                                       type="date"
                                       value={line.paymentDate}
+                                      disabled={detectedAcquirer === "IFOOD"}
                                       onChange={(event) =>
                                         setLines((current) =>
                                           current.map((item) =>
@@ -1337,7 +1445,7 @@ export default function AdquirentesPage() {
           <Paper withBorder radius="lg" p="lg">
             <Group justify="space-between" align="flex-end">
               <SimpleGrid cols={{ base: 2, md: 4 }}>
-                <Stack gap={0}><Text size="xs" c="dimmed">Linhas de saída</Text><Text fw={800} fz={20}>{lines.length}</Text></Stack>
+                <Stack gap={0}><Text size="xs" c="dimmed">Linhas de saída</Text><Text fw={800} fz={20}>{activeLines.length}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Venda bruta</Text><Text fw={800} fz={20} c="green">{formatMoney(totals.gross)}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Custos e descontos</Text><Text fw={800} fz={20} c="red">-{formatMoney(totals.totalCosts)}</Text></Stack>
                 <Stack gap={0}><Text size="xs" c="dimmed">Líquido conferido</Text><Text fw={800} fz={20}>{formatMoney(totals.expectedNet)}</Text></Stack>
@@ -1351,7 +1459,7 @@ export default function AdquirentesPage() {
                   counterpartyHint={detectedAcquirer}
                   lines={directFinancialLines}
                   disabled={
-                    lines.length === 0
+                    activeLines.length === 0
                     || (unmatchedInstructionRules.length > 0 && !instructionReviewConfirmed)
                   }
                   onSuccess={() => saveExportHistory("API_CONTA_AZUL")}
@@ -1360,7 +1468,7 @@ export default function AdquirentesPage() {
                   leftSection={<IconDownload size={18} />}
                   size="md"
                   disabled={
-                    lines.length === 0
+                    activeLines.length === 0
                     || (unmatchedInstructionRules.length > 0 && !instructionReviewConfirmed)
                   }
                   onClick={exportContaAzul}

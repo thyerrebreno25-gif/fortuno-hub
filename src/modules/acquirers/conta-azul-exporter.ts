@@ -77,6 +77,12 @@ export function buildContaAzulAcquirerObservation(line: ContaAzulAcquirerLine): 
     sourceValue("numero do pedido")
       ? `Pedido: ${sourceValue("numero do pedido")}`
       : "",
+    sourceValue("pedido_associado_ifood_curto", "pedido_associado_ifood")
+      ? `Pedido iFood: ${sourceValue("pedido_associado_ifood_curto", "pedido_associado_ifood")}`
+      : "",
+    sourceValue("id_saldo")
+      ? `Saldo iFood: ${sourceValue("id_saldo")}`
+      : "",
     sourceValue(
       "resumo de vendas/numero do lote",
       "resumo de vendas/numero do lote da venda",
@@ -109,6 +115,10 @@ export function buildContaAzulAcquirerObservation(line: ContaAzulAcquirerLine): 
 }
 
 export function contaAzulAcquirerDescription(line: ContaAzulAcquirerLine): string {
+  if (line.acquirer?.toUpperCase() === "IFOOD") {
+    return line.description;
+  }
+
   const modality = modalityLabel(line.transactionType);
   const brand = line.cardBrand || (line.transactionType === "PIX" ? "PIX" : "");
   const detail = [brand, modality].filter(Boolean).join(" ");
