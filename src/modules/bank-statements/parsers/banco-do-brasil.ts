@@ -7,6 +7,7 @@ const HISTORY = /^(\d{5})\s+(\d{3})\s+(.+)$/;
 const MONEY_WITH_INDICATOR = "(\\d{1,3}(?:\\.\\d{3})*,\\d{2})\\s*([CD])";
 const MONEY_WITH_PARENTHESIS_INDICATOR =
   "(\\d{1,3}(?:\\.\\d{3})*,\\d{2})\\s*\\(([+-])\\)";
+const MONEY_ONLY = /^(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}$/i;
 
 type AmountWithIndicator = {
   value: number;
@@ -53,6 +54,15 @@ function parenthesisAmountsFrom(value: string): AmountWithIndicator[] {
   }));
 }
 
+function finalParenthesisAmount(line: PdfTextLine) {
+  const orderedParts = [...line.parts].sort((left, right) => right.x - left.x);
+  for (const part of orderedParts) {
+    const amount = parenthesisAmountsFrom(part.text).at(-1);
+    if (amount) return amount;
+  }
+  return parenthesisAmountsFrom(line.text).at(-1);
+}
+
 function sourceType(description: string) {
   const key = normalize(description);
   if (key.includes("PIX - RECEBIDO") || key.includes("PIX-RECEBIDO")) return "PIX recebido";
@@ -62,6 +72,13 @@ function sourceType(description: string) {
   if (key.includes("FOLHA DE PAGAMENTO")) return "Folha de pagamento";
   if (key.includes("PAGTO CARTAO CREDITO")) return "Pagamento de cartão";
   if (key.includes("TED-CREDITO")) return "TED recebido";
+  if (key.includes("TRANSFERENCIA ENVIADA") || key.includes("TRANSFERENCIA AGENDADA")) {
+    return "Transferência enviada";
+  }
+  if (key.includes("TRANSFERENCIA RECEBIDA")) return "Transferência recebida";
+  if (key.includes("RECEBIMENTO FORNECEDOR")) return "Recebimento de adquirente";
+  if (key.includes("COMPRA COM CARTAO")) return "Compra com cartão";
+  if (key.includes("IFOOD.COM CREDITO")) return "Recebimento iFood";
   if (key.includes("IMPOSTOS")) return "Impostos";
   if (key.includes("TARIFA")) return "Tarifa bancária";
   if (key.includes("SEGURO")) return "Seguro";
@@ -133,9 +150,24 @@ function jasperDescriptionParts(line: PdfTextLine) {
       return (
         Boolean(value) &&
         key !== "HISTORICO" &&
+        !MONEY_ONLY.test(value) &&
         !parenthesisAmountsFrom(value).length
       );
     });
+}
+
+function isJasperMovementHeading(value: string) {
+  const key = normalize(value);
+  return (
+    /^PIX\s*-/.test(key) ||
+    key === "TED-CREDITO EM CONTA" ||
+    key.startsWith("TRANSFERENCIA ENVIADA") ||
+    key.startsWith("TRANSFERENCIA RECEBIDA") ||
+    key.startsWith("TRANSFERENCIA AGENDADA") ||
+    key === "RECEBIMENTO FORNECEDOR" ||
+    key === "COMPRA COM CARTAO" ||
+    key === "IFOOD.COM CREDITO"
+  );
 }
 
 function addJasperLine(record: JasperRecord, line: PdfTextLine) {
@@ -145,12 +177,12 @@ function addJasperLine(record: JasperRecord, line: PdfTextLine) {
   const document = line.parts.find(
     (part) => part.x >= 140 && part.x < 250 && /^\d+$/.test(clean(part.text)),
   );
-  const amounts = parenthesisAmountsFrom(line.text);
+  const finalAmount = finalParenthesisAmount(line);
 
   if (!record.lot && lot) record.lot = clean(lot.text);
   if (!record.document && document) record.document = clean(document.text);
-  if (record.signedAmount === undefined && amounts.length) {
-    record.signedAmount = amounts.at(-1)?.value;
+  if (record.signedAmount === undefined && finalAmount) {
+    record.signedAmount = finalAmount.value;
   }
   jasperDescriptionParts(line).forEach((value) =>
     addJasperDescription(record, value),
@@ -187,7 +219,7 @@ function parseJasperBancoDoBrasilStatement(
 
     if (descriptionKey === "SALDOANTERIOR") {
       detectedOpeningBalance = signedAmount;
-    } else if (descriptionKey === "SALDO") {
+    } else if (descriptionKey === "SALDO" || descriptionKey === "SALDOFINAL") {
       detectedClosingBalance = signedAmount;
     } else if (
       descriptionKey !== "SALDODODIA" &&
@@ -218,8 +250,15 @@ function parseJasperBancoDoBrasilStatement(
   for (const line of lines) {
     const lineKey = normalize(line.text);
 
+    if (insideTransactions && lineKey === "EXTRATO DE CONTA CORRENTE") {
+      finishCurrent();
+      pendingDescriptions = [];
+      continue;
+    }
+
     if (lineKey === "LANCAMENTOS") {
       insideTransactions = true;
+      pendingDescriptions = [];
       continue;
     }
     if (!insideTransactions) continue;
@@ -242,6 +281,26 @@ function parseJasperBancoDoBrasilStatement(
       (part) => part.x < 80 && (DATE.test(clean(part.text)) || ZERO_DATE.test(clean(part.text))),
     );
     const descriptions = jasperDescriptionParts(line);
+    const finalAmount = finalParenthesisAmount(line);
+    const descriptionKey = normalize(descriptions.join(" ")).replace(/\s/g, "");
+
+    if (finalAmount && descriptionKey === "SALDOANTERIOR") {
+      finishCurrent();
+      detectedOpeningBalance = finalAmount.value;
+      pendingDescriptions = [];
+      continue;
+    }
+    if (finalAmount && (descriptionKey === "SALDO" || descriptionKey === "SALDOFINAL")) {
+      finishCurrent();
+      detectedClosingBalance = finalAmount.value;
+      pendingDescriptions = [];
+      continue;
+    }
+    if (descriptionKey === "SALDODODIA") {
+      finishCurrent();
+      pendingDescriptions = [];
+      continue;
+    }
 
     if (datePart && ZERO_DATE.test(clean(datePart.text))) {
       finishCurrent();
@@ -260,14 +319,12 @@ function parseJasperBancoDoBrasilStatement(
       continue;
     }
 
-    if (!descriptions.length && !parenthesisAmountsFrom(line.text).length) {
+    if (!descriptions.length && !finalAmount) {
       continue;
     }
 
-    const startsNextPix = descriptions.some((description) =>
-      /^PIX\s*-?\s*RECEBIDO$/i.test(normalize(description)),
-    );
-    if (current?.signedAmount !== undefined && startsNextPix) {
+    const startsNextMovement = descriptions.some(isJasperMovementHeading);
+    if (current?.signedAmount !== undefined && startsNextMovement) {
       finishCurrent();
       pendingDescriptions = descriptions;
       continue;

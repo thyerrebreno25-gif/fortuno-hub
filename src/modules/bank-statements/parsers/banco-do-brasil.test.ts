@@ -104,6 +104,88 @@ describe("leitor de extrato do Banco do Brasil", () => {
     });
   });
 
+  it("usa o sinal da última coluna e reconhece o saldo isolado antes da página de totais", () => {
+    const result = parseBancoDoBrasilStatement([
+      line(810, [{ x: 70, text: "Extrato de Conta Corrente" }]),
+      line(788, [{ x: 71, text: "Cliente" }, { x: 110, text: "DOCE MAISON LTDA" }]),
+      line(768, [
+        { x: 220, text: "Agência: 3476-2" },
+        { x: 304, text: "Conta: 129012-6" },
+      ]),
+      line(746, [{ x: 30, text: "Lançamentos" }]),
+      line(720, [{ x: 30, text: "30/06/2026" }]),
+      line(714, [{ x: 266, text: "Saldo Anterior" }, { x: 539, text: "0,00 (+)" }]),
+      line(698, [{ x: 266, text: "Pix - Recebido" }]),
+      line(694, [{ x: 30, text: "01/07/2026" }]),
+      line(688, [
+        { x: 91, text: "14397" },
+        { x: 152, text: "1001" },
+        { x: 266, text: "01/07 09:00 CLIENTE" },
+        { x: 521, text: "100,00 (+)" },
+      ]),
+      line(674, [{ x: 266, text: "Transferência enviada" }]),
+      line(668, [{ x: 30, text: "01/07/2026" }]),
+      line(662, [
+        { x: 91, text: "99021" },
+        { x: 152, text: "1002" },
+        { x: 266, text: "DESTINATÁRIO" },
+        { x: 521, text: "40,00 (-)" },
+      ]),
+      line(648, [{ x: 30, text: "01/07/2026" }, { x: 266, text: "BB Rende Fácil" }]),
+      line(642, [{ x: 152, text: "9903" }, { x: 521, text: "60,00 (-)" }]),
+      line(636, [{ x: 266, text: "Rende Facil" }]),
+      line(628, [{ x: 30, text: "00/00/0000" }]),
+      line(622, [{ x: 91, text: "14134" }, { x: 266, text: "Saldo do dia" }, { x: 539, text: "0,00 (+)" }]),
+      line(618, [{ x: 304, text: "Conta: 129012-6" }]),
+      line(616, [{ x: 30, text: "Lançamentos" }]),
+      line(610, [{ x: 30, text: "02/07/2026" }, { x: 266, text: "Recebimento Fornecedor" }]),
+      line(604, [
+        { x: 91, text: "14134" },
+        { x: 152, text: "1003" },
+        { x: 521, text: "200,00 (+)" },
+      ]),
+      line(598, [{ x: 266, text: "FORNECEDOR S.A." }]),
+      line(590, [{ x: 30, text: "02/07/2026" }, { x: 266, text: "Transferência Agendada" }]),
+      line(584, [
+        { x: 91, text: "13105" },
+        { x: 152, text: "1004" },
+        { x: 521, text: "250,00 (-)" },
+      ]),
+      line(578, [{ x: 266, text: "DESTINATÁRIO" }]),
+      line(570, [{ x: 30, text: "02/07/2026" }, { x: 266, text: "BB Rende Fácil" }]),
+      line(564, [{ x: 152, text: "9903" }, { x: 521, text: "50,00 (+)" }]),
+      line(556, [{ x: 30, text: "31/07/2026" }]),
+      line(550, [{ x: 266, text: "S A L D O" }, { x: 539, text: "0,00 (+)" }]),
+      line(810, [{ x: 70, text: "Extrato de Conta Corrente" }], 2),
+      line(752, [
+        { x: 30, text: "Total Aplicações Financeiras" },
+        { x: 470, text: "0,00" },
+      ], 2),
+    ]);
+
+    expect(result.detectedClosingBalance).toBe(0);
+    expect(result.transactions).toHaveLength(6);
+    expect(result.transactions.map((transaction) => transaction.type)).toEqual([
+      "CREDIT",
+      "DEBIT",
+      "DEBIT",
+      "CREDIT",
+      "DEBIT",
+      "CREDIT",
+    ]);
+    expect(result.transactions[1]).toMatchObject({
+      description: "Transferência enviada DESTINATÁRIO",
+      amount: 40,
+    });
+    expect(result.transactions[3]?.description).not.toContain("Saldo do dia");
+    expect(result.transactions[3]?.description).not.toContain("Conta:");
+    expect(result.transactions.at(-1)).toMatchObject({
+      description: "BB Rende Fácil",
+      amount: 50,
+      balance: 0,
+    });
+  });
+
   it("lê as movimentações, continua descrições entre páginas e fecha o saldo", () => {
     const result = parseBancoDoBrasilStatement([
       ...header,
