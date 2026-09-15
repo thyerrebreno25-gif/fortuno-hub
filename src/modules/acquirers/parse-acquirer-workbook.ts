@@ -22,6 +22,10 @@ import {
   parsePagarmeWorkbook,
 } from "./pagarme-workbook-parser";
 import {
+  isPluxeePaymentsSheet,
+  parsePluxeeWorkbook,
+} from "./pluxee-workbook-parser";
+import {
   parseRedeWorkbook,
   type Categories,
   type ContractedRate,
@@ -32,6 +36,10 @@ import {
   isVrBenefitsWorkbook,
   parseVrBenefitsWorkbook,
 } from "./vr-workbook-parser";
+import {
+  isTicketDetailedSheet,
+  parseTicketWorkbook,
+} from "./ticket-workbook-parser";
 
 export type SupportedAcquirer =
   | "REDE"
@@ -40,7 +48,9 @@ export type SupportedAcquirer =
   | "PAGARME"
   | "IFOOD"
   | "ALELO"
-  | "VR BENEFÍCIOS";
+  | "VR BENEFÍCIOS"
+  | "PLUXEE"
+  | "TICKET";
 export type AcquirerSourceTotals = CieloSourceTotals;
 export type AcquirerPaymentBatch = IfoodPaymentBatch;
 
@@ -93,6 +103,14 @@ function detectAcquirer(workbook: XLSX.WorkBook): SupportedAcquirer | null {
       return "IFOOD";
     }
 
+    if (isPluxeePaymentsSheet(sheetName, matrix)) {
+      return "PLUXEE";
+    }
+
+    if (isTicketDetailedSheet(sheetName, matrix)) {
+      return "TICKET";
+    }
+
     if (isVrBenefitsWorkbook(sheetName, matrix)) {
       return "VR BENEFÍCIOS";
     }
@@ -138,6 +156,8 @@ function ratesForAcquirer(
     IFOOD: ["ifood"],
     ALELO: ["alelo"],
     "VR BENEFÍCIOS": ["vr beneficios", "vrbeneficios", "vr"],
+    PLUXEE: ["pluxee", "sodexo"],
+    TICKET: ["ticket", "edenred"],
   }[acquirer];
   const matched = configuredAcquirers.find((item) => {
     const name = normalize(item.name).replace(/[^a-z0-9]/g, "");
@@ -161,7 +181,7 @@ export async function parseAcquirerWorkbook(
 
   if (!acquirer) {
     throw new Error(
-      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET, Pagar.me, iFood, Alelo e VR Benefícios.",
+      "Layout de adquirente ainda não reconhecido. Atualmente o leitor identifica automaticamente arquivos da Rede, Cielo, GETNET, Pagar.me, iFood, Alelo, VR Benefícios, Pluxee e Ticket.",
     );
   }
 
@@ -258,6 +278,38 @@ export async function parseAcquirerWorkbook(
       ...result,
       acquirer,
       parserId: "vr-beneficios-guias-reembolso",
+      parserVersion: "1.0.0",
+    };
+  }
+
+  if (acquirer === "PLUXEE") {
+    const result = await parsePluxeeWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      contractedRates,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "pluxee-extrato-pagamentos",
+      parserVersion: "1.0.0",
+    };
+  }
+
+  if (acquirer === "TICKET") {
+    const result = await parseTicketWorkbook(
+      file,
+      categories,
+      manualPaymentDate,
+      contractedRates,
+      options,
+    );
+    return {
+      ...result,
+      acquirer,
+      parserId: "ticket-extrato-reembolso-detalhado",
       parserVersion: "1.0.0",
     };
   }
