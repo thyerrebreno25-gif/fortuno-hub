@@ -64,6 +64,18 @@ describe("permissões do módulo de clientes", () => {
     });
   });
 
+  it("libera o assistente para o operador sem conceder gestão administrativa", () => {
+    expect(defaultPermission("OPERATOR", "ASSISTANT")).toEqual({
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: true,
+      canImport: false,
+      canExport: false,
+      canManage: false,
+    });
+  });
+
   it("mantém o perfil de cliente externo sem acesso ao cadastro operacional", () => {
     expect(defaultPermission("CLIENT", "CLIENTS")).toEqual({
       canView: false,

@@ -47,6 +47,13 @@ const icons = {
     </svg>
   ),
 
+  assistant: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1l2 3 2-3h1a4 4 0 0 0 4-4v-3a7 7 0 0 0-7-7Z" />
+      <path d="M9 10h.01M15 10h.01M9.5 14h5" />
+    </svg>
+  ),
+
   audit: (
   <svg viewBox="0 0 24 24">
     <path d="M9 11l2 2 4-4" />
@@ -178,6 +185,13 @@ const menuItems: MenuItem[] = [
     href: "/avisos",
     moduleCode: "NOTICES",
     icon: icons.notice,
+    group: "Visão geral",
+  },
+  {
+    label: "Assistente",
+    href: "/assistente",
+    moduleCode: "ASSISTANT",
+    icon: icons.assistant,
     group: "Visão geral",
   },
   {

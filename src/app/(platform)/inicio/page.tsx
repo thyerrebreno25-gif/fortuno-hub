@@ -17,6 +17,7 @@ import {
 } from "@mantine/core";
 import {
   IconActivity,
+  IconBrain,
   IconArrowRight,
   IconBell,
   IconBuildingBank,
@@ -58,6 +59,16 @@ type Feature = {
 };
 
 const features: Feature[] = [
+  {
+    title: "Assistente Fortuno",
+    description:
+      "Tire dúvidas, consulte clientes conectados, analise arquivos e solicite auditorias preliminares.",
+    href: "/assistente",
+    moduleCode: "ASSISTANT",
+    group: "Visão geral",
+    icon: <IconBrain size={24} />,
+    badge: "Inteligente",
+  },
   {
     title: "Dashboard",
     description:

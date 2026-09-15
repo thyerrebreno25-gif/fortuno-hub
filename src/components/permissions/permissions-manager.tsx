@@ -20,6 +20,7 @@ import {
 const modules = [
   ["DASHBOARD", "Dashboard"],
   ["NOTICES", "Avisos"],
+  ["ASSISTANT", "Assistente Fortuno"],
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
   ["PURCHASE_INVOICES", "Notas de compra"],
@@ -219,6 +220,7 @@ export function PermissionsManager() {
           const isAllowed =
             moduleCode === "DASHBOARD" ||
             moduleCode === "NOTICES" ||
+            moduleCode === "ASSISTANT" ||
             moduleCode === "CLIENTS" ||
             moduleCode === "PURCHASE_INVOICES" ||
             moduleCode === "AUDIT";
@@ -230,13 +232,16 @@ export function PermissionsManager() {
               canCreate:
                 moduleCode === "CLIENTS" ||
                 moduleCode === "NOTICES" ||
+                moduleCode === "ASSISTANT" ||
                 moduleCode === "PURCHASE_INVOICES",
               canEdit:
                 moduleCode === "NOTICES" ||
+                moduleCode === "ASSISTANT" ||
                 moduleCode === "CLIENTS" ||
                 moduleCode === "PURCHASE_INVOICES" ||
                 moduleCode === "AUDIT",
-              canDelete: moduleCode === "NOTICES",
+              canDelete:
+                moduleCode === "NOTICES" || moduleCode === "ASSISTANT",
               canImport: moduleCode === "PURCHASE_INVOICES",
               canExport: moduleCode === "PURCHASE_INVOICES",
               canManage: false,
@@ -253,7 +258,7 @@ export function PermissionsManager() {
 
     setMsgColor("blue");
     setMsg(
-      "Padrão de operador aplicado. Dashboard, Avisos, Clientes e Auditoria foram liberados. Clique em Salvar permissões.",
+      "Padrão de operador aplicado. Dashboard, Avisos, Assistente, Clientes e Auditoria foram liberados. Clique em Salvar permissões.",
     );
   }
 

@@ -295,6 +295,16 @@ enum NoticePriority {
   CRITICAL
 }
 
+enum AssistantConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum AssistantMessageRole {
+  USER
+  ASSISTANT
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -320,6 +330,7 @@ model Organization {
   contaAzulConnections  ContaAzulConnection[]
   purchaseInvoices      PurchaseInvoice[]
   contaAzulFinancialExports ContaAzulFinancialExport[]
+  assistantConversations    AssistantConversation[]
 }
 
 model User {
@@ -356,6 +367,7 @@ model User {
   generalServiceClients    Client[]                 @relation("ClientGeneralResponsible")
   purchaseInvoicesCreated  PurchaseInvoice[]        @relation("PurchaseInvoiceCreator")
   contaAzulFinancialExportsCreated ContaAzulFinancialExport[] @relation("ContaAzulFinancialExportCreator")
+  assistantConversations           AssistantConversation[]
 }
 
 model OrganizationMember {
@@ -435,6 +447,7 @@ model Client {
   purchaseInvoices        PurchaseInvoice[]
   purchaseInvoiceRules    PurchaseInvoiceRule[]
   contaAzulFinancialExports ContaAzulFinancialExport[]
+  assistantConversations    AssistantConversation[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -445,6 +458,40 @@ model Client {
   @@index([receivableResponsibleId])
   @@index([generalResponsibleId])
   @@index([cluster])
+}
+
+model AssistantConversation {
+  id                   String                      @id @default(cuid())
+  organizationId       String
+  userId               String
+  clientId             String?
+  title                String                      @default("Nova conversa")
+  status               AssistantConversationStatus @default(ACTIVE)
+  lastOpenAiResponseId String?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client       Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  messages     AssistantMessage[]
+
+  @@index([organizationId, userId, status, updatedAt])
+  @@index([clientId, updatedAt])
+}
+
+model AssistantMessage {
+  id             String               @id @default(cuid())
+  conversationId String
+  role           AssistantMessageRole
+  content        String
+  attachments    Json?
+  metadata       Json?
+  createdAt      DateTime             @default(now())
+
+  conversation AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
 
 model ContaAzulConnection {
