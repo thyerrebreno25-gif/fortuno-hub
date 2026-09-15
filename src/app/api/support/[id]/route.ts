@@ -5,6 +5,7 @@ import {
   SUPPORT_MANAGER_ROLES,
 } from "@/modules/support/server/support-auth";
 import { parseSupportMetadata } from "@/modules/support/types/support.types";
+import { publicSupportAttachment } from "@/modules/support/server/support-attachments";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -64,8 +65,11 @@ export async function GET(_request: Request, context: RouteContext) {
       status: ticket.status,
       category: metadata.category ?? "Outro",
       module: metadata.module ?? "Geral",
-      attachments: metadata.attachments ?? [],
-      messages: metadata.messages ?? [],
+      attachments: (metadata.attachments ?? []).map(publicSupportAttachment),
+      messages: (metadata.messages ?? []).map((message) => ({
+        ...message,
+        attachments: message.attachments?.map(publicSupportAttachment),
+      })),
       technicalContext: metadata.technicalContext ?? null,
       requester: {
         id: ticket.user.id,

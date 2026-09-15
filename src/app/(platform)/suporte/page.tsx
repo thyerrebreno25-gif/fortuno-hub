@@ -10,7 +10,6 @@ import {
   Center,
   Group,
   Loader,
-  NumberInput,
   Paper,
   ScrollArea,
   Select,
@@ -25,6 +24,8 @@ import {
 } from "@mantine/core";
 import {
   IconArrowRight,
+  IconDownload,
+  IconEye,
   IconFile,
   IconMessageCircle,
   IconPaperclip,
@@ -40,6 +41,7 @@ type TicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
 type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 type Attachment = {
+  id?: string;
   name: string;
   size: number;
   type: string;
@@ -159,14 +161,6 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function fileMetadata(files: File[]): Attachment[] {
-  return files.map((file) => ({
-    name: file.name,
-    size: file.size,
-    type: file.type,
-  }));
-}
-
 export default function SuportePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageFileInputRef = useRef<HTMLInputElement>(null);
@@ -271,17 +265,16 @@ export default function SuportePage() {
     setSuccess("");
 
     try {
+      const formData = new FormData();
+      formData.set("subject", subject);
+      formData.set("description", description);
+      formData.set("priority", priority || "MEDIUM");
+      formData.set("category", category || "Outro");
+      formData.set("module", module || "Geral");
+      attachments.forEach((file) => formData.append("files", file));
       const response = await fetch("/api/support", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject,
-          description,
-          priority,
-          category,
-          module,
-          attachments: fileMetadata(attachments),
-        }),
+        body: formData,
       });
 
       const payload = (await response.json()) as {
@@ -321,13 +314,12 @@ export default function SuportePage() {
     setError("");
 
     try {
+      const formData = new FormData();
+      formData.set("text", message);
+      messageAttachments.forEach((file) => formData.append("files", file));
       const response = await fetch(`/api/support/${selected.id}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: message,
-          attachments: fileMetadata(messageAttachments),
-        }),
+        body: formData,
       });
 
       const payload = (await response.json()) as {
@@ -732,10 +724,8 @@ export default function SuportePage() {
               </Paper>
 
               <Alert color="blue">
-                O chamado e a conversa serão salvos no banco. Nesta versão, os
-                nomes, tipos e tamanhos dos anexos ficam registrados no chamado;
-                o armazenamento físico dos arquivos depende da configuração de
-                um bucket de arquivos.
+                Os arquivos serão armazenados de forma privada e ficarão disponíveis
+                para visualização e download somente dentro deste chamado.
               </Alert>
 
               <Group justify="flex-end">
@@ -905,15 +895,38 @@ export default function SuportePage() {
                                 </Text>
                                 {!!item.attachments?.length && (
                                   <Stack gap={4}>
-                                    {item.attachments.map((attachment) => (
-                                      <Badge
-                                        key={attachment.name}
-                                        variant="outline"
-                                        color="gray"
-                                        leftSection={<IconPaperclip size={11} />}
-                                      >
-                                        {attachment.name}
-                                      </Badge>
+                                    {item.attachments.map((attachment, attachmentIndex) => (
+                                      <Paper key={`${attachment.id || attachment.name}-${attachmentIndex}`} withBorder radius="md" p="xs">
+                                        <Group justify="space-between" wrap="nowrap">
+                                          <Group gap="xs" wrap="nowrap">
+                                            <IconPaperclip size={15} />
+                                            <Stack gap={0} style={{ minWidth: 0 }}>
+                                              <Text size="xs" fw={600} truncate>{attachment.name}</Text>
+                                              <Text size="xs" c="dimmed">{(attachment.size / 1024 / 1024).toFixed(2)} MB</Text>
+                                            </Stack>
+                                          </Group>
+                                          {attachment.id ? <Group gap={4} wrap="nowrap">
+                                            <ActionIcon
+                                              component="a"
+                                              href={`/api/support/${selected.id}/attachments/${attachment.id}?mode=view`}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              variant="subtle"
+                                              aria-label={`Visualizar ${attachment.name}`}
+                                            >
+                                              <IconEye size={16} />
+                                            </ActionIcon>
+                                            <ActionIcon
+                                              component="a"
+                                              href={`/api/support/${selected.id}/attachments/${attachment.id}`}
+                                              variant="subtle"
+                                              aria-label={`Baixar ${attachment.name}`}
+                                            >
+                                              <IconDownload size={16} />
+                                            </ActionIcon>
+                                          </Group> : <Badge color="orange" variant="light" size="xs">Arquivo antigo indisponível</Badge>}
+                                        </Group>
+                                      </Paper>
                                     ))}
                                   </Stack>
                                 )}

@@ -9,6 +9,11 @@ import {
   type SupportAttachment,
 } from "@/modules/support/types/support.types";
 import { sendNewSupportTicketEmail } from "@/modules/notifications/email/support-email";
+import {
+  publicSupportAttachment,
+  removeSupportAttachments,
+  uploadSupportAttachments,
+} from "@/modules/support/server/support-attachments";
 
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
@@ -122,7 +127,7 @@ export async function GET(request: Request) {
           status: ticket.status,
           category: metadata.category ?? "Outro",
           module: metadata.module ?? "Geral",
-          attachments: metadata.attachments ?? [],
+          attachments: (metadata.attachments ?? []).map(publicSupportAttachment),
           messageCount: metadata.messages?.length ?? 0,
           requester: {
             id: ticket.user.id,
@@ -153,7 +158,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as {
+    const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    const formData = multipart ? await request.formData() : null;
+    const jsonBody = multipart ? null : await request.json();
+    const body = (jsonBody ?? {
+      subject: formData?.get("subject"),
+      description: formData?.get("description"),
+      priority: formData?.get("priority"),
+      category: formData?.get("category"),
+      module: formData?.get("module"),
+      technicalContext: undefined,
+    }) as {
       subject?: unknown;
       description?: unknown;
       priority?: unknown;
@@ -175,7 +190,7 @@ const priority: SupportPriority =
     : "MEDIUM";
     const category =
       typeof body.category === "string" ? body.category.trim() : "Outro";
-    const module = typeof body.module === "string" ? body.module.trim() : "Geral";
+    const moduleName = typeof body.module === "string" ? body.module.trim() : "Geral";
 
     if (subject.length < 4) {
       return NextResponse.json(
@@ -191,7 +206,7 @@ const priority: SupportPriority =
       );
     }
 
-    const attachments: SupportAttachment[] = Array.isArray(body.attachments)
+    const metadataAttachments: SupportAttachment[] = Array.isArray(body.attachments)
       ? body.attachments
           .map((item) => {
             const row = item as {
@@ -213,57 +228,77 @@ const priority: SupportPriority =
           .slice(0, 10)
       : [];
 
-    const created = await prisma.$transaction(async (transaction) => {
-      const ticket = await transaction.supportTicket.create({
-        data: {
+    const ticketId = crypto.randomUUID();
+    const firstMessageId = crypto.randomUUID();
+    const uploaded = formData
+      ? await uploadSupportAttachments({
           organizationId: member.organizationId,
-          userId: member.userId,
-          subject,
-          description,
-          priority,
-          status: "OPEN",
-          metadata: {
-            category,
-            module,
-            attachments,
-            technicalContext:
-              body.technicalContext &&
-              typeof body.technicalContext === "object" &&
-              !Array.isArray(body.technicalContext)
-                ? body.technicalContext
-                : undefined,
-            messages: [
-              {
-                id: crypto.randomUUID(),
-                userId: member.userId,
-                userName: member.user.name || member.user.email,
-                senderType: "USER",
-                text: description,
-                createdAt: new Date().toISOString(),
-                attachments,
-              },
-            ],
-          },
-        },
-      });
+          ticketId,
+          messageId: firstMessageId,
+          files: formData.getAll("files").filter((item): item is File => item instanceof File),
+        })
+      : { attachments: metadataAttachments, storagePaths: [] as string[] };
+    const attachments = uploaded.attachments;
 
-      await transaction.auditLog.create({
-        data: {
-          userId: member.userId,
-          action: "SUPPORT_TICKET_CREATED",
-          entity: "SupportTicket",
-          entityId: ticket.id,
-          afterData: {
+    let created;
+    try {
+      created = await prisma.$transaction(async (transaction) => {
+        const ticket = await transaction.supportTicket.create({
+          data: {
+            id: ticketId,
+            organizationId: member.organizationId,
+            userId: member.userId,
             subject,
+            description,
             priority,
-            category,
-            module,
+            status: "OPEN",
+            metadata: {
+              category,
+              module: moduleName,
+              attachments,
+              technicalContext:
+                body.technicalContext &&
+                typeof body.technicalContext === "object" &&
+                !Array.isArray(body.technicalContext)
+                  ? body.technicalContext
+                  : undefined,
+              messages: [
+                {
+                  id: firstMessageId,
+                  userId: member.userId,
+                  userName: member.user.name || member.user.email,
+                  senderType: "USER",
+                  text: description,
+                  createdAt: new Date().toISOString(),
+                  attachments,
+                },
+              ],
+            },
           },
-        },
-      });
+        });
 
-      return ticket;
-    });
+        await transaction.auditLog.create({
+          data: {
+            userId: member.userId,
+            action: "SUPPORT_TICKET_CREATED",
+            entity: "SupportTicket",
+            entityId: ticket.id,
+            afterData: {
+              subject,
+              priority,
+              category,
+              module: moduleName,
+              attachments: attachments.length,
+            },
+          },
+        });
+
+        return ticket;
+      });
+    } catch (databaseError) {
+      await removeSupportAttachments(uploaded.storagePaths);
+      throw databaseError;
+    }
 
     const ticketCode = `SUP-${created.id.slice(-6).toUpperCase()}`;
 
@@ -274,7 +309,7 @@ const priority: SupportPriority =
       description,
       priority,
       category,
-      module,
+      module: moduleName,
       requesterName: member.user.name || member.user.email,
       requesterEmail: member.user.email,
       createdAt: created.createdAt,

@@ -10,6 +10,11 @@ import {
   type SupportAttachment,
   type SupportMessage,
 } from "@/modules/support/types/support.types";
+import {
+  publicSupportAttachment,
+  removeSupportAttachments,
+  uploadSupportAttachments,
+} from "@/modules/support/server/support-attachments";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,7 +30,10 @@ export async function POST(request: Request, context: RouteContext) {
 
     const { id } = await context.params;
     const canManage = SUPPORT_MANAGER_ROLES.has(member.role);
-    const body = (await request.json()) as {
+    const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    const formData = multipart ? await request.formData() : null;
+    const jsonBody = multipart ? null : await request.json();
+    const body = (jsonBody ?? { text: formData?.get("text") }) as {
       text?: unknown;
       attachments?: unknown;
     };
@@ -60,7 +68,7 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const attachments: SupportAttachment[] = Array.isArray(body.attachments)
+    const metadataAttachments: SupportAttachment[] = Array.isArray(body.attachments)
       ? body.attachments
           .map((item) => {
             const row = item as {
@@ -83,8 +91,18 @@ export async function POST(request: Request, context: RouteContext) {
       : [];
 
     const metadata = parseSupportMetadata(ticket.metadata);
+    const messageId = crypto.randomUUID();
+    const uploaded = formData
+      ? await uploadSupportAttachments({
+          organizationId: member.organizationId,
+          ticketId: id,
+          messageId,
+          files: formData.getAll("files").filter((item): item is File => item instanceof File),
+        })
+      : { attachments: metadataAttachments, storagePaths: [] as string[] };
+    const attachments = uploaded.attachments;
     const message: SupportMessage = {
-      id: crypto.randomUUID(),
+      id: messageId,
       userId: member.userId,
       userName: member.user.name || member.user.email,
       senderType: canManage ? "SUPPORT" : "USER",
@@ -100,32 +118,42 @@ export async function POST(request: Request, context: RouteContext) {
   messages,
 } as Prisma.InputJsonValue;
 
-    await prisma.$transaction(async (transaction) => {
-      await transaction.supportTicket.update({
-        where: { id },
-        data: {
-          metadata: updatedMetadata,
-          ...(ticket.status === "CLOSED" || ticket.status === "RESOLVED"
-            ? { status: "OPEN" }
-            : {}),
-        },
-      });
-
-      await transaction.auditLog.create({
-        data: {
-          userId: member.userId,
-          action: "SUPPORT_MESSAGE_SENT",
-          entity: "SupportTicket",
-          entityId: id,
-          afterData: {
-            senderType: message.senderType,
-            hasAttachments: attachments.length > 0,
+    try {
+      await prisma.$transaction(async (transaction) => {
+        await transaction.supportTicket.update({
+          where: { id },
+          data: {
+            metadata: updatedMetadata,
+            ...(ticket.status === "CLOSED" || ticket.status === "RESOLVED"
+              ? { status: "OPEN" }
+              : {}),
           },
-        },
-      });
-    });
+        });
 
-    return NextResponse.json({ message });
+        await transaction.auditLog.create({
+          data: {
+            userId: member.userId,
+            action: "SUPPORT_MESSAGE_SENT",
+            entity: "SupportTicket",
+            entityId: id,
+            afterData: {
+              senderType: message.senderType,
+              hasAttachments: attachments.length > 0,
+            },
+          },
+        });
+      });
+    } catch (databaseError) {
+      await removeSupportAttachments(uploaded.storagePaths);
+      throw databaseError;
+    }
+
+    return NextResponse.json({
+      message: {
+        ...message,
+        attachments: message.attachments?.map(publicSupportAttachment),
+      },
+    });
   } catch (error) {
     console.error("Erro ao enviar mensagem de suporte:", error);
     return NextResponse.json(

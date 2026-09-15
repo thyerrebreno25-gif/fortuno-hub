@@ -9,9 +9,11 @@ export type SupportMessage = {
 };
 
 export type SupportAttachment = {
+  id?: string;
   name: string;
   size: number;
   type: string;
+  storagePath?: string;
 };
 
 export type SupportMetadata = {
