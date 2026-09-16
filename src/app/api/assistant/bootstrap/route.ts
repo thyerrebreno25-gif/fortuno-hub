@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 import {
   assistantClientAccessWhere,
   getAssistantMember,
@@ -8,6 +9,7 @@ import {
 export async function GET() {
   const member = await getAssistantMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida ou acesso não autorizado." }, { status: 401 });
+  const permissions = await getRolePermissions(member.organizationId, member.role);
 
   const [clients, conversations] = await Promise.all([
     prisma.client.findMany({
@@ -42,6 +44,7 @@ export async function GET() {
 
   return NextResponse.json({
     configured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    canLearnCategories: permissions.ASSISTANT.canEdit && permissions.CLIENTS.canEdit,
     currentUser: {
       id: member.userId,
       name: member.user.name || member.user.email,

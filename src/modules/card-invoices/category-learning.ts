@@ -49,14 +49,15 @@ function merchantSignature(description: string): string {
   return Array.from(new Set(merchantTokens(description))).join(" ") || normalizeInvoiceMerchant(description);
 }
 
-export function invoiceMerchantSimilarity(left: string, right: string): number {
-  const leftKey = normalizeInvoiceMerchant(left);
-  const rightKey = normalizeInvoiceMerchant(right);
-  if (!leftKey || !rightKey) return 0;
-  if (leftKey === rightKey) return 1;
+export function invoiceMerchantFeatures(description: string) {
+  return { key: normalizeInvoiceMerchant(description), tokens: new Set(merchantTokens(description)) };
+}
 
-  const a = new Set(merchantTokens(left));
-  const b = new Set(merchantTokens(right));
+export function invoiceMerchantFeatureSimilarity(left: ReturnType<typeof invoiceMerchantFeatures>, right: ReturnType<typeof invoiceMerchantFeatures>): number {
+  if (!left.key || !right.key) return 0;
+  if (left.key === right.key) return 1;
+  const a = left.tokens;
+  const b = right.tokens;
   if (!a.size || !b.size) return 0;
   if (a.size === b.size && [...a].every((token) => b.has(token))) return 1;
 
@@ -67,6 +68,14 @@ export function invoiceMerchantSimilarity(left: string, right: string): number {
   const firstB = [...b][0];
   const samePrincipalMerchant = firstA === firstB;
   return Math.min(1, jaccard + (samePrincipalMerchant && jaccard >= 0.75 ? 0.05 : 0));
+}
+
+export function invoiceMerchantSimilarity(left: string, right: string): number {
+  return invoiceMerchantFeatureSimilarity(invoiceMerchantFeatures(left), invoiceMerchantFeatures(right));
+}
+
+export function areSimilarInvoiceMerchantFeatures(left: ReturnType<typeof invoiceMerchantFeatures>, right: ReturnType<typeof invoiceMerchantFeatures>) {
+  return invoiceMerchantFeatureSimilarity(left, right) >= SIMILARITY_THRESHOLD;
 }
 
 export function areSimilarInvoiceMerchants(left: string, right: string): boolean {

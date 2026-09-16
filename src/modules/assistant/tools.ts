@@ -9,6 +9,7 @@ import {
   type AssistantMember,
 } from "./auth";
 import { searchPlatformGuide } from "./platform-knowledge";
+import { startCategoryHistory } from "./category-history-server";
 
 export type AssistantToolContext = {
   member: AssistantMember;
@@ -22,6 +23,22 @@ function asJson(value: unknown): Prisma.InputJsonValue {
 }
 
 export const ASSISTANT_TOOL_DEFINITIONS = [
+  {
+    type: "function",
+    name: "preview_invoice_category_learning",
+    description: "Consulta o histórico de despesas de uma conta/cartão do Conta Azul e cria uma prévia de aprendizado de categorias para próximas faturas. Não salva regras nem altera lançamentos. O usuário conclui a consulta e confirma no cartão de prévia exibido na conversa.",
+    parameters: {
+      type: "object",
+      properties: {
+        client_id: { type: "string", description: "ID do cliente selecionado ou obtido em search_clients." },
+        financial_account_id: { type: "string", description: "ID real da conta/cartão obtido em get_client_conta_azul_catalog financial_accounts. Nunca invente; se há várias contas compatíveis, pergunte qual usar." },
+        period_start: { type: "string", description: "Data inicial de VENCIMENTO, AAAA-MM-DD." },
+        period_end: { type: "string", description: "Data final de VENCIMENTO, AAAA-MM-DD. Até 93 dias por consulta." },
+      },
+      required: ["client_id", "financial_account_id", "period_start", "period_end"],
+      additionalProperties: false,
+    },
+  },
   {
     type: "function",
     name: "get_platform_guide",
@@ -530,6 +547,19 @@ export async function executeAssistantTool(
   rawArguments: string,
 ) {
   const args = objectArguments(rawArguments);
+  if (name === "preview_invoice_category_learning") {
+    const result = await startCategoryHistory({ member: context.member, conversationId: context.conversationId,
+      clientId: String(args.client_id || ""), accountId: String(args.financial_account_id || ""),
+      start: String(args.period_start || ""), end: String(args.period_end || "") });
+    return { previewMessageId: result.previewMessageId, client: result.preview.client, account: result.preview.account,
+      period: result.preview.period, processedCount: result.preview.processedCount, total: result.preview.total,
+      complete: result.preview.complete, saved: false,
+      nextAction: result.preview.complete ? "Peça ao usuário para revisar e confirmar no cartão de aprendizado da conversa." : "Peça ao usuário para clicar Concluir consulta no cartão de aprendizado da conversa. O histórico ainda está incompleto.",
+      counts: result.preview.complete ? { ready: result.preview.candidates.filter((item) => item.status === "READY").length,
+        review: result.preview.candidates.filter((item) => item.status === "CONFLICT").length,
+        preserved: result.preview.candidates.filter((item) => item.status === "PRESERVED").length } : null,
+      examples: result.preview.candidates.slice(0, 5).map((item) => ({ description: item.description, status: item.status, categories: item.options.map((option) => option.category) })) };
+  }
   if (name === "get_platform_guide") return searchPlatformGuide(String(args.topic || ""));
   if (name === "search_clients") return searchClients(context.member, String(args.query || ""));
   if (name === "get_client_overview") return getClientOverview(context.member, String(args.client_id || ""));

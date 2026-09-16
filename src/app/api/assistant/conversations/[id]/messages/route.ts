@@ -7,7 +7,7 @@ import {
   uploadAssistantFileToOpenAI,
   type AssistantUploadedFile,
 } from "@/modules/assistant/files";
-import { runFortunoAssistant } from "@/modules/assistant/openai";
+import { OpenAIRequestError, runFortunoAssistant } from "@/modules/assistant/openai";
 import { createAssistantSupportTicket } from "@/modules/assistant/tools";
 
 export const maxDuration = 300;
@@ -131,7 +131,8 @@ export async function POST(request: Request, context: Context) {
       toolEvents = result.toolEvents;
     }
   } catch (error) {
-    reply = `Não consegui concluir a resposta inteligente agora: ${error instanceof Error ? error.message : "falha inesperada"}. ${ticketCodes.length ? `O chamado ${ticketCodes.join(", ")} foi criado normalmente.` : "Tente novamente em instantes."}`;
+    reply = error instanceof OpenAIRequestError ? error.message : `Não consegui concluir a resposta inteligente agora: ${error instanceof Error ? error.message : "falha inesperada"}.`;
+    if (ticketCodes.length) reply += ` O chamado ${ticketCodes.join(", ")} foi criado normalmente.`;
   }
 
   const assistantMessage = await prisma.$transaction(async (transaction) => {

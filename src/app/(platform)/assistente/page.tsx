@@ -33,6 +33,8 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import styles from "./assistant.module.css";
+import { CategoryLearningDialog, CategoryLearningPreviewCard } from "@/modules/assistant/category-learning-ui";
+import type { CategoryHistoryView } from "@/modules/assistant/category-history";
 
 type ClientOption = {
   id: string;
@@ -55,6 +57,7 @@ type Message = {
   role: "USER" | "ASSISTANT";
   content: string;
   attachments?: Array<{ name?: string }> | null;
+  metadata?: { categoryLearningPreview?: CategoryHistoryView } | null;
   createdAt: string;
 };
 
@@ -68,6 +71,7 @@ type Conversation = {
 
 type Bootstrap = {
   configured: boolean;
+  canLearnCategories: boolean;
   currentUser: { name: string; role: string };
   clients: ClientOption[];
   conversations: ConversationSummary[];
@@ -109,6 +113,7 @@ export default function AssistantPage() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [learningOpened, setLearningOpened] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
 
   const loadConversation = useCallback(async (id: string) => {
@@ -213,11 +218,8 @@ export default function AssistantPage() {
     setSending(true);
     try {
       const payload = await readPayload(await fetch(`/api/assistant/conversations/${conversation.id}/messages`, { method: "POST", body: form }));
-      setConversation((current) => current ? {
-        ...current,
-        title: current.title === "Nova conversa" ? (text.trim() || files[0]?.name || current.title).slice(0, 58) : current.title,
-        messages: [...current.messages, payload.userMessage, payload.assistantMessage],
-      } : current);
+      // Ferramentas podem inserir cartões de revisão entre as mensagens do chat.
+      await loadConversation(conversation.id);
       setConversations((current) => current.map((item) => item.id === conversation.id ? {
         ...item,
         title: item.title === "Nova conversa" ? (text.trim() || files[0]?.name || item.title).slice(0, 58) : item.title,
@@ -244,7 +246,7 @@ export default function AssistantPage() {
             <Title order={3}>Assistente</Title>
           </div>
           <Tooltip label="Nova conversa">
-            <ActionIcon size="lg" variant="light" onClick={() => void createConversation(conversation?.clientId)} aria-label="Nova conversa">
+            <ActionIcon size="lg" variant="light" disabled={sending} onClick={() => void createConversation(conversation?.clientId)} aria-label="Nova conversa">
               <IconMessageCirclePlus size={20} />
             </ActionIcon>
           </Tooltip>
@@ -252,7 +254,7 @@ export default function AssistantPage() {
         <ScrollArea className={styles.historyScroll}>
           <Stack gap={6}>
             {conversations.map((item) => (
-              <button key={item.id} type="button" className={`${styles.historyItem} ${conversation?.id === item.id ? styles.historyItemActive : ""}`} onClick={() => void loadConversation(item.id)}>
+              <button key={item.id} type="button" disabled={sending} className={`${styles.historyItem} ${conversation?.id === item.id ? styles.historyItemActive : ""}`} onClick={() => void loadConversation(item.id)}>
                 <Text fw={700} size="sm" lineClamp={1}>{item.title}</Text>
                 <Text size="xs" c="dimmed" lineClamp={1}>{item.client?.name || item.preview}</Text>
               </button>
@@ -263,7 +265,7 @@ export default function AssistantPage() {
 
       <section className={styles.chat}>
         <header className={styles.chatHeader}>
-          <Group justify="space-between" align="flex-end" wrap="nowrap">
+          <Group justify="space-between" align="flex-end" wrap="wrap">
             <div className={styles.clientSelect}>
               <Text size="xs" fw={800} mb={6}>Cliente da conversa</Text>
               <Select
@@ -280,9 +282,11 @@ export default function AssistantPage() {
               />
             </div>
             <Group gap="xs" wrap="nowrap">
+              {bootstrap?.canLearnCategories && <Button size="xs" variant="light" leftSection={<IconBrain size={16} />}
+                disabled={sending || !selectedClient?.contaAzulConnected} onClick={() => setLearningOpened(true)}>Aprender categorias</Button>}
               {selectedClient && <Badge color={selectedClient.contaAzulConnected ? "green" : "gray"}>{selectedClient.contaAzulConnected ? "Conta Azul conectado" : "Sem conexão"}</Badge>}
               <Tooltip label="Arquivar conversa">
-                <ActionIcon variant="subtle" color="gray" onClick={() => void archiveConversation()} aria-label="Arquivar conversa"><IconArchive size={19} /></ActionIcon>
+                <ActionIcon variant="subtle" color="gray" disabled={sending} onClick={() => void archiveConversation()} aria-label="Arquivar conversa"><IconArchive size={19} /></ActionIcon>
               </Tooltip>
             </Group>
           </Group>
@@ -290,7 +294,7 @@ export default function AssistantPage() {
 
         {!bootstrap?.configured && (
           <Alert color="orange" title="Inteligência ainda não configurada" mx="lg" mt="md">
-            Configure a chave da OpenAI no ambiente. Os leitores determinísticos e a criação automática de chamados continuam disponíveis.
+            Configure a chave da OpenAI no ambiente. Os leitores determinísticos, o botão Aprender categorias e a criação automática de chamados continuam disponíveis.
           </Alert>
         )}
 
@@ -318,6 +322,10 @@ export default function AssistantPage() {
                   {item.role === "ASSISTANT" && <ThemeIcon size={34} radius="xl" variant="light"><IconBrain size={19} /></ThemeIcon>}
                   <Paper className={`${styles.bubble} ${item.role === "USER" ? styles.userBubble : styles.assistantBubble}`} radius="lg" p="md">
                     <Text className={styles.messageText}>{item.content}</Text>
+                    {item.metadata?.categoryLearningPreview && conversation && <CategoryLearningPreviewCard
+                      key={`${item.id}-${item.metadata.categoryLearningPreview.revision}`}
+                      conversationId={conversation.id} messageId={item.id} preview={item.metadata.categoryLearningPreview}
+                      disabled={sending || !bootstrap?.canLearnCategories} onBusy={setSending} onRefresh={() => loadConversation(conversation.id)} />}
                     {Array.isArray(item.attachments) && item.attachments.length > 0 && (
                       <Group gap={6} mt="sm">{item.attachments.map((attachment, index) => <Badge key={`${attachment.name}-${index}`} variant="light" leftSection={<IconPaperclip size={12} />}>{attachment.name || "Arquivo"}</Badge>)}</Group>
                     )}
@@ -369,6 +377,9 @@ export default function AssistantPage() {
           <Text size="xs" c="dimmed" ta="center" mt={8}>O assistente pode cometer erros. Confirme valores e conclusões antes de executar ações financeiras.</Text>
         </footer>
       </section>
+      {conversation && selectedClient && learningOpened && <CategoryLearningDialog key={`${conversation.id}-${selectedClient.id}`} opened={learningOpened} onClose={() => setLearningOpened(false)}
+        conversationId={conversation.id} clientId={selectedClient.id} clientName={selectedClient.name}
+        onBusy={setSending} onRefresh={() => loadConversation(conversation.id)} />}
     </div>
   );
 }

@@ -29,7 +29,7 @@ export const FORTUNO_PLATFORM_GUIDE = [
   },
   {
     topic: "categorias aprendizado",
-    content: "As categorizações são aprendidas por cliente. Descrições recorrentes usam similaridade normalizada, mas uma edição manual altera somente o lançamento editado. Em clientes conectados, as categorias exibidas vêm do Conta Azul.",
+    content: "As categorizações são aprendidas por cliente. Descrições recorrentes usam similaridade normalizada, mas uma edição manual altera somente o lançamento editado. Em clientes conectados, as categorias exibidas vêm do Conta Azul. Na Assistente, Aprender categorias permite consultar o histórico de uma conta/cartão por período de vencimento, concluir a consulta em lotes, revisar conflitos e confirmar as regras para as próximas faturas. O mesmo pode ser solicitado pelo chat. Regras existentes são preservadas. Faturas consolidadas sem descrições individuais não permitem aprender a categoria de cada compra. O aprendizado nunca altera lançamentos no Conta Azul.",
   },
   {
     topic: "centro custo",
