@@ -1,4 +1,5 @@
 import { parseAcquirerWorkbook } from "@/modules/acquirers/parse-acquirer-workbook";
+import { openAIRequestError } from "./openai-errors";
 
 const ACQUIRER_TERMS = /adquirente|rede\b|cielo|gett?net|pagar\.?me|ifood|alelo|vr\s*benef|pluxee|recebimento/i;
 const SPREADSHEET_PATTERN = /\.(xlsx|xls)$/i;
@@ -86,9 +87,8 @@ export async function uploadAssistantFileToOpenAI(file: File, apiKey: string) {
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });
-  const body = await response.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
-  if (!response.ok || !body.id) {
-    throw new Error(body.error?.message || `Falha ao preparar ${file.name} para leitura.`);
-  }
+  const body = await response.json().catch(() => ({})) as { id?: string; error?: { message?: string; code?: string; type?: string } };
+  if (!response.ok) throw openAIRequestError(response.status, body.error, response.headers);
+  if (!body.id) throw new Error(`Falha ao preparar ${file.name} para leitura.`);
   return body.id;
 }

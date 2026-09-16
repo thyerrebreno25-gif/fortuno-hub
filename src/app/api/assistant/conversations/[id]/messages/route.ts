@@ -9,6 +9,8 @@ import {
 } from "@/modules/assistant/files";
 import { OpenAIRequestError, runFortunoAssistant } from "@/modules/assistant/openai";
 import { createAssistantSupportTicket } from "@/modules/assistant/tools";
+import { ASSISTANT_HISTORY_MESSAGES, historyClientIds } from "@/modules/assistant/context";
+import type { OpenAIErrorDetails, OpenAIUsage } from "@/modules/assistant/openai-errors";
 
 export const maxDuration = 300;
 const MAX_FILES = 5;
@@ -46,11 +48,23 @@ export async function POST(request: Request, context: Context) {
       id: true,
       title: true,
       clientId: true,
-      lastOpenAiResponseId: true,
       client: { select: { id: true, name: true } },
+      messages: {
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: ASSISTANT_HISTORY_MESSAGES,
+        select: { role: true, content: true, attachments: true, metadata: true },
+      },
     },
   });
   if (!conversation) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });
+  const history = [...conversation.messages].reverse();
+  // Revalidar também clientes consultados em mensagens anteriores antes de reutilizar contexto.
+  const clientIds = new Set([...(conversation.clientId ? [conversation.clientId] : []), ...historyClientIds(history)]);
+  for (const clientId of clientIds) {
+    if (!await findAssistantClient(member, clientId)) {
+      return NextResponse.json({ error: "Um cliente desta conversa não está mais disponível para seu usuário." }, { status: 403 });
+    }
+  }
 
   const form = await request.formData();
   const prompt = String(form.get("message") || "").trim().slice(0, 12_000);
@@ -59,19 +73,17 @@ export async function POST(request: Request, context: Context) {
   const oversized = files.find((file) => file.size > MAX_FILE_SIZE);
   if (oversized) return NextResponse.json({ error: `${oversized.name} excede o limite de 15 MB.` }, { status: 400 });
 
-  if (conversation.clientId && !await findAssistantClient(member, conversation.clientId)) {
-    return NextResponse.json({ error: "O cliente desta conversa não está mais disponível para seu usuário." }, { status: 403 });
-  }
-
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   const inspected: AssistantUploadedFile[] = [];
   const ticketCodes: string[] = [];
+  let uploadError: OpenAIRequestError | null = null;
   for (const file of files) {
     const metadata = await inspectAssistantFile(file, prompt || file.name);
-    if (apiKey) {
+    if (apiKey && !uploadError) {
       try {
         metadata.openAiFileId = await uploadAssistantFileToOpenAI(file, apiKey);
       } catch (error) {
+        if (error instanceof OpenAIRequestError) uploadError = error;
         metadata.analysis = {
           ...(metadata.analysis || {}),
           openAiUploadError: error instanceof Error ? error.message : "Falha ao enviar arquivo para leitura inteligente.",
@@ -108,6 +120,7 @@ export async function POST(request: Request, context: Context) {
       role: "USER",
       content: prompt || `Analisar ${files.map((file) => file.name).join(", ")}`,
       attachments: asJson(attachmentData),
+      metadata: asJson({ contextClientId: conversation.clientId }),
     },
     select: { id: true, role: true, content: true, attachments: true, metadata: true, createdAt: true },
   });
@@ -115,7 +128,12 @@ export async function POST(request: Request, context: Context) {
   let reply: string;
   let responseId: string | null = null;
   let toolEvents: Array<{ name: string; arguments: Record<string, unknown>; ok: boolean }> = [];
+  let openAiUsage: OpenAIUsage | undefined;
+  let openAiError: OpenAIErrorDetails | undefined;
+  let consultedClientIds: string[] = [];
   try {
+    // Não continuar com uploads/faturas incompletos nem insistir em uma API já bloqueada.
+    if (uploadError) throw uploadError;
     if (!apiKey) {
       reply = deterministicReply(inspected, ticketCodes);
     } else {
@@ -124,14 +142,21 @@ export async function POST(request: Request, context: Context) {
         prompt: [prompt, ticketCodes.length ? `Chamados criados automaticamente: ${ticketCodes.join(", ")}.` : ""].filter(Boolean).join("\n"),
         client: conversation.client,
         files: inspected,
-        previousResponseId: conversation.lastOpenAiResponseId,
+        history,
       });
       reply = result.text;
       responseId = result.responseId;
       toolEvents = result.toolEvents;
+      openAiUsage = result.usage;
+      consultedClientIds = result.consultedClientIds;
     }
   } catch (error) {
     reply = error instanceof OpenAIRequestError ? error.message : `Não consegui concluir a resposta inteligente agora: ${error instanceof Error ? error.message : "falha inesperada"}.`;
+    if (error instanceof OpenAIRequestError) {
+      openAiError = error.details;
+      openAiUsage = error.usage;
+      console.warn("assistant_openai_error", { ...error.details, ...(error.usage ? { usage: error.usage } : {}) });
+    }
     if (ticketCodes.length) reply += ` O chamado ${ticketCodes.join(", ")} foi criado normalmente.`;
   }
 
@@ -141,7 +166,8 @@ export async function POST(request: Request, context: Context) {
         conversationId: conversation.id,
         role: "ASSISTANT",
         content: reply,
-        metadata: asJson({ responseId, ticketCodes, toolEvents }),
+        metadata: asJson({ responseId, ticketCodes, toolEvents, contextClientId: conversation.clientId,
+          consultedClientIds, ...(openAiUsage ? { openAiUsage } : {}), ...(openAiError ? { openAiError } : {}) }),
       },
       select: { id: true, role: true, content: true, attachments: true, metadata: true, createdAt: true },
     });
@@ -149,7 +175,7 @@ export async function POST(request: Request, context: Context) {
       where: { id: conversation.id },
       data: {
         ...(conversation.title === "Nova conversa" ? { title: titleFrom(prompt, files) } : {}),
-        ...(responseId ? { lastOpenAiResponseId: responseId } : {}),
+        lastOpenAiResponseId: responseId,
       },
     });
     return message;
