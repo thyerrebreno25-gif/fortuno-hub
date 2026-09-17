@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
-import { getRolePermissions } from "@/modules/permissions/permissions";
+import { getRolePermissions, type ModuleCode } from "@/modules/permissions/permissions";
 
 export type AssistantMember = {
   id: string;
@@ -12,7 +12,7 @@ export type AssistantMember = {
   user: { id: string; name: string | null; email: string };
 };
 
-export async function getAssistantMember(): Promise<AssistantMember | null> {
+async function getMemberForModule(module: ModuleCode): Promise<AssistantMember | null> {
   const supabase = await createSupabaseClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
@@ -33,7 +33,7 @@ export async function getAssistantMember(): Promise<AssistantMember | null> {
   if (!member) return null;
 
   const permissions = await getRolePermissions(member.organizationId, member.role);
-  return permissions.ASSISTANT.canView
+  return permissions[module].canView
     ? {
         id: member.id,
         userId: member.userId,
@@ -45,6 +45,9 @@ export async function getAssistantMember(): Promise<AssistantMember | null> {
       }
     : null;
 }
+
+export function getAssistantMember() { return getMemberForModule("ASSISTANT"); }
+export function getInvoiceHistoryMember() { return getMemberForModule("IMPORTS"); }
 
 export function hasOrganizationClientScope(member: AssistantMember) {
   return ["MASTER", "ADMIN", "MANAGER"].includes(member.role);

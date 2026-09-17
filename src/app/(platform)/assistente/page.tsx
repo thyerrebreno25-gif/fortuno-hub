@@ -6,6 +6,7 @@ import {
   Alert,
   Badge,
   Button,
+  Switch,
   FileButton,
   Group,
   Loader,
@@ -33,7 +34,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import styles from "./assistant.module.css";
-import { CategoryLearningDialog, CategoryLearningPreviewCard } from "@/modules/assistant/category-learning-ui";
+import { CategoryLearningPreviewCard } from "@/modules/assistant/category-learning-ui";
 import type { CategoryHistoryView } from "@/modules/assistant/category-history";
 
 type ClientOption = {
@@ -57,7 +58,8 @@ type Message = {
   role: "USER" | "ASSISTANT";
   content: string;
   attachments?: Array<{ name?: string }> | null;
-  metadata?: { categoryLearningPreview?: CategoryHistoryView } | null;
+  metadata?: { categoryLearningPreview?: CategoryHistoryView; executionMode?: "INTERNAL" | "AI";
+    internalLinks?: Array<{ label: string; href: string }>; reportTitle?: string } | null;
   createdAt: string;
 };
 
@@ -113,7 +115,7 @@ export default function AssistantPage() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [learningOpened, setLearningOpened] = useState(false);
+  const [useExternalAI, setUseExternalAI] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
 
   const loadConversation = useCallback(async (id: string) => {
@@ -214,6 +216,7 @@ export default function AssistantPage() {
     if (!conversation || sending || (!text.trim() && files.length === 0)) return;
     const form = new FormData();
     form.append("message", text.trim());
+    form.append("mode", useExternalAI ? "AI" : "INTERNAL");
     files.forEach((file) => form.append("files", file));
     setSending(true);
     try {
@@ -281,9 +284,8 @@ export default function AssistantPage() {
                 disabled={sending}
               />
             </div>
-            <Group gap="xs" wrap="nowrap">
-              {bootstrap?.canLearnCategories && <Button size="xs" variant="light" leftSection={<IconBrain size={16} />}
-                disabled={sending || !selectedClient?.contaAzulConnected} onClick={() => setLearningOpened(true)}>Aprender categorias</Button>}
+            <Group gap="xs" wrap="wrap">
+              <Switch label="Usar IA externa" checked={useExternalAI} onChange={(event) => setUseExternalAI(event.currentTarget.checked)} disabled={sending || !bootstrap?.configured} />
               {selectedClient && <Badge color={selectedClient.contaAzulConnected ? "green" : "gray"}>{selectedClient.contaAzulConnected ? "Conta Azul conectado" : "Sem conexão"}</Badge>}
               <Tooltip label="Arquivar conversa">
                 <ActionIcon variant="subtle" color="gray" disabled={sending} onClick={() => void archiveConversation()} aria-label="Arquivar conversa"><IconArchive size={19} /></ActionIcon>
@@ -292,11 +294,9 @@ export default function AssistantPage() {
           </Group>
         </header>
 
-        {!bootstrap?.configured && (
-          <Alert color="orange" title="Inteligência ainda não configurada" mx="lg" mt="md">
-            Configure a chave da OpenAI no ambiente. Os leitores determinísticos, o botão Aprender categorias e a criação automática de chamados continuam disponíveis.
-          </Alert>
-        )}
+        <Alert color={useExternalAI ? "orange" : "blue"} title={useExternalAI ? "IA externa ativada" : "Modo interno • sem OpenAI"} mx="lg" mt="md">
+          {useExternalAI ? "Esta opção utiliza a API da OpenAI e está sujeita aos limites da conta." : "Respostas prontas sobre o Fortuno, cadastro de clientes e relatórios financeiros por consulta direta. Para aprender categorias, importe uma fatura na página de Faturas. Perguntas fora desses fluxos podem usar a IA externa, se você ativar a opção."}
+        </Alert>
 
         <ScrollArea viewportRef={viewport} className={styles.messages}>
           {!conversation?.messages.length ? (
@@ -322,6 +322,13 @@ export default function AssistantPage() {
                   {item.role === "ASSISTANT" && <ThemeIcon size={34} radius="xl" variant="light"><IconBrain size={19} /></ThemeIcon>}
                   <Paper className={`${styles.bubble} ${item.role === "USER" ? styles.userBubble : styles.assistantBubble}`} radius="lg" p="md">
                     <Text className={styles.messageText}>{item.content}</Text>
+                    {item.metadata?.executionMode === "INTERNAL" && <Badge size="xs" variant="light" mt="sm">Base interna • sem OpenAI</Badge>}
+                    {item.metadata?.internalLinks && <Group gap="xs" mt="sm">{item.metadata.internalLinks.filter((link) => ["/faturas", "/adquirentes", "/extratos", "/notas-fiscais"].includes(link.href)).map((link) => <Button key={link.href} component="a" href={link.href} size="xs" variant="light">{link.label}</Button>)}</Group>}
+                    {item.metadata?.reportTitle && <Button size="xs" variant="light" mt="sm" leftSection={<IconFileAnalytics size={15} />} onClick={() => {
+                      const url = URL.createObjectURL(new Blob([item.content], { type: "text/plain;charset=utf-8" }));
+                      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${item.metadata!.reportTitle!.replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 150)}.txt`;
+                      anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    }}>Baixar relatório</Button>}
                     {item.metadata?.categoryLearningPreview && conversation && <CategoryLearningPreviewCard
                       key={`${item.id}-${item.metadata.categoryLearningPreview.revision}`}
                       conversationId={conversation.id} messageId={item.id} preview={item.metadata.categoryLearningPreview}
@@ -374,12 +381,9 @@ export default function AssistantPage() {
             />
             <Button className={styles.sendButton} px="sm" disabled={sending || (!message.trim() && files.length === 0)} loading={sending} onClick={() => void sendMessage()} aria-label="Enviar mensagem"><IconSend size={19} /></Button>
           </div>
-          <Text size="xs" c="dimmed" ta="center" mt={8}>O assistente pode cometer erros. Confirme valores e conclusões antes de executar ações financeiras.</Text>
+          <Text size="xs" c="dimmed" ta="center" mt={8}>{useExternalAI ? "IA externa ativada: utiliza a OpenAI." : "Modo interno: nenhuma chamada à OpenAI."} Confirme valores e conclusões antes de executar ações financeiras.</Text>
         </footer>
       </section>
-      {conversation && selectedClient && learningOpened && <CategoryLearningDialog key={`${conversation.id}-${selectedClient.id}`} opened={learningOpened} onClose={() => setLearningOpened(false)}
-        conversationId={conversation.id} clientId={selectedClient.id} clientName={selectedClient.name}
-        onBusy={setSending} onRefresh={() => loadConversation(conversation.id)} />}
     </div>
   );
 }

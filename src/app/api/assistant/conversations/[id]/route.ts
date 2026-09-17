@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findAssistantClient, getAssistantMember } from "@/modules/assistant/auth";
 import { publicHistoryMetadata } from "@/modules/assistant/category-history";
+import { historyClientIds } from "@/modules/assistant/context";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -26,12 +27,7 @@ export async function GET(_request: Request, context: Context) {
     },
   });
   if (!conversation) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });
-  const previewClientIds = conversation.messages.flatMap((message) => {
-    const metadata = message.metadata as { categoryLearningPreview?: { client?: { id?: string } } } | null;
-    const clientId = metadata?.categoryLearningPreview?.client?.id;
-    return clientId ? [clientId] : [];
-  });
-  const clientIds = [...new Set([...(conversation.clientId ? [conversation.clientId] : []), ...previewClientIds])];
+  const clientIds = [...new Set([...(conversation.clientId ? [conversation.clientId] : []), ...historyClientIds(conversation.messages)])];
   for (const clientId of clientIds) {
     if (!await findAssistantClient(member, clientId)) return NextResponse.json({ error: "Um cliente desta conversa não está mais disponível para seu usuário." }, { status: 403 });
   }

@@ -3,12 +3,12 @@ import { openAIRequestError } from "@/modules/assistant/openai-errors";
 
 const mocks = vi.hoisted(() => ({
   db: { assistantConversation: { findFirst: vi.fn(), update: vi.fn() }, assistantMessage: { create: vi.fn() }, $transaction: vi.fn() },
-  member: vi.fn(), client: vi.fn(), run: vi.fn(), inspect: vi.fn(), upload: vi.fn(), ticket: vi.fn(),
+  member: vi.fn(), client: vi.fn(), run: vi.fn(), inspect: vi.fn(), upload: vi.fn(), ticket: vi.fn(), execute: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.db }));
 vi.mock("@/modules/assistant/auth", () => ({ getAssistantMember: mocks.member, findAssistantClient: mocks.client }));
 vi.mock("@/modules/assistant/files", () => ({ inspectAssistantFile: mocks.inspect, uploadAssistantFileToOpenAI: mocks.upload }));
-vi.mock("@/modules/assistant/tools", () => ({ createAssistantSupportTicket: mocks.ticket }));
+vi.mock("@/modules/assistant/tools", () => ({ createAssistantSupportTicket: mocks.ticket, executeAssistantTool: mocks.execute }));
 vi.mock("@/modules/assistant/openai", async () => ({
   OpenAIRequestError: (await import("@/modules/assistant/openai-errors")).OpenAIRequestError, runFortunoAssistant: mocks.run,
 }));
@@ -30,8 +30,9 @@ beforeEach(() => {
   mocks.upload.mockResolvedValue("file_test");
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
-async function send(files: File[] = []) {
-  const form = new FormData(); form.set("message", "Pergunta atual");
+async function send(files: File[] = [], mode: string | null = "AI", message = "Pergunta atual") {
+  const form = new FormData(); form.set("message", message);
+  if (mode) form.set("mode", mode);
   files.forEach((file) => form.append("files", file));
   return POST(new Request("http://localhost/api/assistant/conversations/c1/messages", { method: "POST", body: form }), { params: Promise.resolve({ id: "c1" }) });
 }
@@ -81,11 +82,36 @@ describe("contexto e diagnóstico persistidos da assistente", () => {
   it("permanece funcional sem uma chave OpenAI e sem consumo da API", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
     const body = await (await send()).json();
-    expect(body.assistantMessage.content).toContain("ainda não está conectado");
+    expect(body.assistantMessage.content).toContain("Atendi pelo modo interno");
     expect(mocks.run).not.toHaveBeenCalled(); expect(body.assistantMessage.metadata.openAiUsage).toBeUndefined();
   });
   it("não lê histórico nem envia informações sem autenticação", async () => {
     mocks.member.mockResolvedValue(null);
     expect((await send()).status).toBe(401); expect(mocks.db.assistantConversation.findFirst).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled();
+  });
+  it("o padrão não utiliza OpenAI nem envia anexos mesmo com chave configurada", async () => {
+    const body = await (await send([new File(["a"], "one.pdf", { type: "application/pdf" })], null, "Leia esta fatura")).json();
+    expect(body.assistantMessage.metadata.executionMode).toBe("INTERNAL");
+    expect(body.assistantMessage.content).toContain("Nenhum lançamento financeiro foi enviado");
+    expect(mocks.upload).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled();
+    expect(body.assistantMessage.metadata.openAiUsage).toBeUndefined();
+  });
+  it("faz consulta por ferramenta autorizada e salva relatório interno sem consumo", async () => {
+    conversation.clientId = "client1"; conversation.client = { id: "client1", name: "Cliente" };
+    mocks.execute.mockResolvedValue({ source: { queriedAt: "2026-09-17T12:00:00Z" }, payables: { count: 2, amount: 50 }, receivables: { count: 1, amount: 100 } });
+    const body = await (await send([], "INTERNAL", "Relatório financeiro deste cliente em agosto de 2026")).json();
+    expect(mocks.execute).toHaveBeenCalledWith({ member, conversationId: "c1" }, "audit_client_financials", JSON.stringify({ client_id: "client1", period_start: "2026-08-01", period_end: "2026-08-31" }));
+    expect(body.assistantMessage.metadata.reportTitle).toContain("Relatório financeiro");
+    expect(body.assistantMessage.metadata.consultedClientIds).toEqual(["client1"]);
+    expect(body.assistantMessage.metadata.executionMode).toBe("INTERNAL"); expect(mocks.run).not.toHaveBeenCalled();
+  });
+  it("não cai automaticamente na IA quando não reconhece uma pergunta", async () => {
+    const body = await (await send([], null, "qual é a capital da Alemanha?")).json();
+    expect(body.assistantMessage.content).toContain("somente quando você ativar");
+    expect(mocks.execute).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled();
+  });
+  it("rejeita modo arbitrário", async () => {
+    expect((await send([], "OTHER")).status).toBe(400);
+    expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.db.assistantMessage.create).not.toHaveBeenCalled();
   });
 });

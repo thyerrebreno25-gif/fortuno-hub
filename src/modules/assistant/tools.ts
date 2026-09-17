@@ -160,7 +160,7 @@ function financialRow(item: Record<string, unknown>) {
     item.valor_original,
     detail.valor_liquido,
     detail.valor_bruto,
-  ].map(parseMoney).find((candidate) => candidate !== null) ?? 0;
+  ].map(parseMoney).find((candidate) => candidate !== null) ?? null;
   const contact = item.contato && typeof item.contato === "object"
     ? item.contato as Record<string, unknown>
     : {};
@@ -172,19 +172,19 @@ function financialRow(item: Record<string, unknown>) {
     competenceDate: firstString(item, ["data_competencia"]),
     dueDate: firstString(item, ["data_vencimento", "vencimento"]),
     paymentDate: firstString(item, ["data_pagamento", "pagamento"]),
-    amount: Math.round(value * 100) / 100,
+    amount: value === null ? null : Math.round(value * 100) / 100,
     reconciled: typeof item.conciliado === "boolean" ? item.conciliado : null,
   };
 }
 
 function summarizeFinancialRows(rows: ReturnType<typeof financialRow>[]) {
   const today = new Date().toISOString().slice(0, 10);
-  const groups = new Map<string, { count: number; amount: number }>();
+  const groups = new Map<string, { count: number; amount: number | null }>();
   rows.forEach((row) => {
     const key = normalize(row.status).toUpperCase() || "NÃO INFORMADO";
     const current = groups.get(key) ?? { count: 0, amount: 0 };
     current.count += 1;
-    current.amount = Math.round((current.amount + Math.abs(row.amount)) * 100) / 100;
+    current.amount = current.amount === null || row.amount === null ? null : Math.round((current.amount + Math.abs(row.amount)) * 100) / 100;
     groups.set(key, current);
   });
   const openStatuses = new Set(["PENDENTE", "EM ABERTO", "ABERTO", "VENCIDO", "ATRASADO"]);
@@ -194,10 +194,11 @@ function summarizeFinancialRows(rows: ReturnType<typeof financialRow>[]) {
   });
   return {
     count: rows.length,
-    amount: Math.round(rows.reduce((sum, row) => sum + Math.abs(row.amount), 0) * 100) / 100,
+    amount: rows.some((row) => row.amount === null) ? null : Math.round(rows.reduce((sum, row) => sum + Math.abs(row.amount!), 0) * 100) / 100,
+    missingAmountCount: rows.filter((row) => row.amount === null).length,
     byStatus: Object.fromEntries(groups),
     overdueCount: overdue.length,
-    overdueAmount: Math.round(overdue.reduce((sum, row) => sum + Math.abs(row.amount), 0) * 100) / 100,
+    overdueAmount: overdue.some((row) => row.amount === null) ? null : Math.round(overdue.reduce((sum, row) => sum + Math.abs(row.amount!), 0) * 100) / 100,
   };
 }
 
@@ -220,15 +221,12 @@ async function searchClients(member: AssistantMember, query: string) {
     where: {
       organizationId: member.organizationId,
       active: true,
-      ...assistantClientAccessWhere(member),
-      ...(term
-        ? {
-            OR: [
-              { name: { contains: term, mode: "insensitive" } },
+      AND: [assistantClientAccessWhere(member), ...(term
+        ? [{ OR: [
+              { name: { contains: term, mode: "insensitive" as const } },
               { document: { contains: term } },
-            ],
-          }
-        : {}),
+            ] }]
+        : [])],
     },
     orderBy: { name: "asc" },
     take: 20,

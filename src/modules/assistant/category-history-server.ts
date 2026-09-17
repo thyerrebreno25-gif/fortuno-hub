@@ -17,16 +17,15 @@ export class CategoryHistoryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-async function authorize(member: AssistantMember, conversationId: string, clientId?: string) {
+export type HistorySurface = "ASSISTANT" | "INVOICE";
+const INVOICE_SESSION_TITLE = "Aprendizado de faturas";
+
+async function authorizeClient(member: AssistantMember, clientId: string | undefined, surface: HistorySurface) {
   const permissions = await getRolePermissions(member.organizationId, member.role);
-  if (!permissions.ASSISTANT.canView || !permissions.ASSISTANT.canEdit || !permissions.CLIENTS.canEdit) {
+  const modulePermission = surface === "INVOICE" ? permissions.IMPORTS : permissions.ASSISTANT;
+  if (!modulePermission?.canView || !(surface === "INVOICE" ? modulePermission.canImport || modulePermission.canEdit : modulePermission.canEdit) || !permissions.CLIENTS.canEdit) {
     throw new CategoryHistoryError("Você não possui permissão para salvar aprendizado deste cliente.", 403);
   }
-  const conversation = await prisma.assistantConversation.findFirst({
-    where: { id: conversationId, organizationId: member.organizationId, userId: member.userId, status: "ACTIVE" },
-    select: { id: true },
-  });
-  if (!conversation) throw new CategoryHistoryError("Conversa não encontrada.", 404);
   if (!clientId) return null;
   const client = await findAssistantClient(member, clientId);
   if (!client) throw new CategoryHistoryError("Cliente não encontrado ou fora da sua responsabilidade.", 403);
@@ -37,8 +36,28 @@ async function authorize(member: AssistantMember, conversationId: string, client
   return client;
 }
 
+async function authorize(member: AssistantMember, conversationId: string, clientId?: string, surface: HistorySurface = "ASSISTANT") {
+  const client = await authorizeClient(member, clientId, surface);
+  const conversation = await prisma.assistantConversation.findFirst({
+    where: { id: conversationId, organizationId: member.organizationId, userId: member.userId,
+      status: surface === "INVOICE" ? "ARCHIVED" : "ACTIVE",
+      ...(surface === "INVOICE" ? { title: INVOICE_SESSION_TITLE, ...(clientId ? { clientId } : {}) } : {}),
+    },
+    select: { id: true },
+  });
+  if (!conversation) throw new CategoryHistoryError("Conversa não encontrada.", 404);
+  return client;
+}
+
 export async function getHistoryAccounts(member: AssistantMember, conversationId: string, clientId: string) {
   await authorize(member, conversationId, clientId);
+  return loadAccounts(clientId);
+}
+export async function getInvoiceHistoryAccounts(member: AssistantMember, clientId: string) {
+  await authorizeClient(member, clientId, "INVOICE");
+  return loadAccounts(clientId);
+}
+async function loadAccounts(clientId: string) {
   return apiItems(await contaAzulRequest<unknown>(clientId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true", { signal: AbortSignal.timeout(20_000) }))
     .filter((item) => item.ativo !== false)
     .flatMap((item) => {
@@ -81,10 +100,12 @@ async function nextPage(preview: CategoryHistoryPreview) {
 
 export async function startCategoryHistory(input: {
   member: AssistantMember; conversationId: string; clientId: string; accountId: string; start: string; end: string;
+  surface?: HistorySurface;
 }) {
+  const surface = input.surface || "ASSISTANT";
   const period = validateHistoryPeriod(input.start, input.end);
-  const client = await authorize(input.member, input.conversationId, input.clientId);
-  const accounts = await getHistoryAccounts(input.member, input.conversationId, input.clientId);
+  const client = await authorize(input.member, input.conversationId, input.clientId, surface);
+  const accounts = await loadAccounts(input.clientId);
   const account = accounts.find((item) => item.id === input.accountId);
   if (!account) throw new CategoryHistoryError("Escolha uma conta/cartão existente no Conta Azul deste cliente.");
   const preview = await nextPage({ version: 1, revision: 0, client: { id: client!.id, name: client!.name }, account,
@@ -92,33 +113,45 @@ export async function startCategoryHistory(input: {
     seenIds: [], records: [], skipped: 0, candidates: [] });
   const message = await prisma.assistantMessage.create({ data: {
     conversationId: input.conversationId, role: "ASSISTANT", content: historyPreviewText(preview),
-    metadata: asJson({ categoryLearningPreview: preview }),
+    metadata: asJson({ categoryLearningPreview: preview, categoryLearningSurface: surface }),
   }, select: { id: true } });
   await prisma.assistantConversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } });
   return { previewMessageId: message.id, preview: publicHistoryPreview(preview) };
 }
 
-async function storedPreview(member: AssistantMember, conversationId: string, messageId: string) {
-  await authorize(member, conversationId);
+export async function startInvoiceCategoryHistory(input: {
+  member: AssistantMember; clientId: string; accountId: string; start: string; end: string;
+}) {
+  validateHistoryPeriod(input.start, input.end);
+  await authorizeClient(input.member, input.clientId, "INVOICE");
+  const conversation = await prisma.assistantConversation.create({ data: {
+    organizationId: input.member.organizationId, userId: input.member.userId, clientId: input.clientId,
+    title: INVOICE_SESSION_TITLE, status: "ARCHIVED",
+  }, select: { id: true } });
+  return { conversationId: conversation.id, ...await startCategoryHistory({ ...input, conversationId: conversation.id, surface: "INVOICE" }) };
+}
+
+async function storedPreview(member: AssistantMember, conversationId: string, messageId: string, surface: HistorySurface, clientId?: string) {
+  await authorize(member, conversationId, clientId, surface);
   const message = await prisma.assistantMessage.findFirst({ where: { id: messageId, conversationId, role: "ASSISTANT" },
     select: { id: true, metadata: true } });
-  const metadata = message?.metadata as { categoryLearningPreview?: CategoryHistoryPreview } | null;
+  const metadata = message?.metadata as { categoryLearningPreview?: CategoryHistoryPreview; categoryLearningSurface?: HistorySurface } | null;
   const preview = metadata?.categoryLearningPreview;
-  if (!message || !preview || preview.version !== 1) throw new CategoryHistoryError("Prévia não encontrada.", 404);
-  await authorize(member, conversationId, preview.client.id);
+  if (!message || !preview || preview.version !== 1 || (metadata?.categoryLearningSurface || "ASSISTANT") !== surface || clientId && preview.client.id !== clientId) throw new CategoryHistoryError("Prévia não encontrada.", 404);
+  await authorize(member, conversationId, preview.client.id, surface);
   if (!preview.savedAt && Date.now() - Date.parse(preview.createdAt) > 24 * 60 * 60 * 1000) {
     throw new CategoryHistoryError("A prévia expirou. Consulte novamente para usar categorias atualizadas.");
   }
   return { message, preview };
 }
 
-export async function continueCategoryHistory(member: AssistantMember, conversationId: string, messageId: string) {
-  const { preview } = await storedPreview(member, conversationId, messageId);
+export async function continueCategoryHistory(member: AssistantMember, conversationId: string, messageId: string, surface: HistorySurface = "ASSISTANT", clientId?: string) {
+  const { preview } = await storedPreview(member, conversationId, messageId, surface, clientId);
   if (preview.complete || preview.savedAt) return { previewMessageId: messageId, preview: publicHistoryPreview(preview) };
   const updated = await nextPage(preview);
   const changed = await prisma.assistantMessage.updateMany({
     where: { id: messageId, metadata: { path: ["categoryLearningPreview", "revision"], equals: preview.revision } },
-    data: { content: historyPreviewText(updated), metadata: asJson({ categoryLearningPreview: updated }) },
+    data: { content: historyPreviewText(updated), metadata: asJson({ categoryLearningPreview: updated, categoryLearningSurface: surface }) },
   });
   if (changed.count !== 1) throw new CategoryHistoryError("A consulta foi atualizada em outra aba. Reabra a conversa.", 409);
   return { previewMessageId: messageId, preview: publicHistoryPreview(updated) };
@@ -126,9 +159,11 @@ export async function continueCategoryHistory(member: AssistantMember, conversat
 
 export async function confirmCategoryHistory(input: {
   member: AssistantMember; conversationId: string; messageId: string; selections: HistorySelection[];
+  surface?: HistorySurface; clientId?: string;
 }) {
-  const { preview } = await storedPreview(input.member, input.conversationId, input.messageId);
-  if (preview.savedAt) return { savedCount: preview.savedCount || 0, alreadySaved: true };
+  const surface = input.surface || "ASSISTANT";
+  const { preview } = await storedPreview(input.member, input.conversationId, input.messageId, surface, input.clientId);
+  if (preview.savedAt) return { savedCount: preview.savedCount || 0, alreadySaved: true, preview: publicHistoryPreview(preview) };
   const catalog = await loadCatalog(preview.client.id);
   return prisma.$transaction(async (transaction) => {
     const existing = await transaction.categoryRule.findMany({ where: { clientId: preview.client.id, module: "CREDIT_CARD_INVOICE" },
@@ -138,7 +173,7 @@ export async function confirmCategoryHistory(input: {
     // Compare-and-set impede duas confirmações simultâneas da mesma prévia.
     const claimed = await transaction.assistantMessage.updateMany({
       where: { id: input.messageId, metadata: { path: ["categoryLearningPreview", "revision"], equals: preview.revision } },
-      data: { metadata: asJson({ categoryLearningPreview: { ...preview, revision: preview.revision + 1, savedAt } }) },
+      data: { metadata: asJson({ categoryLearningPreview: { ...preview, revision: preview.revision + 1, savedAt }, categoryLearningSurface: surface }) },
     });
     if (claimed.count !== 1) throw new CategoryHistoryError("Esta prévia foi atualizada. Reabra a conversa antes de confirmar.", 409);
     // Nunca atualizar uma regra existente, inclusive se salva manualmente após a prévia.
@@ -147,7 +182,7 @@ export async function confirmCategoryHistory(input: {
       clientId: preview.client.id, module: "CREDIT_CARD_INVOICE" as const, confidence: 90,
     })), skipDuplicates: true });
     const updated = { ...preview, revision: preview.revision + 1, savedAt, savedCount: created.count };
-    await transaction.assistantMessage.update({ where: { id: input.messageId }, data: { metadata: asJson({ categoryLearningPreview: updated }) } });
+    await transaction.assistantMessage.update({ where: { id: input.messageId }, data: { metadata: asJson({ categoryLearningPreview: updated, categoryLearningSurface: surface }) } });
     const content = `Aprendi ${created.count} regra(s) de categoria para ${preview.client.name}. As próximas faturas usarão esse aprendizado. ${selected.preserved + selected.rules.length - created.count} regra(s) existente(s) preservada(s). Nenhum lançamento foi alterado no Conta Azul.`;
     await transaction.assistantMessage.create({ data: { conversationId: input.conversationId, role: "ASSISTANT", content } });
     await transaction.assistantConversation.update({ where: { id: input.conversationId }, data: { updatedAt: new Date() } });
@@ -155,6 +190,6 @@ export async function confirmCategoryHistory(input: {
       entity: "Client", entityId: preview.client.id,
       afterData: asJson({ conversationId: input.conversationId, previewMessageId: input.messageId, account: preview.account,
         period: preview.period, savedCount: created.count, source: "CONTA_AZUL_HISTORY" }) } });
-    return { savedCount: created.count, alreadySaved: false };
+    return { savedCount: created.count, alreadySaved: false, preview: publicHistoryPreview(updated) };
   });
 }

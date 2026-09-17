@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Checkbox, Group, Modal, Progress, ScrollArea, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import type { CategoryHistoryView } from "./category-history";
+import { beginSessionKeepAlive } from "@/modules/session/client-activity";
 
 async function payload(response: Response) {
   const result = await response.json().catch(() => ({}));
@@ -11,8 +12,8 @@ async function payload(response: Response) {
   return result;
 }
 function endpoint(conversationId: string) { return `/api/assistant/conversations/${conversationId}/category-learning`; }
-async function action(conversationId: string, data: unknown) {
-  return payload(await fetch(endpoint(conversationId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }));
+async function action(conversationId: string, data: unknown, apiEndpoint?: string) {
+  return payload(await fetch(apiEndpoint || endpoint(conversationId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }));
 }
 function notify(error: unknown) {
   notifications.show({ color: "red", title: "Aprendizado não concluído", message: error instanceof Error ? error.message : "Tente novamente." });
@@ -28,6 +29,8 @@ function previousMonth() {
 export function CategoryLearningDialog(props: {
   opened: boolean; onClose: () => void; conversationId: string; clientId: string; clientName: string;
   onRefresh: () => Promise<void>; onBusy: (busy: boolean) => void;
+  apiEndpoint?: string;
+  onPreview?: (result: { conversationId: string; previewMessageId: string; preview: CategoryHistoryView }) => void;
 }) {
   const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -40,20 +43,22 @@ export function CategoryLearningDialog(props: {
     fetchResponse().then(payload).then((result) => { if (active) setAccounts(result.accounts); })
       .catch((error) => { if (active) notify(error); }).finally(() => { if (active) setLoading(false); });
     function fetchResponse(): Promise<Response> {
-      return fetch(`${endpoint(props.conversationId)}?clientId=${encodeURIComponent(props.clientId)}`, { cache: "no-store" });
+      return fetch(`${props.apiEndpoint || endpoint(props.conversationId)}?clientId=${encodeURIComponent(props.clientId)}`, { cache: "no-store" });
     }
     return () => { active = false; };
-  }, [props.opened, props.conversationId, props.clientId]);
+  }, [props.opened, props.conversationId, props.clientId, props.apiEndpoint]);
 
   async function preview() {
     if (!accountId || busy) return;
     setBusy(true); props.onBusy(true);
+    const release = beginSessionKeepAlive();
     try {
-      await action(props.conversationId, { action: "preview", clientId: props.clientId, accountId, ...period });
+      const result = await action(props.conversationId, { action: "preview", clientId: props.clientId, accountId, ...period }, props.apiEndpoint);
+      props.onPreview?.(result);
       await props.onRefresh();
       props.onClose();
     } catch (error) { notify(error); }
-    finally { setBusy(false); props.onBusy(false); }
+    finally { release(); setBusy(false); props.onBusy(false); }
   }
   return <Modal opened={props.opened} onClose={() => { if (!busy) props.onClose(); }} title="Aprender categorias pelo Conta Azul" size="lg" closeOnClickOutside={!busy} closeOnEscape={!busy} withCloseButton={!busy}>
     <Stack>
@@ -75,6 +80,7 @@ export function CategoryLearningDialog(props: {
 export function CategoryLearningPreviewCard(props: {
   conversationId: string; messageId: string; preview: CategoryHistoryView; disabled: boolean;
   onRefresh: () => Promise<void>; onBusy: (busy: boolean) => void;
+  apiEndpoint?: string; onConfirmed?: () => Promise<void>;
 }) {
   const [preview, setPreview] = useState(props.preview);
   const [busy, setBusy] = useState(false);
@@ -84,26 +90,35 @@ export function CategoryLearningPreviewCard(props: {
   async function finishConsultation() {
     if (busy || props.disabled) return;
     setBusy(true); props.onBusy(true);
+    const release = beginSessionKeepAlive();
     try {
       let current = preview;
       while (!current.complete) {
-        const result = await action(props.conversationId, { action: "continue", messageId: props.messageId });
+        const result = await action(props.conversationId, { action: "continue", messageId: props.messageId,
+          ...(props.apiEndpoint ? { conversationId: props.conversationId, clientId: preview.client.id } : {}),
+        }, props.apiEndpoint);
         current = result.preview; setPreview(current);
       }
+      setSelection(Object.fromEntries(current.candidates.filter((candidate) => candidate.status === "READY").map((candidate) => [candidate.key, candidate.options[0].categoryId])));
     } catch (error) { notify(error); }
-    finally { try { await props.onRefresh(); } catch (error) { notify(error); } finally { setBusy(false); props.onBusy(false); } }
+    finally { try { await props.onRefresh(); } catch (error) { notify(error); } finally { release(); setBusy(false); props.onBusy(false); } }
   }
   async function confirm() {
     if (busy || props.disabled) return;
     const selections = Object.entries(selection).filter(([, categoryId]) => categoryId).map(([key, categoryId]) => ({ key, categoryId }));
     if (!selections.length) return;
     setBusy(true); props.onBusy(true);
+    const release = beginSessionKeepAlive();
     try {
-      const result = await action(props.conversationId, { action: "confirm", messageId: props.messageId, selections });
+      const result = await action(props.conversationId, { action: "confirm", messageId: props.messageId, selections,
+        ...(props.apiEndpoint ? { conversationId: props.conversationId, clientId: preview.client.id } : {}),
+      }, props.apiEndpoint);
+      if (result.preview) setPreview(result.preview);
       notifications.show({ color: "green", title: "Aprendizado salvo", message: `${result.savedCount} regra(s) aprendida(s) para as próximas faturas deste cliente.` });
       await props.onRefresh();
+      await props.onConfirmed?.();
     } catch (error) { notify(error); }
-    finally { setBusy(false); props.onBusy(false); }
+    finally { release(); setBusy(false); props.onBusy(false); }
   }
   const selectedCount = Object.values(selection).filter(Boolean).length;
   const disabled = busy || props.disabled || !!preview.savedAt;
@@ -141,6 +156,14 @@ export function CategoryLearningPreviewCard(props: {
       </ScrollArea>
       {preview.savedAt ? <Alert color="green">Aprendizado confirmado: {preview.savedCount || 0} regra(s) salva(s).</Alert>
         : <Button onClick={() => void confirm()} loading={busy} disabled={disabled || preview.truncated || !selectedCount || Object.values(selection).some((value) => !value)}>Confirmar aprendizado ({selectedCount})</Button>}
+      {preview.savedAt && props.onConfirmed && <Button variant="light" onClick={() => void reapply()} loading={busy} disabled={busy || props.disabled}>Aplicar à fatura aberta</Button>}
     </>}
   </Stack>;
+
+  async function reapply() {
+    setBusy(true); props.onBusy(true);
+    const release = beginSessionKeepAlive();
+    try { await props.onConfirmed?.(); } catch (error) { notify(error); }
+    finally { release(); setBusy(false); props.onBusy(false); }
+  }
 }

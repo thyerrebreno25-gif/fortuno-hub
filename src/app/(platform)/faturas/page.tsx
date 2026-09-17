@@ -6,6 +6,8 @@ import { parseCardInvoiceFiles } from "@/modules/card-invoices/parser";
 import { CARD_INVOICE_IMAGE_ACCEPT } from "@/modules/card-invoices/image-reader.client";
 import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exporter";
 import { trackImport } from "@/modules/imports/import-tracker";
+import { InvoiceHistoryLearning } from "@/modules/card-invoices/category-learning-history-ui";
+import { applyHistoryLearning } from "@/modules/card-invoices/apply-history-learning";
 import {
   DirectFinancialSend,
   type DirectFinancialLine,
@@ -187,6 +189,7 @@ export default function FaturasPage() {
   const [newCostCenterCode, setNewCostCenterCode] = useState("");
   const [creatingCostCenter, setCreatingCostCenter] = useState(false);
   const [savingItem, setSavingItem] = useState(false);
+  const [learningBusy, setLearningBusy] = useState(false);
 
   const selectedClient = clients.find((client) => client.value === clientId);
   const isImageImport =
@@ -821,6 +824,25 @@ export default function FaturasPage() {
     ...files.map((item) => `${item.name}:${item.size}:${item.lastModified}`),
   ].join("|");
 
+  async function applyLearnedHistory() {
+    if (!clientId) return;
+    const response = await fetch(`/api/clients/${clientId}`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "O aprendizado foi salvo, mas não foi possível atualizar as regras da fatura. Tente aplicar novamente.");
+    const optionsResponse = await fetch(`/api/integrations/conta-azul/options?${new URLSearchParams({ clientId, scope: "categories" })}`, { cache: "no-store" });
+    const options = await optionsResponse.json();
+    if (!optionsResponse.ok) throw new Error(options.error || "Não foi possível validar as categorias atuais do Conta Azul. Tente aplicar novamente.");
+    const categories: ContaAzulOption[] = options.categories || [];
+    setContaAzulCategoryOptions(categories);
+    mergeInvoiceCategoryRules(clientId, result.client?.categoryRules || []);
+    const applied = applyHistoryLearning(items, {
+      findRule: (description) => findLearnedInvoiceCategory(clientId, description), categories, useCostCenters,
+    });
+    setItems(applied.items);
+    setCostCenterOptions((current) => Array.from(new Set([...current, ...applied.items.flatMap((item) => item.costCenter ? [item.costCenter] : [])])).sort((a, b) => a.localeCompare(b, "pt-BR")));
+    notifications.show({ color: "green", title: "Fatura atualizada", message: `${applied.categorized} categoria(s) e ${applied.centersFilled} centro(s) de custo preenchido(s). Itens já preenchidos foram preservados.` });
+  }
+
   return (
     <Stack gap="xl">
       <Group justify="space-between" align="flex-end">
@@ -838,13 +860,19 @@ export default function FaturasPage() {
         </Stack>
 
         {view === "review" && (
+          <Group>
+          {clientId && <InvoiceHistoryLearning key={clientId} clientId={clientId} clientName={selectedClient?.label || "Cliente"}
+            connected={categorySource === "CONTA_AZUL" && !categoryLoading} disabled={savingItem || editModalOpened}
+            onBusy={setLearningBusy} onLearned={applyLearnedHistory} />}
           <Button
             variant="default"
             leftSection={<IconRefresh size={17} />}
             onClick={resetPage}
+            disabled={learningBusy}
           >
             Nova fatura
           </Button>
+          </Group>
         )}
       </Group>
 
@@ -1553,6 +1581,7 @@ export default function FaturasPage() {
                           <ActionIcon
                             variant="subtle"
                             onClick={() => openEdit(item)}
+                            disabled={learningBusy}
                             aria-label="Editar lançamento"
                           >
                             <IconEdit size={17} />
@@ -1562,6 +1591,7 @@ export default function FaturasPage() {
                             variant="subtle"
                             color="red"
                             onClick={() => removeItem(item.id)}
+                            disabled={learningBusy}
                             aria-label="Excluir lançamento"
                           >
                             <IconTrash size={17} />
@@ -1917,12 +1947,12 @@ export default function FaturasPage() {
                   sourceName={files.length === 1 ? files[0].name : `${files.length} imagens da fatura`}
                   counterpartyHint={bank}
                   lines={directFinancialLines}
-                  disabled={!canExport}
+                  disabled={!canExport || learningBusy}
                   onSuccess={() => saveExportHistory("API_CONTA_AZUL")}
                 />
                 <Button
                   leftSection={<IconFileSpreadsheet size={18} />}
-                  disabled={!canExport}
+                  disabled={!canExport || learningBusy}
                   onClick={exportContaAzul}
                 >
                   Exportar planilha Conta Azul

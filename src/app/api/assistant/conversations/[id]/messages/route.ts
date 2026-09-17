@@ -11,6 +11,7 @@ import { OpenAIRequestError, runFortunoAssistant } from "@/modules/assistant/ope
 import { createAssistantSupportTicket } from "@/modules/assistant/tools";
 import { ASSISTANT_HISTORY_MESSAGES, historyClientIds } from "@/modules/assistant/context";
 import type { OpenAIErrorDetails, OpenAIUsage } from "@/modules/assistant/openai-errors";
+import { runInternalAssistant, type InternalAssistantResult } from "@/modules/assistant/internal-assistant";
 
 export const maxDuration = 300;
 const MAX_FILES = 5;
@@ -21,17 +22,6 @@ type Context = { params: Promise<{ id: string }> };
 function titleFrom(prompt: string, files: File[]) {
   const source = prompt.trim() || (files[0] ? `Analisar ${files[0].name}` : "Nova conversa");
   return source.length > 58 ? `${source.slice(0, 58).trim()}…` : source;
-}
-
-function deterministicReply(files: AssistantUploadedFile[], ticketCodes: string[]) {
-  if (ticketCodes.length) {
-    return `O layout enviado ainda não está configurado. Criei automaticamente ${ticketCodes.length === 1 ? "o chamado" : "os chamados"} ${ticketCodes.join(", ")} para o suporte analisar e adicionar o novo leitor.`;
-  }
-  const analyses = files.filter((file) => file.analysis);
-  if (analyses.length) {
-    return `A leitura determinística dos arquivos foi concluída, mas a inteligência do assistente ainda não está configurada. ${analyses.map((file) => `${file.name}: ${JSON.stringify(file.analysis)}`).join(" ")}`;
-  }
-  return "O Assistente Fortuno ainda não está conectado à OpenAI. Configure OPENAI_API_KEY no ambiente para habilitar respostas e consultas inteligentes.";
 }
 
 function asJson(value: unknown): Prisma.InputJsonValue {
@@ -67,13 +57,16 @@ export async function POST(request: Request, context: Context) {
   }
 
   const form = await request.formData();
+  const mode = String(form.get("mode") || "INTERNAL");
+  if (!["INTERNAL", "AI"].includes(mode)) return NextResponse.json({ error: "Modo de atendimento inválido." }, { status: 400 });
   const prompt = String(form.get("message") || "").trim().slice(0, 12_000);
   const files = form.getAll("files").filter((item): item is File => item instanceof File && item.size > 0).slice(0, MAX_FILES);
   if (!prompt && files.length === 0) return NextResponse.json({ error: "Escreva uma mensagem ou anexe um arquivo." }, { status: 400 });
   const oversized = files.find((file) => file.size > MAX_FILE_SIZE);
   if (oversized) return NextResponse.json({ error: `${oversized.name} excede o limite de 15 MB.` }, { status: 400 });
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  // Sem opção explícita de IA, nem os arquivos são enviados à OpenAI.
+  const apiKey = mode === "AI" ? process.env.OPENAI_API_KEY?.trim() : undefined;
   const inspected: AssistantUploadedFile[] = [];
   const ticketCodes: string[] = [];
   let uploadError: OpenAIRequestError | null = null;
@@ -131,11 +124,16 @@ export async function POST(request: Request, context: Context) {
   let openAiUsage: OpenAIUsage | undefined;
   let openAiError: OpenAIErrorDetails | undefined;
   let consultedClientIds: string[] = [];
+  let internalResult: InternalAssistantResult | undefined;
   try {
     // Não continuar com uploads/faturas incompletos nem insistir em uma API já bloqueada.
     if (uploadError) throw uploadError;
     if (!apiKey) {
-      reply = deterministicReply(inspected, ticketCodes);
+      internalResult = await runInternalAssistant({ context: { member, conversationId: conversation.id }, prompt,
+        client: conversation.client, files: inspected, ticketCodes });
+      reply = (mode === "AI" ? "A IA externa não está configurada. Atendi pelo modo interno.\n\n" : "") + internalResult.text;
+      toolEvents = internalResult.toolEvents;
+      consultedClientIds = internalResult.consultedClientIds;
     } else {
       const result = await runFortunoAssistant({
         context: { member, conversationId: conversation.id },
@@ -167,7 +165,9 @@ export async function POST(request: Request, context: Context) {
         role: "ASSISTANT",
         content: reply,
         metadata: asJson({ responseId, ticketCodes, toolEvents, contextClientId: conversation.clientId,
-          consultedClientIds, ...(openAiUsage ? { openAiUsage } : {}), ...(openAiError ? { openAiError } : {}) }),
+          consultedClientIds, executionMode: internalResult ? "INTERNAL" : "AI",
+          ...(internalResult ? { internalLinks: internalResult.links, ...(internalResult.reportTitle ? { reportTitle: internalResult.reportTitle } : {}) } : {}),
+          ...(openAiUsage ? { openAiUsage } : {}), ...(openAiError ? { openAiError } : {}) }),
       },
       select: { id: true, role: true, content: true, attachments: true, metadata: true, createdAt: true },
     });

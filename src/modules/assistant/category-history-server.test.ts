@@ -4,7 +4,7 @@ import type { AssistantMember } from "./auth";
 
 const mocks = vi.hoisted(() => {
   const db = {
-    assistantConversation: { findFirst: vi.fn(), update: vi.fn() },
+    assistantConversation: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
     contaAzulConnection: { findFirst: vi.fn() },
     assistantMessage: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
     categoryRule: { findMany: vi.fn(), createMany: vi.fn() }, auditLog: { create: vi.fn() }, $transaction: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.db }));
 vi.mock("@/modules/permissions/permissions", () => ({ getRolePermissions: mocks.permissions }));
 vi.mock("./auth", () => ({ findAssistantClient: mocks.client }));
 vi.mock("@/modules/purchase-invoices/server/conta-azul", () => ({ contaAzulRequest: mocks.request }));
-import { confirmCategoryHistory, continueCategoryHistory, getHistoryAccounts, startCategoryHistory } from "./category-history-server";
+import { confirmCategoryHistory, continueCategoryHistory, getHistoryAccounts, getInvoiceHistoryAccounts, startCategoryHistory, startInvoiceCategoryHistory } from "./category-history-server";
 
 const member: AssistantMember = { id: "member1", userId: "user1", organizationId: "org1", role: "OPERATOR", isTeamLeader: false,
   teamMemberUserIds: [], user: { id: "user1", name: "Operador", email: "operador@example.test" } };
@@ -108,7 +108,43 @@ describe("consulta e persistência", () => {
   it("repetir a confirmação não cria regras nem repete consultas", async () => {
     const saved = { ...stored(), savedAt: new Date().toISOString(), savedCount: 1 };
     mocks.db.assistantMessage.findFirst.mockResolvedValue({ id: "preview1", metadata: { categoryLearningPreview: saved } });
-    expect(await confirmCategoryHistory({ member, conversationId: "conversation1", messageId: "preview1", selections: [] })).toEqual({ savedCount: 1, alreadySaved: true });
+    expect(await confirmCategoryHistory({ member, conversationId: "conversation1", messageId: "preview1", selections: [] })).toMatchObject({ savedCount: 1, alreadySaved: true, preview: { savedCount: 1 } });
     expect(mocks.request).not.toHaveBeenCalled(); expect(mocks.db.categoryRule.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("aprendizado na página de faturas", () => {
+  beforeEach(() => {
+    mocks.permissions.mockResolvedValue({ IMPORTS: { canView: true, canImport: true, canEdit: false }, ASSISTANT: { canView: false, canEdit: false }, CLIENTS: { canEdit: true } });
+    mocks.db.assistantConversation.create.mockResolvedValue({ id: "invoice-session" });
+    mocks.db.assistantMessage.findFirst.mockResolvedValue({ id: "preview1", metadata: { categoryLearningSurface: "INVOICE", categoryLearningPreview: stored() } });
+  });
+  it("consulta e salva pelas permissões de importação sem exigir acesso à assistente", async () => {
+    expect(await getInvoiceHistoryAccounts(member, "client1")).toEqual([{ id: "card1", name: "Bradesco" }]);
+    const result = await startInvoiceCategoryHistory({ member, clientId: "client1", accountId: "card1", start: "2026-08-01", end: "2026-08-31" });
+    expect(result.conversationId).toBe("invoice-session");
+    expect(mocks.db.assistantConversation.create).toHaveBeenCalledWith(expect.objectContaining({ data: {
+      userId: "user1", organizationId: "org1", clientId: "client1", title: "Aprendizado de faturas", status: "ARCHIVED",
+    } }));
+    const confirmed = await confirmCategoryHistory({ member, conversationId: "invoice-session", messageId: "preview1", clientId: "client1", surface: "INVOICE", selections: [{ key: "OPENAI CHATGPT", categoryId: "systems" }] });
+    expect(confirmed.preview.savedCount).toBe(1);
+    expect(mocks.request.mock.calls.every((call) => !call[2]?.method || call[2].method === "GET")).toBe(true);
+  });
+  it("rejeita aprendizado sem permissão de importação", async () => {
+    mocks.permissions.mockResolvedValue({ IMPORTS: { canView: true, canImport: false, canEdit: false }, CLIENTS: { canEdit: true } });
+    await expect(getInvoiceHistoryAccounts(member, "client1")).rejects.toThrow("permissão");
+    expect(mocks.request).not.toHaveBeenCalled();
+  });
+  it("não aceita sessão de outro proprietário, cliente ou superfície", async () => {
+    mocks.db.assistantConversation.findFirst.mockResolvedValue(null);
+    await expect(continueCategoryHistory(member, "foreign", "preview1", "INVOICE", "client1")).rejects.toThrow("Conversa");
+    expect(mocks.db.assistantConversation.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      id: "foreign", organizationId: "org1", userId: "user1", status: "ARCHIVED", title: "Aprendizado de faturas", clientId: "client1",
+    } }));
+    mocks.db.assistantConversation.findFirst.mockResolvedValue({ id: "invoice-session" });
+    await expect(continueCategoryHistory(member, "invoice-session", "preview1", "INVOICE", "client2")).rejects.toThrow("Prévia");
+    mocks.db.assistantMessage.findFirst.mockResolvedValue({ id: "preview1", metadata: { categoryLearningPreview: stored() } });
+    await expect(continueCategoryHistory(member, "invoice-session", "preview1", "INVOICE", "client1")).rejects.toThrow("Prévia");
+    expect(mocks.db.categoryRule.createMany).not.toHaveBeenCalled();
   });
 });
