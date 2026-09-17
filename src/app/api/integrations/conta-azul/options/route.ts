@@ -17,7 +17,7 @@ function itemsFrom(body: unknown): ApiItem[] {
 }
 
 function optionFrom(item: ApiItem) {
-  const id = [item.id, item.uuid, item.id_categoria, item.id_centro_custo].find((value) => typeof value === "string") as string | undefined;
+  const id = [item.id, item.uuid, item.id_categoria, item.id_centro_custo, item.id_conta_financeira].find((value) => typeof value === "string") as string | undefined;
   const label = [item.nome, item.descricao, item.name, item.razao_social].find((value) => typeof value === "string") as string | undefined;
   if (!id || !label) return null;
   const rawType = typeof item.tipo === "string" ? item.tipo.toUpperCase() : "";
@@ -43,13 +43,17 @@ export async function GET(request: Request) {
   if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
 
   try {
+    const normalize = (body: unknown) => itemsFrom(body).map(optionFrom).filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (scope === "financial-accounts") {
+      const accountsBody = await contaAzulRequest<unknown>(clientId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true");
+      return NextResponse.json({ financialAccounts: normalize(itemsFrom(accountsBody).filter((item) => item.ativo !== false)) });
+    }
     const supplierParams = new URLSearchParams({ pagina: "1", tamanho_pagina: "1000", tipo_perfil: "FORNECEDOR", status: "ATIVO" });
     if (supplierTerm) supplierParams.set("termo_busca", supplierTerm);
     // A Conta Azul rotaciona o refresh_token a cada renovação. As chamadas são
     // sequenciais para impedir que quatro requisições tentem renovar o mesmo
     // token simultaneamente quando a conexão estiver expirada.
     const categoriesBody = await contaAzulRequest<unknown>(clientId, "/v1/categorias?pagina=1&tamanho_pagina=1000");
-    const normalize = (body: unknown) => itemsFrom(body).map(optionFrom).filter((item): item is NonNullable<typeof item> => Boolean(item));
     if (scope === "categories") {
       return NextResponse.json({ categories: normalize(categoriesBody) });
     }

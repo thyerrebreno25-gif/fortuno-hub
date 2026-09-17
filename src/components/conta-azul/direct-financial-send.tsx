@@ -9,8 +9,10 @@ import {
   Group,
   Modal,
   Progress,
+  ScrollArea,
   Select,
   Stack,
+  Table,
   Text,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -29,6 +31,7 @@ import {
   type FinancialDirection,
 } from "@/modules/conta-azul/financial-export";
 import { beginSessionKeepAlive } from "@/modules/session/client-activity";
+import { invalidAccountAllocationLines, summarizeAccountAllocation } from "@/modules/conta-azul/financial-account-allocation";
 
 export type DirectFinancialLine = {
   lineKey: string;
@@ -40,6 +43,8 @@ export type DirectFinancialLine = {
   amount: number;
   categoryName: string;
   costCenterName?: string | null;
+  financialAccountId?: string | null;
+  financialAccountName?: string | null;
   observation?: string;
   metadata?: Record<string, unknown>;
 };
@@ -53,6 +58,8 @@ type Props = {
   lines: DirectFinancialLine[];
   disabled?: boolean;
   onSuccess?: () => void | Promise<void>;
+  useLineAccounts?: boolean;
+  onSendingChange?: (sending: boolean) => void;
 };
 
 type OptionsResponse = {
@@ -92,6 +99,8 @@ export function DirectFinancialSend({
   lines,
   disabled,
   onSuccess,
+  useLineAccounts = false,
+  onSendingChange,
 }: Props) {
   const notificationSuffix = useId();
   const sendNotificationId = `conta-azul-financial-${notificationSuffix}`;
@@ -200,16 +209,20 @@ export function DirectFinancialSend({
   const progress = lines.length
     ? Math.min(100, ((counts.CREATED + counts.SETTLED) / lines.length) * 100)
     : 0;
+  const invalidAccounts = useLineAccounts ? invalidAccountAllocationLines(effectiveLines, options.financialAccounts || []) : [];
+  const allocationSummary = useLineAccounts ? summarizeAccountAllocation(effectiveLines, options.financialAccounts || []) : [];
   const canSend = connected
-    && Boolean(financialAccountId)
+    && (useLineAccounts ? invalidAccounts.length === 0 : Boolean(financialAccountId && options.financialAccounts?.some((account) => account.value === financialAccountId)))
     && unresolved.categories.length === 0
     && unresolved.costCenters.length === 0
     && lines.length > 0;
 
   async function send() {
-    if (!clientId || !financialAccountId || !canSend) return;
+    const selectedAccountId = useLineAccounts ? effectiveLines[0]?.financialAccountId : financialAccountId;
+    if (!clientId || !selectedAccountId || !canSend) return;
     const releaseSessionKeepAlive = beginSessionKeepAlive();
     setSending(true);
+    onSendingChange?.(true);
     setCounts(emptyCounts);
     setOpened(false);
     notifications.hide(sendNotificationId);
@@ -223,7 +236,7 @@ export function DirectFinancialSend({
       message: `${lines.length} lançamento(s) sendo processado(s). Você pode continuar usando o sistema.`,
     });
     try {
-      const account = options.financialAccounts?.find((item) => item.value === financialAccountId);
+      const account = options.financialAccounts?.find((item) => item.value === selectedAccountId);
       let resolvedContactId = technicalContactId;
       let resolvedContactName = technicalContactName;
       let completed = false;
@@ -239,8 +252,9 @@ export function DirectFinancialSend({
             contactId: resolvedContactId,
             contactName: resolvedContactName,
             counterpartyHint: counterpartyHint || account?.label || null,
-            financialAccountId,
+            financialAccountId: selectedAccountId,
             financialAccountName: account?.label || null,
+            useLineAccounts,
             settle,
             lines: effectiveLines,
           }),
@@ -316,6 +330,7 @@ export function DirectFinancialSend({
     } finally {
       releaseSessionKeepAlive();
       setSending(false);
+      onSendingChange?.(false);
     }
   }
 
@@ -388,11 +403,22 @@ export function DirectFinancialSend({
                   ? "Vínculo automático da adquirente"
                   : "Vínculo automático da fatura"}
               >
-                Você escolhe somente a conta financeira. Como a API do Conta Azul exige um contato técnico,
+                {useLineAccounts ? "Cada lançamento será direcionado para a conta escolhida na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}Como a API do Conta Azul exige um contato técnico,
                 o Fortuno Hub localizará ou criará automaticamente o cadastro “LANÇAMENTO AUTOMÁTICO”
                 {" "}para concluir o envio, sem pedir a seleção de um fornecedor.
               </Alert>
-              <Select
+              {useLineAccounts ? <Stack gap="xs">
+                <Text fw={700}>Rateio por conta financeira</Text>
+                <ScrollArea><Table miw={540}>
+                  <Table.Thead><Table.Tr><Table.Th>Conta</Table.Th><Table.Th>Itens</Table.Th><Table.Th>Despesas</Table.Th><Table.Th>Créditos</Table.Th></Table.Tr></Table.Thead>
+                  <Table.Tbody>{allocationSummary.map((group) => <Table.Tr key={group.accountId}>
+                    <Table.Td>{group.accountName}</Table.Td><Table.Td>{group.count}</Table.Td>
+                    <Table.Td>{group.payableAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Table.Td>
+                    <Table.Td>{group.receivableAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Table.Td>
+                  </Table.Tr>)}</Table.Tbody>
+                </Table></ScrollArea>
+                {invalidAccounts.length > 0 && <Alert color="orange">{invalidAccounts.length} lançamento(s) sem conta ativa válida. Volte à fatura e revise o rateio.</Alert>}
+              </Stack> : <Select
                 label="Conta financeira"
                 description="Conta usada nos lançamentos e, quando marcado, também nas baixas."
                 data={options.financialAccounts || []}
@@ -401,7 +427,7 @@ export function DirectFinancialSend({
                 searchable
                 nothingFoundMessage="Nenhuma conta localizada"
                 required
-              />
+              />}
               <Checkbox
                 checked={settle}
                 onChange={(event) => setSettle(event.currentTarget.checked)}

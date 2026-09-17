@@ -17,6 +17,10 @@ describe("aplicar aprendizado à fatura já aberta", () => {
     const result = applyHistoryLearning([edited], config);
     expect(result.items[0]).toBe(edited); expect(result.categorized).toBe(0); expect(result.centersFilled).toBe(0);
   });
+  it("aprendizado de categoria preserva a conta já escolhida no rateio", () => {
+    const allocated = { ...item, financialAccountId: "account-y", financialAccountName: "Conta Y" };
+    expect(applyHistoryLearning([allocated], config).items[0]).toMatchObject({ category: "Sistemas", financialAccountId: "account-y", financialAccountName: "Conta Y" });
+  });
   it("não usa centro de uma regra de categoria diferente", () => {
     expect(applyHistoryLearning([{ ...item, category: "Marketing" }], config).items[0].costCenter).toBeNull();
   });

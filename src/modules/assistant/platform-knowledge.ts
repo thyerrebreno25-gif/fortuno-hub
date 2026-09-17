@@ -13,7 +13,7 @@ export const FORTUNO_PLATFORM_GUIDE = [
   },
   {
     topic: "faturas cartao",
-    content: "Em Faturas, PDFs ou imagens são lidos, categorizados por cliente e podem ser exportados em planilha ou enviados ao Conta Azul quando o cliente está conectado.",
+    content: "Em Faturas, PDFs ou imagens são lidos, categorizados por cliente e podem ser exportados em planilha ou enviados ao Conta Azul quando o cliente está conectado. Ative Usar rateio por conta financeira para selecionar uma conta de destino por lançamento, ao lado da categoria. Preencher pendentes aplica uma conta apenas aos itens sem destino. O envio direto e as baixas respeitam cada conta; sem a opção, continua sendo escolhida uma conta única no envio. A planilha única não aplica esse direcionamento: desative a opção para exportá-la.",
   },
   {
     topic: "adquirentes",

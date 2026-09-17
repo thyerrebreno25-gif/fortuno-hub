@@ -9,6 +9,7 @@ import {
   getPurchaseInvoiceMember,
 } from "@/modules/purchase-invoices/server/auth";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
+import { exportLineFinancialAccount, invalidAccountAllocationLines } from "@/modules/conta-azul/financial-account-allocation";
 import {
   automaticFinancialContactName,
   apiItems,
@@ -37,6 +38,8 @@ const lineSchema = z.object({
   amount: z.number().finite().refine((value) => Math.abs(value) >= 0.01),
   categoryName: z.string().trim().min(1).max(250),
   costCenterName: z.string().trim().max(250).nullable().optional(),
+  financialAccountId: z.string().uuid().nullable().optional(),
+  financialAccountName: z.string().trim().max(250).nullable().optional(),
   observation: z.string().trim().max(2000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -51,7 +54,20 @@ const payloadSchema = z.object({
   financialAccountId: z.string().uuid(),
   financialAccountName: z.string().trim().max(250).nullable().optional(),
   settle: z.boolean(),
+  useLineAccounts: z.boolean().default(false),
   lines: z.array(lineSchema).min(1).max(5000),
+}).superRefine((body, context) => {
+  if (body.useLineAccounts && body.module !== "CREDIT_CARD_INVOICE") {
+    context.addIssue({ code: "custom", message: "Rateio por conta disponível apenas para faturas.", path: ["useLineAccounts"] });
+  }
+  body.lines.forEach((line, index) => {
+    if ((body.useLineAccounts && !line.financialAccountId) || (!body.useLineAccounts && line.financialAccountId)) {
+      context.addIssue({ code: "custom", message: "Revise a conta e a opção de rateio do lançamento.", path: ["lines", index, "financialAccountId"] });
+    }
+  });
+  if (body.useLineAccounts && body.financialAccountId !== body.lines[0]?.financialAccountId) {
+    context.addIssue({ code: "custom", message: "Conta do lote incompatível com o rateio.", path: ["financialAccountId"] });
+  }
 });
 
 type ParsedPayload = z.infer<typeof payloadSchema>;
@@ -114,6 +130,7 @@ async function findOrCreateExport(input: {
         metadata: asJson({
           originalSourceKey: input.body.sourceKey,
           requestedLineCount: input.body.lines.length,
+          useLineAccounts: input.body.useLineAccounts,
         }),
         lines: {
           create: input.body.lines.map((line) => ({
@@ -130,6 +147,10 @@ async function findOrCreateExport(input: {
               originalLineKey: line.lineKey,
               observation: line.observation || null,
               source: line.metadata || null,
+              ...(input.body.useLineAccounts ? {
+                financialAccountId: line.financialAccountId,
+                financialAccountName: line.financialAccountName || null,
+              } : {}),
             }),
           })),
         },
@@ -243,6 +264,7 @@ async function findFinancialInstallment(input: {
   dueDate: Date;
   description: string;
   amount: number;
+  financialAccountId: string;
 }) {
   const params = new URLSearchParams({
     pagina: "1",
@@ -254,6 +276,7 @@ async function findFinancialInstallment(input: {
     valor_de: input.amount.toFixed(2),
     valor_ate: input.amount.toFixed(2),
     descricao: input.description,
+    ids_contas_financeiras: input.financialAccountId,
   });
   const endpoint = input.direction === "RECEIVABLE"
     ? "/v1/financeiro/eventos-financeiros/contas-a-receber/buscar"
@@ -319,7 +342,7 @@ async function createPendingLines(input: {
       observation,
       amount: Number(line.amount),
       contactId: input.contactIds[line.direction],
-      financialAccountId: input.financialAccountId,
+      financialAccountId: exportLineFinancialAccount(line.metadata, input.financialAccountId),
       categoryId: category.value,
       costCenterId: costCenter?.value,
     });
@@ -423,6 +446,7 @@ async function settleCreatedLines(input: {
           dueDate: line.dueDate,
           description: line.description,
           amount: Number(line.amount),
+          financialAccountId: exportLineFinancialAccount(line.metadata, input.financialAccountId),
         });
         installmentId = found.installmentId;
         if (found.ambiguous) {
@@ -473,7 +497,7 @@ async function settleCreatedLines(input: {
               desconto: 0,
               taxa: 0,
             },
-            conta_financeira: input.financialAccountId,
+            conta_financeira: exportLineFinancialAccount(line.metadata, input.financialAccountId),
             metodo_pagamento: "OUTRO",
             observacao: "Baixa registrada pelo Fortuno Hub.",
           }),
@@ -531,6 +555,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conecte este cliente à Conta Azul antes de enviar." }, { status: 400 });
   }
 
+  if (requestedBody.useLineAccounts) {
+    try {
+      const accountsBody = await contaAzulRequest<unknown>(requestedBody.clientId,
+        "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true");
+      const accounts = contaAzulOptions(apiItems(accountsBody).filter((account) => account.ativo !== false));
+      const invalid = invalidAccountAllocationLines(requestedBody.lines, accounts);
+      if (invalid.length) return NextResponse.json({ error: "Existem lançamentos sem uma conta ativa válida no Conta Azul deste cliente. Revise o rateio antes de enviar." }, { status: 400 });
+      requestedBody.lines = requestedBody.lines.map((line) => ({ ...line,
+        financialAccountName: accounts.find((account) => account.value === line.financialAccountId)!.label,
+      }));
+      requestedBody.financialAccountName = requestedBody.lines[0].financialAccountName || null;
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível validar as contas do rateio." }, { status: 502 });
+    }
+  }
+
   let body: ResolvedPayload;
   const contactIds: Record<"PAYABLE" | "RECEIVABLE", string> = {
     PAYABLE: "",
@@ -577,6 +617,7 @@ export async function POST(request: Request) {
   if (
     exportBatch.financialAccountId !== body.financialAccountId
     || exportBatch.settleRequested !== body.settle
+    || Boolean(metadataRecord(exportBatch.metadata).useLineAccounts) !== body.useLineAccounts
   ) {
     return NextResponse.json({
       error: "Este arquivo já começou a ser enviado com outro contato, conta ou situação de baixa.",
@@ -600,6 +641,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       error: "Este arquivo já começou a ser enviado com outro conjunto de lançamentos. Inicie uma nova importação para evitar duplicidades.",
     }, { status: 409 });
+  }
+
+  const requestedAccounts = new Map(body.lines.map((line) => [stableHash(line.lineKey), line.financialAccountId || body.financialAccountId]));
+  if (exportBatch.lines.some((line) => exportLineFinancialAccount(line.metadata, exportBatch.financialAccountId) !== requestedAccounts.get(line.lineKey))) {
+    return NextResponse.json({ error: "Este arquivo já começou a ser enviado com outro rateio de contas. Retome com as mesmas contas para evitar duplicidades." }, { status: 409 });
   }
 
   const categoriesBody = await contaAzulRequest<unknown>(

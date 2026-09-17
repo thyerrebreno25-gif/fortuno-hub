@@ -91,7 +91,7 @@ export function apiItems(body: unknown): Array<Record<string, unknown>> {
 
 export function contaAzulOptions(body: unknown): ContaAzulOption[] {
   return apiItems(body).flatMap((item) => {
-    const value = [item.id, item.uuid, item.id_categoria, item.id_centro_custo].find(
+    const value = [item.id, item.uuid, item.id_categoria, item.id_centro_custo, item.id_conta_financeira].find(
       (candidate) => typeof candidate === "string",
     );
     const label = [item.nome, item.descricao, item.name, item.razao_social].find(

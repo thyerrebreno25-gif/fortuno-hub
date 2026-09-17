@@ -81,6 +81,8 @@ type InvoiceItem = {
   installment?: string;
   category: string | null;
   costCenter: string | null;
+  financialAccountId?: string | null;
+  financialAccountName?: string | null;
   status: InvoiceStatus;
   learnedFromClient: boolean;
   costCenterLearnedFromClient: boolean;
@@ -164,6 +166,11 @@ export default function FaturasPage() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [useCostCenters, setUseCostCenters] = useState(false);
+  const [useLineAccounts, setUseLineAccounts] = useState(false);
+  const [defaultAccountId, setDefaultAccountId] = useState<string | null>(null);
+  const [accountCatalog, setAccountCatalog] = useState<{ clientId: string; items: ContaAzulOption[]; loading: boolean; error?: string } | null>(null);
+  const [accountRefresh, setAccountRefresh] = useState(0);
+  const [contaAzulSending, setContaAzulSending] = useState(false);
 
   const [competenceDate, setCompetenceDate] = useState("2026-07-01");
   const [dueDate, setDueDate] = useState("2026-07-15");
@@ -192,6 +199,9 @@ export default function FaturasPage() {
   const [learningBusy, setLearningBusy] = useState(false);
 
   const selectedClient = clients.find((client) => client.value === clientId);
+  const financialAccounts = accountCatalog?.clientId === clientId && categorySource === "CONTA_AZUL" ? accountCatalog.items : [];
+  const accountsLoading = useLineAccounts && (categoryLoading || categorySource === "LOADING" || categorySource === "CONTA_AZUL" && (!accountCatalog || accountCatalog.clientId !== clientId || accountCatalog.loading));
+  const missingFinancialAccounts = useLineAccounts ? items.filter((item) => !item.financialAccountId || !financialAccounts.some((account) => account.value === item.financialAccountId)).length : 0;
   const isImageImport =
     files.length > 0 &&
     files.every(
@@ -387,6 +397,25 @@ export default function FaturasPage() {
     return () => controller.abort();
   }, [clientId]);
 
+  useEffect(() => {
+    if (!useLineAccounts || !clientId || categorySource !== "CONTA_AZUL" || categoryLoading) return;
+    const selectedClientId = clientId;
+    const controller = new AbortController();
+    async function loadAccounts() {
+      setAccountCatalog({ clientId: selectedClientId, items: [], loading: true });
+      try {
+        const response = await fetch(`/api/integrations/conta-azul/options?${new URLSearchParams({ clientId: selectedClientId, scope: "financial-accounts" })}`, { cache: "no-store", signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Não foi possível carregar as contas do cliente.");
+        if (!controller.signal.aborted) setAccountCatalog({ clientId: selectedClientId, items: result.financialAccounts || [], loading: false });
+      } catch (error) {
+        if (!controller.signal.aborted) setAccountCatalog({ clientId: selectedClientId, items: [], loading: false, error: error instanceof Error ? error.message : "Falha ao carregar contas." });
+      }
+    }
+    void loadAccounts();
+    return () => controller.abort();
+  }, [clientId, useLineAccounts, categorySource, categoryLoading, accountRefresh]);
+
   const diagnostics = useMemo(() => {
     const identifiedTotal = items.reduce((total, item) => total + item.amount, 0);
     const difference = identifiedTotal - Number(invoiceTotal || 0);
@@ -429,9 +458,10 @@ export default function FaturasPage() {
         item.description.toLowerCase().includes(normalized) ||
         item.category?.toLowerCase().includes(normalized) ||
         item.costCenter?.toLowerCase().includes(normalized) ||
+        (useLineAccounts && item.financialAccountName?.toLowerCase().includes(normalized)) ||
         item.date.includes(normalized),
     );
-  }, [items, search]);
+  }, [items, search, useLineAccounts]);
 
   async function processInvoice() {
     if (!clientId || !files.length || !bank) return;
@@ -465,6 +495,8 @@ export default function FaturasPage() {
             installment: item.installment,
             category: learnedRule?.category ?? null,
             costCenter: useCostCenters ? learnedRule?.costCenter ?? null : null,
+            financialAccountId: null,
+            financialAccountName: null,
             status: learnedRule ? "LEARNED" : "NEW",
             learnedFromClient: Boolean(learnedRule),
             costCenterLearnedFromClient: Boolean(
@@ -502,6 +534,9 @@ export default function FaturasPage() {
     setPassword("");
     setFiles([]);
     setUseCostCenters(false);
+    setUseLineAccounts(false);
+    setDefaultAccountId(null);
+    setAccountCatalog(null);
     setItems(exampleItems);
     setCategoryOptions([]);
     setContaAzulCategoryOptions([]);
@@ -754,6 +789,7 @@ export default function FaturasPage() {
           itemCount: items.length,
           categorized: items.length - diagnostics.uncategorized,
           costCenterEnabled: useCostCenters,
+          accountAllocationEnabled: useLineAccounts,
           costCentersFilled: useCostCenters
             ? items.length - diagnostics.missingCostCenters
             : 0,
@@ -768,13 +804,15 @@ export default function FaturasPage() {
           type: item.amount < 0 ? "CREDIT" : "DEBIT",
           category: item.category,
           costCenter: useCostCenters ? item.costCenter : null,
-          metadata: { installment: item.installment || null },
+          metadata: { installment: item.installment || null, ...(useLineAccounts ? {
+            financialAccountId: item.financialAccountId || null, financialAccountName: item.financialAccountName || null,
+          } : {}) },
         })),
     });
   }
 
   async function exportContaAzul() {
-    if (!clientId || !files.length || !bank || !canExport) return;
+    if (!clientId || !files.length || !bank || !canExport || useLineAccounts) return;
     const clientName = clients.find((item) => item.value === clientId)?.label || "Cliente";
     try {
       exportInvoiceToContaAzul({
@@ -810,6 +848,7 @@ export default function FaturasPage() {
     amount: Math.abs(item.amount),
     categoryName: item.category || "",
     costCenterName: useCostCenters ? item.costCenter : null,
+    ...(useLineAccounts ? { financialAccountId: item.financialAccountId || null, financialAccountName: item.financialAccountName || null } : {}),
     observation: [
       bank ? `Banco: ${bank}` : "",
       item.installment ? `Parcela: ${item.installment}` : "",
@@ -817,7 +856,7 @@ export default function FaturasPage() {
       "Classificação revisada no Fortuno Hub",
     ].filter(Boolean).join(" | "),
     metadata: { installment: item.installment || null },
-  })), [bank, competenceDate, dueDate, items, paymentDate, useCostCenters]);
+  })), [bank, competenceDate, dueDate, items, paymentDate, useCostCenters, useLineAccounts]);
 
   const directSourceKey = [
     bank || "cartao",
@@ -862,13 +901,13 @@ export default function FaturasPage() {
         {view === "review" && (
           <Group>
           {clientId && <InvoiceHistoryLearning key={clientId} clientId={clientId} clientName={selectedClient?.label || "Cliente"}
-            connected={categorySource === "CONTA_AZUL" && !categoryLoading} disabled={savingItem || editModalOpened}
+            connected={categorySource === "CONTA_AZUL" && !categoryLoading} disabled={savingItem || editModalOpened || contaAzulSending}
             onBusy={setLearningBusy} onLearned={applyLearnedHistory} />}
           <Button
             variant="default"
             leftSection={<IconRefresh size={17} />}
             onClick={resetPage}
-            disabled={learningBusy}
+            disabled={learningBusy || contaAzulSending}
           >
             Nova fatura
           </Button>
@@ -959,6 +998,7 @@ export default function FaturasPage() {
             </SimpleGrid>
 
             <Paper withBorder radius="lg" p="md">
+              <Stack>
               <Checkbox
                 checked={useCostCenters}
                 onChange={(event) =>
@@ -967,6 +1007,9 @@ export default function FaturasPage() {
                 label="Usar centro de custo nesta importação"
                 description="Quando marcado, cada lançamento deverá ter categoria e centro de custo antes da exportação."
               />
+              <Checkbox checked={useLineAccounts} onChange={(event) => setUseLineAccounts(event.currentTarget.checked)}
+                label="Usar rateio por conta financeira" description="No envio direto ao Conta Azul, escolha uma conta de destino para cada lançamento. O valor de cada compra será mantido." disabled={processing} />
+              </Stack>
             </Paper>
 
             <Paper
@@ -1471,6 +1514,25 @@ export default function FaturasPage() {
           )}
 
           <Paper withBorder radius="lg">
+            <Stack p="lg" gap="sm">
+              <Checkbox checked={useLineAccounts} onChange={(event) => setUseLineAccounts(event.currentTarget.checked)}
+                label="Usar rateio por conta financeira" description="Direcione cada compra ou crédito para uma conta do cliente no Conta Azul."
+                disabled={learningBusy || contaAzulSending} />
+              {useLineAccounts && <>
+                <Text size="sm" c="dimmed">O rateio será aplicado no envio direto, na criação e nas baixas. A planilha única não define as contas; para exportá-la, desative esta opção.</Text>
+                {categorySource !== "CONTA_AZUL" && !categoryLoading && <Alert color="orange">Conecte o cliente ao Conta Azul e carregue seus cadastros para selecionar as contas do rateio.</Alert>}
+                {accountCatalog?.clientId === clientId && accountCatalog.error && <Alert color="red">{accountCatalog.error}</Alert>}
+                <Group align="flex-end">
+                  <Select label="Conta para preencher os itens sem destino" placeholder={accountsLoading ? "Carregando contas…" : "Selecione uma conta"}
+                    data={financialAccounts} value={financialAccounts.some((account) => account.value === defaultAccountId) ? defaultAccountId : null} onChange={setDefaultAccountId}
+                    searchable clearable disabled={accountsLoading || learningBusy || contaAzulSending || !financialAccounts.length} w={{ base: "100%", sm: 330 }} />
+                  <Button variant="light" disabled={!financialAccounts.some((account) => account.value === defaultAccountId) || accountsLoading || learningBusy || contaAzulSending}
+                    onClick={() => { const account = financialAccounts.find((option) => option.value === defaultAccountId); if (account) setItems((current) => current.map((item) => item.financialAccountId ? item : { ...item, financialAccountId: account.value, financialAccountName: account.label })); }}>Preencher pendentes</Button>
+                  <Button variant="subtle" leftSection={<IconRefresh size={15} />} disabled={categorySource !== "CONTA_AZUL" || accountsLoading || learningBusy || contaAzulSending} onClick={() => setAccountRefresh((current) => current + 1)}>Atualizar contas</Button>
+                </Group>
+                <Text size="sm" c={missingFinancialAccounts ? "orange" : "green"}>{missingFinancialAccounts} lançamento(s) sem conta ativa válida.</Text>
+              </>}
+            </Stack>
             <Group justify="space-between" p="lg" align="flex-end">
               <Stack gap={3}>
                 <Title order={4}>Lançamentos da fatura</Title>
@@ -1495,7 +1557,7 @@ export default function FaturasPage() {
 
             <ScrollArea>
               <Table
-                miw={useCostCenters ? 1250 : 1050}
+                miw={1050 + (useCostCenters ? 200 : 0) + (useLineAccounts ? 280 : 0)}
                 verticalSpacing="sm"
                 horizontalSpacing="md"
                 highlightOnHover
@@ -1507,6 +1569,7 @@ export default function FaturasPage() {
                     <Table.Th>Descrição</Table.Th>
                     <Table.Th>Parcela</Table.Th>
                     <Table.Th>Categoria</Table.Th>
+                    {useLineAccounts && <Table.Th>Conta de destino</Table.Th>}
                     {useCostCenters && <Table.Th>Centro de custo</Table.Th>}
                     <Table.Th ta="right">Valor</Table.Th>
                     <Table.Th />
@@ -1558,6 +1621,14 @@ export default function FaturasPage() {
                         )}
                       </Table.Td>
 
+                      {useLineAccounts && <Table.Td>
+                        <Select aria-label={`Conta de destino de ${item.description}, lançamento ${item.id}`} placeholder={accountsLoading ? "Carregando…" : "Selecionar conta"}
+                          data={financialAccounts} value={financialAccounts.some((account) => account.value === item.financialAccountId) ? item.financialAccountId : null}
+                          searchable clearable miw={240} disabled={accountsLoading || learningBusy || contaAzulSending || !financialAccounts.length}
+                          error={item.financialAccountId && !accountsLoading && !financialAccounts.some((account) => account.value === item.financialAccountId) ? "Conta indisponível; selecione outra" : undefined}
+                          onChange={(value) => { const account = financialAccounts.find((option) => option.value === value); setItems((current) => current.map((row) => row.id === item.id ? { ...row, financialAccountId: account?.value || null, financialAccountName: account?.label || null } : row)); }} />
+                      </Table.Td>}
+
                       {useCostCenters && (
                         <Table.Td>
                           {item.costCenter ? (
@@ -1581,7 +1652,7 @@ export default function FaturasPage() {
                           <ActionIcon
                             variant="subtle"
                             onClick={() => openEdit(item)}
-                            disabled={learningBusy}
+                            disabled={learningBusy || contaAzulSending}
                             aria-label="Editar lançamento"
                           >
                             <IconEdit size={17} />
@@ -1591,7 +1662,7 @@ export default function FaturasPage() {
                             variant="subtle"
                             color="red"
                             onClick={() => removeItem(item.id)}
-                            disabled={learningBusy}
+                            disabled={learningBusy || contaAzulSending}
                             aria-label="Excluir lançamento"
                           >
                             <IconTrash size={17} />
@@ -1927,14 +1998,14 @@ export default function FaturasPage() {
                     c={
                       diagnostics.uncategorized +
                         diagnostics.missingCostCenters +
-                        diagnostics.review === 0
+                        diagnostics.review + missingFinancialAccounts === 0
                         ? "green"
                         : "orange"
                     }
                   >
                     {diagnostics.uncategorized +
                       diagnostics.missingCostCenters +
-                      diagnostics.review}
+                      diagnostics.review + missingFinancialAccounts}
                   </Text>
                 </Stack>
               </SimpleGrid>
@@ -1947,12 +2018,15 @@ export default function FaturasPage() {
                   sourceName={files.length === 1 ? files[0].name : `${files.length} imagens da fatura`}
                   counterpartyHint={bank}
                   lines={directFinancialLines}
-                  disabled={!canExport || learningBusy}
+                  disabled={!canExport || learningBusy || useLineAccounts && (accountsLoading || missingFinancialAccounts > 0)}
+                  useLineAccounts={useLineAccounts}
+                  onSendingChange={setContaAzulSending}
                   onSuccess={() => saveExportHistory("API_CONTA_AZUL")}
                 />
                 <Button
                   leftSection={<IconFileSpreadsheet size={18} />}
-                  disabled={!canExport || learningBusy}
+                  disabled={!canExport || learningBusy || contaAzulSending || useLineAccounts}
+                  title={useLineAccounts ? "O rateio por conta é aplicado no envio direto ao Conta Azul." : undefined}
                   onClick={exportContaAzul}
                 >
                   Exportar planilha Conta Azul
