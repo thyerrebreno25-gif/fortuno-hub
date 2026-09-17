@@ -31,7 +31,7 @@ import {
   type FinancialDirection,
 } from "@/modules/conta-azul/financial-export";
 import { beginSessionKeepAlive } from "@/modules/session/client-activity";
-import { invalidAccountAllocationLines, summarizeAccountAllocation } from "@/modules/conta-azul/financial-account-allocation";
+import { allocationCategoryKey, allocationClientId, allocationCostCenterKey, applyAllocationClassifications, invalidDestinationAllocationLines, summarizeDestinationAllocation, type DestinationCatalog } from "@/modules/conta-azul/financial-account-allocation";
 
 export type DirectFinancialLine = {
   lineKey: string;
@@ -45,6 +45,8 @@ export type DirectFinancialLine = {
   costCenterName?: string | null;
   financialAccountId?: string | null;
   financialAccountName?: string | null;
+  destinationClientId?: string | null;
+  destinationClientName?: string | null;
   observation?: string;
   metadata?: Record<string, unknown>;
 };
@@ -60,6 +62,7 @@ type Props = {
   onSuccess?: () => void | Promise<void>;
   useLineAccounts?: boolean;
   onSendingChange?: (sending: boolean) => void;
+  destinationClients?: { value: string; label: string }[];
 };
 
 type OptionsResponse = {
@@ -82,10 +85,6 @@ function categoryType(direction: FinancialDirection): ContaAzulOption["type"] {
   return direction === "RECEIVABLE" ? "RECEITA" : "DESPESA";
 }
 
-function categoryRequirementKey(direction: FinancialDirection, categoryName: string) {
-  return `${direction}:${categoryName}`;
-}
-
 function delay(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -101,6 +100,7 @@ export function DirectFinancialSend({
   onSuccess,
   useLineAccounts = false,
   onSendingChange,
+  destinationClients,
 }: Props) {
   const notificationSuffix = useId();
   const sendNotificationId = `conta-azul-financial-${notificationSuffix}`;
@@ -108,14 +108,20 @@ export function DirectFinancialSend({
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [options, setOptions] = useState<OptionsResponse>({});
+  const [catalogs, setCatalogs] = useState<Record<string, DestinationCatalog>>({});
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [disconnectedClientId, setDisconnectedClientId] = useState<string | null>(null);
   const [technicalContactId, setTechnicalContactId] = useState<string | null>(null);
   const [technicalContactName, setTechnicalContactName] = useState<string | null>(null);
   const [financialAccountId, setFinancialAccountId] = useState<string | null>(null);
   const [settle, setSettle] = useState(true);
   const [counts, setCounts] = useState<ProgressCounts>(emptyCounts);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
+  const [costCenterOverrides, setCostCenterOverrides] = useState<Record<string, string>>({});
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const targetClientIdsKey = JSON.stringify([...new Set(useLineAccounts ? lines.map((line) => allocationClientId(line, clientId || "")) : [clientId || ""])].sort());
+  const clientNamesKey = JSON.stringify(destinationClients || []);
+  const options = catalogs[clientId || ""] || {};
 
   useEffect(() => {
     if (!opened || !clientId) return;
@@ -123,36 +129,47 @@ export function DirectFinancialSend({
     async function loadContaAzul() {
       setLoading(true);
       setConnected(false);
-      setOptions({});
+      setCatalogs({});
+      setOptionsError(null);
+      setDisconnectedClientId(null);
       try {
-        const statusResponse = await fetch(
-          `/api/integrations/conta-azul/status?clientId=${encodeURIComponent(clientId!)}`,
-          { cache: "no-store" },
-        );
-        const status = await statusResponse.json();
-        if (!statusResponse.ok) throw new Error(status?.error || "Falha ao validar a conexão.");
-        const active = Boolean(status?.connection?.active && status?.connection?.status === "CONNECTED");
-        if (!active) {
-          if (!cancelled) setConnected(false);
-          return;
+        const targets = JSON.parse(targetClientIdsKey) as string[];
+        const names = JSON.parse(clientNamesKey) as { value: string; label: string }[];
+        const nextCatalogs: Record<string, DestinationCatalog> = {};
+        for (const targetId of [...new Set([clientId!, ...targets])]) {
+          if (cancelled) return;
+          const targetName = names.find((client) => client.value === targetId)?.label || targetId;
+          const statusResponse = await fetch(
+            `/api/integrations/conta-azul/status?clientId=${encodeURIComponent(targetId)}`,
+            { cache: "no-store" },
+          );
+          const status = await statusResponse.json();
+          if (!statusResponse.ok) throw new Error(`${targetName}: ${status?.error || "Falha ao validar a conexão."}`);
+          const active = Boolean(status?.connection?.active && status?.connection?.status === "CONNECTED");
+          if (!active) {
+            if (!cancelled) { setDisconnectedClientId(targetId); setOptionsError(`O cadastro ${targetName} não está conectado ao Conta Azul.`); }
+            return;
+          }
+          if (!targets.includes(targetId)) continue;
+          const params = new URLSearchParams({
+            clientId: targetId,
+            scope: "financial-export",
+          });
+          const optionsResponse = await fetch(
+            `/api/integrations/conta-azul/options?${params.toString()}`,
+            { cache: "no-store" },
+          );
+          const result = await optionsResponse.json() as OptionsResponse;
+          if (!optionsResponse.ok) throw new Error(`${targetName}: ${result.error || "Falha ao carregar os dados do Conta Azul."}`);
+          nextCatalogs[targetId] = { clientName: targetName, financialAccounts: result.financialAccounts || [], categories: result.categories || [], costCenters: result.costCenters || [] };
         }
-        const params = new URLSearchParams({
-          clientId: clientId!,
-          scope: "financial-export",
-        });
-        const optionsResponse = await fetch(
-          `/api/integrations/conta-azul/options?${params.toString()}`,
-          { cache: "no-store" },
-        );
-        const result = await optionsResponse.json() as OptionsResponse;
-        if (!optionsResponse.ok) throw new Error(result.error || "Falha ao carregar os dados do Conta Azul.");
         if (!cancelled) {
           setConnected(true);
-          setOptions(result);
+          setCatalogs(nextCatalogs);
         }
       } catch (error) {
         if (!cancelled) {
-          setOptions({ error: error instanceof Error ? error.message : "Falha ao consultar o Conta Azul." });
+          setOptionsError(error instanceof Error ? error.message : "Falha ao consultar o Conta Azul.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -160,57 +177,52 @@ export function DirectFinancialSend({
     }
     void loadContaAzul();
     return () => { cancelled = true; };
-  }, [clientId, counterpartyHint, module, opened, refreshVersion]);
+  }, [clientId, opened, refreshVersion, targetClientIdsKey, clientNamesKey]);
 
   const categoryRequirements = useMemo(() => {
-    const categories = options.categories || [];
-    const unique = new Map<string, { key: string; name: string; direction: FinancialDirection }>();
+    const unique = new Map<string, { key: string; name: string; direction: FinancialDirection; clientId: string; clientName: string }>();
     for (const line of lines) {
+      const targetId = useLineAccounts ? allocationClientId(line, clientId || "") : clientId || "";
+      const categories = catalogs[targetId]?.categories || [];
       if (findContaAzulOption(categories, line.categoryName, categoryType(line.direction))) continue;
-      const key = categoryRequirementKey(line.direction, line.categoryName);
-      unique.set(key, { key, name: line.categoryName, direction: line.direction });
+      const key = allocationCategoryKey(targetId, line.direction, line.categoryName);
+      unique.set(key, { key, name: line.categoryName, direction: line.direction, clientId: targetId, clientName: catalogs[targetId]?.clientName || targetId });
     }
     return Array.from(unique.values());
-  }, [lines, options.categories]);
+  }, [lines, catalogs, clientId, useLineAccounts]);
 
-  const effectiveLines = useMemo(() => {
-    const categories = options.categories || [];
-    return lines.map((line) => {
-      const key = categoryRequirementKey(line.direction, line.categoryName);
-      const overrideId = categoryOverrides[key];
-      if (!overrideId) return line;
-      const replacement = categories.find(
-        (option) => option.value === overrideId
-          && (!option.type || option.type === categoryType(line.direction)),
-      );
-      return replacement ? { ...line, categoryName: replacement.label } : line;
-    });
-  }, [categoryOverrides, lines, options.categories]);
+  const costCenterRequirements = useMemo(() => {
+    const unique = new Map<string, { key: string; name: string; clientId: string; clientName: string }>();
+    for (const line of lines) {
+      const targetId = useLineAccounts ? allocationClientId(line, clientId || "") : clientId || "";
+      if (!line.costCenterName || findContaAzulOption(catalogs[targetId]?.costCenters || [], line.costCenterName)) continue;
+      const key = allocationCostCenterKey(targetId, line.costCenterName);
+      unique.set(key, { key, name: line.costCenterName, clientId: targetId, clientName: catalogs[targetId]?.clientName || targetId });
+    }
+    return [...unique.values()];
+  }, [lines, catalogs, clientId, useLineAccounts]);
+
+  const effectiveLines = useMemo(() => applyAllocationClassifications(lines, catalogs, clientId || "", useLineAccounts, categoryOverrides, costCenterOverrides),
+    [categoryOverrides, costCenterOverrides, lines, catalogs, clientId, useLineAccounts]);
 
   const unresolved = useMemo(() => {
-    const categories = options.categories || [];
-    const costCenters = options.costCenters || [];
     return {
       categories: categoryRequirements.filter((requirement) => {
         const overrideId = categoryOverrides[requirement.key];
-        return !overrideId || !categories.some(
+        return !overrideId || !catalogs[requirement.clientId]?.categories?.some(
           (option) => option.value === overrideId
             && (!option.type || option.type === categoryType(requirement.direction)),
         );
       }),
-      costCenters: Array.from(new Set(
-        effectiveLines.filter(
-          (line) => line.costCenterName && !findContaAzulOption(costCenters, line.costCenterName),
-        ).map((line) => line.costCenterName as string),
-      )),
+      costCenters: costCenterRequirements.filter((requirement) => !catalogs[requirement.clientId]?.costCenters?.some((option) => option.value === costCenterOverrides[requirement.key])),
     };
-  }, [categoryOverrides, categoryRequirements, effectiveLines, options.categories, options.costCenters]);
+  }, [categoryOverrides, costCenterOverrides, categoryRequirements, costCenterRequirements, catalogs]);
 
   const progress = lines.length
     ? Math.min(100, ((counts.CREATED + counts.SETTLED) / lines.length) * 100)
     : 0;
-  const invalidAccounts = useLineAccounts ? invalidAccountAllocationLines(effectiveLines, options.financialAccounts || []) : [];
-  const allocationSummary = useLineAccounts ? summarizeAccountAllocation(effectiveLines, options.financialAccounts || []) : [];
+  const invalidAccounts = useLineAccounts ? invalidDestinationAllocationLines(effectiveLines, catalogs, clientId || "") : [];
+  const allocationSummary = useLineAccounts ? summarizeDestinationAllocation(effectiveLines, catalogs, clientId || "") : [];
   const canSend = connected
     && (useLineAccounts ? invalidAccounts.length === 0 : Boolean(financialAccountId && options.financialAccounts?.some((account) => account.value === financialAccountId)))
     && unresolved.categories.length === 0
@@ -236,7 +248,8 @@ export function DirectFinancialSend({
       message: `${lines.length} lançamento(s) sendo processado(s). Você pode continuar usando o sistema.`,
     });
     try {
-      const account = options.financialAccounts?.find((item) => item.value === selectedAccountId);
+      const firstTargetId = useLineAccounts ? allocationClientId(effectiveLines[0], clientId) : clientId;
+      const account = catalogs[firstTargetId]?.financialAccounts.find((item) => item.value === selectedAccountId);
       let resolvedContactId = technicalContactId;
       let resolvedContactName = technicalContactName;
       let completed = false;
@@ -346,6 +359,7 @@ export function DirectFinancialSend({
           setTechnicalContactName(null);
           setFinancialAccountId(null);
           setCategoryOverrides({});
+          setCostCenterOverrides({});
           setOpened(true);
         }}
       >
@@ -367,13 +381,13 @@ export function DirectFinancialSend({
             <Alert color="orange" icon={<IconLinkOff size={18} />} title="Cliente não conectado">
               <Stack gap="sm">
                 <Text size="sm">
-                  Este cliente ainda não possui um vínculo com o Conta Azul.
-                  Autorize a empresa para continuar o envio.
+                  Um dos cadastros necessários ainda não possui vínculo ou não pôde ser consultado no Conta Azul.
+                  Confira a conexão de cada unidade para continuar o envio.
                 </Text>
                 <Group gap="xs">
                   <Button
                     component="a"
-                    href={`/api/integrations/conta-azul/connect?clientId=${encodeURIComponent(clientId!)}&returnTo=connections`}
+                    href={`/api/integrations/conta-azul/connect?clientId=${encodeURIComponent(disconnectedClientId || clientId!)}&returnTo=connections`}
                     size="xs"
                     leftSection={<IconLink size={14} />}
                   >
@@ -403,21 +417,21 @@ export function DirectFinancialSend({
                   ? "Vínculo automático da adquirente"
                   : "Vínculo automático da fatura"}
               >
-                {useLineAccounts ? "Cada lançamento será direcionado para a conta escolhida na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}Como a API do Conta Azul exige um contato técnico,
+                {useLineAccounts ? "Cada lançamento será direcionado para o cadastro/CNPJ e a conta escolhidos na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}Como a API do Conta Azul exige um contato técnico,
                 o Fortuno Hub localizará ou criará automaticamente o cadastro “LANÇAMENTO AUTOMÁTICO”
                 {" "}para concluir o envio, sem pedir a seleção de um fornecedor.
               </Alert>
               {useLineAccounts ? <Stack gap="xs">
-                <Text fw={700}>Rateio por conta financeira</Text>
-                <ScrollArea><Table miw={540}>
-                  <Table.Thead><Table.Tr><Table.Th>Conta</Table.Th><Table.Th>Itens</Table.Th><Table.Th>Despesas</Table.Th><Table.Th>Créditos</Table.Th></Table.Tr></Table.Thead>
-                  <Table.Tbody>{allocationSummary.map((group) => <Table.Tr key={group.accountId}>
-                    <Table.Td>{group.accountName}</Table.Td><Table.Td>{group.count}</Table.Td>
+                <Text fw={700}>Rateio por cadastro e conta</Text>
+                <ScrollArea><Table miw={750}>
+                  <Table.Thead><Table.Tr><Table.Th>Cadastro de destino</Table.Th><Table.Th>Conta</Table.Th><Table.Th>Itens</Table.Th><Table.Th>Despesas</Table.Th><Table.Th>Créditos</Table.Th></Table.Tr></Table.Thead>
+                  <Table.Tbody>{allocationSummary.map((group) => <Table.Tr key={JSON.stringify([group.clientId, group.accountId])}>
+                    <Table.Td>{group.clientName}</Table.Td><Table.Td>{group.accountName}</Table.Td><Table.Td>{group.count}</Table.Td>
                     <Table.Td>{group.payableAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Table.Td>
                     <Table.Td>{group.receivableAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Table.Td>
                   </Table.Tr>)}</Table.Tbody>
                 </Table></ScrollArea>
-                {invalidAccounts.length > 0 && <Alert color="orange">{invalidAccounts.length} lançamento(s) sem conta ativa válida. Volte à fatura e revise o rateio.</Alert>}
+                {invalidAccounts.length > 0 && <Alert color="orange">{invalidAccounts.length} lançamento(s) sem conta ativa válida no cadastro escolhido. Volte à fatura e revise o rateio.</Alert>}
               </Stack> : <Select
                 label="Conta financeira"
                 description="Conta usada nos lançamentos e, quando marcado, também nas baixas."
@@ -437,7 +451,7 @@ export function DirectFinancialSend({
                   : "Os lançamentos serão criados em aberto, sem baixa."}
               />
 
-              {(categoryRequirements.length > 0 || unresolved.costCenters.length > 0) && (
+              {(categoryRequirements.length > 0 || costCenterRequirements.length > 0) && (
                 <Alert
                   color={unresolved.categories.length || unresolved.costCenters.length ? "orange" : "blue"}
                   icon={<IconAlertTriangle size={18} />}
@@ -447,10 +461,10 @@ export function DirectFinancialSend({
                     {categoryRequirements.map((requirement) => (
                       <Select
                         key={requirement.key}
-                        label={`${requirement.name} (${requirement.direction === "RECEIVABLE" ? "receita" : "despesa"})`}
+                        label={`${useLineAccounts ? `${requirement.clientName} — ` : ""}${requirement.name} (${requirement.direction === "RECEIVABLE" ? "receita" : "despesa"})`}
                         description="Selecione uma categoria equivalente já existente no Conta Azul."
                         placeholder="Selecionar categoria existente"
-                        data={(options.categories || []).filter(
+                        data={(catalogs[requirement.clientId]?.categories || []).filter(
                           (option) => !option.type || option.type === categoryType(requirement.direction),
                         )}
                         value={categoryOverrides[requirement.key] || null}
@@ -465,9 +479,11 @@ export function DirectFinancialSend({
                         nothingFoundMessage="Nenhuma categoria compatível localizada"
                       />
                     ))}
-                    {unresolved.costCenters.length > 0 && (
-                      <Text size="sm">Centros de custo: {unresolved.costCenters.join(", ")}</Text>
-                    )}
+                    {costCenterRequirements.map((requirement) => <Select key={requirement.key}
+                      label={`${useLineAccounts ? `${requirement.clientName} — ` : ""}Centro de custo: ${requirement.name}`}
+                      description="Selecione um centro de custo existente no cadastro de destino." data={catalogs[requirement.clientId]?.costCenters || []}
+                      value={costCenterOverrides[requirement.key] || null} searchable clearable
+                      onChange={(value) => setCostCenterOverrides((current) => { const next = { ...current }; if (value) next[requirement.key] = value; else delete next[requirement.key]; return next; })} />)}
                     <Text size="sm">
                       A API do Conta Azul não permite criar categorias. Você pode selecionar uma equivalente acima
                       ou cadastrá-la no Conta Azul e atualizar a lista.
@@ -523,7 +539,7 @@ export function DirectFinancialSend({
               </Group>
             </>
           )}
-          {options.error && <Alert color="red">{options.error}</Alert>}
+          {optionsError && <Alert color="red">{optionsError}</Alert>}
         </Stack>
       </Modal>
     </>

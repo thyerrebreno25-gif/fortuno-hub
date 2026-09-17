@@ -9,7 +9,7 @@ import {
   getPurchaseInvoiceMember,
 } from "@/modules/purchase-invoices/server/auth";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
-import { exportLineFinancialAccount, invalidAccountAllocationLines } from "@/modules/conta-azul/financial-account-allocation";
+import { allocationClientId, exportLineDestinationClient, exportLineFinancialAccount, invalidAccountAllocationLines } from "@/modules/conta-azul/financial-account-allocation";
 import {
   automaticFinancialContactName,
   apiItems,
@@ -40,6 +40,8 @@ const lineSchema = z.object({
   costCenterName: z.string().trim().max(250).nullable().optional(),
   financialAccountId: z.string().uuid().nullable().optional(),
   financialAccountName: z.string().trim().max(250).nullable().optional(),
+  destinationClientId: z.string().trim().min(1).max(250).nullable().optional(),
+  destinationClientName: z.string().trim().max(250).nullable().optional(),
   observation: z.string().trim().max(2000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -64,9 +66,15 @@ const payloadSchema = z.object({
     if ((body.useLineAccounts && !line.financialAccountId) || (!body.useLineAccounts && line.financialAccountId)) {
       context.addIssue({ code: "custom", message: "Revise a conta e a opção de rateio do lançamento.", path: ["lines", index, "financialAccountId"] });
     }
+    if (!body.useLineAccounts && line.destinationClientId) {
+      context.addIssue({ code: "custom", message: "Ative o rateio para selecionar um cadastro de destino.", path: ["lines", index, "destinationClientId"] });
+    }
   });
   if (body.useLineAccounts && body.financialAccountId !== body.lines[0]?.financialAccountId) {
     context.addIssue({ code: "custom", message: "Conta do lote incompatível com o rateio.", path: ["financialAccountId"] });
+  }
+  if (new Set(body.lines.map((line) => line.lineKey)).size !== body.lines.length) {
+    context.addIssue({ code: "custom", message: "Há lançamentos repetidos no lote.", path: ["lines"] });
   }
 });
 
@@ -150,6 +158,8 @@ async function findOrCreateExport(input: {
               ...(input.body.useLineAccounts ? {
                 financialAccountId: line.financialAccountId,
                 financialAccountName: line.financialAccountName || null,
+                destinationClientId: allocationClientId(line, input.body.clientId),
+                destinationClientName: line.destinationClientName || null,
               } : {}),
             }),
           })),
@@ -299,13 +309,34 @@ function metadataRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+type ExportClientContext = {
+  categories: ReturnType<typeof contaAzulOptions>;
+  costCenters: ReturnType<typeof contaAzulOptions>;
+  contactIds: Record<"PAYABLE" | "RECEIVABLE", string>;
+};
+
+function exportResumeError(batch: Awaited<ReturnType<typeof findOrCreateExport>>, body: ParsedPayload): string | null {
+  if (batch.financialAccountId !== body.financialAccountId || batch.settleRequested !== body.settle
+    || Boolean(metadataRecord(batch.metadata).useLineAccounts) !== body.useLineAccounts) {
+    return "Este arquivo já começou a ser enviado com outra conta ou situação de baixa. Retome com as mesmas opções.";
+  }
+  const requested = new Map(body.lines.map((line) => [stableHash(line.lineKey), line]));
+  if (batch.lines.length !== requested.size || batch.lines.some((line) => !requested.has(line.lineKey))) {
+    return "Este arquivo já começou a ser enviado com outro conjunto de lançamentos. Retome o envio original para evitar duplicidades.";
+  }
+  if (batch.lines.some((line) => {
+    const target = requested.get(line.lineKey)!;
+    return exportLineFinancialAccount(line.metadata, batch.financialAccountId) !== (target.financialAccountId || body.financialAccountId)
+      || exportLineDestinationClient(line.metadata, body.clientId) !== allocationClientId(target, body.clientId);
+  })) return "Este arquivo já começou a ser enviado com outro rateio de cadastros ou contas. Retome com os mesmos destinos para evitar duplicidades.";
+  return null;
+}
+
 async function createPendingLines(input: {
   clientId: string;
   exportId: string;
-  contactIds: Record<"PAYABLE" | "RECEIVABLE", string>;
   financialAccountId: string;
-  categories: ReturnType<typeof contaAzulOptions>;
-  costCenters: ReturnType<typeof contaAzulOptions>;
+  destinations: Map<string, ExportClientContext>;
 }) {
   const pending = await prisma.contaAzulFinancialExportLine.findMany({
     where: {
@@ -320,13 +351,16 @@ async function createPendingLines(input: {
   });
 
   for (const line of pending) {
+    const destinationClientId = exportLineDestinationClient(line.metadata, input.clientId);
+    const destination = input.destinations.get(destinationClientId);
+    if (!destination) throw new Error("Cadastro de destino não validado para este envio.");
     const category = findContaAzulOption(
-      input.categories,
+      destination.categories,
       line.categoryName,
       line.direction === "RECEIVABLE" ? "RECEITA" : "DESPESA",
     );
     const costCenter = line.costCenterName
-      ? findContaAzulOption(input.costCenters, line.costCenterName)
+      ? findContaAzulOption(destination.costCenters, line.costCenterName)
       : null;
     if (!category || (line.costCenterName && !costCenter)) continue;
 
@@ -341,7 +375,7 @@ async function createPendingLines(input: {
       description: line.description,
       observation,
       amount: Number(line.amount),
-      contactId: input.contactIds[line.direction],
+      contactId: destination.contactIds[line.direction],
       financialAccountId: exportLineFinancialAccount(line.metadata, input.financialAccountId),
       categoryId: category.value,
       costCenterId: costCenter?.value,
@@ -351,7 +385,7 @@ async function createPendingLines(input: {
       : "/v1/financeiro/eventos-financeiros/contas-a-pagar";
 
     try {
-      const response = await contaAzulRequest<unknown>(input.clientId, endpoint, {
+      const response = await contaAzulRequest<unknown>(destinationClientId, endpoint, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -399,11 +433,12 @@ async function settleCreatedLines(input: {
   });
 
   for (const line of created) {
+    const destinationClientId = exportLineDestinationClient(line.metadata, input.clientId);
     try {
       let eventId = line.externalEventId;
       if (!eventId && line.externalProtocolId) {
         const protocol = await contaAzulRequest<unknown>(
-          input.clientId,
+          destinationClientId,
           `/v1/protocolo/${line.externalProtocolId}`,
         );
         await sleep(120);
@@ -431,7 +466,7 @@ async function settleCreatedLines(input: {
       if (!installmentId && eventId) {
         for (let attempt = 0; attempt < 3 && !installmentId; attempt += 1) {
           const installments = await contaAzulRequest<unknown>(
-            input.clientId,
+            destinationClientId,
             `/v1/financeiro/eventos-financeiros/${eventId}/parcelas`,
           );
           installmentId = installmentIdFrom(installments);
@@ -440,7 +475,7 @@ async function settleCreatedLines(input: {
       }
       if (!installmentId) {
         const found = await findFinancialInstallment({
-          clientId: input.clientId,
+          clientId: destinationClientId,
           direction: line.direction,
           competenceDate: line.competenceDate,
           dueDate: line.dueDate,
@@ -476,7 +511,7 @@ async function settleCreatedLines(input: {
 
       const amount = Number(line.amount);
       const existingSettlements = await contaAzulRequest<unknown>(
-        input.clientId,
+        destinationClientId,
         `/v1/financeiro/eventos-financeiros/parcelas/${installmentId}/baixa`,
       );
       await sleep(120);
@@ -484,7 +519,7 @@ async function settleCreatedLines(input: {
       const settlement = existingSettlementId
         ? { id: existingSettlementId }
         : await contaAzulRequest<Record<string, unknown>>(
-          input.clientId,
+          destinationClientId,
           `/v1/financeiro/eventos-financeiros/parcelas/${installmentId}/baixa`,
         {
           method: "POST",
@@ -555,44 +590,78 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conecte este cliente à Conta Azul antes de enviar." }, { status: 400 });
   }
 
-  if (requestedBody.useLineAccounts) {
-    try {
-      const accountsBody = await contaAzulRequest<unknown>(requestedBody.clientId,
-        "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true");
-      const accounts = contaAzulOptions(apiItems(accountsBody).filter((account) => account.ativo !== false));
-      const invalid = invalidAccountAllocationLines(requestedBody.lines, accounts);
-      if (invalid.length) return NextResponse.json({ error: "Existem lançamentos sem uma conta ativa válida no Conta Azul deste cliente. Revise o rateio antes de enviar." }, { status: 400 });
-      requestedBody.lines = requestedBody.lines.map((line) => ({ ...line,
-        financialAccountName: accounts.find((account) => account.value === line.financialAccountId)!.label,
-      }));
+  const destinationIds = [...new Set(requestedBody.lines.map((line) => allocationClientId(line, requestedBody.clientId)))];
+  const destinationClients = new Map([[client.id, client]]);
+  // Valide todos os destinos antes de qualquer chamada externa ou criação de contato.
+  for (const destinationId of destinationIds) {
+    if (destinationId === client.id) continue;
+    const destination = await findAuthorizedClient(member, destinationId);
+    if (!destination) return NextResponse.json({ error: "Cadastro de destino não encontrado ou não autorizado." }, { status: 404 });
+    const destinationConnection = await prisma.contaAzulConnection.findFirst({
+      where: { clientId: destinationId, organizationId: member.organizationId, active: true, status: "CONNECTED" }, select: { id: true },
+    });
+    if (!destinationConnection) return NextResponse.json({ error: `Conecte o cadastro de destino ${destination.name} ao Conta Azul antes de enviar.` }, { status: 400 });
+    destinationClients.set(destinationId, destination);
+  }
+  const existing = await prisma.contaAzulFinancialExport.findUnique({
+    where: { clientId_module_sourceKey: { clientId: requestedBody.clientId, module: requestedBody.module, sourceKey: stableHash(`${requestedBody.module}|${requestedBody.sourceKey}`) } }, include: { lines: true },
+  });
+  const resumeError = existing && exportResumeError(existing, requestedBody);
+  if (resumeError) return NextResponse.json({ error: resumeError }, { status: 409 });
+
+  const destinations = new Map<string, ExportClientContext>();
+  try {
+    if (requestedBody.useLineAccounts) {
+      for (const destinationId of destinationIds) {
+        const destination = destinationClients.get(destinationId)!;
+        const destinationLines = requestedBody.lines.filter((line) => allocationClientId(line, requestedBody.clientId) === destinationId);
+        const accountsBody = await contaAzulRequest<unknown>(destinationId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true");
+        const accounts = contaAzulOptions(apiItems(accountsBody).filter((account) => account.ativo !== false));
+        if (invalidAccountAllocationLines(destinationLines, accounts).length) return NextResponse.json({ error: `Existem lançamentos sem conta ativa válida no cadastro ${destination.name}. Revise o rateio antes de enviar.` }, { status: 400 });
+        destinationLines.forEach((line) => {
+          line.destinationClientId = destinationId;
+          line.destinationClientName = destination.name;
+          line.financialAccountName = accounts.find((account) => account.value === line.financialAccountId)!.label;
+        });
+      }
       requestedBody.financialAccountName = requestedBody.lines[0].financialAccountName || null;
-    } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível validar as contas do rateio." }, { status: 502 });
     }
+    const unresolvedCategories: string[] = [], unresolvedCostCenters: string[] = [];
+    for (const destinationId of destinationIds) {
+      const categories = contaAzulOptions(await contaAzulRequest<unknown>(destinationId, "/v1/categorias?pagina=1&tamanho_pagina=1000"));
+      const costCenters = contaAzulOptions(await contaAzulRequest<unknown>(destinationId, "/v1/centro-de-custo?pagina=1&tamanho_pagina=1000"));
+      destinations.set(destinationId, { categories, costCenters, contactIds: { PAYABLE: "", RECEIVABLE: "" } });
+      const prefix = requestedBody.useLineAccounts ? `${destinationClients.get(destinationId)!.name}: ` : "";
+      for (const line of requestedBody.lines.filter((item) => allocationClientId(item, requestedBody.clientId) === destinationId)) {
+        if (!findContaAzulOption(categories, line.categoryName, line.direction === "RECEIVABLE" ? "RECEITA" : "DESPESA")) unresolvedCategories.push(prefix + line.categoryName);
+        if (line.costCenterName && !findContaAzulOption(costCenters, line.costCenterName)) unresolvedCostCenters.push(prefix + line.costCenterName);
+      }
+    }
+    if (unresolvedCategories.length || unresolvedCostCenters.length) return NextResponse.json({
+      error: "Existem classificações que não foram localizadas no Conta Azul do cadastro de destino.",
+      unresolvedCategories: [...new Set(unresolvedCategories)], unresolvedCostCenters: [...new Set(unresolvedCostCenters)],
+    }, { status: 400 });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível validar os cadastros do rateio." }, { status: 502 });
   }
 
   let body: ResolvedPayload;
-  const contactIds: Record<"PAYABLE" | "RECEIVABLE", string> = {
-    PAYABLE: "",
-    RECEIVABLE: "",
-  };
   try {
-    const directions = Array.from(new Set(
-      requestedBody.lines.map((line) => line.direction),
-    ));
-    const primaryDirection = directions[0];
     let primaryContact: { value: string; label: string } | null = null;
-    for (const direction of directions) {
-      const technicalContact = await resolveTechnicalContact(
-        requestedBody.clientId,
-        requestedBody.module,
-        direction,
-        requestedBody.counterpartyHint || requestedBody.financialAccountName,
-        direction === primaryDirection ? requestedBody.contactId : null,
-        direction === primaryDirection ? requestedBody.contactName : null,
-      );
-      contactIds[direction] = technicalContact.value;
-      if (direction === primaryDirection) primaryContact = technicalContact;
+    for (const destinationId of destinationIds) {
+      const directions = [...new Set(requestedBody.lines.filter((line) => allocationClientId(line, requestedBody.clientId) === destinationId).map((line) => line.direction))];
+      for (const direction of directions) {
+        const technicalContact = await resolveTechnicalContact(
+          destinationId,
+          requestedBody.module,
+          direction,
+          requestedBody.counterpartyHint || requestedBody.financialAccountName,
+          !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactId : null,
+          !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactName : null,
+        );
+        destinations.get(destinationId)!.contactIds[direction] = technicalContact.value;
+        if (!primaryContact) primaryContact = technicalContact;
+      }
     }
     if (!primaryContact) throw new Error("Nenhum vínculo técnico foi preparado.");
     body = {
@@ -614,15 +683,8 @@ export async function POST(request: Request) {
     userId: member.userId,
     connectionId: connection.id,
   });
-  if (
-    exportBatch.financialAccountId !== body.financialAccountId
-    || exportBatch.settleRequested !== body.settle
-    || Boolean(metadataRecord(exportBatch.metadata).useLineAccounts) !== body.useLineAccounts
-  ) {
-    return NextResponse.json({
-      error: "Este arquivo já começou a ser enviado com outro contato, conta ou situação de baixa.",
-    }, { status: 409 });
-  }
+  const racedResumeError = exportResumeError(exportBatch, body);
+  if (racedResumeError) return NextResponse.json({ error: racedResumeError }, { status: 409 });
   if (exportBatch.contactId !== body.contactId) {
     await prisma.contaAzulFinancialExport.update({
       where: { id: exportBatch.id },
@@ -632,60 +694,11 @@ export async function POST(request: Request) {
       },
     });
   }
-  const persistedLineKeys = new Set(exportBatch.lines.map((line) => line.lineKey));
-  const requestedLineKeys = new Set(body.lines.map((line) => stableHash(line.lineKey)));
-  if (
-    persistedLineKeys.size !== requestedLineKeys.size
-    || Array.from(requestedLineKeys).some((lineKey) => !persistedLineKeys.has(lineKey))
-  ) {
-    return NextResponse.json({
-      error: "Este arquivo já começou a ser enviado com outro conjunto de lançamentos. Inicie uma nova importação para evitar duplicidades.",
-    }, { status: 409 });
-  }
-
-  const requestedAccounts = new Map(body.lines.map((line) => [stableHash(line.lineKey), line.financialAccountId || body.financialAccountId]));
-  if (exportBatch.lines.some((line) => exportLineFinancialAccount(line.metadata, exportBatch.financialAccountId) !== requestedAccounts.get(line.lineKey))) {
-    return NextResponse.json({ error: "Este arquivo já começou a ser enviado com outro rateio de contas. Retome com as mesmas contas para evitar duplicidades." }, { status: 409 });
-  }
-
-  const categoriesBody = await contaAzulRequest<unknown>(
-    body.clientId,
-    "/v1/categorias?pagina=1&tamanho_pagina=1000",
-  );
-  const costCentersBody = await contaAzulRequest<unknown>(
-    body.clientId,
-    "/v1/centro-de-custo?pagina=1&tamanho_pagina=1000",
-  );
-  const categories = contaAzulOptions(categoriesBody);
-  const costCenters = contaAzulOptions(costCentersBody);
-  const unresolvedCategories = Array.from(new Set(
-    body.lines.filter((line) => !findContaAzulOption(
-      categories,
-      line.categoryName,
-      line.direction === "RECEIVABLE" ? "RECEITA" : "DESPESA",
-    ))
-      .map((line) => line.categoryName),
-  ));
-  const unresolvedCostCenters = Array.from(new Set(
-    body.lines.filter(
-      (line) => line.costCenterName && !findContaAzulOption(costCenters, line.costCenterName),
-    ).map((line) => line.costCenterName as string),
-  ));
-  if (unresolvedCategories.length || unresolvedCostCenters.length) {
-    return NextResponse.json({
-      error: "Existem classificações que não foram localizadas no Conta Azul.",
-      unresolvedCategories,
-      unresolvedCostCenters,
-    }, { status: 400 });
-  }
-
   await createPendingLines({
     clientId: body.clientId,
     exportId: exportBatch.id,
-    contactIds,
     financialAccountId: body.financialAccountId,
-    categories,
-    costCenters,
+    destinations,
   });
   if (body.settle) {
     await settleCreatedLines({

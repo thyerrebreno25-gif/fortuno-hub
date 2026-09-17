@@ -8,6 +8,7 @@ import { exportInvoiceToContaAzul } from "@/modules/card-invoices/conta-azul-exp
 import { trackImport } from "@/modules/imports/import-tracker";
 import { InvoiceHistoryLearning } from "@/modules/card-invoices/category-learning-history-ui";
 import { applyHistoryLearning } from "@/modules/card-invoices/apply-history-learning";
+import { allocationClientId, changeAllocationDestination, fillPendingAllocationAccounts } from "@/modules/conta-azul/financial-account-allocation";
 import {
   DirectFinancialSend,
   type DirectFinancialLine,
@@ -83,12 +84,14 @@ type InvoiceItem = {
   costCenter: string | null;
   financialAccountId?: string | null;
   financialAccountName?: string | null;
+  destinationClientId?: string | null;
+  destinationClientName?: string | null;
   status: InvoiceStatus;
   learnedFromClient: boolean;
   costCenterLearnedFromClient: boolean;
 };
 
-type ClientOption = { value: string; label: string };
+type ClientOption = { value: string; label: string; document?: string | null };
 type CategoryOption = { id: string; name: string; code?: string | null; children?: CategoryOption[] };
 type CostCenterOption = { id: string; name: string; code?: string | null };
 type InvoiceRuleOption = {
@@ -168,7 +171,8 @@ export default function FaturasPage() {
   const [useCostCenters, setUseCostCenters] = useState(false);
   const [useLineAccounts, setUseLineAccounts] = useState(false);
   const [defaultAccountId, setDefaultAccountId] = useState<string | null>(null);
-  const [accountCatalog, setAccountCatalog] = useState<{ clientId: string; items: ContaAzulOption[]; loading: boolean; error?: string } | null>(null);
+  const [defaultDestinationId, setDefaultDestinationId] = useState<string | null>(null);
+  const [accountCatalogs, setAccountCatalogs] = useState<Record<string, { items: ContaAzulOption[]; loading: boolean; error?: string }>>({});
   const [accountRefresh, setAccountRefresh] = useState(0);
   const [contaAzulSending, setContaAzulSending] = useState(false);
 
@@ -199,9 +203,12 @@ export default function FaturasPage() {
   const [learningBusy, setLearningBusy] = useState(false);
 
   const selectedClient = clients.find((client) => client.value === clientId);
-  const financialAccounts = accountCatalog?.clientId === clientId && categorySource === "CONTA_AZUL" ? accountCatalog.items : [];
-  const accountsLoading = useLineAccounts && (categoryLoading || categorySource === "LOADING" || categorySource === "CONTA_AZUL" && (!accountCatalog || accountCatalog.clientId !== clientId || accountCatalog.loading));
-  const missingFinancialAccounts = useLineAccounts ? items.filter((item) => !item.financialAccountId || !financialAccounts.some((account) => account.value === item.financialAccountId)).length : 0;
+  const bulkDestinationId = defaultDestinationId || clientId || "";
+  const destinationOptions = clients.map((client) => ({ value: client.value, label: client.document ? `${client.label} — ${client.document}` : client.label }));
+  const accountClientIdsKey = JSON.stringify([...new Set([clientId, bulkDestinationId, ...items.map((item) => allocationClientId(item, clientId || ""))].filter(Boolean))].sort());
+  const financialAccounts = categorySource === "CONTA_AZUL" ? accountCatalogs[bulkDestinationId]?.items || [] : [];
+  const accountsLoading = useLineAccounts && (categoryLoading || categorySource === "LOADING" || categorySource === "CONTA_AZUL" && (JSON.parse(accountClientIdsKey) as string[]).some((id) => !accountCatalogs[id] || accountCatalogs[id].loading));
+  const missingFinancialAccounts = useLineAccounts ? items.filter((item) => !clients.some((client) => client.value === allocationClientId(item, clientId || "")) || !item.financialAccountId || !accountCatalogs[allocationClientId(item, clientId || "")]?.items.some((account) => account.value === item.financialAccountId)).length : 0;
   const isImageImport =
     files.length > 0 &&
     files.every(
@@ -259,12 +266,19 @@ export default function FaturasPage() {
     async function loadClients() {
       setClientsLoading(true);
       try {
-        const response = await fetch("/api/clients?page=1&pageSize=100&status=active", { cache: "no-store" });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result?.error || "Não foi possível carregar os clientes.");
-        const options = Array.isArray(result?.data)
-          ? result.data.map((client: { id: string; name: string }) => ({ value: client.id, label: client.name }))
-          : [];
+        const options: ClientOption[] = [];
+        let page = 1, hasNextPage = true;
+        while (hasNextPage && !cancelled) {
+          const response = await fetch(`/api/clients?page=${page}&pageSize=100&status=active`, { cache: "no-store" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result?.error || "Não foi possível carregar os clientes.");
+          const pageOptions = Array.isArray(result?.data)
+            ? result.data.map((client: { id: string; name: string; document?: string | null }) => ({ value: client.id, label: client.name, document: client.document }))
+            : [];
+          options.push(...pageOptions);
+          hasNextPage = Boolean(result.pagination?.hasNextPage);
+          page += 1;
+        }
         if (!cancelled) setClients(options);
       } catch (error) {
         if (!cancelled) notifications.show({ color: "red", title: "Clientes", message: error instanceof Error ? error.message : "Falha ao carregar clientes." });
@@ -399,22 +413,29 @@ export default function FaturasPage() {
 
   useEffect(() => {
     if (!useLineAccounts || !clientId || categorySource !== "CONTA_AZUL" || categoryLoading) return;
-    const selectedClientId = clientId;
+    const accountClientIds = JSON.parse(accountClientIdsKey) as string[];
     const controller = new AbortController();
     async function loadAccounts() {
-      setAccountCatalog({ clientId: selectedClientId, items: [], loading: true });
-      try {
-        const response = await fetch(`/api/integrations/conta-azul/options?${new URLSearchParams({ clientId: selectedClientId, scope: "financial-accounts" })}`, { cache: "no-store", signal: controller.signal });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Não foi possível carregar as contas do cliente.");
-        if (!controller.signal.aborted) setAccountCatalog({ clientId: selectedClientId, items: result.financialAccounts || [], loading: false });
-      } catch (error) {
-        if (!controller.signal.aborted) setAccountCatalog({ clientId: selectedClientId, items: [], loading: false, error: error instanceof Error ? error.message : "Falha ao carregar contas." });
+      setAccountCatalogs(Object.fromEntries(accountClientIds.map((id) => [id, { items: [], loading: true }])));
+      for (const destinationId of accountClientIds) {
+        if (controller.signal.aborted) break;
+        try {
+          const statusResponse = await fetch(`/api/integrations/conta-azul/status?clientId=${encodeURIComponent(destinationId)}`, { cache: "no-store", signal: controller.signal });
+          const status = await statusResponse.json();
+          if (!statusResponse.ok) throw new Error(status.error || "Não foi possível validar o cadastro de destino.");
+          if (!status.connection?.active || status.connection?.status !== "CONNECTED") throw new Error("Vincule este cadastro de destino ao Conta Azul antes de enviar.");
+          const response = await fetch(`/api/integrations/conta-azul/options?${new URLSearchParams({ clientId: destinationId, scope: "financial-accounts" })}`, { cache: "no-store", signal: controller.signal });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Não foi possível carregar as contas do destino.");
+          if (!controller.signal.aborted) setAccountCatalogs((current) => ({ ...current, [destinationId]: { items: result.financialAccounts || [], loading: false } }));
+        } catch (error) {
+          if (!controller.signal.aborted) setAccountCatalogs((current) => ({ ...current, [destinationId]: { items: [], loading: false, error: error instanceof Error ? error.message : "Falha ao carregar contas." } }));
+        }
       }
     }
     void loadAccounts();
     return () => controller.abort();
-  }, [clientId, useLineAccounts, categorySource, categoryLoading, accountRefresh]);
+  }, [clientId, useLineAccounts, categorySource, categoryLoading, accountRefresh, accountClientIdsKey]);
 
   const diagnostics = useMemo(() => {
     const identifiedTotal = items.reduce((total, item) => total + item.amount, 0);
@@ -459,6 +480,7 @@ export default function FaturasPage() {
         item.category?.toLowerCase().includes(normalized) ||
         item.costCenter?.toLowerCase().includes(normalized) ||
         (useLineAccounts && item.financialAccountName?.toLowerCase().includes(normalized)) ||
+        (useLineAccounts && item.destinationClientName?.toLowerCase().includes(normalized)) ||
         item.date.includes(normalized),
     );
   }, [items, search, useLineAccounts]);
@@ -497,6 +519,8 @@ export default function FaturasPage() {
             costCenter: useCostCenters ? learnedRule?.costCenter ?? null : null,
             financialAccountId: null,
             financialAccountName: null,
+            destinationClientId: clientId,
+            destinationClientName: selectedClient?.label || null,
             status: learnedRule ? "LEARNED" : "NEW",
             learnedFromClient: Boolean(learnedRule),
             costCenterLearnedFromClient: Boolean(
@@ -536,7 +560,8 @@ export default function FaturasPage() {
     setUseCostCenters(false);
     setUseLineAccounts(false);
     setDefaultAccountId(null);
-    setAccountCatalog(null);
+    setDefaultDestinationId(null);
+    setAccountCatalogs({});
     setItems(exampleItems);
     setCategoryOptions([]);
     setContaAzulCategoryOptions([]);
@@ -806,6 +831,7 @@ export default function FaturasPage() {
           costCenter: useCostCenters ? item.costCenter : null,
           metadata: { installment: item.installment || null, ...(useLineAccounts ? {
             financialAccountId: item.financialAccountId || null, financialAccountName: item.financialAccountName || null,
+            destinationClientId: allocationClientId(item, clientId), destinationClientName: item.destinationClientName || null,
           } : {}) },
         })),
     });
@@ -848,7 +874,8 @@ export default function FaturasPage() {
     amount: Math.abs(item.amount),
     categoryName: item.category || "",
     costCenterName: useCostCenters ? item.costCenter : null,
-    ...(useLineAccounts ? { financialAccountId: item.financialAccountId || null, financialAccountName: item.financialAccountName || null } : {}),
+    ...(useLineAccounts ? { financialAccountId: item.financialAccountId || null, financialAccountName: item.financialAccountName || null,
+      destinationClientId: allocationClientId(item, clientId || ""), destinationClientName: item.destinationClientName || selectedClient?.label || null } : {}),
     observation: [
       bank ? `Banco: ${bank}` : "",
       item.installment ? `Parcela: ${item.installment}` : "",
@@ -856,7 +883,7 @@ export default function FaturasPage() {
       "Classificação revisada no Fortuno Hub",
     ].filter(Boolean).join(" | "),
     metadata: { installment: item.installment || null },
-  })), [bank, competenceDate, dueDate, items, paymentDate, useCostCenters, useLineAccounts]);
+  })), [bank, competenceDate, dueDate, items, paymentDate, useCostCenters, useLineAccounts, clientId, selectedClient?.label]);
 
   const directSourceKey = [
     bank || "cartao",
@@ -1008,7 +1035,7 @@ export default function FaturasPage() {
                 description="Quando marcado, cada lançamento deverá ter categoria e centro de custo antes da exportação."
               />
               <Checkbox checked={useLineAccounts} onChange={(event) => setUseLineAccounts(event.currentTarget.checked)}
-                label="Usar rateio por conta financeira" description="No envio direto ao Conta Azul, escolha uma conta de destino para cada lançamento. O valor de cada compra será mantido." disabled={processing} />
+                label="Usar rateio por cadastro e conta" description="No envio direto ao Conta Azul, escolha o cliente/CNPJ e a conta de cada lançamento. O valor de cada compra será mantido." disabled={processing} />
               </Stack>
             </Paper>
 
@@ -1516,18 +1543,20 @@ export default function FaturasPage() {
           <Paper withBorder radius="lg">
             <Stack p="lg" gap="sm">
               <Checkbox checked={useLineAccounts} onChange={(event) => setUseLineAccounts(event.currentTarget.checked)}
-                label="Usar rateio por conta financeira" description="Direcione cada compra ou crédito para uma conta do cliente no Conta Azul."
+                label="Usar rateio por cadastro e conta" description="Direcione cada compra ou crédito para o cliente/CNPJ e a conta correspondentes no Conta Azul."
                 disabled={learningBusy || contaAzulSending} />
               {useLineAccounts && <>
-                <Text size="sm" c="dimmed">O rateio será aplicado no envio direto, na criação e nas baixas. A planilha única não define as contas; para exportá-la, desative esta opção.</Text>
+                <Text size="sm" c="dimmed">Cada unidade precisa ter seu próprio cadastro no Fortuno e vínculo com a empresa correta no Conta Azul. O envio e a baixa respeitam o destino de cada linha. Categorias e centros de custo serão validados no destino antes do envio. Para exportar a planilha única, desative o rateio.</Text>
                 {categorySource !== "CONTA_AZUL" && !categoryLoading && <Alert color="orange">Conecte o cliente ao Conta Azul e carregue seus cadastros para selecionar as contas do rateio.</Alert>}
-                {accountCatalog?.clientId === clientId && accountCatalog.error && <Alert color="red">{accountCatalog.error}</Alert>}
+                {Object.entries(accountCatalogs).filter(([, catalog]) => catalog.error).map(([id, catalog]) => <Alert key={id} color="red">{clients.find((client) => client.value === id)?.label}: {catalog.error} <Text component="a" href="/integracoes/conta-azul">Gerenciar vínculos</Text></Alert>)}
                 <Group align="flex-end">
-                  <Select label="Conta para preencher os itens sem destino" placeholder={accountsLoading ? "Carregando contas…" : "Selecione uma conta"}
+                  <Select label="Cadastro para preenchimento em lote" data={destinationOptions} value={bulkDestinationId} searchable
+                    onChange={(value) => { setDefaultDestinationId(value); setDefaultAccountId(null); }} disabled={learningBusy || contaAzulSending} w={{ base: "100%", sm: 330 }} />
+                  <Select label="Conta para os itens pendentes deste cadastro" placeholder={accountsLoading ? "Carregando contas…" : "Selecione uma conta"}
                     data={financialAccounts} value={financialAccounts.some((account) => account.value === defaultAccountId) ? defaultAccountId : null} onChange={setDefaultAccountId}
                     searchable clearable disabled={accountsLoading || learningBusy || contaAzulSending || !financialAccounts.length} w={{ base: "100%", sm: 330 }} />
                   <Button variant="light" disabled={!financialAccounts.some((account) => account.value === defaultAccountId) || accountsLoading || learningBusy || contaAzulSending}
-                    onClick={() => { const account = financialAccounts.find((option) => option.value === defaultAccountId); if (account) setItems((current) => current.map((item) => item.financialAccountId ? item : { ...item, financialAccountId: account.value, financialAccountName: account.label })); }}>Preencher pendentes</Button>
+                    onClick={() => { const account = financialAccounts.find((option) => option.value === defaultAccountId); if (account) setItems((current) => fillPendingAllocationAccounts(current, clientId || "", bulkDestinationId, account)); }}>Preencher pendentes deste cadastro</Button>
                   <Button variant="subtle" leftSection={<IconRefresh size={15} />} disabled={categorySource !== "CONTA_AZUL" || accountsLoading || learningBusy || contaAzulSending} onClick={() => setAccountRefresh((current) => current + 1)}>Atualizar contas</Button>
                 </Group>
                 <Text size="sm" c={missingFinancialAccounts ? "orange" : "green"}>{missingFinancialAccounts} lançamento(s) sem conta ativa válida.</Text>
@@ -1557,7 +1586,7 @@ export default function FaturasPage() {
 
             <ScrollArea>
               <Table
-                miw={1050 + (useCostCenters ? 200 : 0) + (useLineAccounts ? 280 : 0)}
+                miw={1050 + (useCostCenters ? 200 : 0) + (useLineAccounts ? 600 : 0)}
                 verticalSpacing="sm"
                 horizontalSpacing="md"
                 highlightOnHover
@@ -1569,7 +1598,7 @@ export default function FaturasPage() {
                     <Table.Th>Descrição</Table.Th>
                     <Table.Th>Parcela</Table.Th>
                     <Table.Th>Categoria</Table.Th>
-                    {useLineAccounts && <Table.Th>Conta de destino</Table.Th>}
+                    {useLineAccounts && <><Table.Th>Cadastro de destino</Table.Th><Table.Th>Conta de destino</Table.Th></>}
                     {useCostCenters && <Table.Th>Centro de custo</Table.Th>}
                     <Table.Th ta="right">Valor</Table.Th>
                     <Table.Th />
@@ -1621,13 +1650,17 @@ export default function FaturasPage() {
                         )}
                       </Table.Td>
 
-                      {useLineAccounts && <Table.Td>
+                      {useLineAccounts && <><Table.Td>
+                        <Select aria-label={`Cadastro de destino de ${item.description}, lançamento ${item.id}`} data={destinationOptions}
+                          value={allocationClientId(item, clientId || "")} searchable miw={300} disabled={learningBusy || contaAzulSending}
+                          onChange={(value) => { const destination = clients.find((client) => client.value === value); if (destination) setItems((current) => current.map((row) => row.id === item.id ? changeAllocationDestination(row, destination) : row)); }} />
+                      </Table.Td><Table.Td>
                         <Select aria-label={`Conta de destino de ${item.description}, lançamento ${item.id}`} placeholder={accountsLoading ? "Carregando…" : "Selecionar conta"}
-                          data={financialAccounts} value={financialAccounts.some((account) => account.value === item.financialAccountId) ? item.financialAccountId : null}
-                          searchable clearable miw={240} disabled={accountsLoading || learningBusy || contaAzulSending || !financialAccounts.length}
-                          error={item.financialAccountId && !accountsLoading && !financialAccounts.some((account) => account.value === item.financialAccountId) ? "Conta indisponível; selecione outra" : undefined}
-                          onChange={(value) => { const account = financialAccounts.find((option) => option.value === value); setItems((current) => current.map((row) => row.id === item.id ? { ...row, financialAccountId: account?.value || null, financialAccountName: account?.label || null } : row)); }} />
-                      </Table.Td>}
+                          data={accountCatalogs[allocationClientId(item, clientId || "")]?.items || []} value={accountCatalogs[allocationClientId(item, clientId || "")]?.items.some((account) => account.value === item.financialAccountId) ? item.financialAccountId : null}
+                          searchable clearable miw={240} disabled={accountsLoading || learningBusy || contaAzulSending || !accountCatalogs[allocationClientId(item, clientId || "")]?.items.length}
+                          error={item.financialAccountId && !accountsLoading && !accountCatalogs[allocationClientId(item, clientId || "")]?.items.some((account) => account.value === item.financialAccountId) ? "Conta indisponível neste cadastro; selecione outra" : undefined}
+                          onChange={(value) => { const account = accountCatalogs[allocationClientId(item, clientId || "")]?.items.find((option) => option.value === value); setItems((current) => current.map((row) => row.id === item.id ? { ...row, financialAccountId: account?.value || null, financialAccountName: account?.label || null } : row)); }} />
+                      </Table.Td></>}
 
                       {useCostCenters && (
                         <Table.Td>
@@ -2020,6 +2053,7 @@ export default function FaturasPage() {
                   lines={directFinancialLines}
                   disabled={!canExport || learningBusy || useLineAccounts && (accountsLoading || missingFinancialAccounts > 0)}
                   useLineAccounts={useLineAccounts}
+                  destinationClients={destinationOptions}
                   onSendingChange={setContaAzulSending}
                   onSuccess={() => saveExportHistory("API_CONTA_AZUL")}
                 />
