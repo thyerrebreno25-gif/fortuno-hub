@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import { buildAcquirerComparison } from "@/modules/dashboard/acquirer-comparison";
 import { getRolePermissions } from "@/modules/permissions/permissions";
+import {
+  buildDashboardUsage,
+  resolveDashboardPeriod,
+  type DashboardUsageEvent,
+} from "@/modules/dashboard/usage-analytics";
 
 function startOfDay(date: Date): Date {
   const result = new Date(date);
@@ -20,7 +25,7 @@ function toNumber(value: unknown): number {
   return Number.isFinite(number) ? number : 0;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createSupabaseClient();
     const {
@@ -57,6 +62,7 @@ export async function GET() {
 
     const organizationId = membership.organizationId;
     const now = new Date();
+    const period = resolveDashboardPeriod(new URL(request.url).searchParams.get("period"), now);
     const today = startOfDay(now);
     const monthStart = startOfMonth(now);
     const hasOrganizationScope = ["MASTER", "ADMIN"].includes(membership.role);
@@ -83,6 +89,7 @@ export async function GET() {
       ]),
     );
     const canSeeImports = Boolean(access.IMPORTS || access.MOTOR_EXCHANGE);
+    const canSeePurchaseInvoices = Boolean(access.PURCHASE_INVOICES);
     const exportedWhere = {
       organizationId,
       status: "EXPORTED" as const,
@@ -108,6 +115,9 @@ export async function GET() {
       onboardingTimeAggregate,
       activeAudits,
       acquirerRows,
+      usageImportRows,
+      usagePurchaseInvoices,
+      usageFinancialExports,
     ] = await Promise.all([
       prisma.client.count({
         where: {
@@ -291,7 +301,170 @@ export async function GET() {
           },
         },
       }),
+      canSeeImports
+        ? prisma.importJob.findMany({
+            where: {
+              organizationId,
+              userId: { in: visibleUserIds },
+              createdAt: { gte: period.start },
+            },
+            select: {
+              id: true,
+              module: true,
+              status: true,
+              createdAt: true,
+              clientId: true,
+              client: { select: { name: true } },
+              userId: true,
+              user: { select: { name: true, email: true } },
+              parsedTotal: true,
+              expectedTotal: true,
+              _count: { select: { transactions: true } },
+            },
+          })
+        : Promise.resolve([]),
+      canSeePurchaseInvoices
+        ? prisma.purchaseInvoice.findMany({
+            where: {
+              organizationId,
+              createdById: { in: visibleUserIds },
+              OR: [
+                { createdAt: { gte: period.start } },
+                { sentAt: { gte: period.start } },
+              ],
+            },
+            select: {
+              id: true,
+              number: true,
+              status: true,
+              createdAt: true,
+              sentAt: true,
+              totalInvoice: true,
+              clientId: true,
+              client: { select: { name: true } },
+              createdById: true,
+              createdBy: { select: { name: true, email: true } },
+              _count: { select: { items: true, installments: true } },
+            },
+          })
+        : Promise.resolve([]),
+      canSeeImports
+        ? prisma.contaAzulFinancialExport.findMany({
+            where: {
+              organizationId,
+              createdById: { in: visibleUserIds },
+              OR: [
+                { createdAt: { gte: period.start } },
+                { completedAt: { gte: period.start } },
+              ],
+            },
+            select: {
+              id: true,
+              module: true,
+              status: true,
+              createdAt: true,
+              updatedAt: true,
+              completedAt: true,
+              clientId: true,
+              client: { select: { name: true } },
+              createdById: true,
+              createdBy: { select: { name: true, email: true } },
+            },
+          })
+        : Promise.resolve([]),
     ]);
+
+    const financialLineGroups = usageFinancialExports.length
+      ? await prisma.contaAzulFinancialExportLine.groupBy({
+          by: ["exportId", "status"],
+          where: {
+            exportId: { in: usageFinancialExports.map((item) => item.id) },
+            status: { in: ["CREATED", "SETTLED"] },
+          },
+          _count: { _all: true },
+          _sum: { amount: true },
+        })
+      : [];
+    const financialLinesByExport = new Map<string, { count: number; amount: number }>();
+    financialLineGroups.forEach((group) => {
+      const current = financialLinesByExport.get(group.exportId) ?? { count: 0, amount: 0 };
+      current.count += group._count._all;
+      current.amount += Math.abs(toNumber(group._sum.amount));
+      financialLinesByExport.set(group.exportId, current);
+    });
+
+    const usageEvents: DashboardUsageEvent[] = [
+      ...usageImportRows.map((item) => ({
+        id: `import:${item.id}`,
+        kind: item.module,
+        stage: "IMPORT" as const,
+        occurredAt: item.createdAt.toISOString(),
+        clientId: item.clientId,
+        clientName: item.client?.name ?? null,
+        userId: item.userId,
+        userName: item.user.name || item.user.email,
+        status: item.status,
+        successful: item.status === "EXPORTED" || item.status === "VALIDATED",
+        entries: item._count.transactions,
+        amount: Math.abs(toNumber(item.parsedTotal ?? item.expectedTotal)),
+      })),
+      ...usagePurchaseInvoices.flatMap((item) => {
+        const events: DashboardUsageEvent[] = [];
+        if (item.createdAt >= period.start) {
+          events.push({
+            id: `purchase-import:${item.id}`,
+            kind: "PURCHASE_INVOICE_IMPORT",
+            stage: "IMPORT",
+            occurredAt: item.createdAt.toISOString(),
+            clientId: item.clientId,
+            clientName: item.client.name,
+            userId: item.createdById,
+            userName: item.createdBy.name || item.createdBy.email,
+            status: "IMPORTED",
+            successful: true,
+            entries: item._count.items,
+            amount: Math.abs(toNumber(item.totalInvoice)),
+          });
+        }
+        if (item.sentAt && item.sentAt >= period.start) {
+          events.push({
+            id: `purchase-send:${item.id}`,
+            kind: "CA_PURCHASE_INVOICE",
+            stage: "CA_EXPORT",
+            occurredAt: item.sentAt.toISOString(),
+            clientId: item.clientId,
+            clientName: item.client.name,
+            userId: item.createdById,
+            userName: item.createdBy.name || item.createdBy.email,
+            status: "COMPLETED",
+            successful: true,
+            entries: item._count.installments,
+            amount: Math.abs(toNumber(item.totalInvoice)),
+          });
+        }
+        return events;
+      }),
+      ...usageFinancialExports.map((item) => {
+        const lineSummary = financialLinesByExport.get(item.id) ?? { count: 0, amount: 0 };
+        const successful = item.status === "COMPLETED"
+          || (item.status === "PARTIAL" && lineSummary.count > 0);
+        return {
+          id: `financial-export:${item.id}`,
+          kind: item.module === "ACQUIRER" ? "CA_ACQUIRER" : "CA_CREDIT_CARD_INVOICE",
+          stage: "CA_EXPORT" as const,
+          occurredAt: (item.completedAt || item.updatedAt || item.createdAt).toISOString(),
+          clientId: item.clientId,
+          clientName: item.client.name,
+          userId: item.createdById,
+          userName: item.createdBy.name || item.createdBy.email,
+          status: item.status,
+          successful,
+          entries: lineSummary.count,
+          amount: lineSummary.amount,
+        } satisfies DashboardUsageEvent;
+      }),
+    ];
+    const usage = buildDashboardUsage(usageEvents, period);
 
     const performanceUsers = await prisma.user.findMany({
       where: { id: { in: teamGroups.map((item) => item.userId) } },
@@ -305,6 +478,13 @@ export async function GET() {
 
     return NextResponse.json({
       generatedAt: now.toISOString(),
+      period: {
+        code: period.code,
+        label: period.label,
+        start: period.startKey,
+        end: period.endKey,
+        granularity: period.granularity,
+      },
       user: {
         id: membership.user.id,
         name: membership.user.name || membership.user.email.split("@")[0],
@@ -379,6 +559,7 @@ export async function GET() {
         debits: canSeeImports ? debits : 0,
         total: canSeeImports ? credits + debits : 0,
       },
+      usage,
       acquirerComparison: canSeeImports
         ? buildAcquirerComparison(
             acquirerRows.map((item) => ({

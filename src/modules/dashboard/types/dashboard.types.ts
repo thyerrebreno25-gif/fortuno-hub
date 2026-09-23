@@ -71,8 +71,62 @@ export interface DashboardFinancialVolume {
   total: number;
 }
 
+export interface DashboardUsageAggregate {
+  key: string;
+  label: string;
+  total: number;
+  imports: number;
+  caSends: number;
+  caEntries: number;
+  amount: number;
+}
+
+export interface DashboardUsageAnalytics {
+  totalActivities: number;
+  activitiesToday: number;
+  imports: number;
+  caSends: number;
+  caEntries: number;
+  importedAmount: number;
+  sentAmount: number;
+  clients: number;
+  dailyAverage: number;
+  monthlyAverage: number;
+  timeline: Array<{
+    key: string;
+    total: number;
+    imports: number;
+    caSends: number;
+    caEntries: number;
+  }>;
+  byType: DashboardUsageAggregate[];
+  byClient: DashboardUsageAggregate[];
+  byUser: DashboardUsageAggregate[];
+  recent: Array<{
+    id: string;
+    kind: DashboardUsageKind;
+    stage: "IMPORT" | "CA_EXPORT";
+    occurredAt: string;
+    clientId: string | null;
+    clientName: string | null;
+    userId: string;
+    userName: string;
+    status: string;
+    successful: boolean;
+    entries: number;
+    amount: number;
+  }>;
+}
+
 export interface DashboardData {
   generatedAt: string;
+  period: {
+    code: DashboardPeriodCode;
+    label: string;
+    start: string;
+    end: string;
+    granularity: "DAY" | "MONTH";
+  };
   user: {
     id: string;
     name: string;
@@ -88,6 +142,7 @@ export interface DashboardData {
   supportTickets: DashboardSupportTicket[];
   teamPerformance: DashboardTeamPerformance[];
   financialVolume: DashboardFinancialVolume;
+  usage: DashboardUsageAnalytics;
   acquirerComparison: Array<{
     acquirer: "CIELO" | "GETNET" | "REDE" | "PAGARME";
     label: string;
@@ -106,3 +161,7 @@ export interface DashboardData {
     }>;
   }>;
 }
+import type {
+  DashboardPeriodCode,
+  DashboardUsageKind,
+} from "@/modules/dashboard/usage-analytics";

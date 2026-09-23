@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Alert,
   Badge,
@@ -11,6 +12,7 @@ import {
   Paper,
   Progress,
   ScrollArea,
+  Select,
   SimpleGrid,
   Stack,
   Table,
@@ -18,26 +20,18 @@ import {
   Title,
 } from "@mantine/core";
 import {
-  IconArrowRight,
   IconRefresh,
   IconTrendingDown,
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useDashboard } from "@/hooks/useDashboard";
+import type { DashboardStatus } from "@/modules/dashboard/types/dashboard.types";
 import type {
-  DashboardModule,
-  DashboardStatus,
-} from "@/modules/dashboard/types/dashboard.types";
+  DashboardPeriodCode,
+  DashboardUsageKind,
+} from "@/modules/dashboard/usage-analytics";
 import styles from "./dashboard-page.module.css";
-
-const moduleLabels: Record<DashboardModule, string> = {
-  EXCHANGE: "Câmbio",
-  BANK_STATEMENT: "Extratos",
-  ACQUIRER: "Adquirentes",
-  CREDIT_CARD_INVOICE: "Faturas",
-  BRASILMED_RECONCILIATION: "Conciliação",
-};
 
 const statusLabels: Record<DashboardStatus, string> = {
   UPLOADED: "Enviado",
@@ -47,6 +41,45 @@ const statusLabels: Record<DashboardStatus, string> = {
   EXPORTED: "Exportado",
   FAILED: "Falhou",
 };
+
+const usageKindLabels: Record<DashboardUsageKind, string> = {
+  EXCHANGE: "Conversão cambial",
+  BANK_STATEMENT: "Importação de extrato",
+  ACQUIRER: "Importação de adquirente",
+  CREDIT_CARD_INVOICE: "Importação de fatura",
+  BRASILMED_RECONCILIATION: "Conciliação BrasilMed",
+  PURCHASE_INVOICE_IMPORT: "Entrada de nota de compra",
+  CA_ACQUIRER: "Adquirente → Conta Azul",
+  CA_CREDIT_CARD_INVOICE: "Fatura → Conta Azul",
+  CA_PURCHASE_INVOICE: "Nota de compra → Conta Azul",
+};
+
+const periodOptions: Array<{ value: DashboardPeriodCode; label: string }> = [
+  { value: "7D", label: "Últimos 7 dias" },
+  { value: "30D", label: "Últimos 30 dias" },
+  { value: "6M", label: "Últimos 6 meses" },
+  { value: "12M", label: "Últimos 12 meses" },
+];
+
+function usageStatus(value: string) {
+  return ({
+    IMPORTED: "Importada",
+    COMPLETED: "Concluído",
+    PARTIAL: "Parcial",
+    PROCESSING: "Processando",
+    FAILED: "Falhou",
+    EXPORTED: "Exportado",
+    VALIDATED: "Validado",
+    REVIEW: "Em revisão",
+  } as Record<string, string>)[value] || statusLabels[value as DashboardStatus] || value;
+}
+
+function usageStatusColor(value: string, successful: boolean) {
+  if (successful) return "green";
+  if (value === "FAILED") return "red";
+  if (value === "PARTIAL") return "orange";
+  return "blue";
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -81,9 +114,27 @@ function formatPoints(value: number | null) {
   });
 }
 
+function formatAverage(value: number) {
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+function formatBucket(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" })
+      .format(new Date(`${value}T12:00:00Z`));
+  }
+  return new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" })
+    .format(new Date(`${value}-01T12:00:00Z`))
+    .replace(" de ", "/");
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { data, loading, error, reload } = useDashboard();
+  const [period, setPeriod] = useState<DashboardPeriodCode>("30D");
+  const { data, loading, error, reload } = useDashboard(period);
 
   if (loading && !data) {
     return (
@@ -117,57 +168,44 @@ export default function DashboardPage() {
   if (!data) return null;
 
   const hasImports = Boolean(data.access.IMPORTS || data.access.MOTOR_EXCHANGE);
-  const maximumPerformance = Math.max(
-    ...data.teamPerformance.map((item) => item.total),
-    1,
-  );
-  const maximumModule = Math.max(
-    ...data.processingsByModule.map((item) => item.total),
-    1,
-  );
+  const hasIntegratedUsage = hasImports || Boolean(data.access.PURCHASE_INVOICES);
+  const maximumTimeline = Math.max(...data.usage.timeline.map((item) => item.total), 1);
+  const maximumUsageType = Math.max(...data.usage.byType.map((item) => item.total), 1);
+  const maximumClientUsage = Math.max(...data.usage.byClient.map((item) => item.total), 1);
+  const maximumUserUsage = Math.max(...data.usage.byUser.map((item) => item.total), 1);
 
   const metrics = [
-    ...(hasImports
+    ...(hasIntegratedUsage
       ? [
           {
-            label: "Exportações hoje",
-            value: data.summary.exportsToday,
-            detail: "Arquivos efetivamente gerados",
+            label: "Atividades hoje",
+            value: data.usage.activitiesToday,
+            detail: "Importações e integrações realizadas",
           },
           {
-            label: "Exportações no mês",
-            value: data.summary.exportsThisMonth,
-            detail: "Somente arquivos concluídos",
+            label: "Importações",
+            value: data.usage.imports,
+            detail: data.period.label,
           },
           {
-            label: "Clientes no mês",
-            value: data.summary.exportedClientsThisMonth,
-            detail: "Com ao menos uma exportação",
+            label: "Envios ao Conta Azul",
+            value: data.usage.caSends,
+            detail: "Lotes concluídos ou parcialmente criados",
           },
           {
-            label: "Lançamentos exportados",
-            value: data.summary.exportedTransactionsThisMonth,
-            detail: "Registros convertidos no mês",
+            label: "Lançamentos no CA",
+            value: data.usage.caEntries,
+            detail: "Títulos efetivamente criados",
           },
-        ]
-      : []),
-    ...(data.access.CLIENTS
-      ? [
           {
-            label: "Clientes visíveis",
-            value: data.summary.activeClients,
-            detail: data.user.isTeamLeader
-              ? "Atendidos pela sua equipe"
-              : "Base disponível para o perfil",
+            label: "Clientes movimentados",
+            value: data.usage.clients,
+            detail: "Com atividade no período",
           },
-        ]
-      : []),
-    ...(data.access.AUDIT
-      ? [
           {
-            label: "Auditorias ativas",
-            value: data.summary.activeAudits,
-            detail: "Em análise ou acompanhamento",
+            label: "Média diária",
+            value: formatAverage(data.usage.dailyAverage),
+            detail: `${formatAverage(data.usage.monthlyAverage)} atividades/mês`,
           },
         ]
       : []),
@@ -193,19 +231,29 @@ export default function DashboardPage() {
           </Group>
           <Title order={2}>Olá, {data.user.name}</Title>
           <Text c="dimmed">
-            Indicadores alimentados somente quando um arquivo convertido é
-            exportado pelas ferramentas financeiras.
+            Visão integrada das importações, notas de compra e lançamentos
+            enviados pelo Fortuno Hub ao Conta Azul.
           </Text>
         </Stack>
 
-        <Button
-          variant="default"
-          leftSection={<IconRefresh size={16} />}
-          onClick={reload}
-          loading={loading}
-        >
-          Atualizar
-        </Button>
+        <Group align="flex-end">
+          <Select
+            label="Período dos indicadores"
+            data={periodOptions}
+            value={period}
+            onChange={(value) => setPeriod((value as DashboardPeriodCode) || "30D")}
+            allowDeselect={false}
+            w={200}
+          />
+          <Button
+            variant="default"
+            leftSection={<IconRefresh size={16} />}
+            onClick={reload}
+            loading={loading}
+          >
+            Atualizar
+          </Button>
+        </Group>
       </Group>
 
       {metrics.length > 0 && (
@@ -218,6 +266,75 @@ export default function DashboardPage() {
             />
           ))}
         </Paper>
+      )}
+
+      {hasIntegratedUsage && (
+        <>
+          <Paper withBorder radius="lg" p="lg">
+            <Stack gap="lg">
+              <Group justify="space-between" align="flex-start">
+                <Stack gap={2}>
+                  <Title order={3}>Movimento no Fortuno Hub</Title>
+                  <Text size="sm" c="dimmed">
+                    Quantidade diária ou mensal de importações e integrações,
+                    conforme o período selecionado.
+                  </Text>
+                </Stack>
+                <Group gap="xs">
+                  <Badge variant="light" color="blue">{data.usage.imports} importações</Badge>
+                  <Badge variant="light" color="green">{data.usage.caSends} envios ao CA</Badge>
+                </Group>
+              </Group>
+
+              <ScrollArea type="auto" offsetScrollbars>
+                <div className={styles.timelineChart}>
+                  {data.usage.timeline.map((item) => (
+                    <div
+                      className={styles.timelineColumn}
+                      key={item.key}
+                      title={`${formatBucket(item.key)}: ${item.total} atividade(s), ${item.imports} importação(ões), ${item.caSends} envio(s) ao Conta Azul`}
+                    >
+                      <Text size="xs" fw={700} ta="center">{item.total}</Text>
+                      <div className={styles.timelineTrack}>
+                        <span style={{ height: `${Math.max(item.total ? 5 : 0, (item.total / maximumTimeline) * 100)}%` }} />
+                      </div>
+                      <Text size="xs" c="dimmed" ta="center" className={styles.timelineLabel}>
+                        {formatBucket(item.key)}
+                      </Text>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </Stack>
+          </Paper>
+
+          <SimpleGrid cols={{ base: 1, xl: 3 }} spacing="lg">
+            <UsageRankingCard
+              title="Uso por ferramenta"
+              description="Importações e integrações realizadas no período."
+              empty="Nenhuma ferramenta utilizada neste período."
+              maximum={maximumUsageType}
+              items={data.usage.byType.map((item) => ({
+                ...item,
+                label: usageKindLabels[item.key as DashboardUsageKind],
+              }))}
+            />
+            <UsageRankingCard
+              title="Uso por cliente"
+              description="Clientes com maior movimentação no Fortuno Hub."
+              empty="Nenhum cliente movimentado neste período."
+              maximum={maximumClientUsage}
+              items={data.usage.byClient}
+            />
+            <UsageRankingCard
+              title={data.user.isTeamLeader ? "Produção da equipe" : "Produção por colaborador"}
+              description="Atividades, envios e lançamentos por pessoa."
+              empty="Nenhuma atividade registrada neste período."
+              maximum={maximumUserUsage}
+              items={data.usage.byUser}
+            />
+          </SimpleGrid>
+        </>
       )}
 
       {hasImports && (
@@ -255,7 +372,7 @@ export default function DashboardPage() {
         </Paper>
       )}
 
-      {hasImports && (
+      {hasIntegratedUsage && (
         <SimpleGrid cols={{ base: 1, xl: 3 }} className={styles.primaryGrid}>
           <Paper
             withBorder
@@ -266,23 +383,17 @@ export default function DashboardPage() {
             <Stack gap="md">
               <Group justify="space-between">
                 <Stack gap={1}>
-                  <Title order={4}>Exportações recentes</Title>
+                  <Title order={4}>Atividades recentes</Title>
                   <Text size="sm" c="dimmed">
-                    Somente arquivos que chegaram à etapa final de exportação.
+                    Importações, notas de compra e envios ao Conta Azul em uma única linha do tempo.
                   </Text>
                 </Stack>
-                <Button
-                  variant="subtle"
-                  rightSection={<IconArrowRight size={15} />}
-                  onClick={() => router.push("/historico")}
-                >
-                  Ver histórico
-                </Button>
+                <Badge variant="light">{data.usage.recent.length} recentes</Badge>
               </Group>
 
-              {data.recentProcessings.length === 0 ? (
+              {data.usage.recent.length === 0 ? (
                 <Text c="dimmed" size="sm" py="xl" ta="center">
-                  Nenhum arquivo exportado ainda.
+                  Nenhuma atividade registrada no período.
                 </Text>
               ) : (
                 <ScrollArea>
@@ -293,30 +404,32 @@ export default function DashboardPage() {
                   >
                     <Table.Thead>
                       <Table.Tr>
-                        <Table.Th>Arquivo</Table.Th>
-                        <Table.Th>Módulo</Table.Th>
+                        <Table.Th>Atividade</Table.Th>
                         <Table.Th>Cliente</Table.Th>
+                        <Table.Th>Colaborador</Table.Th>
+                        <Table.Th>Registros</Table.Th>
                         <Table.Th>Data</Table.Th>
                         <Table.Th>Status</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
-                      {data.recentProcessings.map((item) => (
+                      {data.usage.recent.map((item) => (
                         <Table.Tr key={item.id}>
                           <Table.Td>
                             <Text fw={600} size="sm" lineClamp={1}>
-                              {item.originalName}
+                              {usageKindLabels[item.kind]}
                             </Text>
                             <Text size="xs" c="dimmed">
-                              {item.userName || "Usuário"}
+                              {item.stage === "CA_EXPORT" ? "Envio ao Conta Azul" : "Importação / processamento"}
                             </Text>
                           </Table.Td>
-                          <Table.Td>{moduleLabels[item.module]}</Table.Td>
                           <Table.Td>{item.clientName || "Sem cliente"}</Table.Td>
-                          <Table.Td>{formatDate(item.createdAt)}</Table.Td>
+                          <Table.Td>{item.userName}</Table.Td>
+                          <Table.Td>{item.entries}</Table.Td>
+                          <Table.Td>{formatDate(item.occurredAt)}</Table.Td>
                           <Table.Td>
-                            <Badge color="green" variant="light" radius="sm">
-                              {statusLabels[item.status]}
+                            <Badge color={usageStatusColor(item.status, item.successful)} variant="light" radius="sm">
+                              {usageStatus(item.status)}
                             </Badge>
                           </Table.Td>
                         </Table.Tr>
@@ -332,28 +445,25 @@ export default function DashboardPage() {
             <Paper withBorder radius="lg" p="lg">
               <Stack gap="md">
                 <Stack gap={1}>
-                  <Title order={4}>Volume convertido</Title>
+                  <Title order={4}>Volume processado</Title>
                   <Text size="sm" c="dimmed">
-                    Lançamentos presentes nos arquivos exportados no mês.
+                    Valores importados e enviados durante {data.period.label.toLowerCase()}.
                   </Text>
                 </Stack>
                 <Stack gap={3}>
-                  <Text size="xs" c="dimmed" fw={600}>VOLUME TOTAL</Text>
+                  <Text size="xs" c="dimmed" fw={600}>VOLUME IMPORTADO</Text>
                   <Text fw={750} fz={28}>
-                    {formatCurrency(data.financialVolume.total)}
+                    {formatCurrency(data.usage.importedAmount)}
                   </Text>
                 </Stack>
                 <Divider />
-                <Group grow>
-                  <Stack gap={2}>
-                    <Text size="xs" c="dimmed">Créditos</Text>
-                    <Text fw={700}>{formatCurrency(data.financialVolume.credits)}</Text>
-                  </Stack>
-                  <Stack gap={2}>
-                    <Text size="xs" c="dimmed">Débitos</Text>
-                    <Text fw={700}>{formatCurrency(data.financialVolume.debits)}</Text>
-                  </Stack>
-                </Group>
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">ENVIADO AO CONTA AZUL</Text>
+                  <Text fw={700} fz={20}>{formatCurrency(data.usage.sentAmount)}</Text>
+                  <Text size="xs" c="dimmed">
+                    Os valores são exibidos por etapa e não são somados, evitando duplicar uma importação que depois foi enviada.
+                  </Text>
+                </Stack>
               </Stack>
             </Paper>
 
@@ -394,73 +504,6 @@ export default function DashboardPage() {
         </SimpleGrid>
       )}
 
-      {hasImports && (
-        <SimpleGrid cols={{ base: 1, xl: 2 }} className={styles.twoColumnGrid}>
-          <Paper withBorder radius="lg" p="lg">
-            <Stack gap="md">
-              <Stack gap={1}>
-                <Title order={4}>Exportações por ferramenta</Title>
-                <Text size="sm" c="dimmed">
-                  Distribuição dos arquivos exportados no mês.
-                </Text>
-              </Stack>
-              {data.processingsByModule.length === 0 ? (
-                <Text c="dimmed" size="sm" py="lg">
-                  Nenhuma exportação registrada no mês.
-                </Text>
-              ) : (
-                data.processingsByModule.map((item) => (
-                  <Stack key={item.module} gap={5}>
-                    <Group justify="space-between">
-                      <Text size="sm" fw={600}>{moduleLabels[item.module]}</Text>
-                      <Text size="sm" fw={700}>{item.total}</Text>
-                    </Group>
-                    <Progress value={(item.total / maximumModule) * 100} radius="xl" />
-                  </Stack>
-                ))
-              )}
-            </Stack>
-          </Paper>
-
-          <Paper withBorder radius="lg" p="lg">
-            <Stack gap="md">
-              <Group justify="space-between">
-                <Stack gap={1}>
-                  <Title order={4}>
-                    {data.user.isTeamLeader ? "Produção da equipe" : "Produção por colaborador"}
-                  </Title>
-                  <Text size="sm" c="dimmed">
-                    Arquivos exportados no mês por pessoa visível para o perfil.
-                  </Text>
-                </Stack>
-                <Button
-                  variant="subtle"
-                  rightSection={<IconArrowRight size={15} />}
-                  onClick={() => router.push("/relatorios")}
-                >
-                  Relatórios
-                </Button>
-              </Group>
-              {data.teamPerformance.length === 0 ? (
-                <Text c="dimmed" size="sm" py="lg">Nenhuma exportação no mês.</Text>
-              ) : (
-                data.teamPerformance.map((item, index) => (
-                  <Stack key={item.userId} gap={5}>
-                    <Group justify="space-between">
-                      <Group gap="sm">
-                        <Badge variant="light" color="gray">{index + 1}</Badge>
-                        <Text size="sm" fw={600}>{item.name}</Text>
-                      </Group>
-                      <Text size="sm" fw={700}>{item.total}</Text>
-                    </Group>
-                    <Progress value={(item.total / maximumPerformance) * 100} radius="xl" />
-                  </Stack>
-                ))
-              )}
-            </Stack>
-          </Paper>
-        </SimpleGrid>
-      )}
     </Stack>
   );
 }
@@ -487,6 +530,60 @@ function Metric({
       <Text fw={750} fz={25}>{value}</Text>
       <Text size="xs" c="dimmed">{detail}</Text>
     </Stack>
+  );
+}
+
+function UsageRankingCard({
+  title,
+  description,
+  empty,
+  maximum,
+  items,
+}: {
+  title: string;
+  description: string;
+  empty: string;
+  maximum: number;
+  items: Array<{
+    key: string;
+    label: string;
+    total: number;
+    imports: number;
+    caSends: number;
+    caEntries: number;
+  }>;
+}) {
+  return (
+    <Paper withBorder radius="lg" p="lg">
+      <Stack gap="md">
+        <Stack gap={1}>
+          <Title order={4}>{title}</Title>
+          <Text size="sm" c="dimmed">{description}</Text>
+        </Stack>
+
+        {items.length === 0 ? (
+          <Text c="dimmed" size="sm" py="lg">{empty}</Text>
+        ) : (
+          items.slice(0, 8).map((item, index) => (
+            <Stack key={item.key} gap={5}>
+              <Group justify="space-between" wrap="nowrap">
+                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Badge variant="light" color="gray">{index + 1}</Badge>
+                  <Text size="sm" fw={650} truncate>{item.label}</Text>
+                </Group>
+                <Text size="sm" fw={800}>{item.total}</Text>
+              </Group>
+              <Progress value={(item.total / maximum) * 100} radius="xl" />
+              <Group gap="xs">
+                {item.imports > 0 && <Badge size="xs" variant="light" color="blue">{item.imports} import.</Badge>}
+                {item.caSends > 0 && <Badge size="xs" variant="light" color="green">{item.caSends} envio(s)</Badge>}
+                {item.caEntries > 0 && <Badge size="xs" variant="outline" color="teal">{item.caEntries} lançamento(s)</Badge>}
+              </Group>
+            </Stack>
+          ))
+        )}
+      </Stack>
+    </Paper>
   );
 }
 

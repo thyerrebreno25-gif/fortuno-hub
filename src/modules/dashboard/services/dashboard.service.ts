@@ -1,11 +1,15 @@
 import type { DashboardData } from "@/modules/dashboard/types/dashboard.types";
+import type { DashboardPeriodCode } from "@/modules/dashboard/usage-analytics";
 
 interface DashboardErrorResponse {
   error?: string;
 }
 
-export async function getDashboardData(signal?: AbortSignal): Promise<DashboardData> {
-  const response = await fetch("/api/dashboard", {
+export async function getDashboardData(
+  period: DashboardPeriodCode,
+  signal?: AbortSignal,
+): Promise<DashboardData> {
+  const response = await fetch(`/api/dashboard?period=${period}`, {
     method: "GET",
     cache: "no-store",
     headers: {

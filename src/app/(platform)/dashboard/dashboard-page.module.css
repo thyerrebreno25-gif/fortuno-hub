@@ -38,6 +38,49 @@
   min-width: 760px;
 }
 
+.timelineChart {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(40px, 1fr);
+  align-items: end;
+  min-width: min-content;
+  height: 235px;
+  padding: 8px 2px 2px;
+  gap: 8px;
+}
+
+.timelineColumn {
+  display: grid;
+  grid-template-rows: 20px 165px 32px;
+  align-items: end;
+  min-width: 40px;
+}
+
+.timelineTrack {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 155px;
+  overflow: hidden;
+  border-radius: 8px 8px 3px 3px;
+  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+}
+
+.timelineTrack span {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  border-radius: 7px 7px 2px 2px;
+  background: linear-gradient(180deg, var(--mantine-color-blue-4), var(--mantine-color-blue-7));
+  transition: height 260ms ease;
+}
+
+.timelineLabel {
+  white-space: nowrap;
+  transform: rotate(-35deg);
+  transform-origin: center;
+}
+
 .twoColumnGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

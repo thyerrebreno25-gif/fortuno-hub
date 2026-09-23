@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { getDashboardData } from "@/modules/dashboard/services/dashboard.service";
 import type { DashboardData } from "@/modules/dashboard/types/dashboard.types";
+import type { DashboardPeriodCode } from "@/modules/dashboard/usage-analytics";
 
-export function useDashboard() {
+export function useDashboard(period: DashboardPeriodCode = "30D") {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +23,7 @@ export function useDashboard() {
       setError(null);
 
       try {
-        const result = await getDashboardData(controller.signal);
+        const result = await getDashboardData(period, controller.signal);
         setData(result);
       } catch (requestError) {
         if (controller.signal.aborted) return;
@@ -40,7 +41,7 @@ export function useDashboard() {
     void load();
 
     return () => controller.abort();
-  }, [reloadKey]);
+  }, [period, reloadKey]);
 
   return { data, loading, error, reload };
 }
