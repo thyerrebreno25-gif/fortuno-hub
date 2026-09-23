@@ -16,7 +16,15 @@ export async function GET() {
     prisma.client.findMany({
       where: { organizationId: member.organizationId, active: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, document: true, operationLeaderId: true },
+      select: {
+        id: true,
+        name: true,
+        document: true,
+        operationLeaderId: true,
+        payableResponsibleId: true,
+        receivableResponsibleId: true,
+        contaAzulConnection: { select: { active: true, status: true } },
+      },
     }),
     prisma.organizationMember.findMany({
       where: {

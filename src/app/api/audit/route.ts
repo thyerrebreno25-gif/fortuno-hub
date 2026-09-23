@@ -9,6 +9,7 @@ import {
 import { DEFAULT_AUDIT_CHECKLIST } from "@/modules/audit/checklist";
 
 type AuditFindingInput = {
+  flow?: unknown;
   ruleCode?: unknown;
   title?: unknown;
   description?: unknown;
@@ -32,6 +33,10 @@ const ALLOWED_FILE_TYPES = new Set<AuditFileType>(["MOVEMENTS", "DRE"]);
 
 function auditSeverity(value: unknown): AuditFindingSeverity {
   return value === "CRITICAL" || value === "WARNING" ? value : "INFO";
+}
+
+function auditFlow(value: unknown) {
+  return value === "PAYABLE" || value === "RECEIVABLE" ? value : "GENERAL";
 }
 
 function optionalText(value: unknown) {
@@ -63,7 +68,14 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     take: 40,
     include: {
-      client: { select: { id: true, name: true } },
+      client: {
+        select: {
+          id: true,
+          name: true,
+          payableResponsibleId: true,
+          receivableResponsibleId: true,
+        },
+      },
       supervisor: { select: { id: true, name: true, email: true } },
       findings: {
         where: supervisor ? undefined : { operatorId: member.userId },
@@ -165,6 +177,7 @@ export async function POST(request: Request) {
       })) },
       findings: { create: findings.map((finding) => ({
         source: "AUTOMATIC" as const,
+        flow: auditFlow(finding.flow),
         ruleCode: optionalText(finding.ruleCode),
         title: String(finding.title || "Ponto de auditoria"),
         description: String(finding.description || ""),

@@ -25,7 +25,7 @@ import { IconRefresh, IconSearch, IconTrash } from "@tabler/icons-react";
 type Interaction = { id: string; action: string; note?: string | null; user?: { name?: string | null; email?: string | null } | null };
 type Finding = {
   id: string; title: string; description: string; severity: string; status: string;
-  category?: string | null; source?: string | null; operatorId?: string | null;
+  category?: string | null; source?: string | null; flow?: string | null; operatorId?: string | null;
   operator?: { name?: string | null; email: string } | null; supervisorNote?: string | null;
   dueAt?: string | null; interactions?: Interaction[];
 };
@@ -46,7 +46,7 @@ const CLOSED = new Set(["VALIDATED", "DISMISSED"]);
 
 function label(value: string) {
   return ({
-    DRAFT: "Rascunho", IN_REVIEW: "Em revisão", SENT_TO_CORRECTION: "Em correção",
+    DRAFT: "Rascunho", ANALYZED: "Analisada", IN_REVIEW: "Em revisão", SENT_TO_CORRECTION: "Em correção",
     PENDING_VALIDATION: "Aguardando check do líder", COMPLETED: "Concluída", IDENTIFIED: "Identificado",
     DISMISSED: "Descartado", SENT: "Enviado", IN_PROGRESS: "Em andamento",
     VALIDATED: "Validado", RETURNED: "Devolvido",
@@ -367,7 +367,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function FindingCard({ finding, onValidate, onReturn }: { finding: Finding; onValidate?: () => void; onReturn?: () => void }) {
   return <Paper withBorder radius="md" p="md">
-    <Group gap="xs"><Badge color={finding.severity === "CRITICAL" ? "red" : finding.severity === "WARNING" ? "orange" : "blue"}>{finding.severity}</Badge><Badge color={color(finding.status)} variant="outline">{label(finding.status)}</Badge>{finding.source === "SUPERVISOR_CHECKLIST" && <Badge color="violet">Checklist</Badge>}{overdue(finding) && <Badge color="red">Atrasado</Badge>}</Group>
+    <Group gap="xs">{finding.flow === "PAYABLE" && <Badge color="orange" variant="dot">Contas a Pagar</Badge>}{finding.flow === "RECEIVABLE" && <Badge color="green" variant="dot">Contas a Receber</Badge>}<Badge color={finding.severity === "CRITICAL" ? "red" : finding.severity === "WARNING" ? "orange" : "blue"}>{finding.severity}</Badge><Badge color={color(finding.status)} variant="outline">{label(finding.status)}</Badge>{finding.source === "SUPERVISOR_CHECKLIST" && <Badge color="violet">Checklist</Badge>}{overdue(finding) && <Badge color="red">Atrasado</Badge>}</Group>
     <Text fw={700} mt="xs">{finding.title}</Text><Text size="sm" c="dimmed">{finding.description}</Text>
     <SimpleGrid cols={{ base: 1, sm: 3 }} mt="sm"><Text size="xs"><b>Operador:</b> {finding.operator?.name || finding.operator?.email || "—"}</Text><Text size="xs"><b>Prazo:</b> {formatDate(finding.dueAt)}</Text><Text size="xs"><b>Categoria:</b> {finding.category || "—"}</Text></SimpleGrid>
     {finding.supervisorNote && <Alert color="blue" mt="sm" title="Orientação">{finding.supervisorNote}</Alert>}

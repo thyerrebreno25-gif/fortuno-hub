@@ -268,6 +268,12 @@ enum AuditFindingSource {
   SUPERVISOR_CHECKLIST
 }
 
+enum AuditFinancialFlow {
+  PAYABLE
+  RECEIVABLE
+  GENERAL
+}
+
 enum AuditChecklistStatus {
   PENDING
   COMPLIANT
@@ -1563,6 +1569,7 @@ model AuditFinding {
   id             String               @id @default(cuid())
   auditId        String
   source         AuditFindingSource   @default(AUTOMATIC)
+  flow           AuditFinancialFlow   @default(GENERAL)
   ruleCode       String?
   title          String
   description    String
@@ -1586,7 +1593,7 @@ model AuditFinding {
   operator     User?              @relation("AuditFindingOperator", fields: [operatorId], references: [id], onDelete: SetNull)
   interactions AuditInteraction[]
 
-  @@index([auditId, status, severity])
+  @@index([auditId, flow, status, severity])
   @@index([operatorId, status, dueAt])
 }
 

@@ -22,7 +22,7 @@ import { IconRefresh } from "@tabler/icons-react";
 type Interaction = { id: string; action: string; note?: string | null; user?: { name?: string | null; email?: string | null } | null };
 type Finding = {
   id: string; title: string; description: string; severity: string; status: string;
-  category?: string | null; source?: string | null; operatorId?: string | null;
+  category?: string | null; source?: string | null; flow?: string | null; operatorId?: string | null;
   supervisorNote?: string | null; dueAt?: string | null; interactions?: Interaction[];
 };
 type Audit = {
@@ -142,7 +142,7 @@ export default function MinhasAuditoriasPage() {
               <Accordion.Panel>
                 <Stack gap="sm">
                   {audit.findings.map((finding) => <Paper key={finding.id} withBorder radius="md" p="md">
-                    <Group gap="xs"><Badge color={finding.severity === "CRITICAL" ? "red" : finding.severity === "WARNING" ? "orange" : "blue"}>{finding.severity}</Badge><Badge color={color(finding.status)} variant="outline">{label(finding.status)}</Badge>{finding.source === "SUPERVISOR_CHECKLIST" && <Badge color="violet">Checklist</Badge>}{overdue(finding) && <Badge color="red">Atrasado</Badge>}</Group>
+                    <Group gap="xs">{finding.flow === "PAYABLE" && <Badge color="orange" variant="dot">Contas a Pagar</Badge>}{finding.flow === "RECEIVABLE" && <Badge color="green" variant="dot">Contas a Receber</Badge>}<Badge color={finding.severity === "CRITICAL" ? "red" : finding.severity === "WARNING" ? "orange" : "blue"}>{finding.severity}</Badge><Badge color={color(finding.status)} variant="outline">{label(finding.status)}</Badge>{finding.source === "SUPERVISOR_CHECKLIST" && <Badge color="violet">Checklist</Badge>}{overdue(finding) && <Badge color="red">Atrasado</Badge>}</Group>
                     <Text fw={700} mt="xs">{finding.title}</Text><Text size="sm" c="dimmed">{finding.description}</Text>
                     {finding.supervisorNote && <Alert color="blue" mt="sm" title="Orientação do líder">{finding.supervisorNote}</Alert>}
                     <SimpleGrid cols={{ base: 1, sm: 2 }} mt="sm"><Text size="xs"><b>Prazo:</b> {formatDate(finding.dueAt)}</Text><Text size="xs"><b>Categoria:</b> {finding.category || "—"}</Text></SimpleGrid>

@@ -17,6 +17,7 @@ import {
   SimpleGrid,
   Stack,
   Text,
+  TextInput,
   Textarea,
   ThemeIcon,
   Title,
@@ -57,6 +58,12 @@ type Bootstrap = {
     name: string;
     document?: string | null;
     operationLeaderId?: string | null;
+    payableResponsibleId?: string | null;
+    receivableResponsibleId?: string | null;
+    contaAzulConnection?: {
+      active: boolean;
+      status: string;
+    } | null;
   }>;
   operators: Array<{
     id: string;
@@ -78,6 +85,7 @@ type AuditInteraction = {
 
 type SavedFinding = AuditFindingDraft & {
   id: string;
+  flow?: "PAYABLE" | "RECEIVABLE" | "GENERAL";
   status: string;
   operatorId?: string | null;
   supervisorNote?: string | null;
@@ -97,6 +105,8 @@ type SavedAudit = {
   client: {
     id: string;
     name: string;
+    payableResponsibleId?: string | null;
+    receivableResponsibleId?: string | null;
   };
   findings: SavedFinding[];
   files: Array<{
@@ -200,6 +210,36 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
+function currentMonthRange() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  return {
+    start: `${prefix}-01`,
+    end: `${prefix}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`,
+  };
+}
+
+type AutomaticAnalysis = {
+  healthScore: number;
+  historyStart: string;
+  historyEnd: string;
+  metrics: {
+    historyItems: number;
+    currentItems: number;
+    recurringProfiles: number;
+    missingRecurring: number;
+    overdue: number;
+    open: number;
+    competenceDivergences: number;
+    categoryDivergences: number;
+    duplicates: number;
+    payableFindings: number;
+    receivableFindings: number;
+  };
+};
+
 export default function AuditoriaPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
@@ -209,11 +249,20 @@ export default function AuditoriaPage() {
   const [savedAudit, setSavedAudit] = useState<SavedAudit | null>(null);
   const [audits, setAudits] = useState<SavedAudit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [automaticLoading, setAutomaticLoading] = useState(false);
+  const [automaticAnalysis, setAutomaticAnalysis] = useState<AutomaticAnalysis | null>(null);
+  const [periodStart, setPeriodStart] = useState(() => currentMonthRange().start);
+  const [periodEnd, setPeriodEnd] = useState(() => currentMonthRange().end);
   const [assignment, setAssignment] = useState<AssignmentState | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalState | null>(null);
   const [checklistReview, setChecklistReview] = useState<ChecklistReviewState | null>(null);
 
   const isSupervisor = Boolean(bootstrap?.currentUser.canSupervise);
+
+  const selectedClient = useMemo(
+    () => bootstrap?.clients.find((client) => client.id === clientId) ?? null,
+    [bootstrap?.clients, clientId],
+  );
 
   async function load() {
     const [bootResponse, auditsResponse] = await Promise.all([
@@ -340,6 +389,41 @@ export default function AuditoriaPage() {
     }
   }
 
+  async function runContaAzulAnalysis() {
+    if (!clientId || !periodStart || !periodEnd) return;
+    setAutomaticLoading(true);
+    setAnalysis(null);
+    setAutomaticAnalysis(null);
+
+    try {
+      const response = await fetch("/api/audit/conta-azul", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, periodStart, periodEnd }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Não foi possível executar a validação automática.");
+      }
+      setSavedAudit(payload.audit);
+      setAutomaticAnalysis(payload.analysis);
+      notifications.show({
+        color: payload.audit.findings.length ? "blue" : "green",
+        title: "Validação automática concluída",
+        message: `${payload.analysis.metrics.historyItems} título(s) formaram o histórico e ${payload.audit.findings.length} apontamento(s) foram identificados.`,
+      });
+      await load();
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "Auditoria do Conta Azul",
+        message: error instanceof Error ? error.message : "Erro inesperado.",
+      });
+    } finally {
+      setAutomaticLoading(false);
+    }
+  }
+
   async function findingAction(
     id: string,
     action: string,
@@ -441,6 +525,10 @@ export default function AuditoriaPage() {
     setFile(null);
     setDreFile(null);
     setAnalysis(null);
+    setAutomaticAnalysis(null);
+    const range = currentMonthRange();
+    setPeriodStart(range.start);
+    setPeriodEnd(range.end);
     setSavedAudit(null);
     setAssignment(null);
     setActionModal(null);
@@ -708,6 +796,91 @@ export default function AuditoriaPage() {
       </Group>
 
       <Paper withBorder radius="lg" p="lg">
+        <Group justify="space-between" align="flex-start" mb="md">
+          <div>
+            <Text fw={800}>Validação automática pelo Conta Azul</Text>
+            <Text size="sm" c="dimmed">
+              Aprende o histórico do início do ano ao mês anterior e separa os
+              resultados entre Contas a Pagar e Contas a Receber.
+            </Text>
+          </div>
+          <Badge
+            color={selectedClient?.contaAzulConnection?.active
+              && selectedClient.contaAzulConnection.status === "CONNECTED"
+              ? "green"
+              : "gray"}
+            variant="light"
+          >
+            {selectedClient?.contaAzulConnection?.active
+              && selectedClient.contaAzulConnection.status === "CONNECTED"
+              ? "Conta Azul conectado"
+              : "Selecione um cliente conectado"}
+          </Badge>
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, md: 4 }}>
+          <Select
+            label="Cliente"
+            placeholder="Selecione o cliente"
+            searchable
+            required
+            data={bootstrap.clients.map((client) => ({ value: client.id, label: client.name }))}
+            value={clientId}
+            onChange={setClientId}
+          />
+          <TextInput
+            type="date"
+            label="Início do período"
+            required
+            value={periodStart}
+            onChange={(event) => setPeriodStart(event.currentTarget.value)}
+          />
+          <TextInput
+            type="date"
+            label="Fim do período"
+            required
+            value={periodEnd}
+            onChange={(event) => setPeriodEnd(event.currentTarget.value)}
+          />
+          <Button
+            mt={25}
+            loading={automaticLoading}
+            disabled={!clientId || !periodStart || !periodEnd || automaticLoading}
+            leftSection={<IconFileAnalytics size={18} />}
+            onClick={runContaAzulAnalysis}
+          >
+            Iniciar validação
+          </Button>
+        </SimpleGrid>
+
+        <Alert color="blue" mt="md" icon={<IconShieldCheck size={18} />}>
+          PIX, transferências, tarifas, estornos e descrições genéricas continuam
+          na conferência de títulos abertos ou vencidos, mas não criam padrão de
+          recorrência. O histórico aprende impostos, folha, aluguel, contas de
+          consumo, empréstimos e demais fornecedores ou clientes realmente recorrentes.
+        </Alert>
+
+        {automaticAnalysis && (
+          <SimpleGrid cols={{ base: 2, md: 6 }} mt="md">
+            <Metric title="Saúde" value={`${automaticAnalysis.healthScore}%`} color={automaticAnalysis.healthScore >= 80 ? "green" : automaticAnalysis.healthScore >= 60 ? "orange" : "red"} />
+            <Metric title="Padrões aprendidos" value={automaticAnalysis.metrics.recurringProfiles} color="blue" />
+            <Metric title="Recorrências ausentes" value={automaticAnalysis.metrics.missingRecurring} color="orange" />
+            <Metric title="Vencidos" value={automaticAnalysis.metrics.overdue} color="red" />
+            <Metric title="Em aberto" value={automaticAnalysis.metrics.open} color="yellow" />
+            <Metric title="Competências" value={automaticAnalysis.metrics.competenceDivergences} color="violet" />
+          </SimpleGrid>
+        )}
+      </Paper>
+
+      <Paper withBorder radius="lg" p="lg">
+        <Group mb="md">
+          <div>
+            <Text fw={800}>Análise complementar por relatórios</Text>
+            <Text size="sm" c="dimmed">
+              Use os PDFs quando precisar complementar a API com Movimentações e DRE.
+            </Text>
+          </div>
+        </Group>
         <SimpleGrid cols={{ base: 1, md: 4 }}>
           <Select
             label="Cliente"
@@ -1036,11 +1209,40 @@ export default function AuditoriaPage() {
                   atuais.
                 </Alert>
               ) : (
-                currentAudit.findings.map((finding) => (
-                  <Card key={finding.id} withBorder radius="md" p="md">
+                [...currentAudit.findings]
+                  .sort((left, right) => {
+                    const order = { PAYABLE: 0, RECEIVABLE: 1, GENERAL: 2 };
+                    return order[left.flow || "GENERAL"] - order[right.flow || "GENERAL"];
+                  })
+                  .map((finding, index, sorted) => {
+                    const flow = finding.flow || "GENERAL";
+                    const previousFlow = index ? sorted[index - 1].flow || "GENERAL" : null;
+                    const defaultOperatorId = flow === "PAYABLE"
+                      ? currentAudit.client.payableResponsibleId
+                      : flow === "RECEIVABLE"
+                        ? currentAudit.client.receivableResponsibleId
+                        : null;
+                    return (
+                  <Stack key={finding.id} gap="xs">
+                    {flow !== previousFlow && (
+                      <Group justify="space-between" mt={index ? "md" : 0}>
+                        <Text fw={800} c={flow === "PAYABLE" ? "orange" : flow === "RECEIVABLE" ? "green" : "gray"}>
+                          {flow === "PAYABLE" ? "Contas a Pagar" : flow === "RECEIVABLE" ? "Contas a Receber" : "Validações gerais"}
+                        </Text>
+                        <Badge variant="light" color={flow === "PAYABLE" ? "orange" : flow === "RECEIVABLE" ? "green" : "gray"}>
+                          {sorted.filter((item) => (item.flow || "GENERAL") === flow).length}
+                        </Badge>
+                      </Group>
+                    )}
+                  <Card withBorder radius="md" p="md">
                     <Group justify="space-between" align="flex-start">
                       <div style={{ flex: 1 }}>
                         <Group gap="xs">
+                          {flow !== "GENERAL" && (
+                            <Badge color={flow === "PAYABLE" ? "orange" : "green"} variant="dot">
+                              {flow === "PAYABLE" ? "A pagar" : "A receber"}
+                            </Badge>
+                          )}
                           <Badge
                             color={severityColor(finding.severity)}
                             variant="light"
@@ -1093,7 +1295,7 @@ export default function AuditoriaPage() {
                             onClick={() =>
                               setAssignment({
                                 finding,
-                                operatorId: null,
+                                operatorId: defaultOperatorId || null,
                                 note: "",
                                 dueAt: "",
                               })
@@ -1149,7 +1351,9 @@ export default function AuditoriaPage() {
                       )}
                     </Group>
                   </Card>
-                ))
+                  </Stack>
+                    );
+                  })
               )}
             </Stack>
           </Paper>

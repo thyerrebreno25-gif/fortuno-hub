@@ -87,17 +87,20 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const changed = await tx.auditFinding.update({ where: { id }, data });
     await tx.auditInteraction.create({ data: { findingId: id, userId: member.userId, action, note: note || null, metadata: body.metadata ?? undefined } });
 
-    const unresolved = await tx.auditFinding.count({ where: { auditId: finding.auditId, status: { notIn: ["VALIDATED", "DISMISSED"] } } });
-    const sent = await tx.auditFinding.count({ where: { auditId: finding.auditId, status: { in: ["SENT", "IN_PROGRESS", "PENDING_VALIDATION", "RETURNED"] } } });
-    const pendingValidation = await tx.auditFinding.count({ where: { auditId: finding.auditId, status: "PENDING_VALIDATION" } });
-    const auditStatus = unresolved === 0
+    const [unresolved, sent, pendingValidation, pendingChecklist] = await Promise.all([
+      tx.auditFinding.count({ where: { auditId: finding.auditId, status: { notIn: ["VALIDATED", "DISMISSED"] } } }),
+      tx.auditFinding.count({ where: { auditId: finding.auditId, status: { in: ["SENT", "IN_PROGRESS", "PENDING_VALIDATION", "RETURNED"] } } }),
+      tx.auditFinding.count({ where: { auditId: finding.auditId, status: "PENDING_VALIDATION" } }),
+      tx.auditChecklistItem.count({ where: { auditId: finding.auditId, status: "PENDING" } }),
+    ]);
+    const auditStatus = unresolved === 0 && pendingChecklist === 0
       ? "COMPLETED"
       : pendingValidation > 0
         ? "PENDING_VALIDATION"
         : sent > 0
           ? "SENT_TO_CORRECTION"
           : "IN_REVIEW";
-    await tx.audit.update({ where: { id: finding.auditId }, data: { status: auditStatus, completedAt: unresolved === 0 ? new Date() : null } });
+    await tx.audit.update({ where: { id: finding.auditId }, data: { status: auditStatus, completedAt: auditStatus === "COMPLETED" ? new Date() : null } });
     return changed;
   });
 

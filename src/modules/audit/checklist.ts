@@ -50,3 +50,31 @@ export const DEFAULT_AUDIT_CHECKLIST = [
     description: "A auditoria só deve ser concluída depois que as correções retornarem ao líder e forem validadas.",
   },
 ] as const;
+
+export const CONTA_AZUL_AUDIT_CHECKLIST = [
+  {
+    category: "Base da auditoria",
+    title: "Confirmar se o período e as contas financeiras analisadas correspondem ao fechamento.",
+    description: "A análise automática usa os títulos de Contas a Pagar e Contas a Receber disponíveis na API do Conta Azul.",
+  },
+  {
+    category: "Saldos bancários",
+    title: "Conferir os saldos bancários externos com os saldos das contas correntes no Conta Azul.",
+    description: "A API fornece o saldo do Conta Azul, mas a confirmação do saldo real do banco continua dependendo do extrato bancário.",
+  },
+  {
+    category: "Conciliações",
+    title: "Confirmar as conciliações bancárias, de cartões e adquirentes que não puderam ser comprovadas pela consulta.",
+    description: "Direcione qualquer conta ou período pendente ao operador responsável.",
+  },
+  {
+    category: "Exceções automáticas",
+    title: "Revisar recorrências ausentes, títulos vencidos, abertos, duplicados e competências divergentes.",
+    description: "Os apontamentos são separados entre Contas a Pagar e Contas a Receber e devem ser confirmados antes do envio.",
+  },
+  {
+    category: "Revisão final",
+    title: "Concluir o fluxo Líder → Operador → Líder para todas as divergências confirmadas.",
+    description: "A auditoria só deve ser encerrada depois que as correções retornarem e forem validadas.",
+  },
+] as const;

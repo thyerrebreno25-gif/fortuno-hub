@@ -1,4 +1,5 @@
 export type AuditSeverity = "CRITICAL" | "WARNING" | "INFO";
+export type AuditFinancialFlow = "PAYABLE" | "RECEIVABLE" | "GENERAL";
 export type AuditFindingStatus =
   | "IDENTIFIED"
   | "DISMISSED"
@@ -33,6 +34,7 @@ export type AuditFindingDraft = {
   title: string;
   description: string;
   severity: AuditSeverity;
+  flow?: AuditFinancialFlow;
   subject?: string | null;
   category?: string | null;
   competence?: string | null;
