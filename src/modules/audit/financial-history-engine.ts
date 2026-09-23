@@ -27,6 +27,7 @@ export type RecurringFinancialProfile = {
   semanticCode: string | null;
   observedMonths: string[];
   expectedMonthlyCount: number;
+  expectedDueDays: number[];
   expectedCompetenceOffset: number | null;
   competenceConfidence: number;
   recurrenceConfidence: number;
@@ -183,6 +184,54 @@ function median(values: number[]) {
   return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
+function dayOfMonth(value: string) {
+  const match = /^\d{4}-\d{2}-(\d{2})/.exec(value);
+  return match ? Number(match[1]) : null;
+}
+
+function expectedDueDays(
+  entries: ContaAzulAuditEntry[],
+  observedMonths: string[],
+  expectedMonthlyCount: number,
+) {
+  const daysByMonth = observedMonths.map((month) => entries
+    .filter((entry) => monthKey(entry.dueDate) === month)
+    .map((entry) => dayOfMonth(entry.dueDate))
+    .filter((day): day is number => day != null)
+    .sort((left, right) => left - right));
+
+  return Array.from({ length: expectedMonthlyCount }, (_, index) => {
+    const slotDays = daysByMonth.flatMap((days) => (
+      days[index] == null ? [] : [days[index]]
+    ));
+    return slotDays.length ? median(slotDays) : null;
+  }).filter((day): day is number => day != null);
+}
+
+function expectedOccurrencesInPeriod(
+  profile: RecurringFinancialProfile,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return monthsBetween(periodStart, periodEnd).reduce((total, month) => {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const monthStart = `${month}-01`;
+    const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+    const intervalStart = periodStart > monthStart ? periodStart : monthStart;
+    const intervalEnd = periodEnd < monthEnd ? periodEnd : monthEnd;
+    if (intervalStart > intervalEnd) return total;
+
+    const firstIncludedDay = Number(intervalStart.slice(8, 10));
+    const lastIncludedDay = Number(intervalEnd.slice(8, 10));
+    const occurrences = profile.expectedDueDays.filter((day) => {
+      const effectiveDay = Math.min(day, lastDay);
+      return effectiveDay >= firstIncludedDay && effectiveDay <= lastIncludedDay;
+    }).length;
+    return total + occurrences;
+  }, 0);
+}
+
 function mode(values: string[]) {
   const counts = new Map<string, number>();
   values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
@@ -254,6 +303,7 @@ function buildProfiles(
     if (!recurring) return [];
 
     const countByMonth = observedMonths.map((month) => entries.filter((entry) => monthKey(entry.dueDate) === month).length);
+    const expectedMonthlyCount = Math.max(1, median(countByMonth));
     const offsets = entries.flatMap((entry) => {
       if (!entry.competenceDate) return [];
       const value = monthDifference(entry.dueDate, entry.competenceDate);
@@ -269,7 +319,8 @@ function buildProfiles(
       category: category?.[0] || firstCategory(entries[0]),
       semanticCode: identity.semantic?.code ?? null,
       observedMonths,
-      expectedMonthlyCount: Math.max(1, median(countByMonth)),
+      expectedMonthlyCount,
+      expectedDueDays: expectedDueDays(entries, observedMonths, expectedMonthlyCount),
       expectedCompetenceOffset: expectedOffset ? Number(expectedOffset[0]) : null,
       competenceConfidence: expectedOffset && offsets.length ? expectedOffset[1] / offsets.length : 0,
       recurrenceConfidence: coverage,
@@ -301,16 +352,21 @@ export function analyzeFinancialHistory(input: {
 
   profiles.forEach((profile) => {
     const matches = currentByIdentity.get(profile.key) ?? [];
-    if (matches.length < profile.expectedMonthlyCount) {
-      const missingCount = profile.expectedMonthlyCount - matches.length;
+    const expectedCount = expectedOccurrencesInPeriod(
+      profile,
+      input.periodStart,
+      input.periodEnd,
+    );
+    if (expectedCount > 0 && matches.length < expectedCount) {
+      const missingCount = expectedCount - matches.length;
       findings.push({
         localId: findingId("CA_MISSING_RECURRING", profile.key),
         ruleCode: "CA_MISSING_RECURRING",
         flow: profile.flow,
         title: `${profile.label} não identificado no período`,
         description: matches.length
-          ? `O histórico indica aproximadamente ${profile.expectedMonthlyCount} lançamento(s) por mês, mas apenas ${matches.length} foi identificado no período. Confirme os ${missingCount} lançamento(s) possivelmente ausentes.`
-          : "O lançamento aparece de forma recorrente no histórico do cliente, mas não foi localizado no período validado.",
+          ? `O histórico indica ${expectedCount} lançamento(s) esperado(s) dentro do intervalo selecionado, mas apenas ${matches.length} foi identificado. Confirme os ${missingCount} lançamento(s) possivelmente ausentes.`
+          : "O lançamento costuma ocorrer dentro dos dias incluídos no intervalo selecionado, mas não foi localizado.",
         severity: severityForProfile(profile),
         subject: profile.label,
         category: profile.category,
@@ -318,7 +374,8 @@ export function analyzeFinancialHistory(input: {
         evidence: [
           { label: "Meses com ocorrência", value: profile.observedMonths.join(", ") },
           { label: "Frequência histórica", value: `${Math.round(profile.recurrenceConfidence * 100)}% dos meses analisados` },
-          { label: "Quantidade esperada", value: String(profile.expectedMonthlyCount) },
+          { label: "Dias habituais de vencimento", value: profile.expectedDueDays.join(", ") || "Não identificado" },
+          { label: "Quantidade esperada no intervalo", value: String(expectedCount) },
           { label: "Quantidade localizada", value: String(matches.length) },
         ],
       });
@@ -447,7 +504,10 @@ export function analyzeFinancialHistory(input: {
 
   const unique = [...new Map(findings.map((finding) => [finding.localId, finding])).values()];
   const penalty = unique.reduce((sum, finding) => sum + weights[finding.severity], 0);
-  const totalChecks = Math.max(1, profiles.length + input.current.length * 2 + 1);
+  const applicableProfiles = profiles.filter((profile) => (
+    expectedOccurrencesInPeriod(profile, input.periodStart, input.periodEnd) > 0
+  ));
+  const totalChecks = Math.max(1, applicableProfiles.length + input.current.length * 2 + 1);
   const failedChecks = unique.filter((finding) => finding.severity !== "INFO").length;
 
   return {

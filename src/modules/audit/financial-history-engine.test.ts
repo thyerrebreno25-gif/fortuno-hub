@@ -19,14 +19,19 @@ function entry(overrides: Partial<ContaAzulAuditEntry> = {}): ContaAzulAuditEntr
   };
 }
 
-function analyze(history: ContaAzulAuditEntry[], current: ContaAzulAuditEntry[]) {
+function analyze(
+  history: ContaAzulAuditEntry[],
+  current: ContaAzulAuditEntry[],
+  periodStart = "2026-04-01",
+  periodEnd = "2026-04-30",
+) {
   return analyzeFinancialHistory({
     history,
     current,
     historyStart: "2026-01-01",
     historyEnd: "2026-03-31",
-    periodStart: "2026-04-01",
-    periodEnd: "2026-04-30",
+    periodStart,
+    periodEnd,
     today: "2026-04-20",
   });
 }
@@ -96,5 +101,33 @@ describe("analyzeFinancialHistory", () => {
     const missing = result.findings.find((finding) => finding.ruleCode === "CA_MISSING_RECURRING");
     expect(result.profiles[0].expectedMonthlyCount).toBe(2);
     expect(missing?.description).toContain("apenas 1");
+  });
+
+  it("não cobra uma recorrência cuja data habitual está fora do período parcial", () => {
+    const history = ["01", "02", "03"].map((month) => entry({
+      id: `energy-${month}`,
+      dueDate: `2026-${month}-20`,
+      competenceDate: `2026-${String(Number(month) - 1).padStart(2, "0")}-01`,
+    }));
+
+    const result = analyze(history, [], "2026-04-01", "2026-04-15");
+
+    expect(result.profiles[0].expectedDueDays).toEqual([20]);
+    expect(result.findings.some((finding) => finding.ruleCode === "CA_MISSING_RECURRING")).toBe(false);
+  });
+
+  it("cobra somente as ocorrências habituais incluídas no período parcial", () => {
+    const history = ["01", "02", "03"].flatMap((month) => [
+      entry({ id: `${month}-early`, dueDate: `2026-${month}-10`, description: "Energia unidade A" }),
+      entry({ id: `${month}-late`, dueDate: `2026-${month}-25`, description: "Energia unidade B" }),
+    ]);
+
+    const result = analyze(history, [], "2026-04-01", "2026-04-15");
+    const missing = result.findings.find((finding) => finding.ruleCode === "CA_MISSING_RECURRING");
+
+    expect(result.profiles[0].expectedDueDays).toEqual([10, 25]);
+    expect(missing?.evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Quantidade esperada no intervalo", value: "1" }),
+    ]));
   });
 });

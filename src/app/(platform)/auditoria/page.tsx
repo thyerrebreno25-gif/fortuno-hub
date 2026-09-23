@@ -150,6 +150,49 @@ type ChecklistReviewState = {
   dueAt: string;
 };
 
+type FindingType =
+  | "MISSING_RECURRING"
+  | "OVERDUE"
+  | "OPEN"
+  | "COMPETENCE"
+  | "CATEGORY"
+  | "DUPLICATE"
+  | "VARIATION"
+  | "REPORT"
+  | "CHECKLIST"
+  | "OTHER";
+
+const FINDING_TYPE_LABELS: Record<FindingType, string> = {
+  MISSING_RECURRING: "Recorrências ausentes",
+  OVERDUE: "Títulos vencidos",
+  OPEN: "Títulos em aberto",
+  COMPETENCE: "Competência",
+  CATEGORY: "Categoria",
+  DUPLICATE: "Possíveis duplicidades",
+  VARIATION: "Variações mensais",
+  REPORT: "Período e saldo do relatório",
+  CHECKLIST: "Checklist do líder",
+  OTHER: "Outros alertas",
+};
+
+function findingType(ruleCode: string): FindingType {
+  if (
+    ruleCode === "CA_MISSING_RECURRING"
+    || ruleCode === "MISSING_RECURRING"
+    || ruleCode.startsWith("MISSING_MONTHLY_")
+    || ruleCode.startsWith("DRE_MISSING_")
+  ) return "MISSING_RECURRING";
+  if (ruleCode === "CA_OVERDUE") return "OVERDUE";
+  if (ruleCode === "CA_OPEN") return "OPEN";
+  if (ruleCode.startsWith("CA_COMPETENCE")) return "COMPETENCE";
+  if (ruleCode.includes("CATEGORY")) return "CATEGORY";
+  if (ruleCode.includes("DUPLICATE")) return "DUPLICATE";
+  if (ruleCode === "MONTHLY_VARIATION" || ruleCode.startsWith("DRE_VARIATION_")) return "VARIATION";
+  if (ruleCode === "REPORT_PERIOD_MISMATCH" || ruleCode === "NEGATIVE_ENDING_BALANCE") return "REPORT";
+  if (ruleCode.startsWith("CHECKLIST:")) return "CHECKLIST";
+  return "OTHER";
+}
+
 function severityColor(value: string) {
   if (value === "CRITICAL") return "red";
   if (value === "WARNING") return "orange";
@@ -256,6 +299,7 @@ export default function AuditoriaPage() {
   const [assignment, setAssignment] = useState<AssignmentState | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalState | null>(null);
   const [checklistReview, setChecklistReview] = useState<ChecklistReviewState | null>(null);
+  const [findingTypeFilter, setFindingTypeFilter] = useState("ALL");
 
   const isSupervisor = Boolean(bootstrap?.currentUser.canSupervise);
 
@@ -309,6 +353,7 @@ export default function AuditoriaPage() {
     if (!clientId || !file) return;
 
     setLoading(true);
+    setFindingTypeFilter("ALL");
 
     try {
       const movements = await parseContaAzulMovements(file);
@@ -392,6 +437,7 @@ export default function AuditoriaPage() {
   async function runContaAzulAnalysis() {
     if (!clientId || !periodStart || !periodEnd) return;
     setAutomaticLoading(true);
+    setFindingTypeFilter("ALL");
     setAnalysis(null);
     setAutomaticAnalysis(null);
 
@@ -533,6 +579,7 @@ export default function AuditoriaPage() {
     setAssignment(null);
     setActionModal(null);
     setChecklistReview(null);
+    setFindingTypeFilter("ALL");
   }
 
   function openChecklistReview(
@@ -563,6 +610,29 @@ export default function AuditoriaPage() {
     () => savedAudit,
     [savedAudit],
   );
+
+  const filteredFindings = useMemo(() => {
+    if (!currentAudit) return [];
+    if (findingTypeFilter === "ALL") return currentAudit.findings;
+    return currentAudit.findings.filter((finding) => (
+      findingType(finding.ruleCode) === findingTypeFilter
+    ));
+  }, [currentAudit, findingTypeFilter]);
+
+  const findingTypeOptions = useMemo(() => {
+    const counts = new Map<FindingType, number>();
+    currentAudit?.findings.forEach((finding) => {
+      const type = findingType(finding.ruleCode);
+      counts.set(type, (counts.get(type) ?? 0) + 1);
+    });
+    return [
+      { value: "ALL", label: `Todos os alertas (${currentAudit?.findings.length ?? 0})` },
+      ...Object.entries(FINDING_TYPE_LABELS).flatMap(([value, label]) => {
+        const count = counts.get(value as FindingType) ?? 0;
+        return count ? [{ value, label: `${label} (${count})` }] : [];
+      }),
+    ];
+  }, [currentAudit]);
 
   if (!bootstrap) {
     return (
@@ -1192,14 +1262,26 @@ export default function AuditoriaPage() {
           </Paper>
 
           <Paper withBorder radius="lg" p="lg">
-            <Group justify="space-between" mb="md">
+            <Group justify="space-between" align="flex-end" mb="md">
               <div>
                 <Text fw={700}>Reports identificados</Text>
                 <Text size="xs" c="dimmed">
                   Revise os achados antes de enviar para correção.
                 </Text>
               </div>
-              <Badge variant="light">{currentAudit.findings.length}</Badge>
+              <Group align="flex-end" gap="sm">
+                <Select
+                  label="Filtrar por tipo de alerta"
+                  data={findingTypeOptions}
+                  value={findingTypeFilter}
+                  onChange={(value) => setFindingTypeFilter(value || "ALL")}
+                  allowDeselect={false}
+                  w={250}
+                />
+                <Badge variant="light" mb={8}>
+                  {filteredFindings.length}/{currentAudit.findings.length}
+                </Badge>
+              </Group>
             </Group>
 
             <Stack gap="sm">
@@ -1208,8 +1290,12 @@ export default function AuditoriaPage() {
                   Nenhum ponto de auditoria foi identificado pelas regras
                   atuais.
                 </Alert>
+              ) : filteredFindings.length === 0 ? (
+                <Alert color="blue" icon={<IconShieldCheck size={18} />}>
+                  Nenhum alerta deste tipo foi identificado.
+                </Alert>
               ) : (
-                [...currentAudit.findings]
+                [...filteredFindings]
                   .sort((left, right) => {
                     const order = { PAYABLE: 0, RECEIVABLE: 1, GENERAL: 2 };
                     return order[left.flow || "GENERAL"] - order[right.flow || "GENERAL"];
