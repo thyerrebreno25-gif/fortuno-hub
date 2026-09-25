@@ -417,9 +417,10 @@ export function DirectFinancialSend({
                   ? "Vínculo automático da adquirente"
                   : "Vínculo automático da fatura"}
               >
-                {useLineAccounts ? "Cada lançamento será direcionado para o cadastro/CNPJ e a conta escolhidos na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}Como a API do Conta Azul exige um contato técnico,
-                o Fortuno Hub localizará ou criará automaticamente o cadastro “LANÇAMENTO AUTOMÁTICO”
-                {" "}para concluir o envio, sem pedir a seleção de um fornecedor.
+                {useLineAccounts ? "Cada lançamento será direcionado para o cadastro/CNPJ e a conta escolhidos na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}
+                {module === "CREDIT_CARD_INVOICE"
+                  ? `O Fortuno Hub usará ${counterpartyHint ? `“${counterpartyHint}”` : "o banco selecionado"} como fornecedor das despesas, localizando ou criando esse cadastro automaticamente no Conta Azul.`
+                  : "Como a API do Conta Azul exige um contato técnico, o Fortuno Hub localizará ou criará automaticamente o cadastro “LANÇAMENTO AUTOMÁTICO” para concluir o envio, sem pedir a seleção de um fornecedor."}
               </Alert>
               {useLineAccounts ? <Stack gap="xs">
                 <Text fw={700}>Rateio por cadastro e conta</Text>

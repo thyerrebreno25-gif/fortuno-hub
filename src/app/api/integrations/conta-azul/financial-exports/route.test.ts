@@ -28,7 +28,7 @@ let protocols: Map<string, string>;
 let eventSequence: number;
 function body(useLineAccounts = true, settle = false) {
   return { clientId: "client1", module: "CREDIT_CARD_INVOICE", sourceKey: "fatura-teste.pdf", sourceName: "fatura-teste.pdf",
-    financialAccountId: ACCOUNT_X, financialAccountName: "Nome ignorado", useLineAccounts, settle,
+    counterpartyHint: "Banco Teste", financialAccountId: ACCOUNT_X, financialAccountName: "Nome ignorado", useLineAccounts, settle,
     lines: [1, 2].map((index) => ({ lineKey: `compra-${index}`, direction: "PAYABLE", competenceDate: "2026-09-01", dueDate: "2026-09-10", paymentDate: "2026-09-10",
       description: `Compra ${index}`, amount: index * 10, categoryName: "Sistemas",
       ...(useLineAccounts ? { financialAccountId: index === 1 ? ACCOUNT_X : ACCOUNT_Y, financialAccountName: "Nome adulterado" } : {}),
@@ -173,6 +173,13 @@ describe("rateio da mesma fatura entre cadastros/CNPJs", () => {
 });
 
 describe("envio de fatura com conta por lançamento", () => {
+  it("usa o banco da fatura como fornecedor das despesas", async () => {
+    const result = await send(body(false)); expect(result.status).toBe(200); expect((await result.json()).done).toBe(true);
+    const personSearch = mocks.request.mock.calls.find((call) => call[1].startsWith("/v1/pessoas?"));
+    expect(new URL(`http://local${personSearch?.[1]}`).searchParams.get("busca")).toBe("Banco Teste");
+    expect(financialCreates().map((call) => JSON.parse(call[2].body).contato)).toEqual([CONTACT, CONTACT]);
+  });
+
   it("cria cada despesa na conta correta e persiste o rateio com os nomes reais do cliente", async () => {
     const result = await send(body()); expect(result.status).toBe(200); expect((await result.json()).done).toBe(true);
     expect(financialCreates().map((call) => JSON.parse(call[2].body).conta_financeira)).toEqual([ACCOUNT_X, ACCOUNT_Y]);
@@ -243,6 +250,8 @@ describe("envio de fatura com conta por lançamento", () => {
     expect((await send({ ...body(), module: "ACQUIRER" })).status).toBe(400);
     expect((await send({ ...body(false), module: "ACQUIRER" })).status).toBe(200);
     expect(financialCreates().map((call) => JSON.parse(call[2].body).conta_financeira)).toEqual([ACCOUNT_X, ACCOUNT_X]);
+    const personSearch = mocks.request.mock.calls.find((call) => call[1].startsWith("/v1/pessoas?"));
+    expect(new URL(`http://local${personSearch?.[1]}`).searchParams.get("busca")).toBe("LANÇAMENTO AUTOMÁTICO");
   });
   it("não envia sem autenticação, permissão, cliente ou conexão", async () => {
     mocks.member.mockResolvedValueOnce(null); expect((await send(body())).status).toBe(401);

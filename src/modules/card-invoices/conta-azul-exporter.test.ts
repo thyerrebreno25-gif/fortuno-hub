@@ -29,5 +29,6 @@ describe("sinal da fatura no padrão Conta Azul", () => {
 
     expect(row["Centro de Custo"]).toBe("ADMINISTRATIVO");
     expect(row.Categoria).toBe("SISTEMAS");
+    expect(row["Cliente/Fornecedor"]).toBe("Cora");
   });
 });

@@ -44,7 +44,7 @@ export function invoiceItemToContaAzulRow(
     Descrição: item.installment
       ? `${item.description} ${item.installment}`.trim()
       : item.description,
-    "Cliente/Fornecedor": "",
+    "Cliente/Fornecedor": input.bankName?.trim() ?? "",
     "CNPJ/CPF Cliente/Fornecedor": "",
     "Centro de Custo": item.costCenter ?? "",
     Observações: [

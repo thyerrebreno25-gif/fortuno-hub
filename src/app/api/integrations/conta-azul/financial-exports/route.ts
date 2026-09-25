@@ -195,10 +195,14 @@ async function resolveTechnicalContact(
     || (module === "ACQUIRER" ? "MOVIMENTAÇÕES DE ADQUIRENTES" : "FATURAS DE CARTÃO");
   const technicalObservation = module === "ACQUIRER"
     ? "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes."
-    : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
+    : direction === "PAYABLE" && requestedName?.trim()
+      ? `Fornecedor do cartão ${requestedName.trim()} vinculado automaticamente pelo Fortuno Hub.`
+      : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
   const requiredProfiles = requiredContactProfiles([direction]);
   const requiredProfile = requiredProfiles[0];
-  const technicalName = automaticFinancialContactName(requiredProfiles);
+  const technicalName = module === "CREDIT_CARD_INVOICE" && direction === "PAYABLE"
+    ? requestedName?.trim() || automaticFinancialContactName(requiredProfiles)
+    : automaticFinancialContactName(requiredProfiles);
 
   async function compatiblePerson(option: { value: string; label: string }) {
     const body = await contaAzulRequest<Record<string, unknown>>(
