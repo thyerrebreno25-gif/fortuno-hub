@@ -124,7 +124,20 @@ function inPeriod(value: string | null, start: string, end: string) {
   return Boolean(value && value >= start && value <= end);
 }
 
+function expandedDuePeriod(start: string, end: string) {
+  const startYear = Number(start.slice(0, 4));
+  const endYear = Number(end.slice(0, 4));
+  return {
+    data_vencimento_de: `${startYear - 10}-01-01`,
+    data_vencimento_ate: `${endYear + 10}-12-31`,
+  };
+}
+
 export async function fetchContaAzulReceivables(clientId: string, start: string, end: string) {
+  // O Conta Azul exige o intervalo de vencimento mesmo quando a busca principal
+  // é por competência ou pagamento. A janela ampliada evita excluir parcelas cuja
+  // competência pertence ao período, mas cujo vencimento ocorre em outro mês.
+  const requiredDuePeriod = expandedDuePeriod(start, end);
   const sources: Array<{ key: string; params: URLSearchParams; optional: boolean }> = [
     {
       key: "due",
@@ -133,12 +146,20 @@ export async function fetchContaAzulReceivables(clientId: string, start: string,
     },
     {
       key: "competence",
-      params: new URLSearchParams({ data_competencia_de: start, data_competencia_ate: end }),
+      params: new URLSearchParams({
+        ...requiredDuePeriod,
+        data_competencia_de: start,
+        data_competencia_ate: end,
+      }),
       optional: false,
     },
     {
       key: "payment",
-      params: new URLSearchParams({ data_pagamento_de: start, data_pagamento_ate: end }),
+      params: new URLSearchParams({
+        ...requiredDuePeriod,
+        data_pagamento_de: start,
+        data_pagamento_ate: end,
+      }),
       optional: true,
     },
   ];

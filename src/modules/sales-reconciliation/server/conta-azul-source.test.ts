@@ -41,9 +41,15 @@ describe("fetchContaAzulReceivables", () => {
       paymentDate: "2026-09-10",
     });
     expect(mocks.contaAzulRequest).toHaveBeenCalledTimes(3);
+    expect(mocks.contaAzulRequest.mock.calls.every(([, path]) => (
+      String(path).includes("data_vencimento_de=")
+      && String(path).includes("data_vencimento_ate=")
+    ))).toBe(true);
     expect(mocks.contaAzulRequest.mock.calls.some(([, path]) => (
       String(path).includes("data_competencia_de=2026-08-01")
       && String(path).includes("data_competencia_ate=2026-08-31")
+      && String(path).includes("data_vencimento_de=2016-01-01")
+      && String(path).includes("data_vencimento_ate=2036-12-31")
     ))).toBe(true);
   });
 
