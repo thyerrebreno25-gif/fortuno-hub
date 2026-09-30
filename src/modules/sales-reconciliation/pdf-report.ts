@@ -95,6 +95,7 @@ export function createSalesReconciliationPdf(
         statusCell(row),
         `${date(row.paymentDate)}\nLinha ${row.sourceRow}`,
         `${row.customer || "Sem cliente"}\n${row.product || "Sem produto"}`,
+        row.paymentMethod || "Não informada",
         row.destinationLabel || "-",
         money(row.amount),
         row.expectedCategory || "Não configurada",
@@ -105,7 +106,7 @@ export function createSalesReconciliationPdf(
       ])
     : [[{
         content: "Nenhuma divergência encontrada no período.",
-        colSpan: 8,
+        colSpan: 9,
         styles: { halign: "center", textColor: [31, 145, 85], fontStyle: "bold" },
       }]];
 
@@ -113,22 +114,23 @@ export function createSalesReconciliationPdf(
     startY: 51,
     margin: { top: 19, right: 8, bottom: 14, left: 8 },
     tableWidth: 275,
-    head: [["Divergência", "DATA PG", "Cliente / produto", "Destino", "Valor", "Categoria esperada", "Conta Azul", "Categoria no CA"]],
+    head: [["Divergência", "DATA PG", "Cliente / produto", "Forma de recebimento", "Destino", "Valor", "Categoria esperada", "Conta Azul", "Categoria no CA"]],
     body,
     theme: "grid",
     rowPageBreak: "avoid",
-    styles: { font: "helvetica", fontSize: 6.6, cellPadding: 1.8, lineColor: [222, 229, 238], lineWidth: 0.15, valign: "top" },
-    headStyles: { fillColor: [32, 113, 190], textColor: 255, fontStyle: "bold", fontSize: 6.7 },
+    styles: { font: "helvetica", fontSize: 6.2, cellPadding: 1.6, lineColor: [222, 229, 238], lineWidth: 0.15, valign: "top" },
+    headStyles: { fillColor: [32, 113, 190], textColor: 255, fontStyle: "bold", fontSize: 6.2 },
     alternateRowStyles: { fillColor: [249, 251, 254] },
     columnStyles: {
-      0: { cellWidth: 41 },
-      1: { cellWidth: 19 },
-      2: { cellWidth: 42 },
-      3: { cellWidth: 29 },
-      4: { cellWidth: 21, halign: "right" },
-      5: { cellWidth: 37 },
-      6: { cellWidth: 49 },
-      7: { cellWidth: 37 },
+      0: { cellWidth: 34 },
+      1: { cellWidth: 18 },
+      2: { cellWidth: 38 },
+      3: { cellWidth: 26 },
+      4: { cellWidth: 25 },
+      5: { cellWidth: 20, halign: "right" },
+      6: { cellWidth: 33 },
+      7: { cellWidth: 47 },
+      8: { cellWidth: 34 },
     },
     didDrawPage: (data) => {
       if (data.pageNumber > 1) drawHeader(doc, periodStart, periodEnd, true);
