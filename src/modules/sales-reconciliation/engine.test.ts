@@ -78,4 +78,14 @@ describe("reconcileSales", () => {
     });
     expect(result.rows[0].status).toBe("WRONG_CATEGORY");
   });
+
+  it("não considera conferido quando a categoria esperada não foi configurada", () => {
+    const result = reconcileSales({
+      entries: [entry("row-2")],
+      rules: [{ sourceLabel: "Doce Maison", clientId: "client-1" }],
+      receivablesByClient: { "client-1": { clientName: "Doce", items: [receivable("ca-1")] } },
+    });
+    expect(result.rows[0].status).toBe("WRONG_CATEGORY");
+    expect(result.rows[0].statusDetail).toContain("não foi configurada");
+  });
 });

@@ -19,6 +19,7 @@ export type SalesWorkbookPreview = {
   sheetName: string;
   totalRows: number;
   validRows: number;
+  ignoredCash: number;
   missingPaymentDate: number;
   invalidAmount: number;
   dateRange: { start: string; end: string } | null;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canSuperviseAudit, getAuditMember } from "@/modules/audit/auth";
-import { reconcileSales } from "@/modules/sales-reconciliation/engine";
+import { normalizedKey, reconcileSales } from "@/modules/sales-reconciliation/engine";
 import { fetchContaAzulReceivables } from "@/modules/sales-reconciliation/server/conta-azul-source";
 import type { SalesDestinationRule, SalesSpreadsheetEntry } from "@/modules/sales-reconciliation/types";
 
@@ -44,7 +44,11 @@ export async function POST(request: Request) {
   if (entries.length > 5_000) {
     return NextResponse.json({ error: "A conferência aceita até 5.000 linhas por execução." }, { status: 400 });
   }
-  const selectedEntries = entries.filter((entry) => entry.paymentDate >= periodStart && entry.paymentDate <= periodEnd);
+  const selectedEntries = entries.filter((entry) => (
+    entry.paymentDate >= periodStart
+    && entry.paymentDate <= periodEnd
+    && !normalizedKey(entry.paymentMethod).split(" ").includes("DINHEIRO")
+  ));
   if (!selectedEntries.length) {
     return NextResponse.json({ error: "Não há vendas com DATA PG dentro do período escolhido." }, { status: 400 });
   }

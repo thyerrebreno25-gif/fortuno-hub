@@ -112,6 +112,7 @@ export async function parseSalesWorkbook(file: File): Promise<SalesWorkbookPrevi
     if (!header) continue;
 
     const entries: SalesSpreadsheetEntry[] = [];
+    let ignoredCash = 0;
     let missingPaymentDate = 0;
     let invalidAmount = 0;
     let populatedRows = 0;
@@ -120,6 +121,11 @@ export async function parseSalesWorkbook(file: File): Promise<SalesWorkbookPrevi
       const sourceRow = header.rowIndex + offset + 2;
       if (!row.some((cell) => cell != null && text(cell))) return;
       populatedRows += 1;
+      const paymentMethod = header.map.paymentMethod == null ? "" : text(row[header.map.paymentMethod]);
+      if (normalize(paymentMethod).split(" ").includes("dinheiro")) {
+        ignoredCash += 1;
+        return;
+      }
       const amount = money(row[header.map.amount]);
       if (amount == null) {
         invalidAmount += 1;
@@ -136,7 +142,7 @@ export async function parseSalesWorkbook(file: File): Promise<SalesWorkbookPrevi
         eventDate: header.map.eventDate == null ? null : dateValue(row[header.map.eventDate]),
         customer: header.map.customer == null ? "" : text(row[header.map.customer]),
         amount,
-        paymentMethod: header.map.paymentMethod == null ? "" : text(row[header.map.paymentMethod]),
+        paymentMethod,
         paymentDate,
         seller: header.map.seller == null ? "" : text(row[header.map.seller]),
         product: header.map.product == null ? "" : text(row[header.map.product]),
@@ -163,6 +169,7 @@ export async function parseSalesWorkbook(file: File): Promise<SalesWorkbookPrevi
       sheetName,
       totalRows: populatedRows,
       validRows: entries.length,
+      ignoredCash,
       missingPaymentDate,
       invalidAmount,
       dateRange: dates.length ? { start: dates[0], end: dates.at(-1)! } : null,

@@ -56,7 +56,7 @@ function expectedCategory(entry: SalesSpreadsheetEntry, rule: SalesDestinationRu
 }
 
 function categoryMatches(expected: string | null, item: ContaAzulReceivable) {
-  if (!expected) return true;
+  if (!expected) return false;
   const key = normalizedKey(expected);
   return item.categoryNames.some((category) => normalizedKey(category) === key);
 }
@@ -114,7 +114,9 @@ function matchRow(input: {
       status: rightCategory ? "OK" : "WRONG_CATEGORY",
       statusDetail: rightCategory
         ? "Data e valor conferem no Conta Azul."
-        : `Lançamento localizado, mas a categoria é ${matched.categoryNames.join(" / ") || "não informada"}.`,
+        : expected
+          ? `Lançamento localizado, mas a categoria é ${matched.categoryNames.join(" / ") || "não informada"}.`
+          : "Lançamento localizado, mas a categoria esperada ainda não foi configurada.",
       expectedCategory: expected,
       matchedDateField,
       contaAzul: matched,

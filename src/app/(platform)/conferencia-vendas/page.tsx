@@ -302,7 +302,7 @@ export default function SalesReconciliationPage() {
 
   function exportReport() {
     if (!result) return;
-    const rows = result.rows.map((row) => ({
+    const rows = result.rows.filter((row) => row.status !== "OK").map((row) => ({
       Status: STATUS_META[row.status].label,
       Detalhe: row.statusDetail,
       "Linha na planilha": row.sourceRow,
@@ -332,7 +332,7 @@ export default function SalesReconciliationPage() {
       Status: item.status,
     }));
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Conferência");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Divergências");
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(extras), "Somente no Conta Azul");
     XLSX.writeFile(workbook, `conferencia_vendas_${periodStart}_${periodEnd}.xlsx`);
   }
@@ -349,7 +349,7 @@ export default function SalesReconciliationPage() {
           <Title order={1}>Conferência de vendas</Title>
           <Text c="dimmed">Compare a planilha do cliente com os lançamentos existentes no Conta Azul.</Text>
         </div>
-        {result && <Button leftSection={<IconDownload size={17} />} onClick={exportReport}>Baixar relatório</Button>}
+        {result && <Button leftSection={<IconDownload size={17} />} onClick={exportReport}>Baixar divergências</Button>}
       </Group>
 
       {!canSupervise && (
@@ -379,7 +379,7 @@ export default function SalesReconciliationPage() {
               <Alert color="blue" icon={<IconFileSpreadsheet size={19} />}>
                 <Text fw={700}>{preview.fileName}</Text>
                 <Text size="sm">
-                  {preview.validRows} linhas válidas · aba {preview.sheetName} · {preview.missingPaymentDate} sem DATA PG · {preview.invalidAmount} com valor inválido
+                  {preview.validRows} linhas válidas · aba {preview.sheetName} · {preview.ignoredCash} em dinheiro ignorada(s) · {preview.missingPaymentDate} sem DATA PG · {preview.invalidAmount} com valor inválido
                 </Text>
               </Alert>
               <Group grow align="flex-end" className={styles.periodFields}>
@@ -448,8 +448,8 @@ export default function SalesReconciliationPage() {
                       />
                       <Select
                         label="Categoria de receita esperada"
-                        description="Opcional. Se preenchida, o sistema também valida a categoria."
-                        placeholder={mapping.clientId ? "Não validar categoria" : "Selecione primeiro o cadastro"}
+                        description="Obrigatória para que uma venda seja considerada totalmente conferida."
+                        placeholder={mapping.clientId ? "Selecione a categoria esperada" : "Selecione primeiro o cadastro"}
                         searchable
                         clearable
                         disabled={!mapping.clientId}
