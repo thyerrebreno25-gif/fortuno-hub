@@ -223,6 +223,13 @@ const menuItems: MenuItem[] = [
     group: "Financeiro",
   },
   {
+    label: "Conferência de vendas",
+    href: "/conferencia-vendas",
+    moduleCode: "AUDIT",
+    icon: icons.audit,
+    group: "Financeiro",
+  },
+  {
     label: "Clientes",
     href: "/clientes",
     moduleCode: "CLIENTS",

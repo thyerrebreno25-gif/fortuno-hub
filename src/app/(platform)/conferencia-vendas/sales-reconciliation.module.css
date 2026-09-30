@@ -1,0 +1,73 @@
+.page {
+  min-height: 100%;
+  padding: 28px;
+  background: #f5f7fb;
+}
+
+.header {
+  margin-bottom: 22px;
+}
+
+.eyebrow {
+  color: #1683e8;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+.loading {
+  min-height: 60vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+}
+
+.emptyUpload {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 26px;
+  color: #718096;
+  border: 1px dashed #cfd8e6;
+  border-radius: 12px;
+  background: #fafcff;
+  text-align: center;
+}
+
+.dateInput {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  color: #0a1833;
+  font: inherit;
+  font-size: 14px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.dateInput:focus {
+  border-color: #228be6;
+  outline: none;
+}
+
+.resultsCard {
+  overflow: hidden;
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .page {
+  background: var(--fortuno-canvas);
+}
+
+:global(html[data-mantine-color-scheme="dark"]) .emptyUpload,
+:global(html[data-mantine-color-scheme="dark"]) .dateInput {
+  color: var(--fortuno-ink);
+  border-color: var(--fortuno-line);
+  background: var(--fortuno-surface-raised);
+}
+
+@media (max-width: 700px) {
+  .page { padding: 18px; }
+  .periodFields { display: grid; grid-template-columns: 1fr; }
+}
