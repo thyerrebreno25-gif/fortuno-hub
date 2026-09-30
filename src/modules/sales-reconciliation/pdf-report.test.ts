@@ -58,4 +58,22 @@ describe("createSalesReconciliationPdf", () => {
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
     expect(bytes.length).toBeGreaterThan(2_000);
   });
+
+  it("não inclui lançamentos extras do Conta Azul nem outros status no relatório", () => {
+    const result = sampleSalesReconciliationResult();
+    result.rows.push(
+      { ...result.rows[0], id: "sheet:3", sourceRow: 3, status: "OK" },
+      { ...result.rows[0], id: "sheet:4", sourceRow: 4, status: "NEARBY_DATE" },
+    );
+    result.extraContaAzul = Array.from({ length: 500 }, (_, index) => ({
+      ...result.rows[0].contaAzul!,
+      id: `extra-${index}`,
+      clientId: "client-1",
+      clientName: "Cliente Conta Azul",
+    }));
+
+    const document = createSalesReconciliationPdf(result, "2026-08-01", "2026-08-31");
+
+    expect(document.getNumberOfPages()).toBe(1);
+  });
 });

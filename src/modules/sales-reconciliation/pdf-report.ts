@@ -16,6 +16,8 @@ const STATUS_META: Record<SalesReconciliationStatus, { label: string; color: [nu
   NEGATIVE_REVIEW: { label: "Estorno/ajuste", color: [36, 116, 166] },
 };
 
+const REPORT_STATUSES = new Set<SalesReconciliationStatus>(["WRONG_CATEGORY", "NOT_FOUND"]);
+
 function money(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
@@ -48,16 +50,15 @@ function drawHeader(doc: jsPDF, periodStart: string, periodEnd: string, compact 
 }
 
 function drawSummary(doc: jsPDF, result: SalesReconciliationResult) {
-  const divergences = result.rows.filter((row) => row.status !== "OK");
+  const divergences = result.rows.filter((row) => REPORT_STATUSES.has(row.status));
   const items = [
-    ["Divergências", divergences.length],
+    ["Pendências no relatório", divergences.length],
     ["Não encontrados", result.summary.notFound],
-    ["Categorias", result.summary.wrongCategory],
-    ["Somente no Conta Azul", result.summary.extraContaAzul],
+    ["Categorias incorretas", result.summary.wrongCategory],
   ] as const;
   const startX = 10;
   const gap = 4;
-  const width = (doc.internal.pageSize.getWidth() - 20 - gap * 3) / 4;
+  const width = (doc.internal.pageSize.getWidth() - 20 - gap * 2) / 3;
   items.forEach(([label, value], index) => {
     const x = startX + index * (width + gap);
     doc.setFillColor(245, 248, 252);
@@ -80,7 +81,7 @@ export function createSalesReconciliationPdf(
   periodEnd: string,
 ) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  const divergences = result.rows.filter((row) => row.status !== "OK");
+  const divergences = result.rows.filter((row) => REPORT_STATUSES.has(row.status));
   drawHeader(doc, periodStart, periodEnd);
   drawSummary(doc, result);
 
@@ -133,43 +134,6 @@ export function createSalesReconciliationPdf(
       if (data.pageNumber > 1) drawHeader(doc, periodStart, periodEnd, true);
     },
   });
-
-  if (result.extraContaAzul.length) {
-    doc.addPage("a4", "landscape");
-    drawHeader(doc, periodStart, periodEnd, true);
-    doc.setTextColor(15, 35, 62);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("Receitas encontradas somente no Conta Azul", 10, 22);
-    autoTable(doc, {
-      startY: 26,
-      margin: { top: 19, right: 10, bottom: 14, left: 10 },
-      tableWidth: 274,
-      head: [["Cadastro", "Datas", "Descrição / contato", "Categoria", "Valor", "Status"]],
-      body: result.extraContaAzul.map((item) => [
-        item.clientName,
-        `Pagamento: ${date(item.paymentDate)}\nCompetência: ${date(item.competenceDate)}\nVencimento: ${date(item.dueDate)}`,
-        `${item.description}\n${item.counterparty || "Sem contato"}`,
-        item.categoryNames.join(" / ") || "-",
-        money(item.amount),
-        item.status,
-      ]),
-      theme: "grid",
-      rowPageBreak: "avoid",
-      styles: { font: "helvetica", fontSize: 7, cellPadding: 2, lineColor: [222, 229, 238], lineWidth: 0.15, valign: "top" },
-      headStyles: { fillColor: [32, 113, 190], textColor: 255, fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [249, 251, 254] },
-      columnStyles: {
-        0: { cellWidth: 40 },
-        1: { cellWidth: 42 },
-        2: { cellWidth: 72 },
-        3: { cellWidth: 58 },
-        4: { cellWidth: 27, halign: "right" },
-        5: { cellWidth: 35 },
-      },
-      didDrawPage: () => drawHeader(doc, periodStart, periodEnd, true),
-    });
-  }
 
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
