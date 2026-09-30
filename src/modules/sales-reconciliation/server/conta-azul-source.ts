@@ -134,7 +134,7 @@ export async function fetchContaAzulReceivables(clientId: string, start: string,
     {
       key: "competence",
       params: new URLSearchParams({ data_competencia_de: start, data_competencia_ate: end }),
-      optional: true,
+      optional: false,
     },
     {
       key: "payment",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
 import {
   Accordion,
   Alert,
@@ -24,8 +23,8 @@ import { notifications } from "@mantine/notifications";
 import {
   IconAlertTriangle,
   IconCheck,
-  IconDownload,
   IconFileSpreadsheet,
+  IconFileTypePdf,
   IconRefresh,
   IconSearch,
   IconUpload,
@@ -110,6 +109,7 @@ export default function SalesReconciliationPage() {
   const [periodEnd, setPeriodEnd] = useState("");
   const [reading, setReading] = useState(false);
   const [comparing, setComparing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState<SalesReconciliationResult | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>("ALL");
   const [search, setSearch] = useState("");
@@ -300,41 +300,21 @@ export default function SalesReconciliationPage() {
     }
   }
 
-  function exportReport() {
+  async function exportReport() {
     if (!result) return;
-    const rows = result.rows.filter((row) => row.status !== "OK").map((row) => ({
-      Status: STATUS_META[row.status].label,
-      Detalhe: row.statusDetail,
-      "Linha na planilha": row.sourceRow,
-      "Data de pagamento": date(row.paymentDate),
-      Cliente: row.customer,
-      Produto: row.product,
-      "Cadastro de destino": row.destinationLabel,
-      Valor: row.amount,
-      "Categoria esperada": row.expectedCategory || "",
-      "Descrição no Conta Azul": row.contaAzul?.description || "",
-      "Contato no Conta Azul": row.contaAzul?.counterparty || "",
-      "Categoria no Conta Azul": row.contaAzul?.categoryNames.join(" / ") || "",
-      "Valor no Conta Azul": row.contaAzul?.amount ?? "",
-      "Competência no Conta Azul": date(row.contaAzul?.competenceDate),
-      "Vencimento no Conta Azul": date(row.contaAzul?.dueDate),
-      "Pagamento no Conta Azul": date(row.contaAzul?.paymentDate),
-    }));
-    const extras = result.extraContaAzul.map((item) => ({
-      Cliente: item.clientName,
-      Descrição: item.description,
-      Contato: item.counterparty,
-      Categorias: item.categoryNames.join(" / "),
-      Valor: item.amount,
-      Competência: date(item.competenceDate),
-      Vencimento: date(item.dueDate),
-      Pagamento: date(item.paymentDate),
-      Status: item.status,
-    }));
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Divergências");
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(extras), "Somente no Conta Azul");
-    XLSX.writeFile(workbook, `conferencia_vendas_${periodStart}_${periodEnd}.xlsx`);
+    setExporting(true);
+    try {
+      const { downloadSalesReconciliationPdf } = await import("@/modules/sales-reconciliation/pdf-report");
+      downloadSalesReconciliationPdf(result, periodStart, periodEnd);
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        title: "PDF não gerado",
+        message: error instanceof Error ? error.message : "Não foi possível montar o relatório.",
+      });
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (bootstrapLoading) {
@@ -349,7 +329,7 @@ export default function SalesReconciliationPage() {
           <Title order={1}>Conferência de vendas</Title>
           <Text c="dimmed">Compare a planilha do cliente com os lançamentos existentes no Conta Azul.</Text>
         </div>
-        {result && <Button leftSection={<IconDownload size={17} />} onClick={exportReport}>Baixar divergências</Button>}
+        {result && <Button loading={exporting} leftSection={<IconFileTypePdf size={17} />} onClick={exportReport}>Baixar divergências em PDF</Button>}
       </Group>
 
       {!canSupervise && (
@@ -526,7 +506,10 @@ export default function SalesReconciliationPage() {
 
           <Alert color={result.summary.ok === result.summary.spreadsheetRows ? "green" : "orange"} icon={result.summary.ok === result.summary.spreadsheetRows ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}>
             <Text fw={700}>{money(result.summary.matchedAmount)} conferidos de {money(result.summary.spreadsheetAmount)}</Text>
-            <Text size="sm">O valor precisa ser idêntico até os centavos. Data próxima é apenas uma sugestão e não recebe status de conferido.</Text>
+            <Text size="sm">
+              A busca considera recebimento, competência e vencimento. Assim, vendas no cartão também podem ser localizadas
+              pela competência, mesmo quando o recebimento ocorre no mês seguinte. O valor precisa ser idêntico até os centavos.
+            </Text>
           </Alert>
 
           <Paper withBorder radius="lg" className={styles.resultsCard}>
