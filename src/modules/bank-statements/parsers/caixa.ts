@@ -1,8 +1,9 @@
 import type { ParsedStatement, StatementTransaction } from "../types";
 
 const MONEY = "\\d{1,3}(?:\\.\\d{3})*,\\d{2}";
+const BALANCE_VALUE = `(?:${MONEY}|\\d{3,})`;
 const TRANSACTION_ROW = new RegExp(
-  `^(\\d{2}\\/\\d{2}\\/\\d{4})\\s*-\\s*[0-9O]{2}\\s*:?\\s*\\d{2}\\s*:\\s*\\d{2}\\s+(\\d{5,})\\s+(.+?)\\s+(${MONEY})\\s*([CD])\\s+(${MONEY})\\s*([CD])$`,
+  `^(\\d{2}\\/\\d{2}\\/\\d{4})\\s*-\\s*.+?\\s+([0-9O]{5,})\\s+(.+?)\\s+(${MONEY})\\s*([CD])\\s+(${BALANCE_VALUE})\\s*([CD])$`,
   "i",
 );
 
@@ -10,6 +11,7 @@ function clean(value: string) {
   return String(value ?? "")
     .replace(/[|]/g, " ")
     .replace(/[—–−]/g, "-")
+    .replace(/[€]/g, "C")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -22,7 +24,8 @@ function normalize(value: string) {
 }
 
 function money(value: string, indicator = "C") {
-  const amount = Number(value.replace(/\./g, "").replace(",", "."));
+  const normalized = value.replace(/\./g, "").replace(",", ".");
+  const amount = value.includes(",") ? Number(normalized) : Number(normalized) / 100;
   return indicator.toUpperCase() === "D" ? -Math.abs(amount) : Math.abs(amount);
 }
 
@@ -101,7 +104,7 @@ export function parseCaixaStatement(source: string[]): ParsedStatement {
       selected: true,
       date,
       description,
-      document: match[2],
+      document: match[2].replace(/O/gi, "0"),
       sourceType: sourceType(description),
       type: signedAmount >= 0 ? "CREDIT" : "DEBIT",
       amount: Math.abs(signedAmount),

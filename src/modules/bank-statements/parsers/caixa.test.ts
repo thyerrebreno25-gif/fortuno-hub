@@ -83,4 +83,45 @@ describe("leitor de extrato da Caixa", () => {
     expect(result.transactions.map((item) => item.amount)).toEqual([67.6, 1625.22]);
     expect(result.transactions.every((item) => item.type === "DEBIT")).toBe(true);
   });
+
+  it("tolera horários fragmentados e indicadores de crédito confundidos pelo OCR", () => {
+    const result = parseCaixaStatement([
+      "PESSOAL",
+      "CAIXA",
+      "Extrato por período",
+      "Cliente GUIMARAES SERVICOS LTDA",
+      "Conta 1502 / 1292.000568008508-5",
+      "Data 29/09/2026 - 12:38",
+      "Mês Julho",
+      "Período dos lançamentos 01/07/2026 até 31/07/2026",
+      "SALDO ANTERIOR R$ 0,00 C",
+      "20/07/2026 - Ol oo 000000 SALDO DIA 0,00 C 141C",
+      "20/07/2026 - 1º 3:48 201453 DEB PIX CHAVE Guimaraes Servicos *F480.873/07** 1.940,00 D 141€",
+      "20/07/2026 - 05:34:26 202606 PLANO MAIS VALOR 2 58,59 D 1.941,41 €",
+      "19/07/2026 - 1 30 191011 DEB PIX CHAVE Guimaraes Servicos *Y480.873/0**+ 800,00 D 2.000,00 C",
+      "16/07/2026 - O oo 000000 SALDO DIA 0,00 € 2.800,00 C",
+      "16/07/2026 - 15:31:06 161531 DEB PIX CHAVE Guimaraes Servicos *H480.873/07++ 30.000,00 D 2.800,00 C",
+      "16/07/2026 - 1 06 000000 CRED CDC GIROFACIL 32.800,00 C 32.800,00 C",
+    ]);
+
+    expect(result).toMatchObject({
+      bank: "Caixa",
+      accountHolder: "GUIMARAES SERVICOS LTDA",
+      branch: "1502",
+      account: "1292.000568008508-5",
+      periodStart: "2026-07-01",
+      periodEnd: "2026-07-31",
+      detectedOpeningBalance: 0,
+      detectedClosingBalance: 1.41,
+    });
+    expect(result.transactions).toHaveLength(5);
+    expect(result.transactions.map((item) => item.amount)).toEqual([
+      30000,
+      32800,
+      800,
+      1940,
+      58.59,
+    ]);
+    expect(result.transactions.filter((item) => item.type === "CREDIT")).toHaveLength(1);
+  });
 });
