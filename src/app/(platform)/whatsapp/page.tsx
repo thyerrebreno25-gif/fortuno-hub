@@ -15,15 +15,13 @@ import {
   Text,
   Textarea,
   TextInput,
-  Title,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
-  IconArrowRight,
   IconBrandWhatsapp,
+  IconChartBar,
   IconCheck,
-  IconClock,
   IconInbox,
   IconMessageCircle,
   IconPlus,
@@ -33,9 +31,11 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WhatsAppMonitoring } from "./monitoring";
 import styles from "./whatsapp.module.css";
 
 type View = "GENERAL" | "MINE" | "QUEUE";
+type Section = "INBOX" | "MONITORING";
 
 type Bootstrap = {
   mode: "TEST" | "CONNECTED";
@@ -139,13 +139,6 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function formatDuration(minutes: number) {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}min` : `${hours}h`;
-}
-
 async function readResponse<T>(response: Response) {
   const payload = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || "Não foi possível concluir a ação.");
@@ -154,6 +147,7 @@ async function readResponse<T>(response: Response) {
 
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
+  const [section, setSection] = useState<Section>("INBOX");
   const [view, setView] = useState<View>("GENERAL");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -333,31 +327,42 @@ export default function WhatsAppPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
-          <Group gap="sm" mb={5}>
-            <Title order={1}>Central WhatsApp</Title>
+          <Group gap="sm" mb={7} align="center">
+            <div className={styles.sectionTabs}>
+              <button
+                type="button"
+                className={section === "INBOX" ? styles.sectionTabActive : ""}
+                onClick={() => setSection("INBOX")}
+              >
+                <IconBrandWhatsapp size={18} /> Central WhatsApp
+              </button>
+              <button
+                type="button"
+                className={section === "MONITORING" ? styles.sectionTabActive : ""}
+                onClick={() => setSection("MONITORING")}
+              >
+                <IconChartBar size={18} /> Central de monitoramento
+              </button>
+            </div>
             <Badge color={bootstrap?.mode === "CONNECTED" ? "green" : "yellow"} variant="light">
               {bootstrap?.mode === "CONNECTED" ? "Conectado" : "Modo de teste"}
             </Badge>
           </Group>
           <Text c="dimmed">
-            Distribua conversas, acompanhe os tempos e mantenha cada atendimento ligado ao cliente certo.
+            {section === "INBOX"
+              ? "Distribua conversas e mantenha cada atendimento ligado ao cliente certo."
+              : "Acompanhe demanda, tempos, clientes e desempenho da equipe em qualquer período."}
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={17} />} onClick={() => setSimulatorOpen(true)}>
-          Simular mensagem
-        </Button>
+        {section === "INBOX" && (
+          <Button leftSection={<IconPlus size={17} />} onClick={() => setSimulatorOpen(true)}>
+            Simular mensagem
+          </Button>
+        )}
       </header>
 
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm" className={styles.metrics}>
-        <Metric label="Ativos" value={String(stats?.active || 0)} icon={<IconMessageCircle size={18} />} />
-        <Metric label="Na fila" value={String(stats?.queue || 0)} icon={<IconInbox size={18} />} />
-        <Metric label="Sem resposta" value={String(stats?.waitingResponse || 0)} icon={<IconClock size={18} />} />
-        <Metric label="1ª resposta" value={formatDuration(stats?.averageFirstResponseMinutes || 0)} icon={<IconArrowRight size={18} />} />
-        <Metric label="Atendimento" value={formatDuration(stats?.averageHandlingMinutes || 0)} icon={<IconClock size={18} />} />
-        <Metric label="Satisfação" value={stats?.satisfaction ? `${stats.satisfaction}/5` : "—"} icon={<IconStar size={18} />} />
-      </SimpleGrid>
-
-      <section className={styles.workspace}>
+      {section === "INBOX" ? (
+        <section className={styles.workspace}>
         <aside className={styles.views}>
           <Text fw={800} size="sm" mb="sm">Conversas</Text>
           <ViewButton active={view === "GENERAL"} icon={<IconUsers size={18} />} label="Caixa geral" count={stats?.general || 0} onClick={() => setView("GENERAL")} />
@@ -539,7 +544,18 @@ export default function WhatsAppPage() {
             </div>
           )}
         </div>
-      </section>
+        </section>
+      ) : (
+        <WhatsAppMonitoring
+          clients={clientOptions}
+          members={memberOptions}
+          onOpenTicket={(id) => {
+            setView("GENERAL");
+            setSelectedId(id);
+            setSection("INBOX");
+          }}
+        />
+      )}
 
       <Modal opened={simulatorOpen} onClose={() => setSimulatorOpen(false)} title="Simular mensagem recebida" centered size="lg">
         <Stack>
@@ -562,17 +578,6 @@ export default function WhatsAppPage() {
         </Stack>
       </Modal>
     </main>
-  );
-}
-
-function Metric({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
-  return (
-    <Paper withBorder radius="lg" p="md" className={styles.metric}>
-      <Group justify="space-between" gap="xs">
-        <div><Text size="xs" c="dimmed">{label}</Text><Text fw={850} size="lg">{value}</Text></div>
-        <div className={styles.metricIcon}>{icon}</div>
-      </Group>
-    </Paper>
   );
 }
 

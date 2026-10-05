@@ -1,0 +1,39 @@
+.monitoring { display: grid; gap: 14px; }
+.filters, .metric, .chartCard, .tableCard, .attentionCard { background: var(--fortuno-surface); border-color: var(--fortuno-line); }
+.filters :global(.mantine-Input-input) { min-width: 132px; }
+.quickPeriods { margin-left: auto; }
+.loading { min-height: 420px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--fortuno-muted); }
+.metric { position: relative; overflow: hidden; transition: transform .2s ease, box-shadow .2s ease; }
+.metric:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(15, 35, 70, .09); }
+.metric::after { content: ""; position: absolute; inset: auto -18px -25px auto; width: 70px; height: 70px; border-radius: 50%; background: color-mix(in srgb, var(--metric-color, #228be6) 10%, transparent); }
+.metric[data-color="orange"] { --metric-color: #fd7e14; }.metric[data-color="cyan"] { --metric-color: #15aabf; }.metric[data-color="violet"] { --metric-color: #845ef7; }.metric[data-color="green"] { --metric-color: #20c997; }.metric[data-color="yellow"] { --metric-color: #fab005; }
+.metricValue { font-size: 23px; font-weight: 900; letter-spacing: -.03em; margin-top: 2px; }
+.metricIcon { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: var(--metric-color, #228be6); background: color-mix(in srgb, var(--metric-color, #228be6) 13%, transparent); }
+.primaryGrid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(310px, .8fr); gap: 14px; }
+.secondaryGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 14px; }
+.tableGrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
+.chartCard, .tableCard, .attentionCard { overflow: hidden; }
+.cardHeading { min-height: 68px; padding: 15px 18px; border-bottom: 1px solid var(--fortuno-line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.chartBody { min-height: 280px; padding: 14px 18px 18px; }
+.areaChart { position: relative; height: 280px; }
+.areaChart svg { width: 100%; height: 245px; overflow: visible; }
+.gridLine { stroke: var(--fortuno-line); stroke-width: 1; stroke-dasharray: 3 6; }
+.axisText { fill: var(--fortuno-muted); font-size: 10px; }
+.receivedLine, .resolvedLine { fill: none; stroke-width: 3; stroke-linecap: round; filter: drop-shadow(0 4px 5px rgba(34, 139, 230, .12)); }
+.receivedLine { stroke: #228be6; }.resolvedLine { stroke: #20c997; stroke-width: 2.4; }
+.receivedDot { fill: #fff; stroke: #228be6; stroke-width: 3; }.resolvedDot { fill: #fff; stroke: #20c997; stroke-width: 3; }
+.chartLegend { position: absolute; left: 40px; bottom: 0; display: flex; gap: 16px; font-size: 11px; color: var(--fortuno-muted); }
+.chartLegend span { display: flex; align-items: center; gap: 6px; }.chartLegend i { width: 8px; height: 8px; border-radius: 50%; }.blueDot { background: #228be6; }.greenDot { background: #20c997; }
+.chartTooltip { position: absolute; top: 12px; transform: translateX(-50%); z-index: 3; min-width: 128px; padding: 9px 11px; border: 1px solid var(--fortuno-line); border-radius: 10px; background: var(--fortuno-surface-raised); box-shadow: var(--fortuno-shadow); pointer-events: none; display: grid; gap: 2px; font-size: 11px; color: var(--fortuno-muted); }
+.chartTooltip strong { color: var(--fortuno-ink); font-size: 12px; }
+.donutLayout { height: 250px; display: grid; grid-template-columns: 150px 1fr; gap: 22px; align-items: center; }
+.donut { width: 150px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; transition: transform .2s ease; }
+.donut:hover { transform: scale(1.03); }.donut > div { width: 96px; aspect-ratio: 1; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--fortuno-surface); box-shadow: inset 0 0 0 1px var(--fortuno-line); }.donut strong { font-size: 24px; }.donut span { font-size: 10px; color: var(--fortuno-muted); }
+.donutLegend { display: grid; gap: 6px; }.donutLegend button { border: 0; border-radius: 8px; padding: 7px 8px; background: transparent; color: var(--fortuno-ink); display: grid; grid-template-columns: 9px 1fr auto; gap: 8px; align-items: center; text-align: left; cursor: default; }.donutLegend button:hover { background: var(--fortuno-surface-soft); }.donutLegend i { width: 8px; height: 8px; border-radius: 50%; }.donutLegend span { font-size: 11px; }.donutLegend strong { font-size: 11px; }
+.hourlyChart { height: 240px; display: flex; align-items: flex-end; gap: 5px; padding-top: 14px; border-bottom: 1px solid var(--fortuno-line); }
+.hourColumn { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 7px; }.hourBar { width: min(18px, 80%); min-height: 2px; border-radius: 7px 7px 2px 2px; background: linear-gradient(180deg, #4dabf7, #228be6); transition: height .35s ease, filter .2s ease; }.hourColumn:hover .hourBar { filter: brightness(1.12); }.hourColumn span { min-height: 13px; font-size: 9px; color: var(--fortuno-muted); }
+.agentBars { display: grid; gap: 14px; padding-top: 4px; }.agentRow { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(110px, 1.3fr) 26px; align-items: center; gap: 12px; }.agentRow > div:first-child { min-width: 0; }.agentRow strong { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.agentRow span { display: block; font-size: 9px; color: var(--fortuno-muted); margin-top: 3px; }.agentRow b { font-size: 12px; text-align: right; }.agentTrack { height: 8px; border-radius: 10px; overflow: hidden; background: var(--fortuno-surface-soft); }.agentTrack div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #845ef7, #b197fc); transition: width .4s ease; }
+.tableScroll { overflow: auto; }.tableCard table, .attentionCard table { width: 100%; min-width: 680px; border-collapse: collapse; }.tableCard th, .attentionCard th { padding: 10px 13px; font-size: 9px; text-transform: uppercase; letter-spacing: .055em; color: var(--fortuno-muted); background: var(--fortuno-surface-soft); text-align: left; white-space: nowrap; }.tableCard td, .attentionCard td { padding: 11px 13px; border-top: 1px solid var(--fortuno-line); font-size: 11px; white-space: nowrap; }.tableCard tr:hover td, .attentionCard tr:hover td { background: color-mix(in srgb, var(--mantine-color-blue-6) 4%, transparent); }.tableCard td strong, .attentionCard td strong { display: block; color: var(--fortuno-ink); }.tableCard td small { display: block; margin-top: 2px; color: var(--fortuno-muted); }
+.emptyCell { padding: 28px !important; text-align: center; color: var(--fortuno-muted); }.waitTime, .dangerTime { display: inline-flex; padding: 4px 8px; border-radius: 20px; font-weight: 800; font-size: 10px; background: color-mix(in srgb, #228be6 10%, transparent); color: #1971c2; }.dangerTime { background: color-mix(in srgb, #fa5252 12%, transparent); color: #e03131; }.noChart { min-height: 210px; display: grid; place-items: center; color: var(--fortuno-muted); font-size: 13px; }
+@media (max-width: 1250px) { .filters > :global(.mantine-Group-root) { align-items: flex-end; }.primaryGrid, .secondaryGrid, .tableGrid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .quickPeriods { margin-left: 0; width: 100%; }.filters > :global(.mantine-Group-root) { align-items: stretch; }.filters :global(.mantine-InputWrapper-root) { flex: 1 1 145px; }.donutLayout { grid-template-columns: 1fr; height: auto; justify-items: center; }.donutLegend { width: 100%; }.chartBody { padding-inline: 10px; }.agentRow { grid-template-columns: minmax(120px, 1fr) 1fr 24px; } }
