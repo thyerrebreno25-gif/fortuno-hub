@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getServiceCenterMember,
-  getServiceCenterPermission,
+  getWhatsAppPermission,
   SERVICE_CENTER_MANAGER_ROLES,
 } from "@/modules/atendimento/auth";
 import {
@@ -27,7 +27,7 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
-  const permission = await getServiceCenterPermission(
+  const permission = await getWhatsAppPermission(
     member.organizationId,
     member.role,
   );
@@ -51,7 +51,7 @@ export async function PATCH(request: Request, context: Context) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
-  const permission = await getServiceCenterPermission(
+  const permission = await getWhatsAppPermission(
     member.organizationId,
     member.role,
   );

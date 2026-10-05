@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import {
+  defaultPermission,
+  type ModuleCode,
+} from "@/modules/permissions/permissions";
 
 export const SERVICE_CENTER_MANAGER_ROLES = new Set([
   "MASTER",
@@ -35,6 +39,7 @@ export async function getServiceCenterMember() {
 export async function getServiceCenterPermission(
   organizationId: string,
   role: string,
+  moduleCode: ModuleCode = "SERVICE_CENTER",
 ) {
   if (role === "MASTER") {
     return {
@@ -53,7 +58,7 @@ export async function getServiceCenterPermission(
       organizationId_role_moduleCode: {
         organizationId,
         role: role as "ADMIN" | "MANAGER" | "OPERATOR" | "CLIENT",
-        moduleCode: "SERVICE_CENTER",
+        moduleCode,
       },
     },
   });
@@ -70,27 +75,12 @@ export async function getServiceCenterPermission(
     };
   }
 
-  if (role === "CLIENT") {
-    return {
-      canView: false,
-      canCreate: false,
-      canEdit: false,
-      canDelete: false,
-      canImport: false,
-      canExport: false,
-      canManage: false,
-    };
-  }
+  return defaultPermission(role, moduleCode);
+}
 
-  const manager = SERVICE_CENTER_MANAGER_ROLES.has(role);
-
-  return {
-    canView: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: manager,
-    canImport: manager,
-    canExport: manager,
-    canManage: manager,
-  };
+export function getWhatsAppPermission(
+  organizationId: string,
+  role: string,
+) {
+  return getServiceCenterPermission(organizationId, role, "WHATSAPP");
 }

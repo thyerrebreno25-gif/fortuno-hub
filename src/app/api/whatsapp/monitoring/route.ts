@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getServiceCenterMember,
-  getServiceCenterPermission,
+  getWhatsAppPermission,
 } from "@/modules/atendimento/auth";
 import {
   average,
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
-  const permission = await getServiceCenterPermission(
+  const permission = await getWhatsAppPermission(
     member.organizationId,
     member.role,
   );

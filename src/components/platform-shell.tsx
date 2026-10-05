@@ -246,7 +246,7 @@ const menuItems: MenuItem[] = [
   {
     label: "WhatsApp",
     href: "/whatsapp",
-    moduleCode: "SERVICE_CENTER",
+    moduleCode: "WHATSAPP",
     icon: icons.whatsapp,
     group: "Operação",
   },

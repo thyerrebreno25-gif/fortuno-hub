@@ -24,6 +24,7 @@ const modules = [
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
   ["PURCHASE_INVOICES", "Notas de compra"],
+  ["WHATSAPP", "Central WhatsApp"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],
   ["ONBOARDING", "Onboarding"],

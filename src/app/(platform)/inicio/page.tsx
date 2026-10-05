@@ -168,7 +168,7 @@ const features: Feature[] = [
     description:
       "Atenda clientes, organize a fila e acompanhe responsáveis, tempos e satisfação em um só lugar.",
     href: "/whatsapp",
-    moduleCode: "SERVICE_CENTER",
+    moduleCode: "WHATSAPP",
     group: "Atendimento e clientes",
     icon: <IconBrandWhatsapp size={24} />,
     badge: "Novo",
