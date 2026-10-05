@@ -318,25 +318,26 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members               OrganizationMember[]
-  clients               Client[]
-  categories            Category[]
-  imports               ImportJob[]
-  tickets               SupportTicket[]
-  onboardingTemplates   OnboardingTemplate[]
-  onboardings           Onboarding[]
-  operationProcesses    OperationProcess[]
-  operationActivities   OperationActivity[]
-  operationHolidays     OperationHoliday[]
-  roleModulePermissions RoleModulePermission[]
-  audits                Audit[]
-  emailConnections      EmailConnection[]
-  serviceTickets        ServiceTicket[]
-  notices               Notice[]
-  contaAzulConnections  ContaAzulConnection[]
-  purchaseInvoices      PurchaseInvoice[]
+  members                   OrganizationMember[]
+  clients                   Client[]
+  categories                Category[]
+  imports                   ImportJob[]
+  tickets                   SupportTicket[]
+  onboardingTemplates       OnboardingTemplate[]
+  onboardings               Onboarding[]
+  operationProcesses        OperationProcess[]
+  operationActivities       OperationActivity[]
+  operationHolidays         OperationHoliday[]
+  roleModulePermissions     RoleModulePermission[]
+  audits                    Audit[]
+  emailConnections          EmailConnection[]
+  serviceTickets            ServiceTicket[]
+  notices                   Notice[]
+  contaAzulConnections      ContaAzulConnection[]
+  purchaseInvoices          PurchaseInvoice[]
   contaAzulFinancialExports ContaAzulFinancialExport[]
   assistantConversations    AssistantConversation[]
+  whatsappIdentities        ClientWhatsAppIdentity[]
 }
 
 model User {
@@ -346,32 +347,32 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships              OrganizationMember[]
-  imports                  ImportJob[]
-  auditLogs                AuditLog[]
-  tickets                  SupportTicket[]
-  onboardingOwned          Onboarding[]             @relation("OnboardingOwner")
-  onboardingCreated        Onboarding[]             @relation("OnboardingCreator")
-  onboardingTasks          OnboardingTask[]         @relation("OnboardingTaskResponsible")
-  onboardingComments       OnboardingComment[]
-  onboardingTimeEntries    OnboardingTimeEntry[]
-  onboardingHistory        OnboardingHistory[]
-  operationActivities      OperationActivity[]      @relation("OperationResponsible")
-  operationTimeEntries     OperationTimeEntry[]
-  operationComments        OperationComment[]
-  operationEvents          OperationEvent[]
-  operationClientProcesses OperationClientProcess[]
-  operationLedClients      Client[]                 @relation("OperationClientLeader")
-  auditsSupervised         Audit[]                  @relation("AuditSupervisor")
-  auditFindingsAssigned    AuditFinding[]           @relation("AuditFindingOperator")
-  auditInteractions        AuditInteraction[]
-  auditChecklistReviewed   AuditChecklistItem[]     @relation("AuditChecklistReviewer")
-  assignedServiceTickets   ServiceTicket[]          @relation("ServiceTicketAssignee")
-  serviceTicketHistory     ServiceTicketHistory[]   @relation("ServiceTicketHistoryUser")
-  payableClients           Client[]                 @relation("ClientPayableResponsible")
-  receivableClients        Client[]                 @relation("ClientReceivableResponsible")
-  generalServiceClients    Client[]                 @relation("ClientGeneralResponsible")
-  purchaseInvoicesCreated  PurchaseInvoice[]        @relation("PurchaseInvoiceCreator")
+  memberships                      OrganizationMember[]
+  imports                          ImportJob[]
+  auditLogs                        AuditLog[]
+  tickets                          SupportTicket[]
+  onboardingOwned                  Onboarding[]               @relation("OnboardingOwner")
+  onboardingCreated                Onboarding[]               @relation("OnboardingCreator")
+  onboardingTasks                  OnboardingTask[]           @relation("OnboardingTaskResponsible")
+  onboardingComments               OnboardingComment[]
+  onboardingTimeEntries            OnboardingTimeEntry[]
+  onboardingHistory                OnboardingHistory[]
+  operationActivities              OperationActivity[]        @relation("OperationResponsible")
+  operationTimeEntries             OperationTimeEntry[]
+  operationComments                OperationComment[]
+  operationEvents                  OperationEvent[]
+  operationClientProcesses         OperationClientProcess[]
+  operationLedClients              Client[]                   @relation("OperationClientLeader")
+  auditsSupervised                 Audit[]                    @relation("AuditSupervisor")
+  auditFindingsAssigned            AuditFinding[]             @relation("AuditFindingOperator")
+  auditInteractions                AuditInteraction[]
+  auditChecklistReviewed           AuditChecklistItem[]       @relation("AuditChecklistReviewer")
+  assignedServiceTickets           ServiceTicket[]            @relation("ServiceTicketAssignee")
+  serviceTicketHistory             ServiceTicketHistory[]     @relation("ServiceTicketHistoryUser")
+  payableClients                   Client[]                   @relation("ClientPayableResponsible")
+  receivableClients                Client[]                   @relation("ClientReceivableResponsible")
+  generalServiceClients            Client[]                   @relation("ClientGeneralResponsible")
+  purchaseInvoicesCreated          PurchaseInvoice[]          @relation("PurchaseInvoiceCreator")
   contaAzulFinancialExportsCreated ContaAzulFinancialExport[] @relation("ContaAzulFinancialExportCreator")
   assistantConversations           AssistantConversation[]
 }
@@ -434,26 +435,27 @@ model Client {
   receivableResponsible User?        @relation("ClientReceivableResponsible", fields: [receivableResponsibleId], references: [id], onDelete: SetNull)
   generalResponsible    User?        @relation("ClientGeneralResponsible", fields: [generalResponsibleId], references: [id], onDelete: SetNull)
 
-  imports                 ImportJob[]
-  employees               Employee[]
-  categoryRules           CategoryRule[]
-  costCenters             CostCenter[]
-  acquirers               ClientAcquirer[]
-  banks                   ClientBank[]
-  cards                   ClientCard[]
-  categoryMappings        ClientCategoryMapping[]
-  onboardings             Onboarding[]
-  operationConfigurations OperationClientProcess[]
-  operationActivities     OperationActivity[]
-  audits                  Audit[]
-  serviceTickets          ServiceTicket[]
-  emailIdentities         ClientEmailIdentity[]
-  noticeLinks             NoticeClient[]
-  contaAzulConnection     ContaAzulConnection?
-  purchaseInvoices        PurchaseInvoice[]
-  purchaseInvoiceRules    PurchaseInvoiceRule[]
+  imports                   ImportJob[]
+  employees                 Employee[]
+  categoryRules             CategoryRule[]
+  costCenters               CostCenter[]
+  acquirers                 ClientAcquirer[]
+  banks                     ClientBank[]
+  cards                     ClientCard[]
+  categoryMappings          ClientCategoryMapping[]
+  onboardings               Onboarding[]
+  operationConfigurations   OperationClientProcess[]
+  operationActivities       OperationActivity[]
+  audits                    Audit[]
+  serviceTickets            ServiceTicket[]
+  emailIdentities           ClientEmailIdentity[]
+  noticeLinks               NoticeClient[]
+  contaAzulConnection       ContaAzulConnection?
+  purchaseInvoices          PurchaseInvoice[]
+  purchaseInvoiceRules      PurchaseInvoiceRule[]
   contaAzulFinancialExports ContaAzulFinancialExport[]
   assistantConversations    AssistantConversation[]
+  whatsappIdentities        ClientWhatsAppIdentity[]
 
   @@unique([organizationId, normalizedName])
   @@unique([organizationId, document])
@@ -519,9 +521,9 @@ model ContaAzulConnection {
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  invoices     PurchaseInvoice[]
+  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client           Client                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoices         PurchaseInvoice[]
   financialExports ContaAzulFinancialExport[]
 
   @@index([organizationId, active])
@@ -561,10 +563,10 @@ model PurchaseInvoice {
   createdAt                 DateTime              @default(now())
   updatedAt                 DateTime              @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  connection   ContaAzulConnection?  @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  createdBy    User                  @relation("PurchaseInvoiceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client                       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection   ContaAzulConnection?         @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  createdBy    User                         @relation("PurchaseInvoiceCreator", fields: [createdById], references: [id], onDelete: Restrict)
   items        PurchaseInvoiceItem[]
   installments PurchaseInvoiceInstallment[]
 
@@ -579,11 +581,11 @@ model PurchaseInvoiceInstallment {
   invoiceId         String
   installmentNumber Int
   externalNumber    String?
-  dueDate            DateTime
-  amount             Decimal                          @db.Decimal(18, 2)
-  source             PurchaseInvoiceInstallmentSource @default(MANUAL_REQUIRED)
-  createdAt          DateTime                         @default(now())
-  updatedAt          DateTime                         @updatedAt
+  dueDate           DateTime
+  amount            Decimal                          @db.Decimal(18, 2)
+  source            PurchaseInvoiceInstallmentSource @default(MANUAL_REQUIRED)
+  createdAt         DateTime                         @default(now())
+  updatedAt         DateTime                         @updatedAt
 
   invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -642,30 +644,30 @@ model PurchaseInvoiceRule {
 }
 
 model ContaAzulFinancialExport {
-  id              String                         @id @default(cuid())
-  organizationId  String
-  clientId        String
-  connectionId    String
-  createdById     String
-  module          ContaAzulFinancialExportModule
-  sourceKey       String
-  sourceName      String
-  contactId       String
-  contactName     String?
+  id                   String                         @id @default(cuid())
+  organizationId       String
+  clientId             String
+  connectionId         String
+  createdById          String
+  module               ContaAzulFinancialExportModule
+  sourceKey            String
+  sourceName           String
+  contactId            String
+  contactName          String?
   financialAccountId   String
   financialAccountName String?
-  settleRequested Boolean                        @default(false)
-  status          ContaAzulFinancialExportStatus @default(PROCESSING)
-  lastError       String?
-  metadata        Json?
-  completedAt     DateTime?
-  createdAt       DateTime                       @default(now())
-  updatedAt       DateTime                       @updatedAt
+  settleRequested      Boolean                        @default(false)
+  status               ContaAzulFinancialExportStatus @default(PROCESSING)
+  lastError            String?
+  metadata             Json?
+  completedAt          DateTime?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  connection   ContaAzulConnection  @relation(fields: [connectionId], references: [id], onDelete: Restrict)
-  createdBy    User                 @relation("ContaAzulFinancialExportCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client                         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection   ContaAzulConnection            @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  createdBy    User                           @relation("ContaAzulFinancialExportCreator", fields: [createdById], references: [id], onDelete: Restrict)
   lines        ContaAzulFinancialExportLine[]
 
   @@unique([clientId, module, sourceKey])
@@ -674,28 +676,28 @@ model ContaAzulFinancialExport {
 }
 
 model ContaAzulFinancialExportLine {
-  id                      String                             @id @default(cuid())
-  exportId                String
-  lineKey                 String
-  direction               ContaAzulFinancialDirection
-  status                  ContaAzulFinancialExportLineStatus @default(PENDING)
-  competenceDate          DateTime
-  dueDate                 DateTime
-  paymentDate             DateTime?
-  description             String
-  amount                  Decimal                            @db.Decimal(18, 2)
-  categoryName            String
-  contaAzulCategoryId     String?
-  costCenterName          String?
-  contaAzulCostCenterId   String?
-  externalProtocolId      String?
-  externalEventId         String?
-  externalInstallmentId   String?
-  externalSettlementId    String?
-  lastError               String?
-  metadata                Json?
-  createdAt               DateTime                           @default(now())
-  updatedAt               DateTime                           @updatedAt
+  id                    String                             @id @default(cuid())
+  exportId              String
+  lineKey               String
+  direction             ContaAzulFinancialDirection
+  status                ContaAzulFinancialExportLineStatus @default(PENDING)
+  competenceDate        DateTime
+  dueDate               DateTime
+  paymentDate           DateTime?
+  description           String
+  amount                Decimal                            @db.Decimal(18, 2)
+  categoryName          String
+  contaAzulCategoryId   String?
+  costCenterName        String?
+  contaAzulCostCenterId String?
+  externalProtocolId    String?
+  externalEventId       String?
+  externalInstallmentId String?
+  externalSettlementId  String?
+  lastError             String?
+  metadata              Json?
+  createdAt             DateTime                           @default(now())
+  updatedAt             DateTime                           @updatedAt
 
   export ContaAzulFinancialExport @relation(fields: [exportId], references: [id], onDelete: Cascade)
 
@@ -1672,6 +1674,25 @@ model ClientEmailIdentity {
 
   @@unique([clientId, normalizedEmail])
   @@index([normalizedEmail, active])
+}
+
+model ClientWhatsAppIdentity {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  kind           String   @default("CONTACT")
+  externalId     String
+  displayName    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, clientId, kind, externalId])
+  @@index([organizationId, kind, externalId, active])
+  @@index([clientId, active])
 }
 
 model ServiceTicket {

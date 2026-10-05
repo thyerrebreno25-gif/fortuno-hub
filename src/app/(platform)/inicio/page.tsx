@@ -20,6 +20,7 @@ import {
   IconBrain,
   IconArrowRight,
   IconBell,
+  IconBrandWhatsapp,
   IconBuildingBank,
   IconCards,
   IconChartBar,
@@ -161,6 +162,16 @@ const features: Feature[] = [
     moduleCode: "CLIENTS",
     group: "Atendimento e clientes",
     icon: <IconUsers size={24} />,
+  },
+  {
+    title: "Central WhatsApp",
+    description:
+      "Atenda clientes, organize a fila e acompanhe responsáveis, tempos e satisfação em um só lugar.",
+    href: "/whatsapp",
+    moduleCode: "SERVICE_CENTER",
+    group: "Atendimento e clientes",
+    icon: <IconBrandWhatsapp size={24} />,
+    badge: "Novo",
   },
   {
     title: "Onboarding",

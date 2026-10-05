@@ -149,6 +149,13 @@ const icons = {
     </svg>
   ),
 
+  whatsapp: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.5 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.6-4.7A8.5 8.5 0 1 1 20.5 11.5Z" />
+      <path d="M8.2 7.8c.4 3.7 2.5 5.8 6.1 6.4l1.2-1.4 2 .9c-.4 1.8-1.7 2.7-3.5 2.5-4.2-.5-7.5-3.8-8.1-8-.2-1.8.7-3 2.4-3.5l1 2Z" />
+    </svg>
+  ),
+
   settings: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
@@ -234,6 +241,13 @@ const menuItems: MenuItem[] = [
     href: "/clientes",
     moduleCode: "CLIENTS",
     icon: icons.users,
+    group: "Operação",
+  },
+  {
+    label: "WhatsApp",
+    href: "/whatsapp",
+    moduleCode: "SERVICE_CENTER",
+    icon: icons.whatsapp,
     group: "Operação",
   },
   {
