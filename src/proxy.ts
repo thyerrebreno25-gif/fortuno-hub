@@ -11,6 +11,7 @@ const PUBLIC_ROUTES = [
   "/ativar-acesso",
   "/api/auth/member-invite",
   "/api/atendimento/gmail/webhook",
+  "/api/whatsapp/webhook",
   "/api/cron/atendimento-retention",
   "/api/cron/member-invite-reminders",
 ];

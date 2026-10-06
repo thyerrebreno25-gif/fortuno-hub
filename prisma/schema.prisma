@@ -1741,6 +1741,9 @@ model ServiceMessage {
   id                String                  @id @default(cuid())
   ticketId          String
   externalMessageId String?
+  deliveryStatus    String?
+  statusUpdatedAt   DateTime?
+  providerMetadata  Json?
   direction         ServiceMessageDirection @default(INBOUND)
   fromName          String?
   fromEmail         String
@@ -1757,6 +1760,7 @@ model ServiceMessage {
 
   @@unique([ticketId, externalMessageId])
   @@index([ticketId, receivedAt])
+  @@index([externalMessageId])
 }
 
 model ServiceAttachment {

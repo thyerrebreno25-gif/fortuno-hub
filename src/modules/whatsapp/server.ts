@@ -121,7 +121,10 @@ export function getWhatsappTicket(id: string, organizationId: string) {
         },
       },
       assignedTo: { select: { id: true, name: true, email: true } },
-      messages: { orderBy: { receivedAt: "asc" } },
+      messages: {
+        orderBy: { receivedAt: "asc" },
+        include: { attachments: { orderBy: { createdAt: "asc" } } },
+      },
       history: {
         orderBy: { createdAt: "desc" },
         include: { user: { select: { id: true, name: true, email: true } } },

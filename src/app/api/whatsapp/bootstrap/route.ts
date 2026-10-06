@@ -5,6 +5,7 @@ import {
   getWhatsAppPermission,
   SERVICE_CENTER_MANAGER_ROLES,
 } from "@/modules/atendimento/auth";
+import { isWhatsAppMetaConfigured } from "@/modules/whatsapp/meta";
 
 export async function GET() {
   const member = await getServiceCenterMember();
@@ -58,10 +59,7 @@ export async function GET() {
   ]);
 
   return NextResponse.json({
-    mode:
-      process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID
-        ? "CONNECTED"
-        : "TEST",
+    mode: isWhatsAppMetaConfigured() ? "CONNECTED" : "TEST",
     currentUser: member.user,
     canManage:
       permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role),

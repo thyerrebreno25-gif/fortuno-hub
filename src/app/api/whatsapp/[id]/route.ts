@@ -10,6 +10,7 @@ import {
   responsibleForRoutingArea,
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
+import { sendWhatsAppText } from "@/modules/whatsapp/meta";
 import { getWhatsappTicket } from "@/modules/whatsapp/server";
 
 type Context = { params: Promise<{ id: string }> };
@@ -248,12 +249,52 @@ export async function PATCH(request: Request, context: Context) {
       );
     }
 
+    let externalMessageId: string | null = null;
+    if (current.source === "WHATSAPP_API") {
+      const channel = parseWhatsappChannelAddress(current.senderEmail);
+      if (channel.kind !== "CONTACT") {
+        return NextResponse.json(
+          { error: "O envio real para grupos ainda não está disponível." },
+          { status: 400 },
+        );
+      }
+
+      const latestInbound = [...current.messages]
+        .reverse()
+        .find((message) => message.direction === "INBOUND");
+      try {
+        const sent = await sendWhatsAppText({
+          to: channel.externalId,
+          body: content,
+          replyToMessageId: latestInbound?.externalMessageId,
+        });
+        externalMessageId = sent.messageId;
+      } catch (error) {
+        console.error("Falha ao enviar resposta pelo WhatsApp:", error);
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Não foi possível enviar a mensagem pelo WhatsApp.",
+          },
+          { status: 502 },
+        );
+      }
+    }
+
     const now = new Date();
     const assignedToId = current.assignedToId || member.userId;
     await prisma.$transaction([
       prisma.serviceMessage.create({
         data: {
           ticketId: id,
+          externalMessageId,
+          deliveryStatus: externalMessageId ? "accepted" : null,
+          statusUpdatedAt: externalMessageId ? now : null,
+          providerMetadata: externalMessageId
+            ? { provider: "META_WHATSAPP" }
+            : undefined,
           direction: "OUTBOUND",
           fromName: member.user.name || member.user.email,
           fromEmail: member.user.email,
@@ -278,7 +319,11 @@ export async function PATCH(request: Request, context: Context) {
           ticketId: id,
           userId: member.userId,
           type: "WHATSAPP_REPLIED",
-          message: "Resposta enviada no ambiente de teste.",
+          message:
+            current.source === "WHATSAPP_API"
+              ? "Resposta enviada pelo WhatsApp."
+              : "Resposta registrada no ambiente de teste.",
+          metadata: externalMessageId ? { externalMessageId } : undefined,
         },
       }),
     ]);

@@ -24,6 +24,7 @@ import {
   IconCheck,
   IconInbox,
   IconMessageCircle,
+  IconPaperclip,
   IconPlus,
   IconSearch,
   IconSend,
@@ -76,6 +77,7 @@ type Ticket = {
 };
 
 type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
+  source: string;
   client: {
     id: string;
     name: string;
@@ -92,6 +94,13 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
     fromName: string | null;
     textBody: string | null;
     receivedAt: string;
+    deliveryStatus: string | null;
+    attachments: Array<{
+      id: string;
+      name: string;
+      mimeType: string | null;
+      size: number | null;
+    }>;
   }>;
   history: Array<{
     id: string;
@@ -138,6 +147,14 @@ function formatDate(value: string) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
+const deliveryLabels: Record<string, string> = {
+  accepted: "Enviando",
+  sent: "Enviada",
+  delivered: "Entregue",
+  read: "Lida",
+  failed: "Falha no envio",
+};
 
 async function readResponse<T>(response: Response) {
   const payload = (await response.json()) as T & { error?: string };
@@ -274,7 +291,12 @@ export default function WhatsAppPage() {
   async function sendReply() {
     const content = reply.trim();
     if (!content) return;
-    await mutate({ action: "reply", content }, "Resposta registrada no teste.");
+    await mutate(
+      { action: "reply", content },
+      detail?.source === "WHATSAPP_API"
+        ? "Resposta enviada pelo WhatsApp."
+        : "Resposta registrada no teste.",
+    );
     setReply("");
   }
 
@@ -494,7 +516,30 @@ export default function WhatsAppPage() {
                     <div className={styles.bubble}>
                       <Text size="xs" fw={800} mb={4}>{message.direction === "OUTBOUND" ? message.fromName || "Fortuno" : detail.senderName || "Cliente"}</Text>
                       <Text size="sm" className={styles.messageBody}>{message.textBody || "Mensagem sem texto"}</Text>
-                      <Text size="xs" c="dimmed" ta="right" mt={5}>{formatDate(message.receivedAt)}</Text>
+                      {message.attachments?.map((attachment) => (
+                        <Button
+                          key={attachment.id}
+                          component="a"
+                          href={`/api/whatsapp/${detail.id}/attachments/${attachment.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          variant="light"
+                          color="gray"
+                          size="compact-xs"
+                          mt="xs"
+                          leftSection={<IconPaperclip size={14} />}
+                        >
+                          {attachment.name}
+                        </Button>
+                      ))}
+                      <Group justify="flex-end" gap={6} mt={5}>
+                        {message.direction === "OUTBOUND" && message.deliveryStatus && (
+                          <Text size="xs" c={message.deliveryStatus === "failed" ? "red" : "dimmed"}>
+                            {deliveryLabels[message.deliveryStatus] || message.deliveryStatus}
+                          </Text>
+                        )}
+                        <Text size="xs" c="dimmed">{formatDate(message.receivedAt)}</Text>
+                      </Group>
                     </div>
                   </div>
                 ))}
