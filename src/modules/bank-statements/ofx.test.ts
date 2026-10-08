@@ -89,4 +89,29 @@ describe("gerador OFX de extratos", () => {
     expect(ofx).toContain("<DTSTART>20260710120000[-3:BRT]</DTSTART>");
     expect(ofx).toContain("<DTEND>20260720120000[-3:BRT]</DTEND>");
   });
+
+  it("identifica corretamente a instituição Nubank pelo código 260", () => {
+    const ofx = generateOfx({
+      bankId: "260",
+      branch: "0001",
+      account: "794873052-0",
+      initialBalance: 100,
+      finalBalance: 106.49,
+      transactions: [{
+        id: 1,
+        selected: true,
+        date: "2026-10-08",
+        description: "Rendimento líquido",
+        document: "NU-20261008-RENDIMENTO",
+        type: "CREDIT",
+        amount: 6.49,
+        balance: 106.49,
+        status: "OK",
+      }],
+    });
+
+    expect(ofx).toContain("<ORG>Nu Pagamentos S.A.</ORG>");
+    expect(ofx).toContain("<BANKID>260</BANKID>");
+    expect(ofx).toContain("<TRNAMT>6.49</TRNAMT>");
+  });
 });
