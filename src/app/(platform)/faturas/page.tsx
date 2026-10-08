@@ -183,6 +183,7 @@ export default function FaturasPage() {
 
   const [items, setItems] = useState<InvoiceItem[]>(exampleItems);
   const [search, setSearch] = useState("");
+  const [showOnlyUncategorized, setShowOnlyUncategorized] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InvoiceItem | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [learnForClient, setLearnForClient] = useState(true);
@@ -471,10 +472,13 @@ export default function FaturasPage() {
 
   const filteredItems = useMemo(() => {
     const normalized = search.trim().toLowerCase();
+    const visibleItems = showOnlyUncategorized
+      ? items.filter((item) => !item.category)
+      : items;
 
-    if (!normalized) return items;
+    if (!normalized) return visibleItems;
 
-    return items.filter(
+    return visibleItems.filter(
       (item) =>
         item.description.toLowerCase().includes(normalized) ||
         item.category?.toLowerCase().includes(normalized) ||
@@ -483,7 +487,7 @@ export default function FaturasPage() {
         (useLineAccounts && item.destinationClientName?.toLowerCase().includes(normalized)) ||
         item.date.includes(normalized),
     );
-  }, [items, search, useLineAccounts]);
+  }, [items, search, showOnlyUncategorized, useLineAccounts]);
 
   async function processInvoice() {
     if (!clientId || !files.length || !bank) return;
@@ -570,6 +574,7 @@ export default function FaturasPage() {
     setSelectedItem(null);
     setEditModalOpened(false);
     setSearch("");
+    setShowOnlyUncategorized(false);
     setLearnForClient(true);
     setCostCenterModalOpened(false);
     setNewCostCenterName("");
@@ -1571,17 +1576,24 @@ export default function FaturasPage() {
                 </Text>
               </Stack>
 
-              <TextInput
-                placeholder={
-                  useCostCenters
-                    ? "Buscar descrição, categoria ou centro de custo"
-                    : "Buscar descrição ou categoria"
-                }
-                value={search}
-                onChange={(event) => setSearch(event.currentTarget.value)}
-                leftSection={<IconSearch size={17} />}
-                w={{ base: "100%", sm: 320 }}
-              />
+              <Stack gap="xs" align="stretch" w={{ base: "100%", sm: 340 }}>
+                <Checkbox
+                  checked={showOnlyUncategorized}
+                  onChange={(event) => setShowOnlyUncategorized(event.currentTarget.checked)}
+                  label={`Mostrar apenas não categorizados (${diagnostics.uncategorized})`}
+                />
+                <TextInput
+                  placeholder={
+                    useCostCenters
+                      ? "Buscar descrição, categoria ou centro de custo"
+                      : "Buscar descrição ou categoria"
+                  }
+                  value={search}
+                  onChange={(event) => setSearch(event.currentTarget.value)}
+                  leftSection={<IconSearch size={17} />}
+                  w="100%"
+                />
+              </Stack>
             </Group>
 
             <ScrollArea>
@@ -1606,6 +1618,21 @@ export default function FaturasPage() {
                 </Table.Thead>
 
                 <Table.Tbody>
+                  {filteredItems.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td
+                        colSpan={7 + (useLineAccounts ? 2 : 0) + (useCostCenters ? 1 : 0)}
+                      >
+                        <Center py="xl">
+                          <Text c="dimmed" ta="center">
+                            {showOnlyUncategorized && diagnostics.uncategorized === 0
+                              ? "Todos os lançamentos já estão categorizados."
+                              : "Nenhum lançamento corresponde aos filtros selecionados."}
+                          </Text>
+                        </Center>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
                   {filteredItems.map((item) => (
                     <Table.Tr key={item.id}>
                       <Table.Td>
