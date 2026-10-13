@@ -111,7 +111,7 @@ function roundedMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-export function buildFinancialEventPayload(input: {
+export type FinancialEventPayloadInput = {
   direction: FinancialDirection;
   competenceDate: string;
   dueDate: string;
@@ -122,7 +122,10 @@ export function buildFinancialEventPayload(input: {
   financialAccountId: string;
   categoryId: string;
   costCenterId?: string | null;
-}) {
+  externalReference?: string | null;
+};
+
+export function buildFinancialEventPayload(input: FinancialEventPayloadInput) {
   const value = roundedMoney(Math.abs(input.amount));
   const costCenterAllocation = input.costCenterId
     ? [{ id_centro_custo: input.costCenterId, valor: value }]
@@ -161,6 +164,18 @@ export function buildFinancialEventPayload(input: {
         },
       ],
     },
+  };
+}
+
+export function buildDirectFinancialEventPayload(input: FinancialEventPayloadInput) {
+  const { contato: legacyContact, ...payload } = buildFinancialEventPayload(input);
+  void legacyContact;
+  return {
+    ...payload,
+    ...(input.direction === "RECEIVABLE"
+      ? { id_cliente: input.contactId }
+      : { id_fornecedor: input.contactId }),
+    ...(input.externalReference ? { referencia_externa: input.externalReference } : {}),
   };
 }
 
@@ -214,6 +229,39 @@ export function resourceIdFromProtocol(body: unknown): string | null {
       const result = resourceIdFromProtocol(nested);
       if (result) return result;
     }
+  }
+  return null;
+}
+
+export function financialEventIdFromCreation(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  if (isUuid(record.id)) return record.id;
+  for (const key of ["evento_financeiro", "evento", "data", "result", "resultado"]) {
+    const nested = record[key];
+    if (!nested || typeof nested !== "object") continue;
+    const nestedRecord = nested as Record<string, unknown>;
+    if (isUuid(nestedRecord.id)) return nestedRecord.id;
+  }
+  return null;
+}
+
+export function installmentIdFromCreation(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  const paymentCondition = record.condicao_pagamento;
+  const candidates = [
+    record.parcelas,
+    record.installments,
+    paymentCondition && typeof paymentCondition === "object"
+      ? (paymentCondition as Record<string, unknown>).parcelas
+      : null,
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    const first = candidate.find((item) => item && typeof item === "object") as Record<string, unknown> | undefined;
+    const value = first && [first.id, first.uuid, first.id_parcela].find(isUuid);
+    if (value) return value;
   }
   return null;
 }

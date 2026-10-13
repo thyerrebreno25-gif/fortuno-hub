@@ -13,10 +13,13 @@ import { allocationClientId, exportLineDestinationClient, exportLineFinancialAcc
 import {
   automaticFinancialContactName,
   apiItems,
+  buildDirectFinancialEventPayload,
   buildFinancialEventPayload,
   contaAzulOptions,
+  financialEventIdFromCreation,
   findContaAzulOption,
   installmentIdFrom,
+  installmentIdFromCreation,
   normalizeContaAzulLabel,
   protocolError,
   protocolIdFrom,
@@ -99,6 +102,25 @@ function dateOnly(value: Date) {
 
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function contaAzulErrorStatus(error: unknown) {
+  return error && typeof error === "object" && typeof (error as { status?: unknown }).status === "number"
+    ? (error as { status: number }).status
+    : null;
+}
+
+function isTransientContaAzulError(error: unknown) {
+  if (error && typeof error === "object" && (error as { transient?: unknown }).transient === true) return true;
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /JS-EXTRACT-LOKI-VARIABLES|ScriptExecutionFailed|falha interna temporária|erro 5\d\d/i.test(message);
+}
+
+function lineFailureMessage(line: { description: string; dueDate: Date; amount: unknown }, error: unknown) {
+  const description = line.description.length > 90 ? `${line.description.slice(0, 87)}...` : line.description;
+  const amount = Number(line.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const reason = error instanceof Error ? error.message : "Falha não identificada no Conta Azul.";
+  return `Lançamento "${description}" (${dateOnly(line.dueDate)}, ${amount}): ${reason}`;
 }
 
 async function findOrCreateExport(input: {
@@ -307,6 +329,22 @@ async function findFinancialInstallment(input: {
   };
 }
 
+async function recoverInstallmentAfterUncertainCreation(input: Parameters<typeof findFinancialInstallment>[0]) {
+  for (const delay of [500, 1_000, 1_500]) {
+    await sleep(delay);
+    try {
+      const found = await findFinancialInstallment(input);
+      if (found.ambiguous) {
+        throw new Error("O Conta Azul devolveu mais de um lançamento possível após a falha. A retomada foi interrompida para evitar duplicidade.");
+      }
+      if (found.installmentId) return found.installmentId;
+    } catch (error) {
+      if (!isTransientContaAzulError(error)) throw error;
+    }
+  }
+  return null;
+}
+
 function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -347,7 +385,12 @@ async function createPendingLines(input: {
       exportId: input.exportId,
       OR: [
         { status: "PENDING" },
-        { status: "FAILED", externalProtocolId: null },
+        {
+          status: "FAILED",
+          externalProtocolId: null,
+          externalEventId: null,
+          externalInstallmentId: null,
+        },
       ],
     },
     orderBy: { createdAt: "asc" },
@@ -372,7 +415,8 @@ async function createPendingLines(input: {
     const observation = typeof metadata.observation === "string" && metadata.observation
       ? metadata.observation
       : "Lançamento revisado e enviado pelo Fortuno Hub.";
-    const payload = buildFinancialEventPayload({
+    const financialAccountId = exportLineFinancialAccount(line.metadata, input.financialAccountId);
+    const payloadInput = {
       direction: line.direction,
       competenceDate: dateOnly(line.competenceDate),
       dueDate: dateOnly(line.dueDate),
@@ -380,21 +424,68 @@ async function createPendingLines(input: {
       observation,
       amount: Number(line.amount),
       contactId: destination.contactIds[line.direction],
-      financialAccountId: exportLineFinancialAccount(line.metadata, input.financialAccountId),
+      financialAccountId,
       categoryId: category.value,
       costCenterId: costCenter?.value,
-    });
-    const endpoint = line.direction === "RECEIVABLE"
+      externalReference: `FORTUNO-${line.lineKey}`,
+    };
+    const directPayload = buildDirectFinancialEventPayload(payloadInput);
+    const directEndpoint = line.direction === "RECEIVABLE"
+      ? "/v1/financeiro/contas-a-receber"
+      : "/v1/financeiro/contas-a-pagar";
+    const legacyEndpoint = line.direction === "RECEIVABLE"
       ? "/v1/financeiro/eventos-financeiros/contas-a-receber"
       : "/v1/financeiro/eventos-financeiros/contas-a-pagar";
+    const recoveryInput = {
+      clientId: destinationClientId,
+      direction: line.direction,
+      competenceDate: line.competenceDate,
+      dueDate: line.dueDate,
+      description: line.description,
+      amount: Number(line.amount),
+      financialAccountId,
+    };
 
     try {
-      const response = await contaAzulRequest<unknown>(destinationClientId, endpoint, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      let response: unknown = null;
+      let recoveredInstallmentId: string | null = null;
+      try {
+        response = await contaAzulRequest<unknown>(destinationClientId, directEndpoint, {
+          method: "POST",
+          body: JSON.stringify(directPayload),
+        });
+      } catch (error) {
+        const status = contaAzulErrorStatus(error);
+        if (status === 404 || status === 405) {
+          response = await contaAzulRequest<unknown>(destinationClientId, legacyEndpoint, {
+            method: "POST",
+            body: JSON.stringify(buildFinancialEventPayload(payloadInput)),
+          });
+        } else if (isTransientContaAzulError(error)) {
+          recoveredInstallmentId = await recoverInstallmentAfterUncertainCreation(recoveryInput);
+          if (!recoveredInstallmentId) {
+            try {
+              response = await contaAzulRequest<unknown>(destinationClientId, directEndpoint, {
+                method: "POST",
+                body: JSON.stringify(directPayload),
+              });
+            } catch (retryError) {
+              if (isTransientContaAzulError(retryError)) {
+                recoveredInstallmentId = await recoverInstallmentAfterUncertainCreation(recoveryInput);
+              }
+              if (!recoveredInstallmentId) throw retryError;
+            }
+          }
+        } else {
+          throw error;
+        }
+      }
       const protocolId = protocolIdFrom(response);
-      if (!protocolId) throw new Error("O Conta Azul não devolveu o protocolo do lançamento.");
+      const eventId = financialEventIdFromCreation(response);
+      const installmentId = recoveredInstallmentId || installmentIdFromCreation(response);
+      if (!protocolId && !eventId && !installmentId) {
+        throw new Error("O Conta Azul não devolveu o identificador do lançamento criado.");
+      }
       await prisma.contaAzulFinancialExportLine.update({
         where: { id: line.id },
         data: {
@@ -402,6 +493,8 @@ async function createPendingLines(input: {
           contaAzulCategoryId: category.value,
           contaAzulCostCenterId: costCenter?.value || null,
           externalProtocolId: protocolId,
+          externalEventId: eventId,
+          externalInstallmentId: installmentId,
           lastError: null,
         },
       });
@@ -410,7 +503,7 @@ async function createPendingLines(input: {
         where: { id: line.id },
         data: {
           status: "FAILED",
-          lastError: error instanceof Error ? error.message : "Falha ao criar o lançamento.",
+          lastError: lineFailureMessage(line, error),
         },
       });
     }
@@ -430,6 +523,8 @@ async function settleCreatedLines(input: {
       OR: [
         { status: "CREATED" },
         { status: "FAILED", externalProtocolId: { not: null } },
+        { status: "FAILED", externalEventId: { not: null } },
+        { status: "FAILED", externalInstallmentId: { not: null } },
       ],
     },
     orderBy: { updatedAt: "asc" },
@@ -558,7 +653,7 @@ async function settleCreatedLines(input: {
         where: { id: line.id },
         data: {
           status: "FAILED",
-          lastError: error instanceof Error ? error.message : "Falha ao registrar a baixa.",
+          lastError: lineFailureMessage(line, error),
         },
       });
     }

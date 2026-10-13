@@ -88,6 +88,18 @@ describe("permissões do módulo de clientes", () => {
     });
   });
 
+  it("mantém a conferência de vendas privada para operadores até a liberação no perfil", () => {
+    expect(defaultPermission("OPERATOR", "SALES_RECONCILIATION")).toEqual({
+      canView: false,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canImport: false,
+      canExport: false,
+      canManage: false,
+    });
+  });
+
   it("mantém o perfil de cliente externo sem acesso ao cadastro operacional", () => {
     expect(defaultPermission("CLIENT", "CLIENTS")).toEqual({
       canView: false,

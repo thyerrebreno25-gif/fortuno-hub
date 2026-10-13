@@ -47,6 +47,20 @@ type Client = {
 
 type CategoryOption = { value: string; label: string };
 
+type Permission = {
+  canView: boolean;
+  canImport: boolean;
+  canEdit: boolean;
+  canExport: boolean;
+};
+
+const EMPTY_PERMISSION: Permission = {
+  canView: false,
+  canImport: false,
+  canEdit: false,
+  canExport: false,
+};
+
 type Mapping = {
   clientId: string;
   expectedCategoryName: string;
@@ -99,7 +113,7 @@ function readSavedMappings() {
 
 export default function SalesReconciliationPage() {
   const [clients, setClients] = useState<Client[]>([]);
-  const [canSupervise, setCanSupervise] = useState(false);
+  const [permission, setPermission] = useState<Permission>(EMPTY_PERMISSION);
   const [bootstrapLoading, setBootstrapLoading] = useState(true);
   const [preview, setPreview] = useState<SalesWorkbookPreview | null>(null);
   const [mappings, setMappings] = useState<Record<string, Mapping>>({});
@@ -116,12 +130,12 @@ export default function SalesReconciliationPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    fetch("/api/audit/bootstrap", { cache: "no-store" })
+    fetch("/api/sales-reconciliation/bootstrap", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Não foi possível carregar os clientes.");
         setClients(Array.isArray(body.clients) ? body.clients : []);
-        setCanSupervise(Boolean(body.currentUser?.canSupervise));
+        setPermission({ ...EMPTY_PERMISSION, ...(body.permission ?? {}) });
       })
       .catch((error) => notifications.show({
         color: "red",
@@ -329,12 +343,12 @@ export default function SalesReconciliationPage() {
           <Title order={1}>Conferência de vendas</Title>
           <Text c="dimmed">Compare a planilha do cliente com os lançamentos existentes no Conta Azul.</Text>
         </div>
-        {result && <Button loading={exporting} leftSection={<IconFileTypePdf size={17} />} onClick={exportReport}>Baixar divergências em PDF</Button>}
+        {result && permission.canExport && <Button loading={exporting} leftSection={<IconFileTypePdf size={17} />} onClick={exportReport}>Baixar divergências em PDF</Button>}
       </Group>
 
-      {!canSupervise && (
+      {(!permission.canImport || !permission.canEdit) && (
         <Alert color="orange" icon={<IconAlertTriangle size={18} />} mb="lg">
-          Esta conferência só pode ser iniciada por gestores e líderes de equipe.
+          Seu perfil possui acesso limitado. Para executar a conferência, libere as ações Importar e Editar nas configurações de Perfis.
         </Alert>
       )}
 
@@ -347,7 +361,7 @@ export default function SalesReconciliationPage() {
             </div>
             <FileButton onChange={handleFile} accept=".xlsx,.xls">
               {(props) => (
-                <Button {...props} disabled={!canSupervise || reading} loading={reading} leftSection={<IconUpload size={17} />}>
+                <Button {...props} disabled={!permission.canImport || reading} loading={reading} leftSection={<IconUpload size={17} />}>
                   {preview ? "Substituir planilha" : "Selecionar planilha"}
                 </Button>
               )}
@@ -365,11 +379,11 @@ export default function SalesReconciliationPage() {
               <Group grow align="flex-end" className={styles.periodFields}>
                 <label>
                   <Text size="sm" fw={600} mb={5}>Data inicial</Text>
-                  <input className={styles.dateInput} type="date" value={periodStart} onChange={(event) => setPeriodStart(event.currentTarget.value)} />
+                  <input className={styles.dateInput} disabled={!permission.canEdit} type="date" value={periodStart} onChange={(event) => setPeriodStart(event.currentTarget.value)} />
                 </label>
                 <label>
                   <Text size="sm" fw={600} mb={5}>Data final</Text>
-                  <input className={styles.dateInput} type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.currentTarget.value)} />
+                  <input className={styles.dateInput} disabled={!permission.canEdit} type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.currentTarget.value)} />
                 </label>
                 <Paper withBorder radius="md" p="sm">
                   <Text size="xs" c="dimmed">Vendas no período</Text>
@@ -417,6 +431,7 @@ export default function SalesReconciliationPage() {
                         label="Cadastro de destino"
                         placeholder="Selecione o cliente"
                         searchable
+                        disabled={!permission.canEdit}
                         data={clientOptions}
                         value={mapping.clientId || null}
                         onChange={(value) => updateMapping(destination, {
@@ -432,7 +447,7 @@ export default function SalesReconciliationPage() {
                         placeholder={mapping.clientId ? "Selecione a categoria esperada" : "Selecione primeiro o cadastro"}
                         searchable
                         clearable
-                        disabled={!mapping.clientId}
+                        disabled={!permission.canEdit || !mapping.clientId}
                         rightSection={categoryLoading[mapping.clientId] ? <Loader size={15} /> : undefined}
                         data={categoryOptions.map((item) => ({ value: item.label, label: item.label }))}
                         value={mapping.expectedCategoryName || null}
@@ -451,7 +466,7 @@ export default function SalesReconciliationPage() {
                                     placeholder="Usar categoria padrão"
                                     searchable
                                     clearable
-                                    disabled={!mapping.clientId}
+                                    disabled={!permission.canEdit || !mapping.clientId}
                                     data={categoryOptions.map((item) => ({ value: item.label, label: item.label }))}
                                     value={mapping.productCategories[product] || null}
                                     onChange={(value) => updateMapping(destination, {
@@ -474,7 +489,7 @@ export default function SalesReconciliationPage() {
                 size="md"
                 leftSection={<IconRefresh size={18} />}
                 loading={comparing}
-                disabled={!canSupervise || !periodEntries.length}
+                disabled={!permission.canImport || !permission.canEdit || !periodEntries.length}
                 onClick={compare}
               >
                 Conferir no Conta Azul

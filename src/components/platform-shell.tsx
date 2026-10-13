@@ -232,7 +232,7 @@ const menuItems: MenuItem[] = [
   {
     label: "Conferência de vendas",
     href: "/conferencia-vendas",
-    moduleCode: "AUDIT",
+    moduleCode: "SALES_RECONCILIATION",
     icon: icons.audit,
     group: "Financeiro",
   },

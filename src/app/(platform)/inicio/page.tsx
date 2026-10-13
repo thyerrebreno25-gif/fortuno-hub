@@ -136,6 +136,16 @@ const features: Feature[] = [
     icon: <IconActivity size={24} />,
   },
   {
+    title: "Conferência de vendas",
+    description:
+      "Compare a planilha de vendas com os recebimentos e categorias registrados no Conta Azul.",
+    href: "/conferencia-vendas",
+    moduleCode: "SALES_RECONCILIATION",
+    group: "Operação financeira",
+    icon: <IconClipboardCheck size={24} />,
+    badge: "Conferência",
+  },
+  {
     title: "Conta Azul",
     description:
       "Vincule as empresas dos clientes e acompanhe todas as conexões em um só lugar.",

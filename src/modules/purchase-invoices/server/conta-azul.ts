@@ -14,6 +14,78 @@ type TokenResponse = {
   scope?: string;
 };
 
+type ContaAzulErrorBody = {
+  message?: string;
+  error?: string;
+  fault?: {
+    faultstring?: string;
+    detail?: { errorcode?: string };
+  };
+};
+
+export class ContaAzulApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly transient: boolean;
+  readonly technicalMessage: string | null;
+
+  constructor(input: {
+    message: string;
+    status: number;
+    code?: string | null;
+    transient?: boolean;
+    technicalMessage?: string | null;
+  }) {
+    super(input.message);
+    this.name = "ContaAzulApiError";
+    this.status = input.status;
+    this.code = input.code || null;
+    this.transient = Boolean(input.transient);
+    this.technicalMessage = input.technicalMessage || null;
+  }
+}
+
+function contaAzulApiError(response: Response, body: unknown, rawText: string) {
+  const parsed = body && typeof body === "object" ? body as ContaAzulErrorBody : {};
+  const faultString = parsed.fault?.faultstring;
+  const errorCode = parsed.fault?.detail?.errorcode || null;
+  const internalScriptFailure = errorCode === "steps.ScriptExecutionFailed"
+    || Boolean(faultString?.includes("JS-EXTRACT-LOKI-VARIABLES"));
+  const transient = internalScriptFailure
+    || response.status === 408
+    || response.status === 425
+    || response.status === 429
+    || response.status >= 500;
+  const regularMessage = typeof parsed.message === "string" && parsed.message.trim()
+    ? parsed.message.trim()
+    : typeof parsed.error === "string" && parsed.error.trim()
+      ? parsed.error.trim()
+      : null;
+  const message = internalScriptFailure
+    ? "O Conta Azul apresentou uma falha interna temporária ao processar este lançamento."
+    : regularMessage
+      || (faultString && faultString.length <= 500 ? faultString : null)
+      || (rawText && rawText.length <= 500 ? rawText : null)
+      || `Conta Azul respondeu com erro ${response.status}.`;
+  return new ContaAzulApiError({
+    message,
+    status: response.status,
+    code: errorCode,
+    transient,
+    technicalMessage: faultString || null,
+  });
+}
+
+function retryDelay(response: Response, attempt: number) {
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter * 1000, 5_000);
+  return 400 * (attempt + 1);
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function requiredEnv(name: "CONTA_AZUL_CLIENT_ID" | "CONTA_AZUL_CLIENT_SECRET") {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} não configurada.`);
@@ -143,7 +215,8 @@ export async function contaAzulRequest<T>(
   clientId: string,
   path: string,
   init: RequestInit = {},
-  retry = true,
+  retryAuth = true,
+  transientAttempt = 0,
 ): Promise<T> {
   const connection = await getValidConnection(clientId);
   const headers = new Headers(init.headers);
@@ -151,9 +224,9 @@ export async function contaAzulRequest<T>(
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const response = await fetch(`${API_URL}${path}`, { ...init, headers, cache: "no-store" });
-  if (response.status === 401 && retry) {
+  if (response.status === 401 && retryAuth) {
     await refreshContaAzulConnection(connection.id);
-    return contaAzulRequest<T>(clientId, path, init, false);
+    return contaAzulRequest<T>(clientId, path, init, false, transientAttempt);
   }
 
   const text = await response.text();
@@ -166,13 +239,14 @@ export async function contaAzulRequest<T>(
     body = {} as T & { message?: string; error?: string };
   }
   if (!response.ok) {
-    const apiError = body as { message?: string; error?: string };
-    throw new Error(
-      apiError.message
-      || apiError.error
-      || (text && text.length <= 500 ? text : "")
-      || `Conta Azul respondeu com erro ${response.status}.`,
-    );
+    const error = contaAzulApiError(response, body, text);
+    const method = (init.method || "GET").toUpperCase();
+    const safeToRepeat = method === "GET" || method === "HEAD";
+    if (safeToRepeat && error.transient && transientAttempt < 2) {
+      await wait(retryDelay(response, transientAttempt));
+      return contaAzulRequest<T>(clientId, path, init, retryAuth, transientAttempt + 1);
+    }
+    throw error;
   }
 
   await prisma.contaAzulConnection.update({

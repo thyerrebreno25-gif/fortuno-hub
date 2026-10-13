@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { canSuperviseAudit, getAuditMember } from "@/modules/audit/auth";
+import { getSalesReconciliationAccess } from "@/modules/sales-reconciliation/server/auth";
 import { parseSalesWorkbook } from "@/modules/sales-reconciliation/workbook-parser";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const member = await getAuditMember();
-  if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  if (!canSuperviseAudit(member.role, member.isTeamLeader)) {
-    return NextResponse.json({ error: "Apenas líderes podem iniciar esta conferência." }, { status: 403 });
+  const access = await getSalesReconciliationAccess();
+  if (!access) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  if (!access.permission.canView || !access.permission.canImport) {
+    return NextResponse.json({ error: "Seu perfil não possui permissão para importar a planilha de vendas." }, { status: 403 });
   }
   try {
     const form = await request.formData();

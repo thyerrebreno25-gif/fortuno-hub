@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canSuperviseAudit, getAuditMember } from "@/modules/audit/auth";
 import { fetchContaAzulRevenueCategories } from "@/modules/sales-reconciliation/server/conta-azul-source";
+import { getSalesReconciliationAccess } from "@/modules/sales-reconciliation/server/auth";
 
 export async function GET(request: Request) {
-  const member = await getAuditMember();
-  if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  if (!canSuperviseAudit(member.role, member.isTeamLeader)) {
+  const access = await getSalesReconciliationAccess();
+  if (!access) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  if (!access.permission.canView) {
     return NextResponse.json({ error: "Sem permissão para consultar esta integração." }, { status: 403 });
   }
   const clientId = new URL(request.url).searchParams.get("clientId") || "";
   const client = await prisma.client.findFirst({
-    where: { id: clientId, organizationId: member.organizationId, active: true },
+    where: { id: clientId, organizationId: access.member.organizationId, active: true },
     select: {
       id: true,
       contaAzulConnection: { select: { active: true, status: true } },

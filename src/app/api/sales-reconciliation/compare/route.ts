@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canSuperviseAudit, getAuditMember } from "@/modules/audit/auth";
 import { normalizedKey, reconcileSales } from "@/modules/sales-reconciliation/engine";
+import { getSalesReconciliationAccess } from "@/modules/sales-reconciliation/server/auth";
 import { fetchContaAzulReceivables } from "@/modules/sales-reconciliation/server/conta-azul-source";
 import type { SalesDestinationRule, SalesSpreadsheetEntry } from "@/modules/sales-reconciliation/types";
 
@@ -28,10 +28,10 @@ function validRule(value: unknown): value is SalesDestinationRule {
 }
 
 export async function POST(request: Request) {
-  const member = await getAuditMember();
-  if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  if (!canSuperviseAudit(member.role, member.isTeamLeader)) {
-    return NextResponse.json({ error: "Apenas líderes podem iniciar esta conferência." }, { status: 403 });
+  const access = await getSalesReconciliationAccess();
+  if (!access) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  if (!access.permission.canView || !access.permission.canImport || !access.permission.canEdit) {
+    return NextResponse.json({ error: "Seu perfil não possui permissão para executar esta conferência." }, { status: 403 });
   }
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const periodStart = validDate(body?.periodStart);
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   }
   const clientIds = Array.from(new Set(rules.map((rule) => rule.clientId).filter(Boolean)));
   const clients = await prisma.client.findMany({
-    where: { id: { in: clientIds }, organizationId: member.organizationId, active: true },
+    where: { id: { in: clientIds }, organizationId: access.member.organizationId, active: true },
     select: {
       id: true,
       name: true,
