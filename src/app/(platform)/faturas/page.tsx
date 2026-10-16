@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { invoiceDraftKey, readInvoiceDraft, restoreInvoiceItem, type InvoiceDraft, type InvoiceItem, type InvoiceSourceFile } from "@/modules/card-invoices/draft";
 import { notifications } from "@mantine/notifications";
 import { parseCardInvoiceFiles } from "@/modules/card-invoices/parser";
 import { CARD_INVOICE_IMAGE_ACCEPT } from "@/modules/card-invoices/image-reader.client";
@@ -73,23 +74,6 @@ import {
 } from "@tabler/icons-react";
 
 type InvoiceStatus = "LEARNED" | "NEW" | "REVIEW" | "CORRECTED";
-
-type InvoiceItem = {
-  id: number;
-  date: string;
-  description: string;
-  amount: number;
-  installment?: string;
-  category: string | null;
-  costCenter: string | null;
-  financialAccountId?: string | null;
-  financialAccountName?: string | null;
-  destinationClientId?: string | null;
-  destinationClientName?: string | null;
-  status: InvoiceStatus;
-  learnedFromClient: boolean;
-  costCenterLearnedFromClient: boolean;
-};
 
 type ClientOption = { value: string; label: string; document?: string | null };
 type CategoryOption = { id: string; name: string; code?: string | null; children?: CategoryOption[] };
@@ -203,6 +187,89 @@ export default function FaturasPage() {
   const [savingItem, setSavingItem] = useState(false);
   const [learningBusy, setLearningBusy] = useState(false);
 
+  const [sourceFiles, setSourceFiles] = useState<InvoiceSourceFile[]>([]);
+  const [deletedItems, setDeletedItems] = useState<InvoiceItem[]>([]);
+  const [deletedOpened, setDeletedOpened] = useState(false);
+  const [draftKey, setDraftKey] = useState<string | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<InvoiceDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [discardOpened, setDiscardOpened] = useState(false);
+  const [draftBlocked, setDraftBlocked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDraft() {
+      try {
+        const response = await fetch("/api/profile", { cache: "no-store" });
+        const profile = await response.json();
+        if (!response.ok || !profile.user?.id || !profile.organization?.id) throw new Error("Não foi possível identificar sua sessão para recuperar o rascunho. Recarregue a página.");
+        const key = invoiceDraftKey(profile.organization.id, profile.user.id);
+        if (cancelled) return;
+        setDraftKey(key);
+        try {
+          setPendingDraft(readInvoiceDraft(localStorage.getItem(key)));
+        } catch {
+          setDraftBlocked(true);
+          throw new Error("Não foi possível ler o rascunho salvo. Tente recarregar ou descarte o rascunho para começar novamente.");
+        }
+      } catch (error) {
+        if (!cancelled) setDraftError(error instanceof Error ? error.message : "Recuperação indisponível.");
+      } finally {
+        if (!cancelled) setDraftReady(true);
+      }
+    }
+    void loadDraft();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!draftKey || pendingDraft || draftBlocked || view !== "review" || !clientId || !bank) return;
+    try {
+      const timestamp = new Date().toISOString();
+      const draft: InvoiceDraft = {
+        version: 1, savedAt: timestamp, clientId, bank, sourceFiles, items, deletedItems,
+        competenceDate, dueDate, paymentDate, invoiceTotal, parseWarnings,
+        useCostCenters, useLineAccounts, defaultAccountId, defaultDestinationId,
+        search, showOnlyUncategorized, selectedItem, editModalOpened, learnForClient,
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+      setSavedAt(timestamp);
+      setDraftError("");
+    } catch {
+      setDraftError("Não foi possível salvar o progresso neste navegador. Libere espaço e tente novamente antes de sair.");
+    }
+  }, [draftKey, pendingDraft, draftBlocked, view, clientId, bank, sourceFiles, items, deletedItems,
+    competenceDate, dueDate, paymentDate, invoiceTotal, parseWarnings, useCostCenters,
+    useLineAccounts, defaultAccountId, defaultDestinationId, search, showOnlyUncategorized,
+    selectedItem, editModalOpened, learnForClient]);
+
+  function recoverDraft() {
+    if (!pendingDraft || !clients.some((client) => client.value === pendingDraft.clientId)) return;
+    const draft = pendingDraft;
+    setClientId(draft.clientId); setBank(draft.bank); setSourceFiles(draft.sourceFiles);
+    setItems(draft.items); setDeletedItems(draft.deletedItems);
+    setCompetenceDate(draft.competenceDate); setDueDate(draft.dueDate); setPaymentDate(draft.paymentDate);
+    setInvoiceTotal(draft.invoiceTotal); setParseWarnings(draft.parseWarnings);
+    setUseCostCenters(draft.useCostCenters); setUseLineAccounts(draft.useLineAccounts);
+    setDefaultAccountId(draft.defaultAccountId); setDefaultDestinationId(draft.defaultDestinationId);
+    setSearch(draft.search); setShowOnlyUncategorized(draft.showOnlyUncategorized);
+    setSelectedItem(draft.selectedItem); setEditModalOpened(draft.editModalOpened);
+    setLearnForClient(draft.learnForClient); setSavedAt(draft.savedAt);
+    setPendingDraft(null); setView("review");
+  }
+
+  function discardDraft() {
+    try {
+      if (draftKey) localStorage.removeItem(draftKey);
+      setPendingDraft(null); setDraftBlocked(false); setDraftError(""); setSavedAt(null);
+      setDiscardOpened(false); resetPage();
+    } catch {
+      setDraftError("Não foi possível descartar o rascunho. Tente novamente.");
+    }
+  }
+
   const selectedClient = clients.find((client) => client.value === clientId);
   const bulkDestinationId = defaultDestinationId || clientId || "";
   const destinationOptions = clients.map((client) => ({ value: client.value, label: client.document ? `${client.label} — ${client.document}` : client.label }));
@@ -211,8 +278,8 @@ export default function FaturasPage() {
   const accountsLoading = useLineAccounts && (categoryLoading || categorySource === "LOADING" || categorySource === "CONTA_AZUL" && (JSON.parse(accountClientIdsKey) as string[]).some((id) => !accountCatalogs[id] || accountCatalogs[id].loading));
   const missingFinancialAccounts = useLineAccounts ? items.filter((item) => !clients.some((client) => client.value === allocationClientId(item, clientId || "")) || !item.financialAccountId || !accountCatalogs[allocationClientId(item, clientId || "")]?.items.some((account) => account.value === item.financialAccountId)).length : 0;
   const isImageImport =
-    files.length > 0 &&
-    files.every(
+    sourceFiles.length > 0 &&
+    sourceFiles.every(
       (item) =>
         item.type.startsWith("image/") ||
         /\.(png|jpe?g|webp)$/i.test(item.name),
@@ -533,6 +600,8 @@ export default function FaturasPage() {
           };
         });
       if (!exportableItems.length) throw new Error(parsed.warnings[0] || "Nenhum lançamento foi encontrado na fatura.");
+      setSourceFiles(files.map(({ name, size, lastModified, type }) => ({ name, size, lastModified, type })));
+      setDeletedItems([]);
       setItems(exportableItems);
       setParseWarnings(parsed.warnings);
       if (parsed.invoiceTotal !== null) setInvoiceTotal(parsed.invoiceTotal);
@@ -561,6 +630,9 @@ export default function FaturasPage() {
     setParseWarnings([]);
     setPassword("");
     setFiles([]);
+    setSourceFiles([]);
+    setDeletedItems([]);
+    setDeletedOpened(false);
     setUseCostCenters(false);
     setUseLineAccounts(false);
     setDefaultAccountId(null);
@@ -583,6 +655,8 @@ export default function FaturasPage() {
   }
 
   function removeItem(id: number) {
+    const removed = items.find((item) => item.id === id);
+    if (removed) setDeletedItems((current) => [...current, removed]);
     setItems((current) => current.filter((item) => item.id !== id));
 
     if (selectedItem?.id === id) {
@@ -797,9 +871,9 @@ export default function FaturasPage() {
         module: "CREDIT_CARD_INVOICE",
         status: "EXPORTED",
         originalName:
-          files.length === 1
-            ? files[0].name
-            : `${files[0].name} + ${files.length - 1} imagem(ns)`,
+          sourceFiles.length === 1
+            ? sourceFiles[0].name
+            : `${sourceFiles[0].name} + ${sourceFiles.length - 1} imagem(ns)`,
         parserId: isImageImport
           ? "image-invoice-ocr"
           : bank.toLowerCase().includes("inter")
@@ -824,7 +898,7 @@ export default function FaturasPage() {
             ? items.length - diagnostics.missingCostCenters
             : 0,
           warnings: parseWarnings,
-          sourceFiles: files.map((item) => item.name),
+          sourceFiles: sourceFiles.map((item) => item.name),
           exportFormat,
         },
         transactions: items.map((item) => ({
@@ -843,7 +917,7 @@ export default function FaturasPage() {
   }
 
   async function exportContaAzul() {
-    if (!clientId || !files.length || !bank || !canExport || useLineAccounts) return;
+    if (!clientId || !sourceFiles.length || !bank || !canExport || useLineAccounts) return;
     const clientName = clients.find((item) => item.value === clientId)?.label || "Cliente";
     try {
       exportInvoiceToContaAzul({
@@ -892,7 +966,7 @@ export default function FaturasPage() {
 
   const directSourceKey = [
     bank || "cartao",
-    ...files.map((item) => `${item.name}:${item.size}:${item.lastModified}`),
+    ...sourceFiles.map((item) => `${item.name}:${item.size}:${item.lastModified}`),
   ].join("|");
 
   async function applyLearnedHistory() {
@@ -938,7 +1012,7 @@ export default function FaturasPage() {
           <Button
             variant="default"
             leftSection={<IconRefresh size={17} />}
-            onClick={resetPage}
+            onClick={() => setDiscardOpened(true)}
             disabled={learningBusy || contaAzulSending}
           >
             Nova fatura
@@ -946,6 +1020,33 @@ export default function FaturasPage() {
           </Group>
         )}
       </Group>
+
+      {!draftReady && <Text c="dimmed">Procurando progresso salvo...</Text>}
+      {draftError && <Alert color="orange" title="Atenção ao rascunho">{draftError}
+        {draftBlocked && <Button mt="sm" color="red" variant="light" onClick={() => setDiscardOpened(true)}>Descartar rascunho</Button>}
+      </Alert>}
+      {view === "upload" && pendingDraft && <Alert color="blue" title="Você tem uma fatura em andamento">
+        <Stack gap="sm">
+          <Text size="sm">{pendingDraft.sourceFiles.map((file) => file.name).join(", ")} — {pendingDraft.items.length} lançamentos. Salvo em {new Date(pendingDraft.savedAt).toLocaleString("pt-BR")}.</Text>
+          {!clientsLoading && !clients.some((client) => client.value === pendingDraft.clientId) && <Text c="red">O cliente deste rascunho não está disponível para sua conta.</Text>}
+          <Group><Button onClick={recoverDraft} disabled={clientsLoading || !clients.some((client) => client.value === pendingDraft.clientId)}>Recuperar progresso</Button>
+            <Button variant="subtle" color="red" onClick={() => setDiscardOpened(true)}>Descartar rascunho</Button></Group>
+        </Stack>
+      </Alert>}
+      {view === "review" && <Group justify="space-between">
+        <Text size="sm" c={draftError ? "orange" : "dimmed"}>{draftError ? "Progresso não salvo" : savedAt ? `Rascunho salvo às ${new Date(savedAt).toLocaleTimeString("pt-BR")}` : "Salvando rascunho..."} • Recuperação neste navegador e computador.</Text>
+        <Button variant="light" onClick={() => setDeletedOpened(true)} disabled={!deletedItems.length || contaAzulSending || learningBusy}>Lançamentos excluídos ({deletedItems.length})</Button>
+      </Group>}
+      <Modal opened={discardOpened} onClose={() => setDiscardOpened(false)} title="Descartar progresso da fatura?" centered>
+        <Stack><Text>As classificações e os lançamentos excluídos deste rascunho serão descartados. Para continuar depois, basta sair da tela sem descartar.</Text>
+          <Group justify="flex-end"><Button variant="default" onClick={() => setDiscardOpened(false)}>Continuar revisando</Button><Button color="red" onClick={discardDraft}>Descartar e iniciar outra</Button></Group></Stack>
+      </Modal>
+      <Modal opened={deletedOpened} onClose={() => setDeletedOpened(false)} title="Recuperar lançamentos excluídos" size="lg" centered>
+        <Stack>{deletedItems.length === 0 ? <Text>Nenhum lançamento excluído.</Text> : deletedItems.map((item) => <Paper key={item.id} withBorder p="sm">
+          <Group justify="space-between"><Stack gap={2}><Text fw={600}>{item.description}</Text><Text size="sm">{formatDate(item.date)} • {formatMoney(item.amount)} • {item.category || "Sem categoria"}</Text></Stack>
+            <Button variant="light" onClick={() => { const restored = restoreInvoiceItem(items, deletedItems, item.id); setItems(restored.items); setDeletedItems(restored.deletedItems); }}>Restaurar</Button></Group>
+        </Paper>)}</Stack>
+      </Modal>
 
       {view === "upload" ? (
         <Paper withBorder radius="xl" p={{ base: "lg", md: 38 }}>
@@ -1186,7 +1287,7 @@ export default function FaturasPage() {
             <Group justify="flex-end">
               <Button
                 size="md"
-                disabled={!clientId || !files.length || !bank || categoryLoading}
+                disabled={!draftReady || !draftKey || !!pendingDraft || draftBlocked || !clientId || !files.length || !bank || categoryLoading}
                 loading={processing}
                 onClick={processInvoice}
                 rightSection={<IconChevronRight size={18} />}
@@ -1279,9 +1380,9 @@ export default function FaturasPage() {
                   </Text>
                   <Text fw={800} fz={20}>
                     {isImageImport
-                      ? files.length === 1
+                      ? sourceFiles.length === 1
                         ? "1 imagem processada"
-                        : `${files.length} imagens combinadas`
+                        : `${sourceFiles.length} imagens combinadas`
                       : "Conforme PDF importado"}
                   </Text>
                   <Text size="sm" c="dimmed">
@@ -2075,7 +2176,7 @@ export default function FaturasPage() {
                   clientId={clientId}
                   module="CREDIT_CARD_INVOICE"
                   sourceKey={directSourceKey}
-                  sourceName={files.length === 1 ? files[0].name : `${files.length} imagens da fatura`}
+                  sourceName={sourceFiles.length === 1 ? sourceFiles[0].name : `${sourceFiles.length} imagens da fatura`}
                   counterpartyHint={bank}
                   lines={directFinancialLines}
                   disabled={!canExport || learningBusy || useLineAccounts && (accountsLoading || missingFinancialAccounts > 0)}
