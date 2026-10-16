@@ -42,7 +42,7 @@ const statusLabels: Record<string, string> = {
   WAITING_INTERNAL: "Aguardando resposta",
 };
 
-const areaColors = ["#228be6", "#20c997", "#845ef7", "#fd7e14", "#e64980"];
+const areaColors = ["#228be6", "#20c997", "#845ef7", "#fd7e14", "#e64980", "#12b886"];
 
 function inputDate(date: Date) {
   const year = date.getFullYear();
@@ -157,7 +157,7 @@ export function WhatsAppMonitoring({
       {demo && demoResult.error && <Alert color="orange">{demoResult.error}</Alert>}
       <Modal opened={!!preview} onClose={() => setPreview(null)} title="Conversa fictícia" size="lg" centered>
         {preview && <Stack>
-          <div><Text fw={800}>{preview.contact} · {preview.clientName}</Text><Text size="sm" c="dimmed">{preview.subject} · {preview.agentName}</Text><Badge mt="xs">{statusLabels[preview.status] || "Finalizada"}</Badge></div>
+          <div><Text fw={800}>{preview.contact} · {preview.clientName}</Text><Text size="sm" c="dimmed">{preview.area} · {preview.subject} · {preview.agentName}</Text><Badge mt="xs">{statusLabels[preview.status] || "Finalizada"}</Badge></div>
           {preview.messages.map((message, index) => <Paper key={index} withBorder p="sm" radius="md" bg={message.incoming ? undefined : "var(--mantine-color-blue-light)"}>
             <Text size="xs" fw={700} c="dimmed">{message.incoming ? preview.contact : preview.agentName}</Text><Text size="sm">{message.text}</Text>
           </Paper>)}
@@ -274,7 +274,7 @@ export function WhatsAppMonitoring({
             <Text fw={800} mb="sm">Conversas fictícias do período</Text>
             <SimpleGrid cols={{ base: 1, md: 3 }}>{demoResult.conversations.slice(-6).reverse().map((conversation) => <Paper key={conversation.id} withBorder radius="md" p="sm">
               <Stack gap="xs"><Group justify="space-between"><Text fw={700}>{conversation.contact}</Text><Badge size="xs">{statusLabels[conversation.status] || "Finalizada"}</Badge></Group>
-                <Text size="sm">{conversation.clientName} · {conversation.subject}</Text><Text size="xs" c="dimmed">{conversation.agentName}</Text>
+                <Text size="sm">{conversation.clientName} · {conversation.area} · {conversation.subject}</Text><Text size="xs" c="dimmed">{conversation.agentName}</Text>
                 <Button variant="light" size="xs" onClick={() => setPreview(conversation)}>Ver conversa</Button></Stack>
             </Paper>)}</SimpleGrid>
             {!demoResult.conversations.length && <Text size="sm" c="dimmed">Nenhum exemplo corresponde aos filtros selecionados.</Text>}

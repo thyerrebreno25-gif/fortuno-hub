@@ -18,6 +18,9 @@ const scenarios = [
   { contact: "Pedro", subject: "Atualização cadastral", area: "Atendimento geral", question: "Olá! Como atualizo o contato responsável pelo financeiro?", answer: "Olá! Recebi os dados e concluí a atualização do contato financeiro.", followup: "Obrigada! A mudança também vale para os avisos de vencimento?" },
   { contact: "Camila", subject: "Aprovação de despesas", area: "Contas a pagar", question: "As despesas da semana já estão disponíveis para aprovação?", answer: "Sim! Revisei os documentos e organizei as despesas por vencimento.", followup: "Podem separar as despesas que vencem ainda hoje?" },
   { contact: "Lucas", subject: "Relatório mensal", area: "Atendimento geral", question: "Podem me ajudar a entender o fechamento financeiro do mês?", answer: "Claro! Revisei o fechamento e preparei um resumo das entradas e saídas.", followup: "Conseguem detalhar as despesas por categoria?" },
+  { contact: "Beatriz", subject: "Proposta de serviços", area: "Comercial", question: "Olá! Gostaria de uma proposta para incluir mais uma empresa no atendimento financeiro.", answer: "Olá! Preparei uma proposta com o escopo, os prazos e as condições para a nova empresa.", followup: "Podemos agendar uma apresentação da proposta para amanhã?" },
+  { contact: "Eduardo", subject: "Planejamento e resultados", area: "Diretoria", question: "Bom dia! Precisamos revisar os resultados do trimestre e as prioridades do próximo mês.", answer: "Bom dia! Organizei o resumo dos indicadores e uma sugestão de prioridades para a reunião da diretoria.", followup: "Podem incluir uma projeção de caixa para os próximos três meses?" },
+  { contact: "Fernanda", subject: "Revisão de pendências da equipe", area: "Supervisão", question: "Olá! Quais atendimentos precisam de apoio da supervisão para serem concluídos hoje?", answer: "Olá! Revisei as pendências e organizei os responsáveis e os próximos passos de cada atendimento.", followup: "Podem priorizar os casos que dependem de retorno de outros setores?" },
 ];
 export type DemoConversation = {
   id: string; date: string; hour: number; contact: string; subject: string; area: string;
@@ -86,7 +89,7 @@ export function buildMonitoringDemo(filters: { from: string; to: string; clientI
       return { date, label: `${date.slice(8)}/${date.slice(5, 7)}`, received: rows.length, resolved: rows.filter(completed).length, averageResponseMinutes: average(rows.filter((row) => row.status !== "NEW").map((row) => row.response)) };
     }),
     hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, label: `${String(hour).padStart(2, "0")}h`, conversations: conversations.filter((row) => row.hour === hour).length })),
-    areas: ["Contas a pagar", "Contas a receber", "Atendimento geral"].map((label) => ({ label, value: conversations.filter((row) => row.area === label).length })).filter((row) => row.value),
+    areas: [...new Set(scenarios.map((scenario) => scenario.area))].map((label) => ({ label, value: conversations.filter((row) => row.area === label).length })).filter((row) => row.value),
     clients: breakdown(demoClients, "clientId"), agents: breakdown(demoAgents, "agentId"),
     attention: waiting.sort((a, b) => b.waiting - a.waiting).map((row) => ({ id: row.id, contact: row.contact, client: row.clientName, assignee: row.agentName, status: row.status, waitingMinutes: row.waiting, lastMessageAt: row.lastMessageAt })),
   };
