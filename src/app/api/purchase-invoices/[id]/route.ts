@@ -1,3 +1,4 @@
+import { INVOICE_SEND_PENDING, requiresInvoiceVerification } from "@/modules/purchase-invoices/send-state";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPurchaseInvoiceMember, getPurchaseInvoicePermission } from "@/modules/purchase-invoices/server/auth";
@@ -42,7 +43,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     include: { items: true, installments: { orderBy: { installmentNumber: "asc" } } },
   });
   if (!invoice) return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
-  if (invoice.status === "SENT") return NextResponse.json({ error: "A despesa desta nota já foi enviada." }, { status: 409 });
+  if (requiresInvoiceVerification(invoice.lastError)) return NextResponse.json({ error: INVOICE_SEND_PENDING }, { status: 409 });
+  if (invoice.status === "SENT" || invoice.externalPayableProtocolId) return NextResponse.json({ error: "A despesa desta nota já foi enviada." }, { status: 409 });
 
   const body = (await request.json()) as {
     supplierId?: unknown;
@@ -102,9 +104,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     ? "READY_TO_SEND"
     : "PENDING_REVIEW";
 
-  await prisma.$transaction(async (tx) => {
-    await tx.purchaseInvoice.update({
-      where: { id: invoice.id },
+  const saved = await prisma.$transaction(async (tx) => {
+    const updated = await tx.purchaseInvoice.updateMany({
+      where: { id: invoice.id, status: invoice.status, lastError: invoice.lastError, externalPayableProtocolId: null },
       data: {
         supplierContaAzulId: supplierId,
         supplierContaAzulName: supplierName,
@@ -118,6 +120,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       },
     });
 
+    if (!updated.count) return false;
     await tx.purchaseInvoiceInstallment.deleteMany({ where: { invoiceId: invoice.id } });
     await tx.purchaseInvoiceInstallment.createMany({
       data: installments.map((installment) => ({ invoiceId: invoice.id, ...installment })),
@@ -162,7 +165,9 @@ export async function PATCH(request: Request, context: RouteContext) {
         });
       }
     }
+    return true;
   });
+  if (!saved) return NextResponse.json({ error: "A nota foi alterada ou está em envio. Atualize a tela." }, { status: 409 });
 
   const paymentMessage = !paymentsConfirmed
     ? " Confirme os vencimentos que não vieram na NF-e."
@@ -193,11 +198,13 @@ export async function DELETE(_request: Request, context: RouteContext) {
       number: true,
       status: true,
       externalPayableProtocolId: true,
+      lastError: true,
     },
   });
   if (!invoice) {
     return NextResponse.json({ error: "Nota de compra não encontrada." }, { status: 404 });
   }
+  if (requiresInvoiceVerification(invoice.lastError)) return NextResponse.json({ error: INVOICE_SEND_PENDING }, { status: 409 });
   if (invoice.status === "SENT" || invoice.externalPayableProtocolId) {
     return NextResponse.json(
       { error: "Esta nota já gerou uma despesa no Conta Azul e não pode ser excluída por aqui." },

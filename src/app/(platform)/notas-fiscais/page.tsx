@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
+import { INVOICE_SEND_PENDING, requiresInvoiceVerification } from "@/modules/purchase-invoices/send-state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
@@ -350,7 +351,7 @@ export default function NotasFiscaisPage() {
         withCloseButton: true,
         color: "green",
         title: "Despesa gerada",
-        message: `${body.message} Protocolo: ${body.protocolId}`,
+        message: `${body.message}${body.eventId ? ` ID da despesa: ${body.eventId}` : body.protocolId ? ` Protocolo: ${body.protocolId}` : ""}`,
       });
       await load();
     } catch (error) {
@@ -363,6 +364,7 @@ export default function NotasFiscaisPage() {
         title: "Envio não concluído",
         message: error instanceof Error ? error.message : "Falha ao enviar.",
       });
+      await load();
     } finally {
       releaseSessionKeepAlive();
       setSending(false);
@@ -520,7 +522,7 @@ export default function NotasFiscaisPage() {
                             variant="light"
                             leftSection={<IconTrash size={16} />}
                             loading={deletingId === selected.id}
-                            disabled={sending || selected.status === "SENT" || Boolean(selected.externalPayableProtocolId)}
+                            disabled={sending || requiresInvoiceVerification(selected.lastError) || selected.status === "SENT" || Boolean(selected.externalPayableProtocolId)}
                             title={sending
                               ? "Aguarde o envio desta nota terminar."
                               : selected.status === "SENT" || selected.externalPayableProtocolId
@@ -552,7 +554,7 @@ export default function NotasFiscaisPage() {
                       </div>
                     </div>
                   </div>
-                  {selected.lastError && <Alert color="red" title="Último envio não foi concluído">{selected.lastError}</Alert>}
+                  {selected.lastError && <Alert color={requiresInvoiceVerification(selected.lastError) ? "orange" : "red"} title={requiresInvoiceVerification(selected.lastError) ? "Confira a despesa no Conta Azul antes de reenviar" : "Último envio não foi concluído"}>{requiresInvoiceVerification(selected.lastError) ? INVOICE_SEND_PENDING : selected.lastError}</Alert>}
                   <div>
                     <Title order={3}>Dados para o lançamento</Title>
                     <Text size="sm" c="dimmed">Vincule fornecedor, conta e forma de pagamento antes do envio.</Text>
@@ -645,7 +647,7 @@ export default function NotasFiscaisPage() {
                   <Group justify="space-between" align="flex-end">
                     <Text size="sm" c="dimmed" maw={650}>O valor da nota é distribuído proporcionalmente entre os itens para que o rateio feche exatamente, inclusive quando há frete, impostos ou descontos.</Text>
                     <Group>
-                      <Button variant="default" onClick={() => void saveReview()} loading={saving} disabled={selected.status === "SENT" || !data?.permission.canEdit}>Salvar revisão</Button>
+                      <Button variant="default" onClick={() => void saveReview()} loading={saving} disabled={requiresInvoiceVerification(selected.lastError) || selected.status === "SENT" || !data?.permission.canEdit}>Salvar revisão</Button>
                       <Button
                         color="green"
                         leftSection={selected.status === "SENT" ? <IconCheck size={17} /> : <IconSend size={17} />}
@@ -653,6 +655,7 @@ export default function NotasFiscaisPage() {
                         loading={sending}
                         disabled={
                           selected.status === "SENT"
+                          || requiresInvoiceVerification(selected.lastError)
                           || !connected
                           || !data?.permission.canExport
                           || Math.abs(selectedInstallmentDifference) > 0.01
@@ -663,7 +666,7 @@ export default function NotasFiscaisPage() {
                           ? "Despesa enviada"
                           : sending
                             ? "Enviando em segundo plano..."
-                            : `Gerar ${selected.installments.length} título(s) no Conta Azul`}
+                            : requiresInvoiceVerification(selected.lastError) ? "Conferir despesa no Conta Azul" : `Gerar ${selected.installments.length} título(s) no Conta Azul`}
                       </Button>
                     </Group>
                   </Group>

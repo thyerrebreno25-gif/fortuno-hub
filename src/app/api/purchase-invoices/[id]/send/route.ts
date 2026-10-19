@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPurchaseInvoiceMember, getPurchaseInvoicePermission } from "@/modules/purchase-invoices/server/auth";
-import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
+import { financialEventIdFromCreation, protocolIdFrom } from "@/modules/conta-azul/financial-export";
+import { INVOICE_SEND_PENDING, requiresInvoiceVerification } from "@/modules/purchase-invoices/send-state";
+import { ContaAzulApiError, contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
 
 export const maxDuration = 300;
 
@@ -33,6 +35,7 @@ export async function POST(_request: Request, context: RouteContext) {
   if (invoice.status === "SENT" || invoice.externalPayableProtocolId) {
     return NextResponse.json({ error: "Esta nota já possui uma despesa enviada e não será duplicada." }, { status: 409 });
   }
+  if (requiresInvoiceVerification(invoice.lastError)) return NextResponse.json({ error: INVOICE_SEND_PENDING }, { status: 409 });
   if (!invoice.connection?.active) return NextResponse.json({ error: "Conecte este cliente à Conta Azul." }, { status: 400 });
   if (!invoice.supplierContaAzulId) return NextResponse.json({ error: "Selecione o fornecedor da Conta Azul." }, { status: 400 });
   if (!invoice.financialAccountId) return NextResponse.json({ error: "Selecione a conta financeira da despesa." }, { status: 400 });
@@ -69,6 +72,7 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   const payload = {
+    referencia_externa: `FORTUNO-NFE-${invoice.id}`,
     data_competencia: dateOnly(invoice.competenceDate),
     valor: totalInvoice,
     observacao: `NF-e ${invoice.number}${invoice.series ? ` série ${invoice.series}` : ""}${invoice.accessKey ? ` | chave ${invoice.accessKey}` : ""} | criada pelo Fortuno Hub`,
@@ -97,27 +101,38 @@ export async function POST(_request: Request, context: RouteContext) {
     },
   };
 
+  // Reserve the send before the external write. A timeout must never enable an automatic retry.
+  const claimed = await prisma.purchaseInvoice.updateMany({
+    where: { id: invoice.id, organizationId: member.organizationId, status: invoice.status, externalPayableProtocolId: null, lastError: invoice.lastError ?? null },
+    data: { status: "FAILED", lastError: INVOICE_SEND_PENDING },
+  });
+  if (!claimed.count) return NextResponse.json({ error: "Esta nota foi alterada ou já está em envio. Atualize a tela antes de continuar." }, { status: 409 });
   try {
-    const result = await contaAzulRequest<{ protocolo?: string; protocolId?: string; status?: string }>(
+    const result = await contaAzulRequest<unknown>(
       invoice.clientId,
-      "/v1/financeiro/eventos-financeiros/contas-a-pagar",
+      "/v1/financeiro/contas-a-pagar",
       { method: "POST", body: JSON.stringify(payload) },
     );
-    const protocolId = result.protocolo || result.protocolId;
-    if (!protocolId) throw new Error("A Conta Azul aceitou a requisição, mas não devolveu o protocolo da despesa.");
+    const eventId = financialEventIdFromCreation(result);
+    const protocolId = protocolIdFrom(result);
+    const externalId = eventId || protocolId;
+    if (!externalId) throw new Error(INVOICE_SEND_PENDING);
+    // Legacy column name; now stores the synchronous event ID as well as older protocol IDs.
     await prisma.purchaseInvoice.update({
       where: { id: invoice.id },
-      data: { status: "SENT", externalPayableProtocolId: protocolId, sentAt: new Date(), lastError: null },
+      data: { status: "SENT", externalPayableProtocolId: externalId, sentAt: new Date(), lastError: null },
     });
     return NextResponse.json({
       message: invoice.installments.length > 1
         ? `Despesa parcelada em ${invoice.installments.length} títulos enviada à Conta Azul com sucesso.`
         : "Despesa enviada à Conta Azul com sucesso.",
       protocolId,
-      status: result.status,
+      eventId,
+      externalId,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível gerar a despesa.";
+    const rejected = error instanceof ContaAzulApiError && [400, 401, 403, 404, 422, 429].includes(error.status);
+    const message = rejected ? error.message : INVOICE_SEND_PENDING;
     await prisma.purchaseInvoice.update({ where: { id: invoice.id }, data: { status: "FAILED", lastError: message } });
     return NextResponse.json({ error: message }, { status: 502 });
   }
