@@ -30,3 +30,8 @@
 .inspector { max-height: 650px; overflow: auto; }
 .canvasEmpty { padding: 80px 35px; }
 @media (max-width: 1000px) { .central, .form, .editorLayout { grid-template-columns: 1fr; } .clients { max-height: 230px; } .inspector { max-height: none; } .viewport { height: 500px; } }
+
+.portOut { touch-action: none; }
+
+.page { min-width: 0; max-width: 100%; }
+.page > * { min-width: 0; }
