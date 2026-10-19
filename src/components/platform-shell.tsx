@@ -257,6 +257,7 @@ const menuItems: MenuItem[] = [
     icon: icons.currency,
     group: "Financeiro",
   },
+  { label: "Mapeamento Operacional", href: "/mapeamento-operacional", moduleCode: "OPERATIONAL_MAPPING", icon: icons.activity, group: "Operação" },
   {
     label: "Onboarding",
     href: "/onboarding",

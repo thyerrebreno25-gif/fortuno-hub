@@ -312,6 +312,7 @@ enum AssistantMessageRole {
 }
 
 model Organization {
+  operationalMappings OperationalMapping[]
   id        String   @id @default(cuid())
   name      String
   document  String?  @unique
@@ -341,6 +342,7 @@ model Organization {
 }
 
 model User {
+  operationalMappings OperationalMapping[]
   id        String   @id
   email     String   @unique
   name      String?
@@ -411,6 +413,7 @@ model OrganizationMemberInviteToken {
 }
 
 model Client {
+  operationalMappings OperationalMapping[]
   id                      String        @id @default(cuid())
   organizationId          String
   name                    String
@@ -1804,4 +1807,25 @@ enum ServiceRoutingArea {
   ACCOUNTS_RECEIVABLE
   GENERAL
   UNKNOWN
+}
+
+model OperationalMapping {
+  id String @id @default(cuid())
+  organizationId String
+  clientId String?
+  createdById String
+  title String
+  description String @default("")
+  objective String @default("")
+  owner String @default("")
+  status String @default("DRAFT")
+  data Json
+  revision Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  @@index([organizationId, updatedAt])
+  @@index([clientId])
 }

@@ -46,6 +46,8 @@ async function getMemberForModule(module: ModuleCode): Promise<AssistantMember |
     : null;
 }
 
+export function getMappingMember() { return getMemberForModule("OPERATIONAL_MAPPING"); }
+
 export function getAssistantMember() { return getMemberForModule("ASSISTANT"); }
 export function getInvoiceHistoryMember() { return getMemberForModule("IMPORTS"); }
 
