@@ -73,7 +73,7 @@ export async function POST(_request: Request, context: RouteContext) {
     valor: totalInvoice,
     observacao: `NF-e ${invoice.number}${invoice.series ? ` série ${invoice.series}` : ""}${invoice.accessKey ? ` | chave ${invoice.accessKey}` : ""} | criada pelo Fortuno Hub`,
     descricao: `Compra NF-e ${invoice.number} - ${invoice.supplierName}`,
-    contato: invoice.supplierContaAzulId,
+    id_fornecedor: invoice.supplierContaAzulId,
     conta_financeira: invoice.financialAccountId,
     rateio,
     condicao_pagamento: {
