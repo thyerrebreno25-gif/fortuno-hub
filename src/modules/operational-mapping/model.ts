@@ -7,7 +7,7 @@ export const nodeSchema = z.object({
   pain: z.string().max(2000), validated: z.boolean(),
   x: z.number().min(0).max(10000), y: z.number().min(0).max(10000),
 });
-export const edgeSchema = z.object({ id: z.string().min(1).max(100), source: z.string().min(1).max(100), target: z.string().min(1).max(100), label: z.string().max(120) });
+export const edgeSchema = z.object({ id: z.string().min(1).max(100), source: z.string().min(1).max(100), target: z.string().min(1).max(100), label: z.string().max(120), sourceSide: z.enum(["top", "right", "bottom", "left"]).optional(), targetSide: z.enum(["top", "right", "bottom", "left"]).optional(), routeOffset: z.number().min(25).max(300).optional() });
 export const graphSchema = z.object({ nodes: z.array(nodeSchema).max(100), edges: z.array(edgeSchema).max(250) }).superRefine((graph, ctx) => {
   const ids = new Set(graph.nodes.map((node) => node.id));
   if (ids.size !== graph.nodes.length || new Set(graph.edges.map((edge) => edge.id)).size !== graph.edges.length) ctx.addIssue({ code: "custom", message: "Há identificadores duplicados no fluxo." });

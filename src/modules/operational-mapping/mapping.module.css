@@ -35,3 +35,10 @@
 
 .page { min-width: 0; max-width: 100%; }
 .page > * { min-width: 0; }
+
+.port { position: absolute; width: 18px; height: 18px; padding: 0; border: 2px solid white; border-radius: 50%; background: #228be6; cursor: crosshair; touch-action: none; z-index: 3; }
+.port[data-port-side="top"] { top: -11px; left: calc(50% - 9px); }
+.port[data-port-side="bottom"] { bottom: -9px; left: calc(50% - 9px); }
+.port[data-port-side="left"] { top: 56px; left: -9px; }
+.port[data-port-side="right"] { top: 56px; right: -9px; }
+.port:disabled { background: #91a7bc; cursor: default; }
