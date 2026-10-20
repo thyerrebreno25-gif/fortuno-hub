@@ -4,6 +4,7 @@ import type { ParsedInvoice, ParsedInvoiceItem } from "../types";
 const SHORT_DATE = /^(\d{2})\/(\d{2})$/;
 const FULL_DATE = /\b(\d{2})\/(\d{2})\/(\d{4})\b/;
 const MONEY = /^-?\s*R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}$/i;
+const FOREIGN_MONEY = /^(?:US\$|USD|EUR|€|GBP|£)\s*-?[\d.,]+$/i;
 const INSTALLMENT = /\b(\d{1,2})\s*\/\s*(\d{1,2})\b/;
 
 function normalize(value: unknown) {
@@ -109,11 +110,24 @@ export function parseBtgInvoice(source: PdfTextLine[]): ParsedInvoice {
   const items: ParsedInvoiceItem[] = [];
   let foundTransactions = false;
   let currentCard: string | undefined;
+  const pending: Array<Array<{ x: number; text: string }> | undefined> = [undefined, undefined];
+  let currentPage: number | undefined;
+  function clearPending() {
+    for (let column = 0; column < pending.length; column++) {
+      if (pending[column]) warnings.push("Uma compra internacional do BTG não possui conversão para reais identificável. Revise o PDF.");
+      pending[column] = undefined;
+    }
+  }
 
   for (const line of source) {
+    if (currentPage !== line.page) {
+      clearPending();
+      currentPage = line.page;
+    }
     const text = normalize(line.text);
     const card = text.match(/^Lancamentos do cartao .+?\bFinal\s+(\d{4})\b/i);
     if (card) {
+      clearPending();
       currentCard = card[1];
       foundTransactions = true;
       continue;
@@ -129,11 +143,37 @@ export function parseBtgInvoice(source: PdfTextLine[]): ParsedInvoice {
       parts.filter((part) => part.x >= 300),
     ];
 
-    for (const block of blocks) {
+    for (const [column, block] of blocks.entries()) {
+      if (block.some((part) => SHORT_DATE.test(part.text.trim()))) {
+        if (pending[column]) warnings.push("Uma compra internacional do BTG não possui conversão para reais identificável. Revise o PDF.");
+        pending[column] = undefined;
+        const foreignAmount = block.find((part) => FOREIGN_MONEY.test(part.text.trim()));
+        if (foreignAmount) {
+          pending[column] = block;
+          continue;
+        }
+      }
+      if (/^Conversao para Real\b/i.test(normalize(block.map((part) => part.text).join(" ")))) {
+        const purchase = pending[column];
+        const amountPart = [...block].reverse().find((part) => MONEY.test(part.text.trim()));
+        if (purchase && amountPart) {
+          // Preserve the purchase's amount-column position when replacing foreign
+          // currency with the bank's actual BRL conversion (never the exchange rate).
+          const converted = purchase.map((part) =>
+            FOREIGN_MONEY.test(part.text.trim())
+              ? { ...part, text: amountPart.text }
+              : part);
+          const transaction = parseTransactionBlock(converted, dueDate, currentCard);
+          if (transaction) items.push({ id: items.length + 1, ...transaction, transactionType: "INTERNATIONAL_PURCHASE" });
+          pending[column] = undefined;
+        }
+        continue;
+      }
       const transaction = parseTransactionBlock(block, dueDate, currentCard);
       if (transaction) items.push({ id: items.length + 1, ...transaction });
     }
   }
+  clearPending();
 
   const identifiedTotal = Number(items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
 
