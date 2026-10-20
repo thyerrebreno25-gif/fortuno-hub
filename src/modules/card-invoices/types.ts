@@ -5,7 +5,7 @@ export type ParsedInvoiceItem = {
   amount: number;
   installment?: string;
   cardLastDigits?: string;
-  transactionType: "PURCHASE" | "INSTALLMENT_PURCHASE" | "INTERNATIONAL_PURCHASE" | "INTERNATIONAL_IOF" | "INVOICE_PAYMENT";
+  transactionType: "PURCHASE" | "INSTALLMENT_PURCHASE" | "INTERNATIONAL_PURCHASE" | "INTERNATIONAL_IOF" | "INVOICE_PAYMENT" | "INVOICE_CREDIT";
   exportable: boolean;
 };
 

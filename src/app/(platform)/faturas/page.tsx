@@ -1,5 +1,6 @@
 "use client";
 
+import { invoiceReviewItems } from "@/modules/card-invoices/review-items";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoiceDraftKey, readInvoiceDraft, restoreInvoiceItem, type InvoiceDraft, type InvoiceItem, type InvoiceSourceFile } from "@/modules/card-invoices/draft";
 import { notifications } from "@mantine/notifications";
@@ -562,9 +563,7 @@ export default function FaturasPage() {
     setParseWarnings([]);
     try {
       const parsed = await parseCardInvoiceFiles(files, bank, password);
-      const exportableItems: InvoiceItem[] = parsed.items
-        .filter((item) => item.exportable)
-        .filter((item) => !/PAGAMENTO\s+ON\s*LINE|PAGAMENTO\s+ONLINE|PAGAMENTO\s+DA\s+FATURA|^PAGAMENTO\b/i.test(item.description.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))
+      const exportableItems: InvoiceItem[] = invoiceReviewItems(parsed.items)
         .map((item) => {
           const learnedCandidate = findLearnedInvoiceCategory(clientId, item.description);
           const expectedType = item.amount < 0 ? "RECEITA" : "DESPESA";

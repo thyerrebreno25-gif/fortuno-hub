@@ -1,3 +1,4 @@
+import { invoiceReviewItems } from "../review-items";
 import { describe, expect, it } from "vitest";
 import type { PdfTextLine } from "../pdf-reader.client";
 import { parseItauInvoice } from "./itau-parser";
@@ -111,6 +112,9 @@ it("reconhece palavras fragmentadas, centavos espaçados e ignora parcelas futur
   expect(result.dueDate).toBe("2026-06-05");
   expect(result.invoiceTotal).toBe(121);
   expect(result.items).toHaveLength(7);
+  const review = invoiceReviewItems(result.items);
+  expect(review).toHaveLength(7);
+  expect(review.reduce((total, item) => total + item.amount, 0)).toBe(121);
   expect(result.items.reduce((total,item) => total + item.amount,0)).toBe(121);
   expect(result.items.find((item) => item.installment)).toMatchObject({ installment: "1/6", amount:20 });
   expect(result.items.find((item) => item.description === "LOJA TESTE B")?.date).toBe("2026-05-22");

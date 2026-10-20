@@ -265,7 +265,7 @@ export function parseItauAzulInvoice(source: PdfTextLine[]): ParsedInvoice {
     }
     items.push({ id: items.length + 1, date: minimumPayment?.date ?? closingDate,
       description: minimumPayment ? "PAGAMENTO DEBITO MINIMO - CREDITO NA FATURA" : "SALDO CREDOR DA FATURA ANTERIOR",
-      amount: balance, transactionType: "INVOICE_PAYMENT", exportable: true });
+      amount: balance, transactionType: "INVOICE_CREDIT", exportable: true });
     identifiedTotal = Number((identifiedTotal + balance).toFixed(2));
   }
 
