@@ -245,7 +245,29 @@ export function parseItauAzulInvoice(source: PdfTextLine[]): ParsedInvoice {
     if (movement) items.push({ id: items.length + 1, ...movement });
   }
 
-  const identifiedTotal = Number(items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
+  let identifiedTotal = Number(items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
+  const balanceLine = source.find((line) => /^(?:S)?Saldofinanciado/i.test(compact(line.text)));
+  const balancePart = [...(balanceLine?.parts ?? [])].reverse().find((part) => MONEY.test(compact(part.text)));
+  const balance = balancePart ? parseMoney(balancePart.text) : null;
+  // Only bring forward an explicitly stated credit that reconciles the invoice.
+  // Payments settling the previous bill must not be deducted a second time.
+  if (closingDate && invoiceTotal !== null && balance !== null && balance < -0.005
+    && Math.abs(identifiedTotal + balance - invoiceTotal) < 0.01) {
+    let minimumPayment: Omit<ParsedInvoiceItem, "id"> | null = null;
+    let inPayments = false;
+    for (const line of lines) {
+      const text = compact(line.text);
+      if (/^Pagamentosefetuados$/i.test(text)) { inPayments = true; continue; }
+      if (/^(?:Totaldospagamentos|Lancamentos:|Comprasparceladas|Limitesdecredito)/i.test(text)) inPayments = false;
+      if (!inPayments || !/Pagamentodebitominimo/i.test(text)) continue;
+      const movement = parseDatedMovement(line, closingDate, undefined, "OTHER");
+      if (movement && Math.abs(movement.amount - balance) < 0.01) { minimumPayment = movement; break; }
+    }
+    items.push({ id: items.length + 1, date: minimumPayment?.date ?? closingDate,
+      description: minimumPayment ? "PAGAMENTO DEBITO MINIMO - CREDITO NA FATURA" : "SALDO CREDOR DA FATURA ANTERIOR",
+      amount: balance, transactionType: "INVOICE_PAYMENT", exportable: true });
+    identifiedTotal = Number((identifiedTotal + balance).toFixed(2));
+  }
 
   if (!foundTransactions) {
     warnings.push('A seção "Lançamentos: compras e saques" não foi localizada na fatura Itaú/Azul.');
@@ -262,13 +284,6 @@ export function parseItauAzulInvoice(source: PdfTextLine[]): ParsedInvoice {
   if (invoiceTotal === null) {
     warnings.push("O valor total não foi identificado automaticamente na fatura Itaú/Azul.");
   } else if (Math.abs(invoiceTotal - identifiedTotal) >= 0.01) {
-    const balanceLine = source.find((line) => /^(?:S)?Saldofinanciado/i.test(compact(line.text)));
-    const balancePart = [...(balanceLine?.parts ?? [])].reverse().find((part) => MONEY.test(compact(part.text)));
-    const balance = balancePart ? parseMoney(balancePart.text) : null;
-    if (balance !== null && Math.abs(identifiedTotal + balance - invoiceTotal) < 0.01) {
-      warnings.push(`A fatura inclui saldo anterior financiado/credor de R$ ${balance.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Esse saldo não foi importado como compra; confira a diferença em relação ao total a pagar.`);
-    }
-
     warnings.push(
       `A soma reconhecida foi R$ ${identifiedTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, enquanto a fatura informa R$ ${invoiceTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
     );

@@ -90,6 +90,7 @@ it("reconhece palavras fragmentadas, centavos espaçados e ignora parcelas futur
     line("= Total desta fatura 1 21,00", [{ x: 367, text: "=" }, { x: 375, text: "Total desta fatura" }, { x: 540, text: "1 21,00" }], 1, 648),
     line("S Saldo financiado -10,00", [{ x: 367, text: "S" }, { x: 375, text: "Saldo financiado" }, { x: 540, text: "-10,00" }], 1, 640),
     line("Pa ga me nt os e fet u ad o s", [{ x: 142, text: "Pa ga me nt os e fet u ad o s" }], 2, 714),
+    movement("11/05", "Pagamento debito minim o", "-10,00", 2, 698),
     movement("11/05", "PAGAMENTO", "-50,00", 2, 693),
     line("La nça me nt os : co m pr as e sa qu es Li mi tes de c ré dit o", [{ x: 142, text: "La nça me nt os : co m pr as e sa qu es" }, { x: 361, text: "Li mi tes de c ré dit o" }], 2, 646),
     movement("27/04", "LO JA EXEMPLO", "9 0,00", 2, 614),
@@ -109,10 +110,16 @@ it("reconhece palavras fragmentadas, centavos espaçados e ignora parcelas futur
   const result = parseItauInvoice(source);
   expect(result.dueDate).toBe("2026-06-05");
   expect(result.invoiceTotal).toBe(121);
-  expect(result.items).toHaveLength(6);
-  expect(result.items.reduce((total,item) => total + item.amount,0)).toBe(131);
+  expect(result.items).toHaveLength(7);
+  expect(result.items.reduce((total,item) => total + item.amount,0)).toBe(121);
   expect(result.items.find((item) => item.installment)).toMatchObject({ installment: "1/6", amount:20 });
   expect(result.items.find((item) => item.description === "LOJA TESTE B")?.date).toBe("2026-05-22");
-  expect(result.warnings.some((warning) => warning.includes("saldo anterior financiado/credor"))).toBe(true);
+  expect(result.items.filter((item) => item.amount < 0)).toEqual([expect.objectContaining({
+    amount: -10, date: "2026-05-11", description: "PAGAMENTO DEBITO MINIMO - CREDITO NA FATURA", exportable: true,
+  })]);
+  expect(result.warnings).toEqual([]);
+  // An already-reconciled invoice must never get the credit twice.
+  const reconciled = source.map((row) => row.text.startsWith("= Total") ? line("= Total desta fatura 131,00", [{ x:375, text:"Total desta fatura" }, { x:540, text:"131,00" }],1,648) : row);
+  expect(parseItauInvoice(reconciled).items).toHaveLength(6);
   expect(result.warnings.some((warning) => warning.includes("não foi localizada"))).toBe(false);
 });
