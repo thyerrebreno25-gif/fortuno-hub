@@ -4,7 +4,7 @@ import type { ParsedInvoice, ParsedInvoiceItem } from "../types";
 const FULL_DATE = /\b(\d{2})\/(\d{2})\/(\d{4})\b/;
 const SHORT_DATE = /^(\d{2})\/(\d{2})$/;
 const MONEY = /^-?\s*\d{1,3}(?:\.\d{3})*,\d{2}$/;
-const INSTALLMENT = /(\d{2})\/(\d{2})/;
+const INSTALLMENT = /(\d{2})\s*\/\s*(\d{2})/;
 
 type Section = "NONE" | "DOMESTIC" | "INTERNATIONAL" | "PRODUCTS" | "OTHER" | "FINANCE";
 
@@ -15,6 +15,10 @@ function normalize(value: unknown) {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+// Some Itaú PDFs insert spaces inside words, dates and amounts.
+// Compact only structural tokens; preserve the merchant text as extracted.
+function compact(value: unknown) { return normalize(value).replace(/\s/g, ""); }
 
 function parseMoney(value: string) {
   const negative = /^\s*-/.test(value);
@@ -47,7 +51,7 @@ function extractDate(source: PdfTextLine[], label: RegExp) {
 function extractInvoiceTotal(source: PdfTextLine[]) {
   for (const line of source) {
     const text = normalize(line.text);
-    if (!/^= ?Total desta fatura\b/i.test(text) && !/^Total desta fatura\b/i.test(text)) continue;
+    if (!/^=?Totaldestafatura/i.test(compact(text))) continue;
     const values = (line.parts ?? [])
       .map((part) => parseMoney(part.text))
       .filter((value): value is number => value !== null);
@@ -91,11 +95,11 @@ function parseDatedMovement(
   section: Section,
 ): Omit<ParsedInvoiceItem, "id"> | null {
   const parts = line.parts ?? [];
-  const datePart = parts.find((part) => SHORT_DATE.test(normalize(part.text).replace(/^@/, "")));
-  const amountPart = [...parts].reverse().find((part) => MONEY.test(normalize(part.text)));
+  const datePart = parts.find((part) => SHORT_DATE.test(compact(part.text).replace(/^@/, "")));
+  const amountPart = [...parts].reverse().find((part) => MONEY.test(compact(part.text)));
   if (!datePart || !amountPart) return null;
 
-  const dateMatch = normalize(datePart.text).replace(/^@/, "").match(SHORT_DATE);
+  const dateMatch = compact(datePart.text).replace(/^@/, "").match(SHORT_DATE);
   const amount = parseMoney(amountPart.text);
   if (!dateMatch || amount === null || Math.abs(amount) < 0.005) return null;
 
@@ -153,7 +157,7 @@ function specialItem(
     .find((value): value is number => value !== null);
   if (amount === undefined || Math.abs(amount) < 0.005) return null;
 
-  if (section === "INTERNATIONAL" && /^Repasse de IOF em R\$/i.test(text)) {
+  if (section === "INTERNATIONAL" && /^RepassedeIOFemR\$/i.test(compact(text))) {
     return {
       date: closingDate,
       description: "REPASSE DE IOF",
@@ -164,11 +168,12 @@ function specialItem(
   }
 
   if (section === "FINANCE") {
-    const descriptionPart = (line.parts ?? []).find((part) => /Juros|Multa|IOF/i.test(normalize(part.text)));
-    const description = normalize(descriptionPart?.text);
-    if (!/^(?:Juros do rotativo|Juros de mora|Multa por atraso|IOF de financiamento)$/i.test(description)) {
-      return null;
-    }
+    const names: Record<string, string> = {
+      jurosdorotativo: "Juros do rotativo", jurosdemora: "Juros de mora",
+      multaporatraso: "Multa por atraso", iofdefinanciamento: "IOF de financiamento",
+    };
+    const description = (line.parts ?? []).map((part) => names[compact(part.text).toLowerCase()]).find(Boolean);
+    if (!description) return null;
     return {
       date: closingDate,
       description,
@@ -182,7 +187,7 @@ function specialItem(
 }
 
 export function isItauAzulLayout(source: PdfTextLine[]) {
-  return source.some((line) => /Lancamentos:\s*compras e saques/i.test(normalize(line.text)));
+  return source.some((line) => /Lancamentos:comprasesaques/i.test(compact(line.text)));
 }
 
 export function parseItauAzulInvoice(source: PdfTextLine[]): ParsedInvoice {
@@ -193,35 +198,36 @@ export function parseItauAzulInvoice(source: PdfTextLine[]): ParsedInvoice {
   const lines = splitColumns(source);
   const items: ParsedInvoiceItem[] = [];
   let section: Section = "NONE";
-  let currentCard: string | undefined;
+  const maskedCards = [...new Set(source.flatMap((line) => [...compact(line.text).matchAll(/\d{4}\.[X*]{4}\.[X*]{4}\.(\d{4})/gi)].map((match) => match[1])))];
+  let currentCard: string | undefined = maskedCards.length === 1 ? maskedCards[0] : undefined;
   let foundTransactions = false;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const text = normalize(line.text);
 
-    if (/^Lancamentos:\s*compras e saques$/i.test(text)) {
+    if (/^Lancamentos:comprasesaques$/i.test(compact(text))) {
       section = "DOMESTIC";
       foundTransactions = true;
       continue;
     }
-    if (/^Lancamentos internacionais$/i.test(text)) {
+    if (/^Lancamentosinternacionais$/i.test(compact(text))) {
       section = "INTERNATIONAL";
       continue;
     }
-    if (/^Lancamentos:\s*produtos e servicos$/i.test(text)) {
+    if (/^Lancamentos:produtoseservicos$/i.test(compact(text))) {
       section = "PRODUCTS";
       continue;
     }
-    if (/^Outros lancamentos$/i.test(text)) {
+    if (/^Outroslancamentos$/i.test(compact(text))) {
       section = "OTHER";
       continue;
     }
-    if (/^Encargos cobrados nesta fatura$/i.test(text)) {
+    if (/^Encargoscobradosnestafatura$/i.test(compact(text))) {
       section = "FINANCE";
       continue;
     }
-    if (/^(?:Compras parceladas - proximas faturas|Limites de credito|Fique atento aos encargos)/i.test(text)) {
+    if (/^(?:Comprasparceladas-proximasfaturas|Limitesdecredito|Fiqueatentoaosencargos|Novotetodejuros)/i.test(compact(text))) {
       section = "NONE";
       continue;
     }
@@ -256,6 +262,13 @@ export function parseItauAzulInvoice(source: PdfTextLine[]): ParsedInvoice {
   if (invoiceTotal === null) {
     warnings.push("O valor total não foi identificado automaticamente na fatura Itaú/Azul.");
   } else if (Math.abs(invoiceTotal - identifiedTotal) >= 0.01) {
+    const balanceLine = source.find((line) => /^(?:S)?Saldofinanciado/i.test(compact(line.text)));
+    const balancePart = [...(balanceLine?.parts ?? [])].reverse().find((part) => MONEY.test(compact(part.text)));
+    const balance = balancePart ? parseMoney(balancePart.text) : null;
+    if (balance !== null && Math.abs(identifiedTotal + balance - invoiceTotal) < 0.01) {
+      warnings.push(`A fatura inclui saldo anterior financiado/credor de R$ ${balance.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Esse saldo não foi importado como compra; confira a diferença em relação ao total a pagar.`);
+    }
+
     warnings.push(
       `A soma reconhecida foi R$ ${identifiedTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, enquanto a fatura informa R$ ${invoiceTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
     );
