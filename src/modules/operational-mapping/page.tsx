@@ -4,6 +4,7 @@ import { Alert, Badge, Button, Group, Loader, Paper, Select, SimpleGrid, Stack, 
 import { notifications } from "@mantine/notifications";
 import { IconArrowRight, IconCheck, IconDeviceFloppy, IconFolder, IconPlus, IconSearch, IconSitemap } from "@tabler/icons-react";
 import { GuidedEditor } from "./guided-editor";
+import { GutEditor } from "./gut-editor";
 import { FlowEditor } from "./flow-editor";
 import { cloneForToBe, emptyMapping, mappingInputSchema, validationIssues, type Mapping, type MappingInput } from "./model";
 import styles from "./mapping.module.css";
@@ -54,7 +55,7 @@ export function OperationalMappingPage() {
     try {
       const { mapping } = await request<{ mapping: Mapping }>(`/api/operational-mappings?id=${encodeURIComponent(id)}`);
       const input = mappingInputSchema.parse(mapping);
-      setDraft(input); setSaved({ id: mapping.id, revision: mapping.revision, updatedAt: mapping.updatedAt }); setDirty(false); setMode("asIs"); setTab("editor");
+      setDraft(input); setSaved({ id: mapping.id, revision: mapping.revision, updatedAt: mapping.updatedAt }); setDirty(false); setMode("asIs"); setTab(input.data.gut?.length && !input.data.asIs.nodes.length ? "gut" : "editor");
     } catch (error) { notifyError(error); }
     finally { setBusy(false); }
   }
@@ -82,7 +83,7 @@ export function OperationalMappingPage() {
   const asIsReady = draft.data.asIs.nodes.length > 0 && draft.data.asIs.nodes.every((node) => node.validated) && !validationIssues(draft.data.asIs).length;
   return <div className={styles.page}>
     <Group justify="space-between"><div><Text size="xs" c="blue" fw={800} tt="uppercase">Operação · Processos</Text><Title order={2}>Mapeamento Operacional</Title><Text c="dimmed" size="sm">Entenda como funciona hoje. Desenhe como pode funcionar amanhã.</Text></div><Button leftSection={<IconPlus size={17} />} disabled={busy || !bootstrap?.permissions.canCreate} onClick={() => startNew()}>Novo mapeamento</Button></Group>
-    <nav className={styles.tabs} role="tablist" aria-label="Mapeamento operacional">{[{ id: "central", label: "Central de mapeamentos", icon: <IconFolder size={18} /> }, { id: "create", label: "Criação guiada", icon: <IconPlus size={18} /> }, { id: "editor", label: "Editor manual", icon: <IconSitemap size={18} /> }].map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} disabled={busy || item.id !== "central" && !bootstrap} onClick={() => setTab(item.id)}>{item.icon}{item.label}</button>)}</nav>
+    <nav className={styles.tabs} role="tablist" aria-label="Mapeamento operacional">{[{ id: "central", label: "Central de mapeamentos", icon: <IconFolder size={18} /> }, { id: "create", label: "Criação guiada", icon: <IconPlus size={18} /> }, { id: "editor", label: "Editor manual", icon: <IconSitemap size={18} /> }, { id: "gut", label: "Mapeamento GUT", icon: <IconCheck size={18} /> }].map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} disabled={busy || item.id !== "central" && !bootstrap} onClick={() => setTab(item.id)}>{item.icon}{item.label}</button>)}</nav>
     {loadError && <Alert color="red" title="Não foi possível carregar a central">{loadError}<Button variant="subtle" onClick={() => void load()}>Tentar novamente</Button></Alert>}
     {!bootstrap && !loadError && <Group><Loader size="sm" /><Text>Carregando clientes e mapeamentos...</Text></Group>}
     {bootstrap && tab === "central" && <>
@@ -107,6 +108,13 @@ export function OperationalMappingPage() {
         </Stack></Paper>
         <Group justify="space-between"><Group><Button variant={mode === "asIs" ? "filled" : "light"} onClick={() => setMode("asIs")} disabled={busy}>AS IS · Atual</Button><Button variant={mode === "toBe" ? "filled" : "light"} onClick={() => setMode("toBe")} disabled={busy}>TO BE · Futuro</Button></Group><Button variant="light" rightSection={<IconArrowRight size={16} />} onClick={() => setTab("editor")}>Ver no editor manual</Button></Group>
         <GuidedEditor graph={graph} disabled={blocked} onChange={(next) => patch({ data: { ...draft.data, [mode]: next } })} />
+      </Stack>}
+      {tab === "gut" && <Stack>
+        <Paper withBorder radius="lg" p="lg"><Stack><Title order={3}>Mapeamento GUT</Title><Text size="sm" c="dimmed">Avalie as atividades deste mapeamento e identifique onde agir primeiro.</Text>
+          <TextInput label="Nome do processo" required value={draft.title} maxLength={160} disabled={blocked} onChange={(event) => patch({ title: event.currentTarget.value })} />
+          <Group grow><Select label="Cliente" placeholder="Mapeamento avulso" clearable searchable data={bootstrap.clients.map((client) => ({ value: client.id, label: client.name }))} value={draft.clientId} disabled={blocked} onChange={(clientId) => patch({ clientId })} /><TextInput label="Responsável pelo mapeamento" value={draft.owner} maxLength={200} disabled={blocked} onChange={(event) => patch({ owner: event.currentTarget.value })} /></Group>
+        </Stack></Paper>
+        <GutEditor activities={draft.data.gut || []} disabled={blocked} onChange={(gut) => patch({ data: { ...draft.data, gut } })} />
       </Stack>}
       {tab === "editor" && <>
         <Group justify="space-between"><div><Title order={3}>{draft.title || "Novo mapeamento"}</Title><Text size="sm" c="dimmed">{bootstrap.clients.find((client) => client.id === draft.clientId)?.name || "Mapeamento avulso"} · {reviewed}/{allNodes} etapas validadas</Text></div><Group><Button variant={mode === "asIs" ? "filled" : "light"} onClick={() => setMode("asIs")} disabled={busy}>AS IS · Atual</Button><Button variant={mode === "toBe" ? "filled" : "light"} onClick={() => setMode("toBe")} disabled={busy}>TO BE · Futuro</Button></Group></Group>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gutSchema } from "./gut";
 
 export const nodeSchema = z.object({
   id: z.string().min(1).max(100), type: z.enum(["start", "step", "decision", "end"]),
@@ -13,7 +14,7 @@ export const graphSchema = z.object({ nodes: z.array(nodeSchema).max(100), edges
   if (ids.size !== graph.nodes.length || new Set(graph.edges.map((edge) => edge.id)).size !== graph.edges.length) ctx.addIssue({ code: "custom", message: "Há identificadores duplicados no fluxo." });
   if (graph.edges.some((edge) => !ids.has(edge.source) || !ids.has(edge.target) || edge.source === edge.target)) ctx.addIssue({ code: "custom", message: "Uma conexão aponta para uma etapa inválida." });
 });
-export const mappingDataSchema = z.object({ asIs: graphSchema, toBe: graphSchema, questions: z.array(z.string().max(1000)).max(30), improvements: z.string().max(10000) });
+export const mappingDataSchema = z.object({ gut: gutSchema.optional(), asIs: graphSchema, toBe: graphSchema, questions: z.array(z.string().max(1000)).max(30), improvements: z.string().max(10000) });
 export const mappingInputSchema = z.object({
   title: z.string().trim().min(3, "Dê um nome ao processo.").max(160), clientId: z.string().min(1).max(100).nullable(),
   description: z.string().max(20000), objective: z.string().max(3000), owner: z.string().max(200),
