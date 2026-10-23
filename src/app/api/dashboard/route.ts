@@ -1,3 +1,6 @@
+import { assistantClientAccessWhere } from "@/modules/assistant/auth";
+import { operationalOverview } from "@/modules/dashboard/operational-overview";
+import type { ImportModule } from "@/generated/prisma/enums";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
@@ -88,9 +91,14 @@ export async function GET(request: Request) {
         permission.canView,
       ]),
     );
+    if (!access.DASHBOARD) return NextResponse.json({ error: "Sem permissão para o dashboard." }, { status: 403 });
+    const dashboardMember = { id: membership.id, userId: membership.user.id, organizationId, role: membership.role, isTeamLeader: membership.isTeamLeader, teamMemberUserIds: membership.teamMembers.map((item) => item.userId), user: membership.user };
+    const overview = await operationalOverview(dashboardMember, access, period.start, now, visibleUserIds);
     const canSeeImports = Boolean(access.IMPORTS || access.MOTOR_EXCHANGE);
     const canSeePurchaseInvoices = Boolean(access.PURCHASE_INVOICES);
+    const visibleImportModules: ImportModule[] = [...(access.IMPORTS ? ["BANK_STATEMENT", "ACQUIRER", "CREDIT_CARD_INVOICE", "BRASILMED_RECONCILIATION"] as ImportModule[] : []), ...(access.MOTOR_EXCHANGE ? ["EXCHANGE"] as ImportModule[] : [])];
     const exportedWhere = {
+      module: { in: visibleImportModules },
       organizationId,
       status: "EXPORTED" as const,
       userId: { in: visibleUserIds },
@@ -119,19 +127,7 @@ export async function GET(request: Request) {
       usagePurchaseInvoices,
       usageFinancialExports,
     ] = await Promise.all([
-      prisma.client.count({
-        where: {
-          organizationId,
-          active: true,
-          ...(hasOrganizationScope
-            ? {}
-            : {
-                imports: {
-                  some: { status: "EXPORTED", userId: { in: visibleUserIds } },
-                },
-              }),
-        },
-      }),
+      prisma.client.count({ where: { organizationId, active: true, ...assistantClientAccessWhere(dashboardMember) } }),
       prisma.importJob.count({
         where: { ...exportedWhere, createdAt: { gte: today } },
       }),
@@ -305,6 +301,7 @@ export async function GET(request: Request) {
         ? prisma.importJob.findMany({
             where: {
               organizationId,
+              module: { in: visibleImportModules },
               userId: { in: visibleUserIds },
               createdAt: { gte: period.start },
             },
@@ -348,7 +345,7 @@ export async function GET(request: Request) {
             },
           })
         : Promise.resolve([]),
-      canSeeImports
+      access.IMPORTS
         ? prisma.contaAzulFinancialExport.findMany({
             where: {
               organizationId,
@@ -493,6 +490,7 @@ export async function GET(request: Request) {
         visibleTeamSize: visibleUserIds.length,
       },
       access,
+      overview,
       summary: {
         activeClients: access.CLIENTS ? activeClients : 0,
         exportsToday: canSeeImports ? exportsToday : 0,
@@ -560,7 +558,7 @@ export async function GET(request: Request) {
         total: canSeeImports ? credits + debits : 0,
       },
       usage,
-      acquirerComparison: canSeeImports
+      acquirerComparison: access.IMPORTS
         ? buildAcquirerComparison(
             acquirerRows.map((item) => ({
               clientId: item.client.id,

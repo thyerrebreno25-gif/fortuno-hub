@@ -60,6 +60,7 @@ type Feature = {
 };
 
 const features: Feature[] = [
+  { title: "Mapeamento Operacional", description: "Consulte processos AS IS / TO BE e priorize atividades pela matriz GUT.", href: "/mapeamento-operacional", moduleCode: "OPERATIONAL_MAPPING", group: "Atendimento e clientes", icon: <IconActivity size={24} /> },
   {
     title: "Assistente Fortuno",
     description:

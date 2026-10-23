@@ -1,4 +1,7 @@
 "use client";
+import { ActivityChart } from "@/modules/dashboard/activity-chart";
+import { dashboardDestinations } from "@/modules/dashboard/destinations";
+
 
 import { useState } from "react";
 import {
@@ -10,7 +13,8 @@ import {
   Group,
   Loader,
   Paper,
-  Progress,
+  Accordion,
+  RingProgress,
   ScrollArea,
   Select,
   SimpleGrid,
@@ -24,7 +28,6 @@ import {
   IconTrendingDown,
   IconUsersGroup,
 } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
 import { useDashboard } from "@/hooks/useDashboard";
 import type { DashboardStatus } from "@/modules/dashboard/types/dashboard.types";
 import type {
@@ -42,6 +45,7 @@ const statusLabels: Record<DashboardStatus, string> = {
   FAILED: "Falhou",
 };
 
+const usageLinks: Record<DashboardUsageKind, string> = { EXCHANGE: "/motor-cambial", BANK_STATEMENT: "/extratos", ACQUIRER: "/adquirentes", CREDIT_CARD_INVOICE: "/faturas", BRASILMED_RECONCILIATION: "/historico", PURCHASE_INVOICE_IMPORT: "/notas-fiscais", CA_ACQUIRER: "/adquirentes", CA_CREDIT_CARD_INVOICE: "/faturas", CA_PURCHASE_INVOICE: "/notas-fiscais" };
 const usageKindLabels: Record<DashboardUsageKind, string> = {
   EXCHANGE: "Conversão cambial",
   BANK_STATEMENT: "Importação de extrato",
@@ -121,18 +125,8 @@ function formatAverage(value: number) {
   });
 }
 
-function formatBucket(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" })
-      .format(new Date(`${value}T12:00:00Z`));
-  }
-  return new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" })
-    .format(new Date(`${value}-01T12:00:00Z`))
-    .replace(" de ", "/");
-}
 
 export default function DashboardPage() {
-  const router = useRouter();
   const [period, setPeriod] = useState<DashboardPeriodCode>("30D");
   const { data, loading, error, reload } = useDashboard(period);
 
@@ -167,9 +161,8 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  const hasImports = Boolean(data.access.IMPORTS || data.access.MOTOR_EXCHANGE);
-  const hasIntegratedUsage = hasImports || Boolean(data.access.PURCHASE_INVOICES);
-  const maximumTimeline = Math.max(...data.usage.timeline.map((item) => item.total), 1);
+  const hasImports = Boolean(data.access.IMPORTS);
+  const hasIntegratedUsage = hasImports || Boolean(data.access.MOTOR_EXCHANGE || data.access.PURCHASE_INVOICES);
   const maximumUsageType = Math.max(...data.usage.byType.map((item) => item.total), 1);
   const maximumClientUsage = Math.max(...data.usage.byClient.map((item) => item.total), 1);
   const maximumUserUsage = Math.max(...data.usage.byUser.map((item) => item.total), 1);
@@ -231,8 +224,7 @@ export default function DashboardPage() {
           </Group>
           <Title order={2}>Olá, {data.user.name}</Title>
           <Text c="dimmed">
-            Visão integrada das importações, notas de compra e lançamentos
-            enviados pelo Fortuno Hub ao Conta Azul.
+            Seus resultados financeiros e operacionais, conectados em um só lugar.
           </Text>
         </Stack>
 
@@ -256,8 +248,26 @@ export default function DashboardPage() {
         </Group>
       </Group>
 
+
+      {error && <Alert color="orange" title="Atualização indisponível">{error} Os dados abaixo são da última atualização concluída.</Alert>}
+      <Paper withBorder radius="lg" p="lg"><Stack>
+        <Group justify="space-between"><div><Title order={3}>Pulso da operação</Title><Text size="sm" c="dimmed">Carteira e processos: posição atual. WhatsApp e rotinas: período selecionado.</Text></div><Badge variant="light">Dados salvos no sistema</Badge></Group>
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+          {data.access.CLIENTS && <OverviewCard title="Clientes ativos" value={data.summary.activeClients} detail="Carteira visível para seu perfil" href="/clientes" />}
+          {data.access.ONBOARDING && <OverviewCard title="Implantações em andamento" value={data.summary.activeOnboardings} detail={`${data.summary.overdueOnboardings} atrasadas · ${data.summary.onboardingHoursThisMonth}h no mês`} href="/onboarding" />}
+          {data.access.AUDIT && <OverviewCard title="Auditorias abertas" value={data.summary.activeAudits} detail="Acompanhe achados e correções" href="/auditoria" />}
+          {data.access.SUPPORT && <OverviewCard title="Chamados em aberto" value={data.summary.openTickets} detail="Abertos ou em atendimento" href="/suporte" />}
+          {data.access.OPERATIONAL_MAPPING && <OverviewCard title="Mapeamentos operacionais" value={data.overview.mappings.total} detail={`${data.overview.mappings.validated} validados · AS IS / TO BE`} href="/mapeamento-operacional" rate={data.overview.mappings.total ? data.overview.mappings.validated / data.overview.mappings.total * 100 : undefined} />}
+          {data.access.OPERATIONAL_MAPPING && <OverviewCard title="Atividades GUT" value={data.overview.mappings.activities} detail={`${data.overview.mappings.assessed} avaliadas · maior impacto ${data.overview.mappings.highestImpact.toLocaleString("pt-BR", {maximumFractionDigits: 1})}%`} href="/mapeamento-operacional" rate={data.overview.mappings.activities ? data.overview.mappings.assessed / data.overview.mappings.activities * 100 : undefined} />}
+          {data.access.WHATSAPP && <OverviewCard title="WhatsApp · conversas reais" value={data.overview.whatsapp.received} detail={`${data.overview.whatsapp.resolved} resolvidas · ${data.overview.whatsapp.simulated} simuladas, separadas deste total`} href="/whatsapp" rate={data.overview.whatsapp.received ? data.overview.whatsapp.resolved / data.overview.whatsapp.received * 100 : undefined} />}
+          {data.access.SERVICE_CENTER && <OverviewCard title="Atendimento · e-mails e chamados" value={data.overview.service.received} detail={`${data.overview.service.resolved} resolvidos · recebidos no período, sem spam`} href="/atendimento" />}
+          {data.access.OPERATIONS && <OverviewCard title="Rotinas operacionais" value={data.overview.operations.total} detail={`${data.overview.operations.completed} concluídas no período`} href="/operacoes" rate={data.overview.operations.total ? data.overview.operations.completed / data.overview.operations.total * 100 : undefined} />}
+        </SimpleGrid>
+      </Stack></Paper>
+      <Accordion variant="separated" radius="lg"><Accordion.Item value="modules"><Accordion.Control>Explorar módulos e resultados relacionados</Accordion.Control><Accordion.Panel><SimpleGrid cols={{base: 1, sm: 2, lg: 3}}>{dashboardDestinations.filter((item) => data.access[item.module]).map((item) => <a key={item.href} href={item.href} className={styles.moduleLink}>{item.label} <span aria-hidden="true">↗</span></a>)}</SimpleGrid><Text size="xs" c="dimmed" mt="md">Conferência de vendas apresenta o resultado da comparação na própria ferramenta; não mantém um histórico consolidado. Avisos, assistente e configurações são áreas de consulta e apoio.</Text></Accordion.Panel></Accordion.Item></Accordion>
+
       {metrics.length > 0 && (
-        <Paper withBorder radius="lg" className={styles.metricsGrid}>
+        <div className={styles.metricsGrid}>
           {metrics.map((metric, index) => (
             <Metric
               key={metric.label}
@@ -265,7 +275,7 @@ export default function DashboardPage() {
               bordered={index > 0}
             />
           ))}
-        </Paper>
+        </div>
       )}
 
       {hasIntegratedUsage && (
@@ -286,25 +296,7 @@ export default function DashboardPage() {
                 </Group>
               </Group>
 
-              <ScrollArea type="auto" offsetScrollbars>
-                <div className={styles.timelineChart}>
-                  {data.usage.timeline.map((item) => (
-                    <div
-                      className={styles.timelineColumn}
-                      key={item.key}
-                      title={`${formatBucket(item.key)}: ${item.total} atividade(s), ${item.imports} importação(ões), ${item.caSends} envio(s) ao Conta Azul`}
-                    >
-                      <Text size="xs" fw={700} ta="center">{item.total}</Text>
-                      <div className={styles.timelineTrack}>
-                        <span style={{ height: `${Math.max(item.total ? 5 : 0, (item.total / maximumTimeline) * 100)}%` }} />
-                      </div>
-                      <Text size="xs" c="dimmed" ta="center" className={styles.timelineLabel}>
-                        {formatBucket(item.key)}
-                      </Text>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
+              <ActivityChart timeline={data.usage.timeline} />
             </Stack>
           </Paper>
 
@@ -317,6 +309,7 @@ export default function DashboardPage() {
               items={data.usage.byType.map((item) => ({
                 ...item,
                 label: usageKindLabels[item.key as DashboardUsageKind],
+                href: usageLinks[item.key as DashboardUsageKind],
               }))}
             />
             <UsageRankingCard
@@ -417,7 +410,7 @@ export default function DashboardPage() {
                         <Table.Tr key={item.id}>
                           <Table.Td>
                             <Text fw={600} size="sm" lineClamp={1}>
-                              {usageKindLabels[item.kind]}
+                              <a href={usageLinks[item.kind]}>{usageKindLabels[item.kind]}</a>
                             </Text>
                             <Text size="xs" c="dimmed">
                               {item.stage === "CA_EXPORT" ? "Envio ao Conta Azul" : "Importação / processamento"}
@@ -467,39 +460,7 @@ export default function DashboardPage() {
               </Stack>
             </Paper>
 
-            {data.access.ONBOARDING && (
-              <Paper withBorder radius="lg" p="lg">
-                <Stack gap="md">
-                  <Group justify="space-between">
-                    <Stack gap={1}>
-                      <Title order={4}>Implantações</Title>
-                      <Text size="sm" c="dimmed">Onboardings em andamento.</Text>
-                    </Stack>
-                    <Badge
-                      color={data.summary.overdueOnboardings > 0 ? "red" : "green"}
-                      variant="light"
-                    >
-                      {data.summary.overdueOnboardings} atrasado(s)
-                    </Badge>
-                  </Group>
-                  <Group justify="space-between">
-                    <Stack gap={2}>
-                      <Text size="xs" c="dimmed">ATIVOS</Text>
-                      <Text fw={750} fz={24}>{data.summary.activeOnboardings}</Text>
-                    </Stack>
-                    <Stack gap={2} align="flex-end">
-                      <Text size="xs" c="dimmed">HORAS NO MÊS</Text>
-                      <Text fw={750} fz={24}>
-                        {data.summary.onboardingHoursThisMonth}h
-                      </Text>
-                    </Stack>
-                  </Group>
-                  <Button variant="light" onClick={() => router.push("/onboarding")}>
-                    Abrir onboarding
-                  </Button>
-                </Stack>
-              </Paper>
-            )}
+
           </Stack>
         </SimpleGrid>
       )}
@@ -545,6 +506,7 @@ function UsageRankingCard({
   empty: string;
   maximum: number;
   items: Array<{
+    href?: string;
     key: string;
     label: string;
     total: number;
@@ -569,11 +531,11 @@ function UsageRankingCard({
               <Group justify="space-between" wrap="nowrap">
                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
                   <Badge variant="light" color="gray">{index + 1}</Badge>
-                  <Text size="sm" fw={650} truncate>{item.label}</Text>
+                  <Text size="sm" fw={650} truncate>{item.href ? <a href={item.href}>{item.label}</a> : item.label}</Text>
                 </Group>
                 <Text size="sm" fw={800}>{item.total}</Text>
               </Group>
-              <Progress value={(item.total / maximum) * 100} radius="xl" />
+              <Text size="xs" c="dimmed">{Math.round(item.total / maximum * 100)}% do volume do líder</Text>
               <Group gap="xs">
                 {item.imports > 0 && <Badge size="xs" variant="light" color="blue">{item.imports} import.</Badge>}
                 {item.caSends > 0 && <Badge size="xs" variant="light" color="green">{item.caSends} envio(s)</Badge>}
@@ -671,4 +633,8 @@ function AcquirerComparisonCard({
       </Stack>
     </Paper>
   );
+}
+
+function OverviewCard({ title, value, detail, href, rate }: { title: string; value: number; detail: string; href: string; rate?: number }) {
+  return <a href={href} className={styles.overviewCard}><Group justify="space-between" wrap="nowrap"><Stack gap={4}><Text size="sm" fw={600}>{title}</Text><Text fz={32} fw={800}>{value}</Text></Stack>{rate !== undefined && <RingProgress size={72} thickness={6} sections={[{value: Math.min(100, Math.max(0, rate)), color: "blue"}]} label={<Text ta="center" size="xs" fw={700}>{Math.round(rate)}%</Text>} />}</Group><Text size="xs" c="dimmed" mt="sm">{detail}</Text><Text size="xs" c="blue" mt="sm">Ver detalhes ↗</Text></a>;
 }

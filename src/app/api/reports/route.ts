@@ -1,3 +1,5 @@
+import { operationalOverview } from "@/modules/dashboard/operational-overview";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
@@ -26,7 +28,7 @@ export async function GET(request: Request) {
     const member = await prisma.organizationMember.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
-      select: { organizationId: true, role: true },
+      select: { id: true, userId: true, organizationId: true, role: true, isTeamLeader: true, teamMembers: { select: { userId: true } }, user: { select: { id: true, name: true, email: true } } },
     });
     if (!member) {
       return NextResponse.json(
@@ -35,19 +37,25 @@ export async function GET(request: Request) {
       );
     }
 
+    const permissions = await getRolePermissions(member.organizationId, member.role);
+    if (!permissions.REPORTS.canView) return NextResponse.json({ error: "Sem permissão para relatórios." }, { status: 403 });
+    const access = Object.fromEntries(Object.entries(permissions).map(([key, value]) => [key, value.canView]));
     const url = new URL(request.url);
     const period = url.searchParams.get("period") || "30d";
     const from = startDate(period);
     const now = new Date();
-    const isOperator = member.role === "OPERATOR";
+    const restricted = !["MASTER", "ADMIN", "MANAGER"].includes(member.role);
+    const visibleUserIds = [member.userId, ...(member.isTeamLeader ? member.teamMembers.map((item) => item.userId) : [])];
+    const overview = await operationalOverview({ ...member, teamMemberUserIds: member.teamMembers.map((item) => item.userId) }, access, from, now, visibleUserIds);
 
     const [imports, clients, onboardings, operations, serviceTickets, audits] =
       await Promise.all([
-        prisma.importJob.findMany({
+        access.IMPORTS || access.MOTOR_EXCHANGE ? prisma.importJob.findMany({
           where: {
             organizationId: member.organizationId,
             createdAt: { gte: from },
-            ...(isOperator ? { userId: user.id } : {}),
+            module: { in: [...(access.IMPORTS ? ["BANK_STATEMENT", "ACQUIRER", "CREDIT_CARD_INVOICE", "BRASILMED_RECONCILIATION"] as const : []), ...(access.MOTOR_EXCHANGE ? ["EXCHANGE"] as const : [])] },
+            ...(restricted ? { userId: { in: visibleUserIds } } : {}),
           },
           include: {
             client: { select: { name: true } },
@@ -55,14 +63,14 @@ export async function GET(request: Request) {
             transactions: { select: { amount: true, type: true } },
           },
           orderBy: { createdAt: "desc" },
-        }),
-        prisma.client.count({
+        }) : Promise.resolve([]),
+        access.CLIENTS ? prisma.client.count({
           where: { organizationId: member.organizationId, active: true },
-        }),
-        prisma.onboarding.findMany({
+        }) : Promise.resolve(0),
+        access.ONBOARDING ? prisma.onboarding.findMany({
           where: {
             organizationId: member.organizationId,
-            ...(isOperator ? { responsibleId: user.id } : {}),
+            ...(restricted ? { responsibleId: { in: visibleUserIds } } : {}),
           },
           include: {
             tasks: {
@@ -72,16 +80,13 @@ export async function GET(request: Request) {
               },
             },
           },
-        }),
-        prisma.operationActivity.findMany({
+        }) : Promise.resolve([]),
+        access.OPERATIONS ? prisma.operationActivity.findMany({
           where: {
             organizationId: member.organizationId,
             deletedAt: null,
-            OR: [
-              { scheduledDate: { gte: from } },
-              { createdAt: { gte: from } },
-            ],
-            ...(isOperator ? { responsibleId: user.id } : {}),
+            scheduledDate: { gte: from, lte: now },
+            ...(restricted ? { responsibleId: { in: visibleUserIds } } : {}),
           },
           select: {
             id: true,
@@ -91,13 +96,14 @@ export async function GET(request: Request) {
             createdAt: true,
             timeEntries: { select: { seconds: true } },
           },
-        }),
-        prisma.serviceTicket.findMany({
+        }) : Promise.resolve([]),
+        access.SERVICE_CENTER ? prisma.serviceTicket.findMany({
           where: {
             organizationId: member.organizationId,
             receivedAt: { gte: from },
-            ...(isOperator
-              ? { OR: [{ assignedToId: user.id }, { assignedToId: null }] }
+            source: { notIn: ["WHATSAPP_API", "WHATSAPP_SIMULATOR"] },
+            ...(restricted
+              ? { OR: [{ assignedToId: { in: visibleUserIds } }, { assignedToId: null }] }
               : {}),
           },
           select: {
@@ -108,12 +114,12 @@ export async function GET(request: Request) {
             firstResponseAt: true,
             resolvedAt: true,
           },
-        }),
-        prisma.audit.findMany({
+        }) : Promise.resolve([]),
+        access.AUDIT ? prisma.audit.findMany({
           where: {
             organizationId: member.organizationId,
             createdAt: { gte: from },
-            ...(isOperator ? { supervisorId: user.id } : {}),
+            ...(restricted ? { supervisorId: { in: visibleUserIds } } : {}),
           },
           select: {
             id: true,
@@ -123,7 +129,7 @@ export async function GET(request: Request) {
             passedChecks: true,
             _count: { select: { findings: true } },
           },
-        }),
+        }) : Promise.resolve([]),
       ]);
 
     const byModule: Record<string, number> = {};
@@ -199,6 +205,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       period,
+      overview,
+      access,
       summary: {
         totalImports: imports.length,
         successful: (byStatus.EXPORTED || 0) + (byStatus.VALIDATED || 0),

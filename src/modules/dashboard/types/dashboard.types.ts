@@ -135,6 +135,12 @@ export interface DashboardData {
     visibleTeamSize: number;
   };
   access: Record<string, boolean>;
+  overview: {
+    service: { received: number; resolved: number };
+    mappings: { total: number; validated: number; activities: number; assessed: number; highestImpact: number };
+    operations: { total: number; completed: number };
+    whatsapp: { received: number; resolved: number; simulated: number };
+  };
   summary: DashboardSummary;
   processingsByModule: DashboardProcessingByModule[];
   recentProcessings: DashboardRecentProcessing[];

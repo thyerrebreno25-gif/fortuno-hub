@@ -175,3 +175,11 @@
     border-left: 0;
   }
 }
+
+.metricsGrid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; overflow: visible; }
+.metric { border: 1px solid var(--fortuno-line, #dce5ef) !important; border-radius: 18px; background: var(--fortuno-surface, white); box-shadow: 0 5px 20px #163a6010; }
+.overviewCard { display: block; padding: 20px; border-radius: 18px; border: 1px solid var(--fortuno-line, #dce5ef); background: linear-gradient(135deg, var(--mantine-color-blue-light), var(--fortuno-surface, white)); color: inherit; text-decoration: none; transition: transform 180ms ease, box-shadow 180ms ease; }
+.overviewCard:hover { transform: translateY(-3px); box-shadow: 0 10px 25px #163a6015; }
+.overviewCard:focus-visible, .moduleLink:focus-visible { outline: 3px solid var(--mantine-color-blue-5); outline-offset: 3px; }
+.moduleLink { display: flex; justify-content: space-between; padding: 12px; border-radius: 10px; background: var(--mantine-color-blue-light); color: inherit; text-decoration: none; }
+@media (prefers-reduced-motion: reduce) { .overviewCard { transition: none; } }
