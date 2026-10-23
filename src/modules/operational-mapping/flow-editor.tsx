@@ -1,13 +1,25 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Checkbox, Group, Modal, NumberInput, Paper, Select, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { IconPlus, IconTrash, IconLayoutGrid } from "@tabler/icons-react";
 import { newNode, removeNode, validationIssues, type FlowGraph, type FlowNode } from "./model";
 import { connectionPath, defaultSides, portPoint, portSides, type PortSide } from "./connections";
+import { duplicateStep, scaledDelta } from "./editor-actions";
 import styles from "./mapping.module.css";
 
 const kinds = [{ value: "start", label: "Início" }, { value: "step", label: "Etapa" }, { value: "decision", label: "Decisão" }, { value: "end", label: "Fim" }];
 export function FlowEditor({ graph, onChange, disabled = false }: { graph: FlowGraph; onChange: (graph: FlowGraph) => void; disabled?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const clipboard = useRef<FlowNode | null>(null);
+  const pasteCount = useRef(0);
+  const editor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!expanded) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, [expanded]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const movedNode = useRef(false);
@@ -44,8 +56,37 @@ export function FlowEditor({ graph, onChange, disabled = false }: { graph: FlowG
     topology({ ...graph, edges: [...graph.edges, { id, source: from, target: to, sourceSide: fromSide, targetSide: destinationSide, label: "" }] });
     setSelectedEdge(id); setSelected(null); setSource(null); setError("");
   }
-  return <Stack gap="sm">
-    <Modal opened={Boolean(details)} onClose={() => setDetailsId(null)} title={details?.title || "Detalhes da etapa"} size="lg" centered>
+  function deleteSelection() {
+    if (disabled || (!node && !edge)) return;
+    if (!window.confirm(node ? "Excluir esta etapa e suas conexões?" : "Excluir esta conexão?")) return;
+    topology(node ? removeNode(graph, node.id) : { ...graph, edges: graph.edges.filter((item) => item.id !== edge!.id) });
+    setSelected(null); setSelectedEdge(null); setSource(null); setPreview(null);
+    editor.current?.focus();
+  }
+  function pasteStep() {
+    if (disabled || !clipboard.current) return;
+    if (graph.nodes.length >= 100) { setError("Limite de 100 etapas atingido."); return; }
+    const next = duplicateStep(clipboard.current, crypto.randomUUID(), 40 * (++pasteCount.current));
+    topology({ ...graph, nodes: [...graph.nodes, next] });
+    setSelected(next.id); setSelectedEdge(null); setError("");
+    editor.current?.focus();
+  }
+  return <Stack ref={editor} tabIndex={-1} className={expanded ? styles.expandedEditor : undefined} gap="sm" onKeyDown={(event) => {
+    if (details || event.nativeEvent.isComposing) return;
+    if (event.key === "Escape") { setExpanded(false); setSource(null); setPreview(null); return; }
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"], [role="combobox"], [role="dialog"]')) return;
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && key === "c" && node) { event.preventDefault(); clipboard.current = { ...node }; pasteCount.current = 0; }
+    if ((event.ctrlKey || event.metaKey) && key === "v" && clipboard.current && !disabled) { event.preventDefault(); if (!event.repeat) pasteStep(); }
+    if (event.key === "Delete" && !disabled && (node || edge)) { event.preventDefault(); if (!event.repeat) deleteSelection(); }
+  }}>
+    <Group justify="space-between">
+      <Group gap="xs"><Button size="xs" variant="default" aria-label="Diminuir zoom" disabled={zoom <= 0.4} onClick={() => setZoom((value) => Math.max(0.4, Number((value - 0.1).toFixed(1))))}>−</Button><Button size="xs" variant="subtle" aria-label="Restaurar zoom para 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</Button><Button size="xs" variant="default" aria-label="Aumentar zoom" disabled={zoom >= 2} onClick={() => setZoom((value) => Math.min(2, Number((value + 0.1).toFixed(1))))}>+</Button>
+      <Button size="xs" variant="light" disabled={disabled || !node || graph.nodes.length >= 100} onClick={() => { if (node) { clipboard.current = { ...node }; pasteCount.current = 0; pasteStep(); } }}>Duplicar etapa</Button><Button size="xs" color="red" variant="light" disabled={disabled || (!node && !edge)} onClick={deleteSelection}>Excluir seleção</Button></Group>
+      <Button size="xs" variant="light" onClick={() => setExpanded((value) => !value)}>{expanded ? "Voltar ao tamanho normal" : "Ampliar editor"}</Button>
+    </Group>
+    <Modal opened={Boolean(details)} onClose={() => setDetailsId(null)} title={details?.title || "Detalhes da etapa"} size="lg" centered zIndex={400}>
       {details && <Stack gap="md">
         <Group gap="xs"><Badge variant="light">{kinds.find((kind) => kind.value === details.type)?.label}</Badge><Badge color={details.validated ? "green" : "orange"}>{details.validated ? "Validada" : "Revisar"}</Badge></Group>
         <div><Text fw={700} size="sm" mb={6}>Descritivo / instruções</Text><Text size="sm" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }} c={details.description.trim() ? undefined : "dimmed"}>{details.description.trim() ? details.description : "Esta etapa ainda não tem um descritivo. Preencha as instruções no painel de edição para consultá-las aqui."}</Text></div>
@@ -61,11 +102,12 @@ export function FlowEditor({ graph, onChange, disabled = false }: { graph: FlowG
       }}>{kind.label}</Button>)}</Group>
       <Button size="xs" variant="default" leftSection={<IconLayoutGrid size={14} />} disabled={disabled || !graph.nodes.length} onClick={() => onChange({ ...graph, nodes: graph.nodes.map((item, index) => ({ ...item, x: 70 + index % 3 * 300, y: 60 + Math.floor(index / 3) * 190 })) })}>Organizar posições</Button>
     </Group>
-    <Text size="xs" c="dimmed">Arraste pelo título das caixas. Clique em uma caixa para consultar o descritivo. Use o painel lateral para editar. Para conectar, arraste qualquer ponto azul até o ponto desejado de outra caixa. Para retornar, use os pontos inferiores ou superiores para separar a volta da ida. Clique na seta para editar sua condição (opcional). Você também pode clicar na saída e depois na entrada. Use as setas do teclado no título para mover a caixa selecionada.</Text>
+    <Text size="xs" c="dimmed">Clique no título para selecionar e arraste para mover. Consulte o descritivo clicando na parte inferior da caixa ou com dois cliques no título. Delete exclui a seleção; Ctrl+C e Ctrl+V copiam e colam a etapa. Esc sai do modo ampliado. Use o painel lateral para editar. Para conectar, arraste qualquer ponto azul até o ponto desejado de outra caixa. Para retornar, use os pontos inferiores ou superiores para separar a volta da ida. Clique na seta para editar sua condição (opcional). Você também pode clicar na saída e depois na entrada. Use as setas do teclado no título para mover a caixa selecionada.</Text>
     {error && <Alert color="orange" withCloseButton onClose={() => setError("")}>{error}</Alert>}
     <div className={styles.editorLayout}>
-      <div className={styles.viewport}>
-        <div ref={canvas} className={styles.canvas} style={{ width, height }}>
+      <div className={styles.viewport} tabIndex={0} aria-label="Área do diagrama" onPointerDown={(event) => { if (event.target === event.currentTarget || event.target === canvas.current) event.currentTarget.focus(); }}>
+        <div style={{ width: width * zoom, height: height * zoom, position: "relative", overflow: "hidden" }}>
+        <div ref={canvas} className={styles.canvas} style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "top left" }}>
           <svg width={width} height={height} className={styles.connections} aria-label="Conexões do processo">
             <defs><marker id="mapping-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7890ac" /></marker></defs>
             {graph.edges.map((edge) => {
@@ -78,20 +120,21 @@ export function FlowEditor({ graph, onChange, disabled = false }: { graph: FlowG
           </svg>
           {!graph.nodes.length && <div className={styles.canvasEmpty}><Text fw={700}>Seu processo começa aqui</Text><Text size="sm" c="dimmed">Adicione uma caixa acima ou monte a sequência na aba Criação guiada.</Text></div>}
           {graph.nodes.map((item, index) => <div key={item.id} className={`${styles.node} ${selected === item.id ? styles.selected : ""}`} data-kind={item.type} data-flow-node={item.id} style={{ left: item.x, top: item.y }}>
-            <button className={styles.nodeHeading} aria-label={`Ver detalhes de ${item.title} ou arrastar para mover`} onClick={() => { if (movedNode.current) { movedNode.current = false; return; } openDetails(item.id); }}
+            <button className={styles.nodeHeading} aria-label={`Selecionar ${item.title} ou arrastar para mover`} onDoubleClick={() => openDetails(item.id)} onClick={() => { if (movedNode.current) { movedNode.current = false; return; } setSelected(item.id); setSelectedEdge(null); }}
               onPointerDown={(event) => { movedNode.current = false; if (disabled || event.button !== 0) return; setSelected(item.id); setSelectedEdge(null); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { id: item.id, px: event.clientX, py: event.clientY, x: item.x, y: item.y }; }}
-              onPointerMove={(event) => { const current = drag.current; if (!current || current.id !== item.id || disabled) return; if (Math.hypot(event.clientX - current.px, event.clientY - current.py) <= 4 && !movedNode.current) return; movedNode.current = true; onChange({ ...graph, nodes: graph.nodes.map((row) => row.id === item.id ? { ...row, x: Math.max(0, Math.min(10000, current.x + event.clientX - current.px)), y: Math.max(0, Math.min(10000, current.y + event.clientY - current.py)) } : row) }); }}
+              onPointerMove={(event) => { const current = drag.current; if (!current || current.id !== item.id || disabled) return; if (Math.hypot(event.clientX - current.px, event.clientY - current.py) <= 4 && !movedNode.current) return; movedNode.current = true; onChange({ ...graph, nodes: graph.nodes.map((row) => row.id === item.id ? { ...row, x: Math.max(0, Math.min(10000, current.x + scaledDelta(event.clientX - current.px, zoom))), y: Math.max(0, Math.min(10000, current.y + scaledDelta(event.clientY - current.py, zoom))) } : row) }); }}
               onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; movedNode.current = true; }}
               onKeyDown={(event) => { if (disabled || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return; event.preventDefault(); onChange({ ...graph, nodes: graph.nodes.map((row) => row.id === item.id ? { ...row, x: Math.max(0, Math.min(10000, row.x + (event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0))), y: Math.max(0, Math.min(10000, row.y + (event.key === "ArrowDown" ? 20 : event.key === "ArrowUp" ? -20 : 0))) } : row) }); }}>
               <span>{String(index + 1).padStart(2, "0")} · {kinds.find((kind) => kind.value === item.type)?.label}</span><strong>{item.title}</strong>
             </button>
             <button className={styles.nodeDetails} aria-label={`Consultar descritivo de ${item.title}`} onClick={() => openDetails(item.id)}><span>{item.owner || "Responsável a definir"}</span><Badge size="xs" variant="light" color={item.validated ? "green" : "orange"}>{item.validated ? "Validada" : "Revisar"}</Badge></button>
             {portSides.map((side) => <button key={side.value} data-port-side={side.value} className={styles.port} aria-label={`Conectar ${side.label.toLowerCase()} de ${item.title}`} disabled={disabled} onPointerDown={(event) => { if (disabled || event.button !== 0) return; event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); linking.current = { id: item.id, side: side.value, x: event.clientX, y: event.clientY }; if (!source) { setSource(item.id); setSourceSide(side.value); } setPreview(null); suppressClick.current = false; }}
-              onPointerMove={(event) => { if (!linking.current || disabled) return; const bounds = canvas.current?.getBoundingClientRect(); if (bounds) setPreview({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }); }}
+              onPointerMove={(event) => { if (!linking.current || disabled) return; const bounds = canvas.current?.getBoundingClientRect(); if (bounds) setPreview({ x: scaledDelta(event.clientX - bounds.left, zoom), y: scaledDelta(event.clientY - bounds.top, zoom) }); }}
               onPointerUp={(event) => { const current = linking.current; linking.current = null; setPreview(null); if (!current) return; const moved = Math.hypot(event.clientX - current.x, event.clientY - current.y) > 4; suppressClick.current = moved; if (!moved) return; const hit = document.elementFromPoint(event.clientX, event.clientY); const destination = hit?.closest<HTMLElement>("[data-flow-node]")?.dataset.flowNode; const side = hit?.closest<HTMLElement>("[data-port-side]")?.dataset.portSide as PortSide | undefined; setSource(null); if (destination) connect(destination, current.id, current.side, side); }}
               onPointerCancel={() => { linking.current = null; setPreview(null); setSource(null); suppressClick.current = true; }}
               onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } if (source && source !== item.id) connect(item.id, source, sourceSide, side.value); else { setSource(item.id); setSourceSide(side.value); } }} />)}
           </div>)}
+        </div>
         </div>
       </div>
       <Paper withBorder radius="lg" p="md" className={styles.inspector}>
