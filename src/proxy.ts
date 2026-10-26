@@ -18,7 +18,7 @@ const PUBLIC_ROUTES = [
 ];
 
 const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout"];
-const REMOVED_PLATFORM_ROUTES = ["/atendimento", "/operacoes"];
+const REMOVED_PLATFORM_ROUTES = ["/operacoes"];
 
 function matchesRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);

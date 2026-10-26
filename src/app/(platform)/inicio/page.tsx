@@ -30,6 +30,7 @@ import {
   IconHeadset,
   IconHistory,
   IconLink,
+  IconMail,
   IconRocket,
   IconSearch,
   IconSettings,
@@ -185,6 +186,14 @@ const features: Feature[] = [
     group: "Atendimento e clientes",
     icon: <IconBrandWhatsapp size={24} />,
     badge: "Novo",
+  },
+  {
+    title: "Central de e-mails",
+    description: "Acesse a caixa de atendimento, distribua e-mails e acompanhe respostas e pendências da equipe.",
+    href: "/atendimento",
+    moduleCode: "SERVICE_CENTER",
+    group: "Atendimento e clientes",
+    icon: <IconMail size={24} />,
   },
   {
     title: "Onboarding",

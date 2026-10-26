@@ -284,7 +284,7 @@ export default function AtendimentoPage() {
             Fortuno Hub
           </Text>
           <Title order={2} className={styles.pageTitle}>
-            Central de Atendimento
+            Central de e-mails
           </Title>
           <Text c="dimmed" size="sm" className={styles.pageDescription}>
             Caixa geral, distribuição por colaborador e acompanhamento até a resolução.
@@ -293,7 +293,7 @@ export default function AtendimentoPage() {
 
         <Group className={styles.headerActions}>
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
-            V2 · Gmail OAuth
+            Atendimento por e-mail
           </Badge>
 
           {bootstrap.permission?.canCreate && (
