@@ -54,8 +54,15 @@ export async function GET(request: Request) {
       const result = await notionFetch(token, `/databases/${id}`);
       const sources = list(result.data_sources).map((entry) => ({ id: string(object(entry).id), title: string(object(entry).name), kind: "data_source" }));
       if (!sources.length) {
-        const views = await notionFetch(token, `/views?${new URLSearchParams({ database_id: id, page_size: "50", ...(params.cursor ? { start_cursor: params.cursor } : {}) })}`);
-        return NextResponse.json({ item: notionItem(result), sources: list(views.results).map((entry, index) => ({ id: string(object(entry).id), title: string(object(entry).name) || `Lista ${index + 1}`, kind: "saved_view" })), cursor: views.has_more ? views.next_cursor : null });
+        const views = await notionFetch(token, `/views?${new URLSearchParams({ database_id: id, page_size: "8", ...(params.cursor ? { start_cursor: params.cursor } : {}) })}`);
+        const linked = [];
+        for (const entry of list(views.results)) {
+          const viewId = z.string().uuid().parse(object(entry).id);
+          if (linked.length) await new Promise((resolve) => setTimeout(resolve, 400));
+          const metadata = object(entry).name ? object(entry) : await notionFetch(token, `/views/${viewId}`);
+          linked.push({ id: viewId, title: string(metadata.name) || "Abrir lista", kind: "saved_view" });
+        }
+        return NextResponse.json({ item: notionItem(result), sources: linked, cursor: views.has_more ? views.next_cursor : null });
       }
       return NextResponse.json({ item: notionItem(result), sources });
     }
