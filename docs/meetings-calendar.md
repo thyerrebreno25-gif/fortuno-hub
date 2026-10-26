@@ -4,6 +4,7 @@
 
 - Reuniões: `/reunioes`. Tipos sugeridos ou personalizados, participantes da organização, pauta/ata, notas da equipe e checklist com responsável e prazo.
 - Agenda: `/agenda`, sempre pessoal. Reuniões criam eventos para todos os participantes; entregas criam eventos de 30 minutos no prazo combinado para o responsável.
+- Dia/semana: clique em um horário vazio para abrir o formulário rápido com duração inicial de uma hora. No mês, clique no espaço vazio do dia (início sugerido às 9h). O menu Criar oferece evento pessoal e acesso às reuniões da equipe. Mais opções preserva o rascunho.
 - Concluir uma entrega marca o evento concluído e desativa os lembretes. Reabrir volta a alertar. Reatribuir cancela o evento anterior e cria o do novo responsável.
 - Cancelar reunião cancela seus eventos e suspende lembretes; realizar a reunião não encerra entregas pendentes.
 - “Preparar próxima reunião” preenche uma nova reunião (+1 dia para Daily; +7 dias para os demais tipos). Ela só é criada ao salvar. Não existe série recorrente infinita.
@@ -38,6 +39,8 @@ Escopo: `https://www.googleapis.com/auth/calendar.events`. Escrita no calendári
 Eventos do Hub vão para o Google após alterações; falhas ficam visíveis e podem ser tentadas por “Sincronizar agora” ou pelo job. Eventos externos são consultados no intervalo visível, com paginação, sem duplicar os que vieram do Hub. O Google não altera o checklist do Hub: edite reuniões e entregas na central. Desconectar apaga a credencial local e para sincronizações futuras, mas mantém os eventos já enviados no Google. Não usa a integração Gmail para ganhar acesso automático à agenda.
 
 Documentação: https://developers.google.com/identity/protocols/oauth2/web-server e https://developers.google.com/workspace/calendar/api/v3/reference/events
+
+Exclusões de eventos enviados pelo Hub são conferidas por ID no Google durante a consulta do período visível. A agenda atualiza ao voltar à aba e a cada minuto enquanto visível, sem interromper um formulário aberto. Apenas `cancelled`/410 confirmam exclusão; falhas de acesso, 404 ou indisponibilidade não apagam eventos locais. A atualização local verifica organização, usuário e revisão. O envio também confere IDs já sincronizados para não recriar um evento excluído no Google. Isso remove só o compromisso pessoal; não conclui tarefas nem cancela a reunião dos outros participantes. Alterações de título/horário de eventos do Hub continuam sendo feitas no Hub; esta conferência trata exclusões, não edições bidirecionais nem webhooks instantâneos.
 
 ## Gravações e transcrição
 

@@ -17,8 +17,8 @@ export function MiniCalendar({ anchor, today, onDate }: { anchor: string; today:
   </div>;
 }
 
-export function CalendarBoard<T extends CalendarItem>({ anchor, view, today, items, renderItem, onDate }: {
-  anchor: string; view: CalendarView; today: string; items: T[]; renderItem: (item: T) => ReactNode; onDate: (key: string) => void;
+export function CalendarBoard<T extends CalendarItem>({ anchor, view, today, items, renderItem, onDate, onCreate }: {
+  anchor: string; view: CalendarView; today: string; items: T[]; renderItem: (item: T) => ReactNode; onDate: (key: string) => void; onCreate?: (key: string, minutes: number) => void;
 }) {
   const days = calendarRange(anchor, view).days;
   const timeline = useRef<HTMLDivElement>(null);
@@ -39,6 +39,7 @@ export function CalendarBoard<T extends CalendarItem>({ anchor, view, today, ite
   if (view === "month") return <div className={styles.boardScroll}><div className={styles.monthGrid}>
     {weekdays.map((day) => <div key={day} className={styles.weekday}>{day}</div>)}
     {days.map((key) => <section className={styles.monthDay} key={key} data-outside={key.slice(0, 7) !== anchor.slice(0, 7)} aria-label={dateLabel(key)}>
+      {onCreate && <button className={styles.monthCreate} aria-label={`Criar evento em ${dateLabel(key)}`} onClick={() => onCreate(key, 9 * 60)} />}
       <button className={styles.dayNumber} data-today={key === today} aria-label={`Abrir ${dateLabel(key)}`} onClick={() => onDate(key)}>{Number(key.slice(-2))}</button>
       {items.filter((item) => intersects(item, key)).map((item) => <div key={itemKey(item)}>{renderItem(item)}</div>)}
     </section>)}
@@ -56,6 +57,7 @@ export function CalendarBoard<T extends CalendarItem>({ anchor, view, today, ite
       <div className={styles.timeBody}>
         <div className={styles.hours}>{Array.from({ length: 24 }, (_, hour) => <span key={hour} style={{ top: hour * 60 }}>{String(hour).padStart(2, "0")}:00</span>)}</div>
         {days.map((key) => <div key={key} className={styles.timeColumn}>
+          {onCreate && Array.from({ length: 48 }, (_, slot) => <button key={slot} className={styles.timeSlot} style={{ top: slot * 30 }} aria-label={`Criar evento em ${dateLabel(key)} às ${String(Math.floor(slot / 2)).padStart(2, "0")}:${slot % 2 ? "30" : "00"}`} onClick={() => onCreate(key, slot * 30)} />)}
           {layoutDay(items.filter((item) => !item.allDay), key).map(({ event, top, visualBottom, column, columns }) => <div key={itemKey(event)} className={styles.timeEvent} style={{ top, height: visualBottom - top, left: `calc(${column / columns * 100}% + 2px)`, width: `calc(${100 / columns}% - 5px)` }}>{renderItem(event)}</div>)}
           {key === today && currentMinutes >= 0 && currentMinutes < 1440 && <div className={styles.nowLine} style={{ top: currentMinutes }} aria-label="Horário atual" />}
         </div>)}

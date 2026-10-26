@@ -13,7 +13,14 @@
 .boardScroll { overflow-x: auto; }
 .monthGrid { display: grid; grid-template-columns: repeat(7, minmax(95px, 1fr)); min-width: 690px; }
 .weekday { text-align: center; font-size: 10px; font-weight: 650; padding: 12px 4px; color: var(--mantine-color-dimmed); border-bottom: 1px solid var(--fortuno-line, #dce5ef); }
-.monthDay { min-height: 128px; padding: 6px; border-right: 1px solid var(--fortuno-line, #dce5ef); border-bottom: 1px solid var(--fortuno-line, #dce5ef); }
+.monthDay { position: relative; min-height: 128px; padding: 6px; border-right: 1px solid var(--fortuno-line, #dce5ef); border-bottom: 1px solid var(--fortuno-line, #dce5ef); }
+.monthDay > div, .monthDay > .dayNumber { position: relative; z-index: 1; }
+.monthCreate { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; cursor: pointer; }
+.monthCreate:hover { background: var(--mantine-color-blue-light); }
+.timeSlot { position: absolute; left: 0; width: 100%; height: 30px; border: 0; background: transparent; cursor: pointer; }
+.timeSlot:hover, .timeSlot:focus-visible { background: var(--mantine-color-blue-light); outline: 1px solid var(--mantine-color-blue-4); }
+.quickTitle input { font-size: 23px; font-weight: 500; border-width: 0 0 2px; border-radius: 0; padding-left: 0; }
+.quickDate { padding: 12px; border-radius: 10px; background: var(--mantine-color-default-hover); }
 .monthDay:nth-child(7n) { border-right: 0; }
 .monthDay[data-outside="true"] { background: var(--mantine-color-default-hover); }
 .monthDay[data-outside="true"] > button { opacity: .45; }
