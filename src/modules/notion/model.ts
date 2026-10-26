@@ -57,5 +57,5 @@ export function notionBlock(value: unknown) {
   const item = object(value), type = string(item.type), data = object(item[type]);
   const text = richText(data.rich_text) || richText(data.caption) || string(data.title) || string(data.name) || (type === "table_row" ? list(data.cells).map(richText).join(" | ") : "");
   const targetId = string(data.page_id || data.database_id || data.data_source_id);
-  return { id: string(item.id), type, text, checked: Boolean(data.checked), hasChildren: Boolean(item.has_children), ...(type === "link_to_page" && targetId ? { targetId, targetKind: data.database_id ? "database" : data.data_source_id ? "data_source" : "page" } : {}) };
+  return { id: string(item.id), type, text, checked: Boolean(data.checked), hasChildren: Boolean(item.has_children), expanded: false, depth: 0, ...(type === "link_to_page" && targetId ? { targetId, targetKind: data.database_id ? "database" : data.data_source_id ? "data_source" : "page" } : {}) };
 }

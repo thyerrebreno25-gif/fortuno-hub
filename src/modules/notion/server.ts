@@ -49,11 +49,14 @@ export async function readNotionBlocks(token: string, id: string, cursor?: strin
     const blocks: ReturnType<typeof notionBlock>[] = [];
     for (const entry of entries) {
       const raw = object(entry), type = string(raw.type);
-      if (["column_list", "column", "synced_block"].includes(type) && raw.has_children && depth < 3 && calls < 12 && Date.now() < deadline) {
+      const layout = ["column_list", "column", "synced_block"].includes(type);
+      const content = ["bulleted_list_item", "numbered_list_item", "paragraph", "toggle", "quote", "callout", "to_do", "heading_1", "heading_2", "heading_3", "table"].includes(type);
+      if ((layout || content) && raw.has_children && depth < 6 && calls < 20 && Date.now() < deadline) {
         const nested = await read(string(raw.id));
+        if (!layout) blocks.push({ ...notionBlock(entry), expanded: true, depth });
         blocks.push(...await flatten(list(nested.results), depth + 1));
-        if (nested.has_more) blocks.push({ ...notionBlock(entry), text: "Ver mais informações desta seção" });
-      } else blocks.push(notionBlock(entry));
+        if (nested.has_more) blocks.push({ ...notionBlock(entry), text: "Ver mais informações desta seção", depth });
+      } else blocks.push({ ...notionBlock(entry), depth });
     }
     return blocks;
   };

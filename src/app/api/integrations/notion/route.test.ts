@@ -97,3 +97,15 @@ it("keeps saved client and quick filters when searching a linked view", async ()
   expect(query.filter.and).toContainEqual({ property: "Ativo", checkbox: { equals: true } });
   expect(query.filter.and).toHaveLength(3);
 });
+it("includes access details nested in lists and paragraphs without dropping the parent", async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id: "access", type: "bulleted_list_item", has_children: true, bulleted_list_item: { rich_text: [{ plain_text: "Acesso de exemplo" }] } }] })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id: "password", type: "bulleted_list_item", bulleted_list_item: { rich_text: [{ plain_text: "Senha: exemplo fictício" }] } }, { id: "nested", type: "paragraph", has_children: true }] })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id: "detail", type: "paragraph", paragraph: { rich_text: [{ plain_text: "Detalhe do acesso" }] } }] })));
+  vi.stubGlobal("fetch", fetchMock);
+  const result = await readNotionBlocks(token, "root");
+  expect(result.blocks.map((block) => block.id)).toEqual(["access", "password", "nested", "detail"]);
+  expect(result.blocks[0].expanded).toBe(true);
+  expect(result.blocks[1]).toMatchObject({ depth: 1, text: "Senha: exemplo fictício" });
+  expect(result.blocks[3].depth).toBe(2);
+});

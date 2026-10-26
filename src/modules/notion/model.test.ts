@@ -32,5 +32,5 @@ it("formats database fields including formulas, dates and multiple selections", 
   expect(propertyText({ type: "multi_select", multi_select: [{ name: "A" }, { name: "B" }] })).toBe("A, B");
 });
 it("keeps child blocks available for lazy reading and preserves checklist state", () => {
-  expect(notionBlock({ id: "b", type: "to_do", has_children: true, to_do: { rich_text: [{ text: { content: "Revisar" } }], checked: true } })).toEqual({ id: "b", type: "to_do", text: "Revisar", checked: true, hasChildren: true });
+  expect(notionBlock({ id: "b", type: "to_do", has_children: true, to_do: { rich_text: [{ text: { content: "Revisar" } }], checked: true } })).toEqual({ id: "b", type: "to_do", text: "Revisar", checked: true, hasChildren: true, expanded: false, depth: 0 });
 });

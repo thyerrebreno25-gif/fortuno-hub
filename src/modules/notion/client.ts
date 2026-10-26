@@ -2,7 +2,7 @@ export type Option = { label: string; color?: string; id?: string };
 export type Field = { type: string; propertyId: string; values: Option[]; relationCount: number; hasMore: boolean };
 export type Item = { id: string; kind: string; title: string; url?: string; editedAt?: string; properties?: Record<string, string>; fields?: Record<string, Field>; unavailable?: boolean };
 export type Column = { name: string; type: string; options: Option[] };
-export type Block = { id: string; type: string; text: string; checked: boolean; hasChildren: boolean; targetId?: string; targetKind?: string };
+export type Block = { id: string; type: string; text: string; checked: boolean; hasChildren: boolean; expanded?: boolean; depth?: number; targetId?: string; targetKind?: string };
 export type Detail = { item: Item; items?: Item[]; columns?: string[]; columnSchema?: Column[]; sources?: Item[]; blocks?: Block[]; cursor: string | null };
 export async function notionRequest<T>(params: Record<string, string>, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/integrations/notion?${new URLSearchParams(params)}`, { ...init, cache: "no-store" });
