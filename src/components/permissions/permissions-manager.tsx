@@ -30,6 +30,7 @@ const modules = [
   ["WHATSAPP", "Central WhatsApp"],
   ["MEETINGS", "Central de reuniões"],
   ["CALENDAR", "Agenda"],
+  ["NOTION", "Notion · páginas e bases"],
   ["OPERATIONAL_MAPPING", "Mapeamento Operacional"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],

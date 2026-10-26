@@ -180,6 +180,7 @@ const icons = {
 };
 
 const menuItems: MenuItem[] = [
+  { label: "Notion", href: "/integracoes/notion", moduleCode: "NOTION", icon: icons.document, group: "Operação" },
   { label: "Central de Reuniões", href: "/reunioes", moduleCode: "MEETINGS", icon: icons.users, group: "Operação" },
   { label: "Agenda", href: "/agenda", moduleCode: "CALENDAR", icon: icons.operations, group: "Operação" },
   {

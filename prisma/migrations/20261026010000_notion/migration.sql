@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS "NotionConnection" (
+  "organizationId" TEXT PRIMARY KEY REFERENCES "Organization"("id") ON DELETE CASCADE,
+  "encryptedToken" TEXT NOT NULL,
+  "botName" TEXT NOT NULL,
+  "workspaceName" TEXT NOT NULL,
+  "botId" TEXT NOT NULL,
+  "connectedById" TEXT NOT NULL,
+  "checkedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL
+);
+ALTER TABLE "NotionConnection" ENABLE ROW LEVEL SECURITY;

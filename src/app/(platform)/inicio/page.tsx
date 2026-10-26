@@ -61,6 +61,7 @@ type Feature = {
 };
 
 const features: Feature[] = [
+  { title: "Notion", description: "Consulte páginas, bases e documentos compartilhados com sua integração.", href: "/integracoes/notion", moduleCode: "NOTION", group: "Atendimento e clientes", icon: <IconFileAnalytics size={24} /> },
   { title: "Central de Reuniões", description: "Pautas, notas, metas e checklist por colaborador, conectados à agenda.", href: "/reunioes", moduleCode: "MEETINGS", group: "Atendimento e clientes", icon: <IconUsers size={24} /> },
   { title: "Agenda", description: "Seus compromissos, reuniões e prazos, com conexão individual ao Google Agenda.", href: "/agenda", moduleCode: "CALENDAR", group: "Atendimento e clientes", icon: <IconClipboardCheck size={24} /> },
   { title: "Mapeamento Operacional", description: "Consulte processos AS IS / TO BE e priorize atividades pela matriz GUT.", href: "/mapeamento-operacional", moduleCode: "OPERATIONAL_MAPPING", group: "Atendimento e clientes", icon: <IconActivity size={24} /> },

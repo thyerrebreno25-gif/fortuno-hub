@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && node scripts/ensure-operational-mapping.mjs && node scripts/ensure-meetings-calendar.mjs && next build",
+    "build": "prisma generate && node scripts/ensure-operational-mapping.mjs && node scripts/ensure-meetings-calendar.mjs && node scripts/ensure-notion.mjs && next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",

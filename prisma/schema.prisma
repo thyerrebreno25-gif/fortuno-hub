@@ -312,6 +312,7 @@ enum AssistantMessageRole {
 }
 
 model Organization {
+  notionConnection NotionConnection?
   meetings TeamMeeting[]
   calendarEvents TeamCalendarEvent[]
   calendarConnections GoogleCalendarConnection[]
@@ -343,6 +344,19 @@ model Organization {
   contaAzulFinancialExports ContaAzulFinancialExport[]
   assistantConversations    AssistantConversation[]
   whatsappIdentities        ClientWhatsAppIdentity[]
+}
+
+model NotionConnection {
+  organizationId String @id
+  encryptedToken String
+  botName String
+  workspaceName String
+  botId String
+  connectedById String
+  checkedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model User {
