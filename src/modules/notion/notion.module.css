@@ -5,7 +5,9 @@
 .result { border: 1px solid var(--fortuno-line, #dce5ef); border-radius: 10px; padding: 14px; font: inherit; background: var(--mantine-color-body); color: inherit; cursor: pointer; text-align: left; width: 100%; }
 .result[aria-pressed="true"] { background: var(--mantine-color-blue-light); border-color: var(--mantine-color-blue-5); }
 .detail { min-width: 0; min-height: 340px; }
-.sourcePanel { min-width: 0; }
+.sourcePanel { min-width: 0; max-width: 100%; }
+.tableScroll { width: 100%; max-width: 100%; max-height: 65vh; overflow: auto; -webkit-overflow-scrolling: touch; }
+.columnOptions { max-height: 300px; overflow: auto; }
 .clientTable { min-width: 650px; font-size: 12px; }
 .clientTable th { white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--mantine-color-body); }
 .clientTable td { max-width: 260px; min-width: 110px; cursor: pointer; }
