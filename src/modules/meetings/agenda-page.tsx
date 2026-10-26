@@ -1,25 +1,25 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Button, Group, Loader, Modal, Paper, ScrollArea, SegmentedControl, SimpleGrid, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, Group, Loader, Modal, Paper, SegmentedControl, SimpleGrid, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { dayKey } from "./model";
 import { formatMeetingDate, inputToIso, jsonRequest, localDateInput, meetingRequest } from "./client";
 import styles from "./meetings.module.css";
+import calendarStyles from "./calendar.module.css";
+import { CalendarBoard, MiniCalendar } from "./calendar-board";
+import { calendarDate, calendarRange, moveCalendar, type CalendarView } from "./calendar-layout";
 
 type Event = { id: string; title: string; description: string; startsAt: string; endsAt: string; location: string; status: string; meetingId: string | null; actionItemId: string | null; revision: number; googleSyncStatus: string; syncError: string | null };
 type External = { id: string; title: string; startsAt: string; endsAt: string; allDay: boolean; htmlLink?: string };
 type AgendaData = { events: Event[]; external: External[]; pending: Array<{ id: string; title: string; dueAt: string; meetingId: string }>; truncated: boolean; connection: { status: string; lastError: string | null } | null; googleConfigured: boolean; googleError: string; permissions: { canCreate: boolean; canEdit: boolean } };
 const blank = () => ({ title: "", description: "", location: "", startsAt: localDateInput(new Date()), endsAt: localDateInput(new Date(Date.now() + 3600000)) });
 export function AgendaPage() {
-  const [month, setMonth] = useState(() => dayKey(new Date()).slice(0, 7)), [view, setView] = useState("month");
+  const [anchor, setAnchor] = useState(() => dayKey(new Date())), [view, setView] = useState<CalendarView>("week");
+  const [showHub, setShowHub] = useState(true), [showGoogle, setShowGoogle] = useState(true);
   const [data, setData] = useState<AgendaData | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false), [selected, setSelected] = useState<Event | null>(null), [form, setForm] = useState(blank);
   const requestSequence = useRef(0);
-  const range = useMemo(() => {
-    const [year, number] = month.split("-").map(Number);
-    const next = number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, "0")}`;
-    return { from: `${month}-01T00:00:00-03:00`, to: `${next}-01T00:00:00-03:00`, days: new Date(Date.UTC(year, number, 0)).getUTCDate(), offset: new Date(`${month}-01T12:00:00Z`).getUTCDay() };
-  }, [month]);
+  const range = useMemo(() => calendarRange(anchor, view), [anchor, view]);
   const load = useCallback(async () => {
     const sequence = ++requestSequence.current;
     setLoading(true);
@@ -48,25 +48,39 @@ export function AgendaPage() {
   const items = [...(data?.events || []).map((event) => ({ ...event, external: false, allDay: false })), ...(data?.external || []).map((event) => ({ ...event, external: true, status: "ACTIVE", meetingId: null, actionItemId: null, description: "", location: "", revision: 0, googleSyncStatus: "EXTERNAL", syncError: null }))].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
   function eventButton(item: (typeof items)[number]) {
     const label = `${item.allDay ? "Dia todo" : new Date(item.startsAt).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })} · ${item.title}`;
-    return item.external ? <a key={`google:${item.id}`} className={styles.event} data-external="true" href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer" aria-label={`Google Agenda: ${label}`}>{label} ↗</a> : <button key={item.id} className={styles.event} data-completed={item.status === "COMPLETED"} onClick={() => open(item)}>{label}</button>;
+    return item.external ? <a key={`google:${item.id}`} className={styles.event} data-external="true" href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer" title={label} aria-label={`Google Agenda: ${label}`}>{label} ↗</a> : <button key={item.id} className={styles.event} title={label} data-completed={item.status === "COMPLETED"} onClick={() => open(item)}>{label}</button>;
   }
-  function moveMonth(amount: number) { const [year, value] = month.split("-").map(Number); const next = new Date(Date.UTC(year, value - 1 + amount, 1)); setMonth(next.toISOString().slice(0, 7)); }
+  const today = dayKey(new Date());
+  const visibleItems = items.filter((item) => item.external ? showGoogle : showHub);
+  const periodLabel = view === "day" ? calendarDate(anchor).toLocaleDateString("pt-BR", { timeZone: "UTC", dateStyle: "long" }) : view === "week" ? `${calendarDate(range.days[0]).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "numeric", month: "short" })} – ${calendarDate(range.days.at(-1)!).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" })}` : calendarDate(anchor).toLocaleDateString("pt-BR", { timeZone: "UTC", month: "long", year: "numeric" });
+  function selectDay(key: string) { setAnchor(key); setView("day"); }
   return <div className={styles.page}>
     <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" fw={800} c="blue">COMPROMISSOS · METAS · PRAZOS</Text><Title order={2}>Minha Agenda</Title><Text size="sm" c="dimmed">Reuniões e entregas da equipe entram aqui automaticamente. Horários de Brasília.</Text></div><Group><Button variant="default" component="a" href="/reunioes">Central de reuniões</Button><Button disabled={!data?.permissions.canCreate || busy} onClick={() => open()}>Novo compromisso</Button></Group></Group></div>
     {error && <Alert color="red">{error}</Alert>}
     {!data && loading && <Loader />}
     {data && <>
       {data.pending.length > 0 && <Alert color="orange" title={`${data.pending.length} entregas precisam de atenção`}><Stack gap={6}>{data.pending.slice(0, 8).map((item) => <Text size="sm" key={item.id}><a href={`/reunioes?meeting=${encodeURIComponent(item.meetingId)}`}>{item.title}</a> · {formatMeetingDate(item.dueAt)} · {new Date(item.dueAt) < new Date() ? "Atrasada" : "Prazo próximo"}</Text>)}<Text size="xs">Os avisos permanecem enquanto a entrega não receber o check na reunião.</Text></Stack></Alert>}
-      <Paper withBorder radius="lg" p="lg"><Stack>
-        <Group justify="space-between"><Group><Button size="xs" variant="default" aria-label="Mês anterior" onClick={() => moveMonth(-1)}>‹</Button><TextInput type="month" aria-label="Mês da agenda" value={month} onChange={(event) => { if (/^\d{4}-\d{2}$/.test(event.currentTarget.value)) setMonth(event.currentTarget.value); }} /><Button size="xs" variant="default" aria-label="Próximo mês" onClick={() => moveMonth(1)}>›</Button><Button size="xs" variant="subtle" onClick={() => setMonth(dayKey(new Date()).slice(0, 7))}>Hoje</Button></Group><Group><SegmentedControl value={view} onChange={setView} data={[{ value: "month", label: "Mês" }, { value: "list", label: "Lista" }]} /><Button size="xs" variant="default" loading={loading} onClick={() => void load()}>Atualizar</Button></Group></Group>
-        <Group gap="xs"><Badge variant="light">Fortuno Hub</Badge><Badge color="green" variant="light">Google · consulta externa</Badge><Text size="xs" c="dimmed">Para alterar uma entrega ou reunião, abra sua origem. Eventos externos são editados no Google.</Text></Group>
-        {data.truncated && <Alert color="orange">Exibindo os primeiros 1.000 compromissos deste período.</Alert>}
-        {view === "month" ? <ScrollArea><div className={styles.calendar}>
-          {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label) => <div className={styles.dayHeading} key={label}>{label}</div>)}
-          {Array.from({ length: range.offset }, (_, index) => <div key={`blank:${index}`} className={styles.day} />)}
-          {Array.from({ length: range.days }, (_, index) => { const key = `${month}-${String(index + 1).padStart(2, "0")}`; const start = +new Date(`${key}T00:00:00-03:00`), end = start + 86400000; const events = items.filter((item) => +new Date(item.startsAt) < end && +new Date(item.endsAt) > start); return <div key={key} className={styles.day} data-today={dayKey(new Date()) === key}><Text size="xs" fw={700}>{index + 1}</Text>{events.map(eventButton)}</div>; })}
-        </div></ScrollArea> : <Stack>{!items.length && <Text c="dimmed" py="lg">Nenhum compromisso neste mês.</Text>}{items.map((item) => <Paper key={`${item.external ? "google" : "hub"}:${item.id}`} withBorder p="sm" radius="md"><Text size="xs" c="dimmed">{item.allDay ? dayKey(new Date(item.startsAt)) : formatMeetingDate(item.startsAt)}</Text>{eventButton(item)}</Paper>)}</Stack>}
-      </Stack></Paper>
+      <div className={calendarStyles.workspace}>
+        <aside className={calendarStyles.sidebar}>
+          <Button disabled={!data.permissions.canCreate || busy} onClick={() => open()}>+ Criar compromisso</Button>
+          <Text fw={650} size="sm" tt="capitalize">{calendarDate(anchor).toLocaleDateString("pt-BR", { timeZone: "UTC", month: "long", year: "numeric" })}</Text>
+          <MiniCalendar anchor={anchor} today={today} onDate={selectDay} />
+          <Text size="xs" fw={700} c="dimmed">MINHAS AGENDAS</Text>
+          <Checkbox label="Fortuno Hub" checked={showHub} onChange={(event) => setShowHub(event.currentTarget.checked)} />
+          <Checkbox label="Google Agenda" color="green" checked={showGoogle} onChange={(event) => setShowGoogle(event.currentTarget.checked)} />
+          <Text size="xs" c="dimmed">Reuniões e entregas são editadas na Central de Reuniões. Eventos externos abrem no Google.</Text>
+          <Badge variant="light" color={data.connection?.status === "CONNECTED" ? "green" : "gray"}>{data.connection?.status === "CONNECTED" ? "Google conectado" : "Agenda interna"}</Badge>
+        </aside>
+        <div className={calendarStyles.main}>
+          <div className={calendarStyles.toolbar}>
+            <Group gap="xs"><Button size="xs" variant="default" onClick={() => setAnchor(dayKey(new Date()))}>Hoje</Button><Button size="xs" variant="subtle" aria-label="Período anterior" onClick={() => setAnchor(moveCalendar(anchor, view, -1))}>‹</Button><Button size="xs" variant="subtle" aria-label="Próximo período" onClick={() => setAnchor(moveCalendar(anchor, view, 1))}>›</Button><h3 className={calendarStyles.period} aria-live="polite">{periodLabel}</h3></Group>
+            <Group gap="xs"><SegmentedControl aria-label="Visualização da agenda" value={view} onChange={(value) => setView(value as CalendarView)} data={[{ value: "day", label: "Dia" }, { value: "week", label: "Semana" }, { value: "month", label: "Mês" }, { value: "list", label: "Lista" }]} /><Button size="xs" variant="default" loading={loading} onClick={() => void load()}>Atualizar</Button></Group>
+          </div>
+          <Group px="md" py="xs" gap="sm"><TextInput type="date" size="xs" aria-label="Ir para uma data" value={anchor} onChange={(event) => { if (/^\d{4}-\d{2}-\d{2}$/.test(event.currentTarget.value)) setAnchor(event.currentTarget.value); }} /><Checkbox size="xs" label="Fortuno" checked={showHub} onChange={(event) => setShowHub(event.currentTarget.checked)} /><Checkbox size="xs" color="green" label="Google" checked={showGoogle} onChange={(event) => setShowGoogle(event.currentTarget.checked)} /><Text size="xs" c="dimmed">Horário de Brasília</Text></Group>
+          {data.truncated && <Alert color="orange">Exibindo os primeiros 1.000 compromissos deste período.</Alert>}
+          {loading ? <Group justify="center" p="xl"><Loader size="sm" /><Text size="sm" c="dimmed">Carregando compromissos…</Text></Group> : <CalendarBoard anchor={anchor} view={view} today={today} items={visibleItems} renderItem={eventButton} onDate={selectDay} />}
+        </div>
+      </div>
       <Paper withBorder radius="lg" p="lg"><Stack><Group justify="space-between"><div><Title order={4}>Google Agenda</Title><Text size="sm" c="dimmed">A conexão é individual. O Hub envia seus compromissos e permite consultar os eventos externos da agenda principal.</Text></div><Badge color={data.connection?.status === "CONNECTED" ? "green" : "gray"}>{data.connection?.status === "CONNECTED" ? "Conectado" : data.googleConfigured ? "Não conectado" : "Configuração pendente"}</Badge></Group>
         {!data.googleConfigured && <Alert color="blue">A agenda interna já funciona. A conexão com o Google será liberada após configurar as credenciais OAuth da aplicação.</Alert>}
         {(data.googleError || data.connection?.lastError) && <Alert color="orange">{data.googleError || data.connection?.lastError}</Alert>}
