@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { activeMailbox, archivedMailbox } from "@/modules/atendimento/mailbox-archive";
 import {
   getServiceCenterMember,
   getServiceCenterPermission,
@@ -127,9 +128,12 @@ export async function GET(request: Request) {
 
   const where: any = {
     organizationId: member.organizationId,
+    ...(view === "ARCHIVED" ? archivedMailbox : activeMailbox),
   };
 
-  if (view === "MINE") {
+  if (view === "ARCHIVED") {
+    // Archived items keep their original status and can be restored.
+  } else if (view === "MINE") {
     where.assignedToId = member.userId;
     where.status = { notIn: ["RESOLVED", "SPAM"] };
   } else if (view === "UNASSIGNED") {
@@ -166,9 +170,9 @@ export async function GET(request: Request) {
     ];
   }
 
-  const common = { organizationId: member.organizationId };
+  const common = { organizationId: member.organizationId, ...activeMailbox };
 
-  const [tickets, general, mine, unassigned, waiting, resolved, spam, teamCounts] =
+  const [tickets, general, mine, unassigned, waiting, resolved, spam, teamCounts, archived] =
     await Promise.all([
       prisma.serviceTicket.findMany({
         where,
@@ -231,6 +235,7 @@ export async function GET(request: Request) {
             _count: { _all: true },
           })
         : Promise.resolve([]),
+      prisma.serviceTicket.count({ where: { organizationId: member.organizationId, ...archivedMailbox } }),
     ]);
 
   const byMember = Object.fromEntries(
@@ -241,7 +246,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     tickets,
-    stats: { general, mine, unassigned, waiting, resolved, spam, byMember },
+    stats: { general, mine, unassigned, waiting, resolved, spam, byMember, archived },
   });
 }
 

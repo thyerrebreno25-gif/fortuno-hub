@@ -46,6 +46,7 @@ const views = [
   ["WAITING", "Aguardando", "waiting", IconClock],
   ["RESOLVED", "Resolvidos", "resolved", IconCircleCheck],
   ["SPAM", "Spam", "spam", IconTrash],
+  ["ARCHIVED", "Arquivados", "archived", IconInbox],
 ] as const;
 
 const statusLabels: Any = {
@@ -127,6 +128,20 @@ export default function AtendimentoPage() {
     setTickets(body.tickets || []);
     setStats(body.stats || {});
   }, [view, search, selectedMemberId]);
+
+  async function archiveMailbox(action: "archive" | "restore") {
+    if (!window.confirm(action === "archive" ? "Arquivar todos os atendimentos atuais desta central? Eles poderão ser restaurados em Arquivados. O Gmail não será alterado." : "Restaurar os atendimentos arquivados na caixa?")) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/atendimento/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Falha ao atualizar a caixa.");
+      setSelected(null); setSelectedId(null);
+      await loadTickets();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao atualizar a caixa."); }
+    finally { setSaving(false); }
+  }
 
   useEffect(() => {
     let active = true;
@@ -292,6 +307,7 @@ export default function AtendimentoPage() {
         </Stack>
 
         <Group className={styles.headerActions}>
+          {bootstrap.permission?.canManage && <Button variant="default" loading={saving} onClick={() => void archiveMailbox(view === "ARCHIVED" ? "restore" : "archive")}>{view === "ARCHIVED" ? "Restaurar arquivados" : "Limpar caixa"}</Button>}
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
             Atendimento por e-mail
           </Badge>

@@ -299,6 +299,10 @@ async function ingestGmailMessage(
     },
   });
 
+      await tx.serviceTicketHistory.updateMany({
+        where: { ticketId: ticket.id, type: "MAILBOX_ARCHIVED", createdAt: { lt: receivedAt } },
+        data: { type: "MAILBOX_RESTORED", message: "Atendimento voltou à caixa após novo e-mail." },
+      });
       if (shouldReopen) {
         await tx.serviceTicketHistory.create({
           data: {
