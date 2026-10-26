@@ -91,6 +91,7 @@ export default function AtendimentoPage() {
   const [error, setError] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [archiveAction, setArchiveAction] = useState<"archive" | "restore" | null>(null);
   const [note, setNote] = useState("");
 
   const [form, setForm] = useState({
@@ -130,7 +131,7 @@ export default function AtendimentoPage() {
   }, [view, search, selectedMemberId]);
 
   async function archiveMailbox(action: "archive" | "restore") {
-    if (!window.confirm(action === "archive" ? "Arquivar todos os atendimentos atuais desta central? Eles poderão ser restaurados em Arquivados. O Gmail não será alterado." : "Restaurar os atendimentos arquivados na caixa?")) return;
+    setArchiveAction(null);
     setSaving(true);
     setError("");
     try {
@@ -289,6 +290,9 @@ export default function AtendimentoPage() {
 
   return (
     <Stack gap="lg" className={styles.page}>
+      <Modal opened={archiveAction !== null} onClose={() => setArchiveAction(null)} title={archiveAction === "restore" ? "Restaurar arquivados" : "Limpar caixa de e-mails"}>
+        <Stack><Text size="sm">{archiveAction === "restore" ? "Os atendimentos arquivados voltarão às caixas originais." : "Os atendimentos atuais serão movidos para Arquivados e poderão ser restaurados. Os e-mails originais no Gmail não serão alterados."}</Text><Group justify="flex-end"><Button variant="default" onClick={() => setArchiveAction(null)}>Cancelar</Button><Button onClick={() => archiveAction && void archiveMailbox(archiveAction)}>{archiveAction === "restore" ? "Restaurar atendimentos" : "Arquivar atendimentos"}</Button></Group></Stack>
+      </Modal>
       <Group
         justify="space-between"
         align="flex-start"
@@ -307,7 +311,7 @@ export default function AtendimentoPage() {
         </Stack>
 
         <Group className={styles.headerActions}>
-          {bootstrap.permission?.canManage && <Button variant="default" loading={saving} onClick={() => void archiveMailbox(view === "ARCHIVED" ? "restore" : "archive")}>{view === "ARCHIVED" ? "Restaurar arquivados" : "Limpar caixa"}</Button>}
+          {bootstrap.permission?.canManage && <Button variant="default" loading={saving} onClick={() => setArchiveAction(view === "ARCHIVED" ? "restore" : "archive")}>{view === "ARCHIVED" ? "Restaurar arquivados" : "Limpar caixa"}</Button>}
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
             Atendimento por e-mail
           </Badge>
