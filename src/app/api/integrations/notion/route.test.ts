@@ -4,7 +4,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: { notionConnection: { findUnique: mocks
 vi.mock("@/modules/permissions/permissions", () => ({ getCurrentMember: mocks.member, getRolePermissions: mocks.permissions }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ encryptIntegrationSecret: mocks.encrypt, decryptIntegrationSecret: mocks.decrypt }));
 import { GET, POST, DELETE } from "./route";
-import { notionFetch } from "@/modules/notion/server";
+import { notionFetch, readNotionBlocks } from "@/modules/notion/server";
 const token = "ntn_test_private_key_123456789";
 beforeEach(() => {
   vi.clearAllMocks(); mocks.member.mockResolvedValue({ organizationId: "org", userId: "u", role: "MASTER" }); mocks.permissions.mockResolvedValue({ NOTION: { canView: true, canManage: true } }); mocks.findUnique.mockResolvedValue({ encryptedToken: "ciphertext" }); mocks.encrypt.mockReturnValue("ciphertext"); mocks.decrypt.mockReturnValue(token); mocks.upsert.mockResolvedValue({ botName: "Hub", workspaceName: "Equipe", checkedAt: "now" });
@@ -55,4 +55,25 @@ it("queries the data source, paginates rows and exposes safe display fields", as
   expect(body.items[0].properties.Nome).toBe("Cliente A"); expect(body.cursor).toBe("next-opaque");
   expect(fetchMock.mock.calls[1][0]).toBe(`https://api.notion.com/v1/data_sources/${id}/query`);
   expect(JSON.parse(fetchMock.mock.calls[1][1].body).start_cursor).toBe("current-opaque");
+});
+it("retrieves relation pages by property with permission-aware fallback", async () => {
+  const id = "22222222-2222-4222-8222-222222222222", related = "11111111-1111-4111-8111-111111111111";
+  const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ relation: { id: related } }], has_more: true, next_cursor: "more-relations" }))).mockResolvedValueOnce(new Response("", { status: 404 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const result = await GET(new Request(`https://hub.test/api/integrations/notion?view=relation&id=${id}&property=a%2Fb`));
+  const body = await result.json();
+  expect(fetchMock.mock.calls[0][0]).toContain(`/properties/a%2Fb?page_size=8`);
+  expect(body.items[0]).toMatchObject({ id: related, unavailable: true });
+  expect(body.cursor).toBe("more-relations");
+});
+it("flattens layout columns and names an untitled inner database after its heading", async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id: "layout", type: "column_list", has_children: true }], has_more: true, next_cursor: "next-root" })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id: "column", type: "column", has_children: true }] })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id: "h", type: "heading_2", heading_2: { rich_text: [{ plain_text: "Acessos & Senhas" }] } }, { id: "database", type: "child_database", child_database: { title: "Untitled" } }] })));
+  vi.stubGlobal("fetch", fetchMock);
+  const result = await readNotionBlocks(token, "root");
+  expect(result.blocks.map((block) => block.type)).toEqual(["heading_2", "child_database"]);
+  expect(result.blocks[1].text).toBe("Acessos & Senhas");
+  expect(result.cursor).toBe("next-root");
 });

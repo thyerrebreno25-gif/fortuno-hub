@@ -5,6 +5,13 @@
 .result { border: 1px solid var(--fortuno-line, #dce5ef); border-radius: 10px; padding: 14px; font: inherit; background: var(--mantine-color-body); color: inherit; cursor: pointer; text-align: left; width: 100%; }
 .result[aria-pressed="true"] { background: var(--mantine-color-blue-light); border-color: var(--mantine-color-blue-5); }
 .detail { min-width: 0; min-height: 340px; }
+.sourcePanel { min-width: 0; }
+.clientTable { min-width: 650px; font-size: 12px; }
+.clientTable th { white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--mantine-color-body); }
+.clientTable td { max-width: 260px; min-width: 110px; cursor: pointer; }
+.clientTable td > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.clientTable td:first-child, .clientTable th:first-child { position: sticky; left: 0; z-index: 1; background: var(--mantine-color-body); min-width: 240px; font-weight: 650; }
+.clientTable th:first-child { z-index: 3; }
 .block { white-space: pre-wrap; overflow-wrap: anywhere; padding: 7px 0; line-height: 1.65; }
 .block[data-type="heading_1"] { font-size: 25px; font-weight: 750; }
 .block[data-type="heading_2"] { font-size: 21px; font-weight: 700; }

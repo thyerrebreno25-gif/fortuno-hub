@@ -3,7 +3,7 @@ import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentMember, getRolePermissions } from "@/modules/permissions/permissions";
 import { decryptIntegrationSecret } from "@/modules/purchase-invoices/server/crypto";
-import { object } from "./model";
+import { list, notionBlock, object, string } from "./model";
 
 export class NotionError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export async function notionAccess(manage = false) {
@@ -13,12 +13,17 @@ export async function notionAccess(manage = false) {
   if (member.role === "CLIENT" || !permission.canView || (manage && !permission.canManage)) throw new NotionError("Seu perfil não permite esta ação no Notion.", 403);
   return { member, permission };
 }
-export async function notionFetch(token: string, path: string, body?: unknown) {
+export async function notionFetch(token: string, path: string, body?: unknown, retried = false): Promise<Record<string, unknown>> {
   let response: Response;
   try {
     response = await fetch(`https://api.notion.com/v1${path}`, { method: body === undefined ? "GET" : "POST", headers: { Authorization: `Bearer ${token}`, "Notion-Version": "2026-03-11", "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15000) });
   } catch { throw new NotionError("O Notion não respondeu. Tente novamente.", 502); }
   if (!response.ok) {
+    const retryAfter = Number(response.headers.get("retry-after"));
+    if (response.status === 429 && !retried && retryAfter > 0 && retryAfter <= 5) {
+      await new Promise((resolve) => setTimeout(resolve, Math.ceil(retryAfter * 1000)));
+      return notionFetch(token, path, body, true);
+    }
     if (response.status === 401) throw new NotionError("A chave do Notion é inválida ou foi revogada. Reconecte a integração.", 400);
     if (response.status === 403) throw new NotionError("A integração não tem permissão para ler este conteúdo no Notion.", 403);
     if (response.status === 404) throw new NotionError("Conteúdo não encontrado. Compartilhe a página ou base com a integração no Notion.", 404);
@@ -31,6 +36,34 @@ export async function notionToken(organizationId: string) {
   const connection = await prisma.notionConnection.findUnique({ where: { organizationId } });
   if (!connection) throw new NotionError("Conecte o Notion para consultar páginas e bases.");
   return decryptIntegrationSecret(connection.encryptedToken);
+}
+export async function readNotionBlocks(token: string, id: string, cursor?: string) {
+  let calls = 0;
+  const deadline = Date.now() + 45000;
+  const read = async (blockId: string, next?: string) => {
+    if (calls++) await new Promise((resolve) => setTimeout(resolve, 400));
+    return notionFetch(token, `/blocks/${blockId}/children?${new URLSearchParams({ page_size: "50", ...(next ? { start_cursor: next } : {}) })}`);
+  };
+  const result = await read(id, cursor);
+  const flatten = async (entries: unknown[], depth: number): Promise<ReturnType<typeof notionBlock>[]> => {
+    const blocks: ReturnType<typeof notionBlock>[] = [];
+    for (const entry of entries) {
+      const raw = object(entry), type = string(raw.type);
+      if (["column_list", "column", "synced_block"].includes(type) && raw.has_children && depth < 3 && calls < 12 && Date.now() < deadline) {
+        const nested = await read(string(raw.id));
+        blocks.push(...await flatten(list(nested.results), depth + 1));
+        if (nested.has_more) blocks.push({ ...notionBlock(entry), text: "Ver mais informações desta seção" });
+      } else blocks.push(notionBlock(entry));
+    }
+    return blocks;
+  };
+  const blocks = await flatten(list(result.results), 0);
+  let heading = "";
+  for (const block of blocks) {
+    if (block.type.startsWith("heading_")) heading = block.text;
+    if (block.type === "child_database" && (!block.text || /^(untitled|sem t[ií]tulo)$/i.test(block.text)) && heading) block.text = heading;
+  }
+  return { blocks, cursor: result.has_more ? result.next_cursor : null };
 }
 export function notionFailure(error: unknown) {
   if (error instanceof ZodError) return NextResponse.json({ error: "Confira os dados informados." }, { status: 400 });
