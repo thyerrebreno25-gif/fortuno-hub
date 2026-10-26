@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/member-invite-reminders",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/meeting-reminders",
+      "schedule": "0 12 * * *"
     }
   ]
 }

@@ -136,6 +136,8 @@ export interface DashboardData {
   };
   access: Record<string, boolean>;
   overview: {
+    meetings: { total: number; pending: number; overdue: number };
+    agendaUpcoming: number;
     service: { received: number; resolved: number };
     mappings: { total: number; validated: number; activities: number; assessed: number; highestImpact: number };
     operations: { total: number; completed: number };

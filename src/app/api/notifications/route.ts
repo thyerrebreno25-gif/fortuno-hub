@@ -1,3 +1,5 @@
+import { meetingNotifications } from "@/modules/meetings/notifications";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountMember } from "@/modules/account/server/account-auth";
@@ -90,7 +92,8 @@ export async function GET() {
       }),
     ]);
 
-    const items: NotificationItem[] = [];
+    const permissions = await getRolePermissions(member.organizationId, member.role);
+    const items: NotificationItem[] = permissions.MEETINGS.canView ? await meetingNotifications(member.organizationId, member.userId, now) : [];
 
     for (const item of imports) {
       const isFailed = item.status === "FAILED";

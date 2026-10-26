@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 
 export const MODULE_CODES = [
-  "DASHBOARD","NOTICES","ASSISTANT","CLIENTS","IMPORTS","PURCHASE_INVOICES","SALES_RECONCILIATION","OPERATIONS","SERVICE_CENTER","WHATSAPP","OPERATIONAL_MAPPING","AUDIT","ONBOARDING","REPORTS","SUPPORT","SETTINGS","MOTOR_EXCHANGE","HISTORY"
+  "DASHBOARD","NOTICES","ASSISTANT","CLIENTS","IMPORTS","PURCHASE_INVOICES","SALES_RECONCILIATION","OPERATIONS","SERVICE_CENTER","WHATSAPP","OPERATIONAL_MAPPING","MEETINGS","CALENDAR","AUDIT","ONBOARDING","REPORTS","SUPPORT","SETTINGS","MOTOR_EXCHANGE","HISTORY"
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 export type PermissionShape = { canView:boolean; canCreate:boolean; canEdit:boolean; canDelete:boolean; canImport:boolean; canExport:boolean; canManage:boolean };
@@ -14,6 +14,7 @@ export function defaultPermission(role:string,module:ModuleCode): PermissionShap
   if(role === "MASTER" || role === "ADMIN") return full;
   if(role === "MANAGER") return module === "SETTINGS" ? {...full,canDelete:false} : full;
   if(role === "OPERATOR") {
+    if(module === "MEETINGS" || module === "CALENDAR") return {...none,canView:true,canCreate:true,canEdit:true,canDelete:true};
     if(module === "DASHBOARD") return {...none,canView:true};
     if(module === "NOTICES") return {...none,canView:true,canCreate:true,canEdit:true,canDelete:true};
     if(module === "ASSISTANT") return {...none,canView:true,canCreate:true,canEdit:true,canDelete:true};

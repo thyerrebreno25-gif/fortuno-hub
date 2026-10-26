@@ -28,6 +28,8 @@ const modules = [
   ["OPERATIONS", "Operações"],
   ["SERVICE_CENTER", "Central de e-mail"],
   ["WHATSAPP", "Central WhatsApp"],
+  ["MEETINGS", "Central de reuniões"],
+  ["CALENDAR", "Agenda"],
   ["OPERATIONAL_MAPPING", "Mapeamento Operacional"],
   ["AUDIT", "Auditoria"],
   ["MOTOR_EXCHANGE", "Motor Cambial"],

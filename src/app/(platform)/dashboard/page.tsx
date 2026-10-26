@@ -253,6 +253,8 @@ export default function DashboardPage() {
       <Paper withBorder radius="lg" p="lg"><Stack>
         <Group justify="space-between"><div><Title order={3}>Pulso da operação</Title><Text size="sm" c="dimmed">Carteira e processos: posição atual. WhatsApp e rotinas: período selecionado.</Text></div><Badge variant="light">Dados salvos no sistema</Badge></Group>
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+          {data.access.MEETINGS && <OverviewCard title="Central de Reuniões" value={data.overview.meetings.total} detail={`${data.overview.meetings.pending} entregas pendentes · ${data.overview.meetings.overdue} atrasadas (posição atual)`} href="/reunioes" />}
+          {data.access.CALENDAR && <OverviewCard title="Minha agenda" value={data.overview.agendaUpcoming} detail="Compromissos do Hub nos próximos 7 dias" href="/agenda" />}
           {data.access.CLIENTS && <OverviewCard title="Clientes ativos" value={data.summary.activeClients} detail="Carteira visível para seu perfil" href="/clientes" />}
           {data.access.ONBOARDING && <OverviewCard title="Implantações em andamento" value={data.summary.activeOnboardings} detail={`${data.summary.overdueOnboardings} atrasadas · ${data.summary.onboardingHoursThisMonth}h no mês`} href="/onboarding" />}
           {data.access.AUDIT && <OverviewCard title="Auditorias abertas" value={data.summary.activeAudits} detail="Acompanhe achados e correções" href="/auditoria" />}

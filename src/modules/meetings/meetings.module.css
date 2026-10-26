@@ -1,0 +1,17 @@
+.page { display: grid; gap: 22px; min-width: 0; }
+.hero { padding: 24px; border: 1px solid var(--fortuno-line, #dce5ef); background: linear-gradient(120deg, var(--mantine-color-blue-light), var(--fortuno-surface, white)); border-radius: 20px; }
+.layout { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 20px; align-items: start; }
+.list { display: grid; gap: 10px; max-height: 800px; overflow: auto; }
+.meetingButton { display: grid; gap: 8px; padding: 16px; width: 100%; border: 1px solid var(--fortuno-line, #dce5ef); border-radius: 14px; color: inherit; font: inherit; text-align: left; background: var(--fortuno-surface, white); cursor: pointer; }
+.meetingButton[aria-pressed="true"] { border-color: var(--mantine-color-blue-5); background: var(--mantine-color-blue-light); }
+.meetingButton:focus-visible { outline: 3px solid var(--mantine-color-blue-4); }
+.prose { white-space: pre-wrap; overflow-wrap: anywhere; }
+.task { padding: 14px; border: 1px solid var(--fortuno-line, #dce5ef); border-radius: 12px; }
+.calendar { display: grid; grid-template-columns: repeat(7, minmax(95px, 1fr)); min-width: 740px; border-top: 1px solid var(--fortuno-line, #dce5ef); border-left: 1px solid var(--fortuno-line, #dce5ef); }
+.day { min-height: 130px; padding: 8px; border-right: 1px solid var(--fortuno-line, #dce5ef); border-bottom: 1px solid var(--fortuno-line, #dce5ef); }
+.day[data-today="true"] { background: var(--mantine-color-blue-light); }
+.dayHeading { padding: 10px; text-align: center; font-size: 12px; font-weight: 750; border-right: 1px solid var(--fortuno-line, #dce5ef); border-bottom: 1px solid var(--fortuno-line, #dce5ef); }
+.event { display: block; width: 100%; margin-top: 6px; padding: 7px; border: 0; border-left: 3px solid var(--mantine-color-blue-5); border-radius: 5px; background: var(--mantine-color-blue-light); color: inherit; font: inherit; font-size: 11px; text-align: left; cursor: pointer; overflow-wrap: anywhere; text-decoration: none; }
+.event[data-external="true"] { border-color: var(--mantine-color-green-6); background: var(--mantine-color-green-light); }
+.event[data-completed="true"] { opacity: .65; }
+@media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .list { max-height: 340px; } }

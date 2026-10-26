@@ -1,4 +1,6 @@
 export const dashboardDestinations = [
+  { label: "Central de Reuniões", href: "/reunioes", module: "MEETINGS" },
+  { label: "Agenda", href: "/agenda", module: "CALENDAR" },
   { label: "Rotinas operacionais", href: "/operacoes", module: "OPERATIONS" },
   { label: "Central de atendimento", href: "/atendimento", module: "SERVICE_CENTER" },
   {

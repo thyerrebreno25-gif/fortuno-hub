@@ -173,6 +173,8 @@ const icons = {
 };
 
 const menuItems: MenuItem[] = [
+  { label: "Central de Reuniões", href: "/reunioes", moduleCode: "MEETINGS", icon: icons.users, group: "Operação" },
+  { label: "Agenda", href: "/agenda", moduleCode: "CALENDAR", icon: icons.operations, group: "Operação" },
   {
     label: "Início",
     href: "/inicio",
