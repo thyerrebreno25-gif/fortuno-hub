@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { encryptIntegrationSecret } from "@/modules/purchase-invoices/server/crypto";
 import { NotionError, notionAccess, notionFailure, notionFetch, notionToken, readNotionBlocks } from "@/modules/notion/server";
 import { list, notionColumns, notionItem, notionQuery, object, propertyPathId, string } from "@/modules/notion/model";
-const input = z.object({ view: z.enum(["status", "search", "page", "blocks", "data_source", "database", "relation"]).default("status"), id: z.string().uuid().optional(), query: z.string().max(200).default(""), kind: z.enum(["all", "page", "data_source"]).default("all"), cursor: z.string().max(4000).optional(), property: z.string().max(200).optional(), filterField: z.string().max(200).optional(), filterValue: z.string().max(200).optional(), sortField: z.string().max(200).optional(), direction: z.enum(["ascending", "descending"]).default("ascending") });
+const input = z.object({ view: z.enum(["status", "search", "page", "blocks", "data_source", "database", "relation", "saved_view"]).default("status"), id: z.string().uuid().optional(), query: z.string().max(200).default(""), kind: z.enum(["all", "page", "data_source"]).default("all"), cursor: z.string().max(4000).optional(), property: z.string().max(200).optional(), filterField: z.string().max(200).optional(), filterValue: z.string().max(200).optional(), sortField: z.string().max(200).optional(), direction: z.enum(["ascending", "descending"]).default("ascending") });
 const connectionSelect = { botName: true, workspaceName: true, checkedAt: true } as const;
 export async function GET(request: Request) {
   try {
@@ -37,16 +37,27 @@ export async function GET(request: Request) {
     if (params.view === "blocks") {
       return NextResponse.json(await readNotionBlocks(token, id, params.cursor));
     }
-    if (params.view === "data_source") {
-      const source = await notionFetch(token, `/data_sources/${id}`);
+    if (params.view === "data_source" || params.view === "saved_view") {
+      const saved = params.view === "saved_view" ? await notionFetch(token, `/views/${id}`) : null;
+      const sourceId = saved ? z.string().uuid().parse(saved.data_source_id) : id;
+      const source = await notionFetch(token, `/data_sources/${sourceId}`);
       let filters;
       try { filters = notionQuery(source, params); } catch { throw new NotionError("Selecione um filtro válido para esta base."); }
-      const result = await notionFetch(token, `/data_sources/${id}/query`, { ...pagination, ...filters });
+      // Preserve saved client restrictions even when the user changes search or filters.
+      const constraints = saved ? [saved.filter, ...Object.entries(object(saved.quick_filters)).filter(([, condition]) => Object.keys(object(condition)).length).map(([property, condition]) => ({ property, ...object(condition) }))].filter((condition) => Object.keys(object(condition)).length) : [];
+      if (constraints.length) filters = { ...filters, filter: { and: [...constraints, ...(filters.filter ? [filters.filter] : [])] } };
+      if (saved && !params.sortField && list(saved.sorts).length) filters = { ...filters, sorts: saved.sorts as typeof filters.sorts };
+      const result = await notionFetch(token, `/data_sources/${sourceId}/query`, { ...pagination, ...filters });
       return NextResponse.json({ item: notionItem(source), columns: Object.keys(object(source.properties)), columnSchema: notionColumns(source), items: list(result.results).map(notionItem), cursor: result.has_more ? result.next_cursor : null });
     }
     if (params.view === "database") {
       const result = await notionFetch(token, `/databases/${id}`);
-      return NextResponse.json({ item: notionItem(result), sources: list(result.data_sources).map((entry) => ({ id: string(object(entry).id), title: string(object(entry).name), kind: "data_source" })) });
+      const sources = list(result.data_sources).map((entry) => ({ id: string(object(entry).id), title: string(object(entry).name), kind: "data_source" }));
+      if (!sources.length) {
+        const views = await notionFetch(token, `/views?${new URLSearchParams({ database_id: id, page_size: "50", ...(params.cursor ? { start_cursor: params.cursor } : {}) })}`);
+        return NextResponse.json({ item: notionItem(result), sources: list(views.results).map((entry, index) => ({ id: string(object(entry).id), title: string(object(entry).name) || `Lista ${index + 1}`, kind: "saved_view" })), cursor: views.has_more ? views.next_cursor : null });
+      }
+      return NextResponse.json({ item: notionItem(result), sources });
     }
     const result = await notionFetch(token, `/pages/${id}`);
     return NextResponse.json({ item: notionItem(result) });

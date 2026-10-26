@@ -11,11 +11,11 @@ export function SourceTable({ source, onPage }: { source: Item; onPage: (item: I
   const load = useCallback(async (cursor?: string) => {
     const version = ++sequence.current; setLoading(true); setError("");
     try {
-      const result = await notionRequest<Detail>({ view: "data_source", id: source.id, query, direction, ...(filterField && filterValue ? { filterField, filterValue } : {}), ...(sortField ? { sortField } : {}), ...(cursor ? { cursor } : {}) });
+      const result = await notionRequest<Detail>({ view: source.kind === "saved_view" ? "saved_view" : "data_source", id: source.id, query, direction, ...(filterField && filterValue ? { filterField, filterValue } : {}), ...(sortField ? { sortField } : {}), ...(cursor ? { cursor } : {}) });
       if (version === sequence.current) setData((previous) => cursor && previous ? { ...result, items: [...(previous.items || []), ...(result.items || []).filter((item) => !previous.items?.some((old) => old.id === item.id))] } : result);
     } catch (cause) { if (version === sequence.current) setError(cause instanceof Error ? cause.message : "Falha ao consultar base."); }
     finally { if (version === sequence.current) setLoading(false); }
-  }, [source.id, query, filterField, filterValue, sortField, direction]);
+  }, [source.id, source.kind, query, filterField, filterValue, sortField, direction]);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 400); return () => window.clearTimeout(timer); }, [load]);
   const schema = data?.columnSchema || (data?.columns || []).map((name) => ({ name, type: "rich_text", options: [] }));
   const columns = visible === null ? defaultColumns(schema) : visible.filter((name) => schema.some((column) => column.name === name));

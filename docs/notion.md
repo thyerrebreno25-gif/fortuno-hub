@@ -28,3 +28,5 @@ Referências oficiais:
 - https://developers.notion.com/reference/versioning
 - https://developers.notion.com/reference/post-search
 - https://developers.notion.com/reference/query-a-data-source
+
+Listas vinculadas sem data_sources próprios usam GET /views?database_id e GET /views/{id}; a consulta reaplica no servidor o filtro e os quick_filters salvos antes de combinar a busca do Hub. Assim, uma seção filtrada por cliente não abre a fonte inteira. O layout continua sendo a tabela do Hub.

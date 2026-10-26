@@ -77,3 +77,23 @@ it("flattens layout columns and names an untitled inner database after its headi
   expect(result.blocks[1].text).toBe("Acessos & Senhas");
   expect(result.cursor).toBe("next-root");
 });
+it("discovers linked database views without falling back to unfiltered sources", async () => {
+  const id = "22222222-2222-4222-8222-222222222222";
+  const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id, object: "database", data_sources: [] }))).mockResolvedValueOnce(new Response(JSON.stringify({ results: [{ id, name: "Acessos" }] })));
+  vi.stubGlobal("fetch", fetchMock);
+  const result = await GET(new Request(`https://hub.test/api/integrations/notion?view=database&id=${id}`));
+  expect((await result.json()).sources[0]).toMatchObject({ kind: "saved_view", title: "Acessos" });
+  expect(fetchMock.mock.calls[1][0]).toContain(`/views?database_id=${id}`);
+});
+it("keeps saved client and quick filters when searching a linked view", async () => {
+  const id = "22222222-2222-4222-8222-222222222222", source = "11111111-1111-4111-8111-111111111111";
+  const clientFilter = { property: "Cliente", relation: { contains: id } };
+  const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ data_source_id: source, filter: clientFilter, quick_filters: { Ativo: { checkbox: { equals: true } }, Vazio: {} } }))).mockResolvedValueOnce(new Response(JSON.stringify({ id: source, object: "data_source", properties: { Nome: { type: "title" } } }))).mockResolvedValueOnce(new Response(JSON.stringify({ results: [] })));
+  vi.stubGlobal("fetch", fetchMock);
+  const result = await GET(new Request(`https://hub.test/api/integrations/notion?view=saved_view&id=${id}&query=banco`));
+  expect(result.status).toBe(200);
+  const query = JSON.parse(fetchMock.mock.calls[2][1].body);
+  expect(query.filter.and).toContainEqual(clientFilter);
+  expect(query.filter.and).toContainEqual({ property: "Ativo", checkbox: { equals: true } });
+  expect(query.filter.and).toHaveLength(3);
+});
