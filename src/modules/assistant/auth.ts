@@ -12,7 +12,7 @@ export type AssistantMember = {
   user: { id: string; name: string | null; email: string };
 };
 
-async function getMemberForModule(module: ModuleCode): Promise<AssistantMember | null> {
+export async function getMemberForModule(module: ModuleCode): Promise<AssistantMember | null> {
   const supabase = await createSupabaseClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;

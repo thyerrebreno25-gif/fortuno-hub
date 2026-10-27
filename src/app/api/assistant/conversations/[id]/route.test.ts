@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ member: vi.fn(), client: vi.fn(), conversation: vi.fn() }));
+const mocks = vi.hoisted(() => ({ member: vi.fn(), client: vi.fn(), conversation: vi.fn(), permissions: vi.fn() }));
+vi.mock("@/modules/permissions/permissions", () => ({ getRolePermissions: mocks.permissions }));
 vi.mock("@/lib/prisma", () => ({ prisma: { assistantConversation: { findFirst: mocks.conversation } } }));
 vi.mock("@/modules/assistant/auth", () => ({ getAssistantMember: mocks.member, findAssistantClient: mocks.client }));
 import { GET } from "./route";
 const context = { params: Promise.resolve({ id: "c1" }) };
 beforeEach(() => { vi.resetAllMocks(); mocks.member.mockResolvedValue({ userId: "u1", organizationId: "org1" }); mocks.client.mockResolvedValue({ id: "client1" }); });
 describe("leitura de relatórios e conversas", () => {
+  it("does not return historical Notion credentials after permission is revoked", async () => {
+    mocks.permissions.mockResolvedValue({ NOTION: { canView: false } });
+    mocks.conversation.mockResolvedValue({ id: "c1", clientId: "client1", messages: [{ role: "ASSISTANT", content: "PRIVATE_CREDENTIAL", metadata: { toolEvents: [{ name: "get_client_notion_access", ok: true }] } }] });
+    const response = await GET(new Request("http://localhost/api/assistant/conversations/c1"), context);
+    expect(response.status).toBe(403); expect(await response.text()).not.toContain("PRIVATE_CREDENTIAL");
+  });
   it("revalida cliente consultado por nome que não era o selecionado na conversa", async () => {
     mocks.conversation.mockResolvedValue({ id: "c1", clientId: "client1", messages: [{ role: "ASSISTANT", content: "Dados de outro cliente", metadata: { consultedClientIds: ["client2"] } }] });
     mocks.client.mockImplementation(async (_member, id) => id === "client1" ? { id } : null);

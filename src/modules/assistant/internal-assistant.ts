@@ -77,7 +77,11 @@ export async function runInternalAssistant(input: {
       client = { id: found[0].id, name: found[0].name };
     }
     if (!client) { result.text = "Selecione o cliente no topo da conversa para consultar informações ou gerar um relatório."; return result; }
-    if (plan.kind === "OVERVIEW") {
+    if (plan.kind === "NOTION") {
+      const data = record(await run("get_client_notion_access", { client_id: client.id, query: input.prompt }));
+      result.text = `${client.name} — consulta ao Notion\n\n${array(data.sections).map((section) => `${name(section.title)}\n${name(section.text)}`).join("\n\n") || "Não localizei informações de acesso no conteúdo consultado."}\n\n${(Array.isArray(data.notices) ? data.notices.filter((notice) => typeof notice === "string") : []).join("\n")}\n\nFonte: Notion, consultado em ${name(data.queriedAt)}. Conteúdo de referência; não foram executadas ações bancárias.`;
+      if (typeof data.sourceUrl === "string") result.links = [{ label: "Abrir página de origem no Notion", href: data.sourceUrl }];
+    } else if (plan.kind === "OVERVIEW") {
       const data = record(await run("get_client_overview", { client_id: client.id }));
       const connection = record(data.contaAzulConnection); const totals = record(data._count);
       result.text = `${client.name}\nDocumento: ${name(data.document)}\nLíder: ${name(record(data.operationLeader).name)}\nContas a pagar: ${name(record(data.payableResponsible).name)}\nContas a receber: ${name(record(data.receivableResponsible).name)}\nResponsável geral: ${name(record(data.generalResponsible).name)}\nConta Azul: ${connection.active === true ? name(connection.status) : "sem conexão ativa"}\nImportações registradas: ${count(totals.imports)}\nAuditorias registradas: ${count(totals.audits)}\n\nÚltimas importações:\n${array(data.imports).map((item) => `• ${name(item.originalName)} — ${name(item.status)}`).join("\n") || "Nenhuma importação registrada."}\n\nFonte: cadastro interno do Fortuno. Sem IA externa.`;

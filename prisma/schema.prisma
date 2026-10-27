@@ -439,6 +439,7 @@ model OrganizationMemberInviteToken {
 }
 
 model Client {
+  management ClientManagement?
   operationalMappings OperationalMapping[]
   id                      String        @id @default(cuid())
   organizationId          String
@@ -495,6 +496,21 @@ model Client {
   @@index([receivableResponsibleId])
   @@index([generalResponsibleId])
   @@index([cluster])
+}
+
+model ClientManagement {
+  clientId String @id
+  organizationId String
+  snapshot Json?
+  checkedAccounts Json @default("{}")
+  notionPageId String?
+  revision Int @default(1)
+  refreshedAt DateTime?
+  refreshLeaseUntil DateTime?
+  lastError String?
+  updatedAt DateTime @updatedAt
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  @@index([organizationId])
 }
 
 model AssistantConversation {

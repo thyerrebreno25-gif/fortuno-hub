@@ -4,7 +4,7 @@ export function internalText(value: string) {
 
 export type InternalPeriod = { start: string; end: string };
 export type InternalPlan = {
-  kind: "GREETING" | "HELP" | "SEARCH" | "OVERVIEW" | "CATALOG" | "REPORT" | "LEARNING" | "WORKFLOW" | "UNKNOWN";
+  kind: "GREETING" | "HELP" | "SEARCH" | "OVERVIEW" | "CATALOG" | "REPORT" | "LEARNING" | "WORKFLOW" | "NOTION" | "UNKNOWN";
   query?: string;
   catalog?: "categories" | "cost_centers" | "financial_accounts";
   period?: InternalPeriod;
@@ -47,6 +47,7 @@ export function internalPeriod(prompt: string, now = new Date()): InternalPeriod
 export function planInternalRequest(prompt: string, now = new Date()): InternalPlan {
   const text = internalText(prompt);
   if (/^(?:oi|ola|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tudo bem)(?: assistente)?$/.test(text)) return { kind: "GREETING" };
+  if (/\b(?:acessos?|login|logins|senhas?|credenciais|notion)\b/.test(text) && /\b(?:cliente|banco|bancario|notion|itau|bradesco|inter|santander|nubank|sicredi|sicoob|cora|caixa|btg)\b/.test(text)) return { kind: "NOTION", query: prompt };
   if (/\b(?:aprender|aprenda|aprendizado|identifique|identificar)\b.*\bcategor/.test(text)) return { kind: "LEARNING" };
   if (/\b(?:como|explique|explica|funciona|o que e|ajuda|duvida|onde)\b/.test(text)) return { kind: "HELP", query: prompt };
   if (/\b(?:lance|lancar|liquide|liquidar|exclua|excluir)\b|\bcriar (?:uma |a )?(?:despesa|receita|venda)\b|\b(?:envie|enviar|manda|mandar)\b.*\b(?:lancamentos?|faturas?|despesas?|receitas?|conta azul)\b/.test(text)) return { kind: "WORKFLOW", query: prompt };
@@ -67,6 +68,6 @@ export function planInternalRequest(prompt: string, now = new Date()): InternalP
 export function requestedInternalClient(prompt: string) {
   const text = internalText(prompt);
   if (/\b(?:deste|desse|este|esse) cliente\b|\bcliente (?:selecionado|da conversa)\b/.test(text)) return "";
-  const match = text.match(/\bcliente\s+(.+?)(?=\s+(?:(?:no|do|na|em)\s+(?:mes|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)|(?:de|entre|em)\s+\d)|$)/);
+  const match = text.match(/\bcliente\s+(.+?)(?=\s+(?:(?:no|do|na|em)\s+(?:banco|notion|itau|bradesco|inter|santander|nubank|sicredi|sicoob|cora|caixa|btg|mes|janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)|(?:de|entre|em)\s+\d)|$)/);
   return match?.[1]?.trim() || "";
 }

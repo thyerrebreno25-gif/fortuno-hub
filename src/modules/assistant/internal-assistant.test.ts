@@ -8,6 +8,12 @@ const context = { member: { organizationId: "org1", userId: "user1" }, conversat
 const input = { context, files: [], ticketCodes: [], now: new Date("2026-09-17T12:00:00Z"), client: { id: "client1", name: "Cliente" } };
 beforeEach(() => vi.resetAllMocks());
 describe("assistente sem OpenAI", () => {
+  it("queries Notion for the selected client and returns its source without external AI", async () => {
+    execute.mockResolvedValue({ sections: [{ title: "Acesso Itaú", text: "Usuário: operador" }], notices: [], sourceUrl: "https://www.notion.so/cliente", queriedAt: "2026-10-27" });
+    const result = await runInternalAssistant({ ...input, prompt: "Qual o acesso deste cliente no banco Itaú?" });
+    expect(execute).toHaveBeenCalledWith(context, "get_client_notion_access", JSON.stringify({ client_id: "client1", query: "Qual o acesso deste cliente no banco Itaú?" }));
+    expect(result.text).toContain("Usuário: operador"); expect(result.links[0].href).toContain("notion.so");
+  });
   it("ajuda, aprendizagem e perguntas desconhecidas não disparam ferramentas externas", async () => {
     expect((await runInternalAssistant({ ...input, prompt: "Como importar uma fatura?" })).text).toContain("sem IA externa");
     expect((await runInternalAssistant({ ...input, prompt: "Aprenda categorias" })).links).toEqual([{ label: "Abrir Faturas", href: "/faturas" }]);

@@ -9,7 +9,8 @@ import {
 } from "@/modules/assistant/files";
 import { OpenAIRequestError, runFortunoAssistant } from "@/modules/assistant/openai";
 import { createAssistantSupportTicket } from "@/modules/assistant/tools";
-import { ASSISTANT_HISTORY_MESSAGES, historyClientIds } from "@/modules/assistant/context";
+import { ASSISTANT_HISTORY_MESSAGES, historyClientIds, historyUsesNotion } from "@/modules/assistant/context";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 import type { OpenAIErrorDetails, OpenAIUsage } from "@/modules/assistant/openai-errors";
 import { runInternalAssistant, type InternalAssistantResult } from "@/modules/assistant/internal-assistant";
 
@@ -48,6 +49,7 @@ export async function POST(request: Request, context: Context) {
   });
   if (!conversation) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });
   const history = [...conversation.messages].reverse();
+  if (historyUsesNotion(history) && !(await getRolePermissions(member.organizationId, member.role)).NOTION.canView) return NextResponse.json({ error: "Seu perfil não tem mais acesso ao conteúdo do Notion desta conversa." }, { status: 403 });
   // Revalidar também clientes consultados em mensagens anteriores antes de reutilizar contexto.
   const clientIds = new Set([...(conversation.clientId ? [conversation.clientId] : []), ...historyClientIds(history)]);
   for (const clientId of clientIds) {

@@ -18,6 +18,7 @@ import {
 } from "@mantine/core";
 
 const modules = [
+  ["MANAGEMENT", "Gestão"],
   ["DASHBOARD", "Dashboard"],
   ["NOTICES", "Avisos"],
   ["ASSISTANT", "Assistente Fortuno"],
@@ -25,7 +26,7 @@ const modules = [
   ["IMPORTS", "Importações"],
   ["PURCHASE_INVOICES", "Notas de compra"],
   ["SALES_RECONCILIATION", "Conferência de vendas"],
-  ["OPERATIONS", "Operações"],
+  ["OPERATIONS", "Gestão de tarefas"],
   ["SERVICE_CENTER", "Central de e-mail"],
   ["WHATSAPP", "Central WhatsApp"],
   ["MEETINGS", "Central de reuniões"],

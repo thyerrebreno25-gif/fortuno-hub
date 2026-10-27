@@ -9,6 +9,13 @@ export type AssistantHistoryMessage = {
   metadata?: unknown;
 };
 
+export function historyUsesNotion(messages: Array<{ metadata?: unknown }>) {
+  return messages.some((message) => {
+    const metadata = record(message.metadata);
+    return (Array.isArray(metadata.toolEvents) ? metadata.toolEvents : []).some((event) => record(event).name === "get_client_notion_access" && record(event).ok !== false);
+  });
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }

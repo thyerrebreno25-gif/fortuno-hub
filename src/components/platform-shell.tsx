@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "@/app/dashboard.module.css";
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar";
 import { SessionTimeout } from "@/components/session/session-timeout";
+import { FloatingAssistant } from "@/modules/assistant/floating";
 
 type MenuItem = {
   label: string;
@@ -180,6 +181,8 @@ const icons = {
 };
 
 const menuItems: MenuItem[] = [
+  { label: "Gestão", href: "/gestao", moduleCode: "MANAGEMENT", icon: icons.dashboard, group: "Visão geral" },
+  { label: "Gestão de tarefas", href: "/operacoes", moduleCode: "OPERATIONS", icon: icons.operations, group: "Operação" },
   { label: "Notion", href: "/integracoes/notion", moduleCode: "NOTION", icon: icons.document, group: "Operação" },
   { label: "Central de Reuniões", href: "/reunioes", moduleCode: "MEETINGS", icon: icons.users, group: "Operação" },
   { label: "Agenda", href: "/agenda", moduleCode: "CALENDAR", icon: icons.operations, group: "Operação" },
@@ -376,6 +379,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
       }`}
     >
       <SessionTimeout />
+      {permissionsLoaded && permissions?.ASSISTANT?.canView === true && <FloatingAssistant />}
 
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>

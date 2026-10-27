@@ -3,6 +3,11 @@ import { internalPeriod, planInternalRequest, requestedInternalClient } from "./
 
 const now = new Date("2026-09-17T12:00:00Z");
 describe("interpretação interna limitada e determinística", () => {
+  it("recognizes bank access queries and separates bank from client name", () => {
+    expect(planInternalRequest("Qual o acesso do cliente Tripé no banco Itaú?").kind).toBe("NOTION");
+    expect(requestedInternalClient("Qual o acesso do cliente Tripé no banco Itaú?")).toBe("tripe");
+    expect(planInternalRequest("Onde encontro o login deste cliente no Notion?").kind).toBe("NOTION");
+  });
   it.each([
     ["Bom dia", "GREETING"], ["Como importar uma fatura?", "HELP"],
     ["Aprenda as categorias do Bradesco", "LEARNING"], ["Liste clientes", "SEARCH"],

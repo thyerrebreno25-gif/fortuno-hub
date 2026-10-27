@@ -61,6 +61,8 @@ type Feature = {
 };
 
 const features: Feature[] = [
+  { title: "Gestão", description: "Acompanhe vencidos, importações, validação de saldo e conciliações por cliente.", href: "/gestao", moduleCode: "MANAGEMENT", group: "Visão geral", icon: <IconChartBar size={24} />, badge: "Novo" },
+  { title: "Gestão de tarefas", description: "Organize tarefas, rotinas recorrentes, responsáveis e prazos da operação.", href: "/operacoes", moduleCode: "OPERATIONS", group: "Atendimento e clientes", icon: <IconClipboardCheck size={24} /> },
   { title: "Notion", description: "Consulte páginas, bases e documentos compartilhados com sua integração.", href: "/integracoes/notion", moduleCode: "NOTION", group: "Atendimento e clientes", icon: <IconFileAnalytics size={24} /> },
   { title: "Central de Reuniões", description: "Pautas, notas, metas e checklist por colaborador, conectados à agenda.", href: "/reunioes", moduleCode: "MEETINGS", group: "Atendimento e clientes", icon: <IconUsers size={24} /> },
   { title: "Agenda", description: "Seus compromissos, reuniões e prazos, com conexão individual ao Google Agenda.", href: "/agenda", moduleCode: "CALENDAR", group: "Atendimento e clientes", icon: <IconClipboardCheck size={24} /> },

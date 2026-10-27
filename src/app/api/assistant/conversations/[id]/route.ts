@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findAssistantClient, getAssistantMember } from "@/modules/assistant/auth";
 import { publicHistoryMetadata } from "@/modules/assistant/category-history";
-import { historyClientIds } from "@/modules/assistant/context";
+import { historyClientIds, historyUsesNotion } from "@/modules/assistant/context";
+import { getRolePermissions } from "@/modules/permissions/permissions";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -27,6 +28,7 @@ export async function GET(_request: Request, context: Context) {
     },
   });
   if (!conversation) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });
+  if (historyUsesNotion(conversation.messages) && !(await getRolePermissions(member.organizationId, member.role)).NOTION.canView) return NextResponse.json({ error: "Seu perfil não tem mais acesso ao conteúdo do Notion desta conversa." }, { status: 403 });
   const clientIds = [...new Set([...(conversation.clientId ? [conversation.clientId] : []), ...historyClientIds(conversation.messages)])];
   for (const clientId of clientIds) {
     if (!await findAssistantClient(member, clientId)) return NextResponse.json({ error: "Um cliente desta conversa não está mais disponível para seu usuário." }, { status: 403 });

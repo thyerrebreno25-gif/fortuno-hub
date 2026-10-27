@@ -56,7 +56,7 @@ export async function GET() {
     })),
     conversations: conversations.map(({ messages, ...conversation }) => ({
       ...conversation,
-      preview: messages[0]?.content || "Conversa sem mensagens",
+      preview: messages[0] ? "Abra a conversa para consultar as mensagens" : "Conversa sem mensagens",
     })),
   });
 }
