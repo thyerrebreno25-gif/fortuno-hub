@@ -207,7 +207,6 @@ export default function DashboardPage() {
 
   return (
     <Stack gap="xl" className={styles.page}>
-      <IntegratedOverview />
       <Group justify="space-between" align="flex-end" className={styles.pageHeader}>
         <Stack gap={4}>
           <Group gap="xs">
