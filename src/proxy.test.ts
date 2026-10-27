@@ -18,6 +18,18 @@ vi.mock("@supabase/ssr", () => ({
 
 import { proxy } from "./proxy";
 
+it("restores task management without redirecting authenticated members home", async () => {
+  session.user = { id: "user" };
+  const response = await proxy(new NextRequest("https://example.test/operacoes"));
+  expect(response.headers.get("location")).toBeNull();
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+});
+
+it("keeps task management behind login", async () => {
+  const response = await proxy(new NextRequest("https://example.test/operacoes"));
+  expect(response.headers.get("location")).toBe("https://example.test/login");
+});
+
 it("lets the meeting cron reach its Bearer authentication without a user session", async () => {
   const response = await proxy(new NextRequest("https://example.test/api/cron/meeting-reminders"));
   expect(response.status).toBe(200);
