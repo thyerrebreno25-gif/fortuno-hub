@@ -22,7 +22,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const member = await manager();
   if (!member) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  const input = z.object({ action: z.enum(["archive", "restore"]), restoreId: z.string().max(100).optional() }).safeParse(await request.json().catch(() => null));
+  const input = z.object({ action: z.enum(["archive", "restore"]), restoreId: z.string().max(100).nullish() }).safeParse(await request.json().catch(() => null));
   if (!input.success) return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
   try {
     const result = await prisma.$transaction(async (tx) => {

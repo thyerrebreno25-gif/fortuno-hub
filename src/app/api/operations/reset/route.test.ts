@@ -45,3 +45,6 @@ it("restores the saved activities and recurrences without changing completed his
   expect(m.activities.updateMany.mock.calls[0][0]).toMatchObject({ where: { organizationId: "org", id: "task", deletionReason: "Limpeza de rotinas: batch" }, data: { deletedAt: null, clientProcessId: "routine" } });
   expect(m.configurations.updateMany.mock.calls[0][0].data).toEqual({ active: true });
 });
+it("accepts a first cleanup when the interface has no previous restore id", async () => {
+  expect((await POST(new Request("https://hub.test/api/operations/reset", { method: "POST", body: JSON.stringify({ action: "archive", restoreId: null }) }))).status).toBe(200);
+});
