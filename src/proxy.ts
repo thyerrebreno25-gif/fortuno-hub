@@ -18,7 +18,6 @@ const PUBLIC_ROUTES = [
 ];
 
 const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout"];
-const REMOVED_PLATFORM_ROUTES = ["/operacoes"];
 
 function matchesRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
@@ -118,12 +117,6 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!requiresMfa && (isLoginPage || isMfaPage)) {
-    return redirectTo(request, "/inicio");
-  }
-
-  if (
-    REMOVED_PLATFORM_ROUTES.some((route) => matchesRoute(pathname, route))
-  ) {
     return redirectTo(request, "/inicio");
   }
 
