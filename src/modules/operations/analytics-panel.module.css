@@ -1,0 +1,24 @@
+.hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px; border-radius: 18px; border: 1px solid var(--fortuno-line); background: linear-gradient(115deg, var(--fortuno-surface), color-mix(in srgb, var(--fortuno-surface) 88%, #228be6)); }
+.eyebrow { color: var(--mantine-color-blue-5); font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+.metric { position: relative; overflow: hidden; min-height: 140px; border-radius: 14px; padding: 18px; border: 1px solid var(--fortuno-line); background: var(--fortuno-surface); }
+.metric::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; background: var(--accent, #228be6); border-radius: 3px; }
+.metricValue { margin-top: 8px; margin-bottom: 6px; font-size: clamp(22px, 1.8vw, 30px); font-weight: 800; letter-spacing: -0.7px; font-variant-numeric: tabular-nums; }
+.rank { display: flex; width: 100%; gap: 12px; align-items: center; border: 0; border-radius: 8px; background: transparent; padding: 8px 0; text-align: left; color: inherit; cursor: pointer; }
+.rank:hover { background: color-mix(in srgb, var(--fortuno-surface) 85%, #228be6); }
+.rank:focus-visible { outline: 2px solid var(--mantine-color-blue-5); outline-offset: 3px; }
+.rankPosition { color: var(--mantine-color-dimmed); font-size: 12px; min-width: 18px; font-variant-numeric: tabular-nums; }
+.rankBody { flex: 1; min-width: 0; }
+.track { height: 6px; margin-top: 7px; border-radius: 8px; background: var(--fortuno-muted); overflow: hidden; }
+.bar { height: 100%; min-width: 2px; border-radius: 8px; background: linear-gradient(90deg, #228be6, #20c997); }
+.rankTime { font-size: 12px; font-weight: 750; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chart { width: 100%; height: auto; display: block; color: var(--mantine-color-dimmed); }
+.chart text { fill: currentColor; font: 11px sans-serif; }
+.chartGrid { stroke: var(--fortuno-line); stroke-dasharray: 4 5; }
+.statusTrack { display: flex; gap: 3px; height: 10px; border-radius: 8px; overflow: hidden; background: var(--fortuno-muted); }
+.footnote { font-size: 12px; line-height: 1.6; color: var(--mantine-color-dimmed); }
+.details { scroll-margin-top: 24px; }
+.nameButton { color: var(--mantine-color-blue-6); font: inherit; text-align: left; border: 0; padding: 0; background: none; cursor: pointer; max-width: 290px; }
+.nameButton:hover { text-decoration: underline; }
+.nameButton:focus-visible { outline: 2px solid var(--mantine-color-blue-5); outline-offset: 4px; }
+.numeric { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 48em) { .hero { flex-direction: column; padding: 18px; } .metric { padding: 14px; min-height: 125px; } .metricValue { font-size: 23px; } }
