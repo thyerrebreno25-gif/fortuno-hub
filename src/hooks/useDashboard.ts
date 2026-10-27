@@ -43,5 +43,11 @@ export function useDashboard(period: DashboardPeriodCode = "30D") {
     return () => controller.abort();
   }, [period, reloadKey]);
 
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") reload(); };
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+  }, [reload]);
   return { data, loading, error, reload };
 }

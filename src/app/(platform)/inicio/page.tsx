@@ -1,4 +1,5 @@
 "use client";
+import { IntegratedOverview } from "@/modules/dashboard/integrated-overview";
 
 import type { Route } from "next";
 import Link from "next/link";
@@ -407,6 +408,8 @@ export default function InicioPage() {
           {data?.permissions?.NOTICES?.canView !== false && <NoticeHomePanel />}
         </div>
       </Paper>
+
+      <IntegratedOverview />
 
       {groupOrder.map((group) => {
         const groupFeatures =

@@ -168,6 +168,14 @@ export default function AtendimentoPage() {
     };
   }, [loadBootstrap, loadTickets]);
 
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") { void fetch("/api/atendimento/gmail/sync", { method: "POST" }).then(() => loadTickets()).catch(() => {}); } };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+  }, [loadTickets]);
+
   const openTicket = useCallback(async (id: string) => {
     setSelectedId(id);
     setDetailLoading(true);

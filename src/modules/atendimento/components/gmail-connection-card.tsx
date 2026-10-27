@@ -34,7 +34,6 @@ export function GmailConnectionCard() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const response = await fetch("/api/atendimento/gmail/status", {
         cache: "no-store",
@@ -44,7 +43,7 @@ export function GmailConnectionCard() {
         throw new Error(payload.error || "Erro ao consultar Gmail.");
       }
       setData(payload);
-      if (!payload.connected) setExpanded(true);
+      if (!payload.connected || payload.sync?.lastError) setExpanded(true);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -58,6 +57,8 @@ export function GmailConnectionCard() {
 
   useEffect(() => {
     void load();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 60000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   async function action(url: string, confirmText?: string) {
@@ -88,7 +89,7 @@ export function GmailConnectionCard() {
       </Paper>
     );
   }
-  if (!data) return null;
+  if (!data) return <Alert color="orange" title="Não foi possível verificar o Gmail">{error || "Tente novamente."}<Button variant="subtle" size="xs" onClick={() => void load()}>Consultar conexão</Button></Alert>;
 
   const watchActive =
     data.connection?.watchExpiresAt &&
@@ -96,6 +97,7 @@ export function GmailConnectionCard() {
 
   return (
     <Stack gap="xs">
+      {data?.sync?.lastError && <Alert color="orange" title="Recebimento precisa de atenção">{data.sync.lastError}</Alert>}
       {error && (
         <Alert color="red" withCloseButton onClose={() => setError("")}>
           {error}
@@ -117,7 +119,7 @@ export function GmailConnectionCard() {
                 ) : (
                   <Badge color="gray" variant="light">Não conectado</Badge>
                 )}
-                {watchActive && <Badge color="blue" variant="light">Sincronizado</Badge>}
+                {data.connected && <Badge color="blue" variant="light">Consulta automática · 5 min</Badge>}
               </Group>
               <Text size="xs" c="dimmed">
                 {data.connected
@@ -138,6 +140,7 @@ export function GmailConnectionCard() {
 
         <Collapse expanded={expanded}>
           <Stack gap="sm" pt="md">
+            {data.recovering && <Text size="sm" c="blue">Recuperando os e-mails dos últimos 30 dias em lotes. Os chamados aparecem conforme cada lote termina.</Text>}
             {data.connection?.lastSyncAt && (
               <Text size="xs" c="dimmed">
                 Última sincronização: {new Date(data.connection.lastSyncAt).toLocaleString("pt-BR")}
@@ -146,10 +149,11 @@ export function GmailConnectionCard() {
             {data.connected && (
               <Text size="xs" c="dimmed">
                 {watchActive
-                  ? "Novos e-mails da Caixa de entrada são enviados automaticamente ao Hub."
-                  : "A conta está conectada, mas a sincronização precisa ser ativada."}
+                  ? "Notificações do Gmail ativas, com consulta de segurança a cada 5 minutos."
+                  : "A Caixa de entrada é consultada automaticamente a cada 5 minutos, mesmo sem notificações do Google. Na primeira consulta, recuperamos os últimos 30 dias."}
               </Text>
             )}
+            {data.canManage && data.sync?.lastError && <Button component="a" href="/api/atendimento/gmail/connect" size="xs">Reconectar Gmail</Button>}
             {data.canManage && (
               <Group justify="flex-end">
                 {data.connected && (
@@ -158,9 +162,9 @@ export function GmailConnectionCard() {
                     variant="light"
                     leftSection={<IconRefresh size={15} />}
                     loading={busy}
-                    onClick={() => void action("/api/atendimento/gmail/watch")}
+                    onClick={() => void action("/api/atendimento/gmail/sync?force=1")}
                   >
-                    {watchActive ? "Renovar sincronização" : "Ativar sincronização"}
+                    Consultar e-mails agora
                   </Button>
                 )}
                 {data.connected ? (

@@ -1,4 +1,5 @@
 "use client";
+import { IntegratedOverview } from "@/modules/dashboard/integrated-overview";
 import { ActivityChart } from "@/modules/dashboard/activity-chart";
 import { dashboardDestinations } from "@/modules/dashboard/destinations";
 
@@ -206,6 +207,7 @@ export default function DashboardPage() {
 
   return (
     <Stack gap="xl" className={styles.page}>
+      <IntegratedOverview />
       <Group justify="space-between" align="flex-end" className={styles.pageHeader}>
         <Stack gap={4}>
           <Group gap="xs">
@@ -249,6 +251,7 @@ export default function DashboardPage() {
       </Group>
 
 
+      <IntegratedOverview />
       {error && <Alert color="orange" title="Atualização indisponível">{error} Os dados abaixo são da última atualização concluída.</Alert>}
       <Paper withBorder radius="lg" p="lg"><Stack>
         <Group justify="space-between"><div><Title order={3}>Pulso da operação</Title><Text size="sm" c="dimmed">Carteira e processos: posição atual. WhatsApp e rotinas: período selecionado.</Text></div><Badge variant="light">Dados salvos no sistema</Badge></Group>

@@ -1,4 +1,5 @@
 "use client";
+import { IntegratedOverview } from "@/modules/dashboard/integrated-overview";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Tabs, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { IconRefresh, IconSearch, IconBuildingBank, IconChecklist, IconAlertTriangle } from "@tabler/icons-react";
@@ -106,6 +107,7 @@ export function ManagementPage() {
   const snapshot = selected?.management?.snapshot;
   return <Stack gap="lg">
     <Group justify="space-between"><div><Text size="xs" fw={800} c="blue" tt="uppercase">Controle da operação</Text><Title order={2}>Gestão</Title><Text c="dimmed">Importações, vencidos, validação de saldo e conciliação por cliente.</Text></div><Button leftSection={<IconRefresh size={16} />} loading={Boolean(busy)} disabled={!data.clients.some(connected)} onClick={() => void refresh(data.clients.filter(connected))}>Atualizar clientes conectados</Button></Group>
+    <IntegratedOverview />
     {error && <Alert color="red" title="Não foi possível concluir"><Text style={{ whiteSpace: "pre-wrap" }}>{error}</Text></Alert>}
     {progress && <Alert color="blue" icon={<Loader size="xs" />}>Consultando Conta Azul: {progress}. Os dados aparecem conforme cada cliente termina.</Alert>}
     <Alert color={data.sync?.setupError ? "orange" : "blue"} icon={data.sync?.running ? <Loader size="xs" /> : <IconRefresh size={17} />} title="Atualização automática · 15 minutos">
