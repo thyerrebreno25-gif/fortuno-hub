@@ -4,6 +4,11 @@ export type OverdueItem = { id: string; description: string; dueAt: string; amou
 export type FlowSnapshot = { count: number; amount: number; items: OverdueItem[]; complete: boolean; error: string | null };
 export type AccountSnapshot = { id: string; name: string; bank: string; balance: number | null; queriedAt: string; error: string | null };
 export type ManagementSnapshot = { queriedAt: string; start: string; end: string; payable: FlowSnapshot; receivable: FlowSnapshot; accounts: AccountSnapshot[]; accountsComplete: boolean; accountsError: string | null };
+export function caBalanceSummary(snapshot?: ManagementSnapshot | null) {
+  const balances = (snapshot?.accounts || []).map((account) => account.balance).filter((balance): balance is number => balance !== null);
+  return { amount: balances.length ? Math.round(balances.reduce((sum, balance) => sum + balance, 0) * 100) / 100 : null,
+    complete: Boolean(snapshot?.accountsComplete && !snapshot.accountsError && snapshot.accounts.length && snapshot.accounts.every((account) => account.balance !== null && !account.error)) };
+}
 export type AccountCheck = { bankBalance: number | null; balanceAt: string | null; lastImportAt: string | null; pendingPayable: number | null; pendingReceivable: number | null; checkedAt: string; checkedBy: string; note: string };
 export const accountCheckInput = z.object({
   accountId: z.string().min(1).max(100), revision: z.number().int().positive(),
@@ -32,7 +37,7 @@ export function overdueItem(value: unknown, today: string): OverdueItem | null {
   return { id: String(item.id || ""), description: String(item.descricao || "Sem descrição"), dueAt, amount: Math.round(amount * 100) / 100, contact: String(contact.nome || contact.razao_social || "") };
 }
 export function balanceValidation(account: AccountSnapshot, check?: AccountCheck, now = new Date()) {
-  if (account.balance === null || !check || check.bankBalance === null || !check.balanceAt) return { status: "UNKNOWN" as const, difference: null };
+  if (account.error || account.balance === null || !check || check.bankBalance === null || !check.balanceAt) return { status: "UNKNOWN" as const, difference: null };
   const bankAt = new Date(check.balanceAt), caAt = new Date(account.queriedAt);
   if (![bankAt, caAt].every((date) => Number.isFinite(+date)) || localDay(bankAt) !== localDay(caAt) || localDay(bankAt) !== localDay(now) || Math.abs(+caAt - +bankAt) > 15 * 60000) return { status: "STALE" as const, difference: null };
   const difference = Math.round((account.balance - check.bankBalance) * 100) / 100;

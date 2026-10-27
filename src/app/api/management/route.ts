@@ -5,7 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { assistantClientAccessWhere, findAssistantClient, getMemberForModule } from "@/modules/assistant/auth";
 import { getRolePermissions } from "@/modules/permissions/permissions";
 import { accountCheckInput, record, type ManagementSnapshot } from "@/modules/management/model";
-import { fetchManagementSnapshot } from "@/modules/management/source";
+import { refreshManagementClient } from "@/modules/management/sync";
 import { notionFetch, notionToken } from "@/modules/notion/server";
 export const maxDuration = 180;
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -19,7 +19,12 @@ export async function GET() {
     if (!member || member.role === "CLIENT") return NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 });
     const permission = (await getRolePermissions(member.organizationId, member.role)).MANAGEMENT;
     const clients = await prisma.client.findMany({ where: { organizationId: member.organizationId, active: true, ...assistantClientAccessWhere(member) }, orderBy: { name: "asc" }, select: { id: true, name: true, document: true, cluster: true, operationLeader: { select: { name: true } }, contaAzulConnection: { select: { active: true, status: true } }, management: true } });
-    return NextResponse.json({ clients: clients.map(({ management, ...client }) => ({ ...client, management: management ? { ...management, refreshLeaseUntil: undefined } : null })), canEdit: permission.canEdit, canManage: permission.canManage });
+    const [schedules, worker] = await Promise.all([
+      prisma.managementSyncState.findMany({ where: { id: { startsWith: "schedule-" } }, select: { configuredAt: true, setupError: true } }),
+      prisma.managementSyncState.findUnique({ where: { id: "worker" } }),
+    ]);
+    const configured = schedules.some((schedule) => schedule.configuredAt && !schedule.setupError);
+    return NextResponse.json({ sync: { intervalMinutes: 15, configured, setupError: configured ? null : schedules.find((schedule) => schedule.setupError)?.setupError || null, lastStartedAt: worker?.lastStartedAt, lastFinishedAt: worker?.lastFinishedAt, running: Boolean(worker?.leaseUntil && worker.leaseUntil > new Date()), lastError: worker?.lastError }, clients: clients.map(({ management, ...client }) => ({ ...client, management: management ? { ...management, refreshLeaseUntil: undefined } : null })), canEdit: permission.canEdit, canManage: permission.canManage });
   } catch (error) { return failure(error); }
 }
 export async function POST(request: Request) {
@@ -30,19 +35,10 @@ export async function POST(request: Request) {
     if (!await findAssistantClient(member, clientId)) return NextResponse.json({ error: "Cliente não encontrado ou fora do seu acesso." }, { status: 404 });
     const connection = await prisma.contaAzulConnection.findFirst({ where: { organizationId: member.organizationId, clientId, active: true, status: "CONNECTED" }, select: { id: true } });
     if (!connection) return NextResponse.json({ error: "Conecte este cliente ao Conta Azul para atualizar os dados." }, { status: 400 });
-    await prisma.clientManagement.upsert({ where: { clientId }, create: { clientId, organizationId: member.organizationId }, update: {} });
-    const now = new Date();
-    const leased = await prisma.clientManagement.updateMany({ where: { clientId, organizationId: member.organizationId, OR: [{ refreshLeaseUntil: null }, { refreshLeaseUntil: { lt: now } }] }, data: { refreshLeaseUntil: new Date(+now + 180000) } });
-    if (!leased.count) return NextResponse.json({ error: "Já existe uma atualização em andamento para este cliente." }, { status: 409 });
-    try {
-      const snapshot = await fetchManagementSnapshot(clientId);
-      const errors = [snapshot.payable.error, snapshot.receivable.error, snapshot.accountsError].filter(Boolean);
-      await prisma.clientManagement.update({ where: { clientId }, data: { snapshot: json(snapshot), refreshedAt: new Date(), lastError: errors.length ? errors.join(" ") : null, refreshLeaseUntil: null } });
-      return NextResponse.json({ ok: true });
-    } catch {
-      await prisma.clientManagement.update({ where: { clientId }, data: { refreshLeaseUntil: null, lastError: "A atualização falhou. Os dados anteriores foram preservados." } });
-      return NextResponse.json({ error: "A atualização falhou. Os dados anteriores foram preservados." }, { status: 502 });
-    }
+    const result = await refreshManagementClient(clientId, member.organizationId, true);
+    if (result.status === "skipped") return NextResponse.json({ error: "Já existe uma atualização em andamento para este cliente." }, { status: 409 });
+    if (result.status === "failed") return NextResponse.json({ error: "A atualização falhou. Os dados anteriores foram preservados." }, { status: 502 });
+    return NextResponse.json({ ok: true, partial: result.status === "partial" });
   } catch (error) { return failure(error); }
 }
 export async function PATCH(request: Request) {

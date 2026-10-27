@@ -15,7 +15,7 @@ async function flow(clientId: string, kind: string, start: string, end: string, 
     for (let page = 1; page <= 20 && Date.now() < deadline; page++) {
       const query = new URLSearchParams({ pagina: String(page), tamanho_pagina: "1000", data_vencimento_de: start, data_vencimento_ate: end });
       for (const status of ["ATRASADO", "EM_ABERTO", "RECEBIDO_PARCIAL"]) query.append("status", status);
-      const body = await contaAzulRequest<unknown>(clientId, `/v1/financeiro/eventos-financeiros/${kind}/buscar?${query}`);
+      const body = await contaAzulRequest<unknown>(clientId, `/v1/financeiro/eventos-financeiros/${kind}/buscar?${query}`, { signal: AbortSignal.timeout(12000) });
       const items = rowsFrom(body);
       for (const raw of items) {
         const item = overdueItem(raw, localDay());
@@ -36,13 +36,11 @@ export async function fetchManagementSnapshot(clientId: string): Promise<Managem
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const start = "2000-01-01", end = yesterday.toISOString().slice(0, 10), deadline = Date.now() + 90000;
   // Each client's rotating refresh token must only be used sequentially.
-  const payable = await flow(clientId, "contas-a-pagar", start, end, deadline);
-  const receivable = await flow(clientId, "contas-a-receber", start, end, deadline);
   const accounts: AccountSnapshot[] = [];
   let accountsComplete = false, accountsError: string | null = null;
   try {
     for (let page = 1; page <= 10 && Date.now() < deadline; page++) {
-      const body = await contaAzulRequest<unknown>(clientId, `/v1/conta-financeira?pagina=${page}&tamanho_pagina=100&apenas_ativo=true`);
+      const body = await contaAzulRequest<unknown>(clientId, `/v1/conta-financeira?pagina=${page}&tamanho_pagina=100&apenas_ativo=true`, { signal: AbortSignal.timeout(12000) });
       const rows = rowsFrom(body);
       for (const row of rows) {
         const id = String(row.id || "");
@@ -50,7 +48,7 @@ export async function fetchManagementSnapshot(clientId: string): Promise<Managem
         const account: AccountSnapshot = { id, name: String(row.nome || "Conta sem nome"), bank: String(row.banco || row.tipo || ""), balance: null, queriedAt: new Date().toISOString(), error: null };
         if (Date.now() >= deadline) account.error = "Atualize para consultar o saldo desta conta.";
         else try {
-          const response = await contaAzulRequest<Record<string, unknown>>(clientId, `/v1/conta-financeira/${encodeURIComponent(id)}/saldo-atual`);
+          const response = await contaAzulRequest<Record<string, unknown>>(clientId, `/v1/conta-financeira/${encodeURIComponent(id)}/saldo-atual`, { signal: AbortSignal.timeout(12000) });
           account.balance = finiteMoney(response.saldo_atual);
           account.queriedAt = new Date().toISOString();
           if (account.balance === null) account.error = "Saldo não informado pelo Conta Azul.";
@@ -61,5 +59,7 @@ export async function fetchManagementSnapshot(clientId: string): Promise<Managem
       if (rows.length < 100 || total !== null && page * 100 >= total) { accountsComplete = true; break; }
     }
   } catch { accountsError = "Não foi possível consultar as contas financeiras no Conta Azul."; }
+  const payable = await flow(clientId, "contas-a-pagar", start, end, deadline);
+  const receivable = await flow(clientId, "contas-a-receber", start, end, deadline);
   return { queriedAt: now.toISOString(), start, end, payable, receivable, accounts, accountsComplete, accountsError };
 }

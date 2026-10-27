@@ -1,8 +1,15 @@
 import { expect, it } from "vitest";
-import { accountCheckInput, balanceValidation, finiteMoney, localDay, overdueItem, reconciliationStatus, type AccountCheck, type AccountSnapshot } from "./model";
+import { accountCheckInput, balanceValidation, caBalanceSummary, finiteMoney, localDay, overdueItem, reconciliationStatus, type AccountCheck, type AccountSnapshot, type ManagementSnapshot } from "./model";
 const now = new Date("2026-10-27T15:00:00Z");
 const account: AccountSnapshot = { id: "a", name: "Banco", bank: "INTER", balance: 100.1, queriedAt: now.toISOString(), error: null };
 const check: AccountCheck = { bankBalance: 100.1, balanceAt: "2026-10-27T14:55:00Z", lastImportAt: null, pendingPayable: 0, pendingReceivable: 0, checkedAt: now.toISOString(), checkedBy: "Operador", note: "" };
+it("shows actual CA balances in the overview without turning missing accounts into zero", () => {
+  expect(caBalanceSummary(null)).toEqual({ amount: null, complete: false });
+  const snapshot = { accounts: [account, { ...account, id: "b", balance: 20.05 }], accountsComplete: true, accountsError: null } as ManagementSnapshot;
+  expect(caBalanceSummary(snapshot)).toEqual({ amount: 120.15, complete: true });
+  expect(caBalanceSummary({ ...snapshot, accounts: [account, { ...account, balance: null }] })).toEqual({ amount: 100.1, complete: false });
+  expect(balanceValidation({ ...account, error: "Saldo desatualizado" }, check, now).status).toBe("UNKNOWN");
+});
 it("never turns absent balances or missing reconciliation information into zero/OK", () => {
   expect(finiteMoney(null)).toBeNull(); expect(finiteMoney("")).toBeNull(); expect(finiteMoney("0")).toBe(0);
   expect(balanceValidation({ ...account, balance: null }, check, now).status).toBe("UNKNOWN");

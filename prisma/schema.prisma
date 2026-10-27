@@ -498,6 +498,19 @@ model Client {
   @@index([cluster])
 }
 
+model ManagementSyncState {
+  id String @id
+  origin String
+  configuredAt DateTime?
+  setupError String?
+  lastStartedAt DateTime?
+  lastFinishedAt DateTime?
+  leaseUntil DateTime?
+  processed Int @default(0)
+  failed Int @default(0)
+  lastError String?
+}
+
 model ClientManagement {
   clientId String @id
   organizationId String

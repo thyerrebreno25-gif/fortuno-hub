@@ -15,6 +15,7 @@ const PUBLIC_ROUTES = [
   "/api/cron/atendimento-retention",
   "/api/cron/member-invite-reminders",
   "/api/cron/meeting-reminders",
+  "/api/cron/management",
 ];
 
 const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout"];

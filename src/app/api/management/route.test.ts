@@ -1,15 +1,16 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ member: vi.fn(), client: vi.fn(), permissions: vi.fn(), findMany: vi.fn(), connection: vi.fn(), upsert: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), transaction: vi.fn(), audit: vi.fn(), source: vi.fn() }));
+const mocks = vi.hoisted(() => ({ member: vi.fn(), client: vi.fn(), permissions: vi.fn(), findMany: vi.fn(), connection: vi.fn(), upsert: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), transaction: vi.fn(), audit: vi.fn(), source: vi.fn(), schedules: vi.fn(), worker: vi.fn() }));
 vi.mock("@/modules/assistant/auth", () => ({ getMemberForModule: mocks.member, findAssistantClient: mocks.client, assistantClientAccessWhere: () => ({ OR: [{ generalResponsibleId: "u" }] }) }));
 vi.mock("@/modules/permissions/permissions", () => ({ getRolePermissions: mocks.permissions }));
 vi.mock("@/modules/management/source", () => ({ fetchManagementSnapshot: mocks.source }));
 vi.mock("@/modules/notion/server", () => ({ notionToken: vi.fn(), notionFetch: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { client: { findMany: mocks.findMany }, contaAzulConnection: { findFirst: mocks.connection }, clientManagement: { upsert: mocks.upsert, updateMany: mocks.updateMany, findUnique: mocks.findUnique, update: mocks.update }, auditLog: { create: mocks.audit }, $transaction: mocks.transaction } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { managementSyncState: { findMany: mocks.schedules, findUnique: mocks.worker }, client: { findMany: mocks.findMany }, contaAzulConnection: { findFirst: mocks.connection }, clientManagement: { upsert: mocks.upsert, updateMany: mocks.updateMany, findUnique: mocks.findUnique, update: mocks.update }, auditLog: { create: mocks.audit }, $transaction: mocks.transaction } }));
 import { GET, PATCH, POST } from "./route";
 const request = (body: unknown, method = "POST") => new Request("https://hub.test/api/management", { method, body: JSON.stringify(body) });
 beforeEach(() => {
   vi.resetAllMocks(); mocks.member.mockResolvedValue({ organizationId: "org", userId: "u", role: "OPERATOR", user: { name: "Operador" } });
   mocks.client.mockResolvedValue({ id: "c" }); mocks.permissions.mockResolvedValue({ MANAGEMENT: { canView: true, canEdit: true, canManage: false } });
+  mocks.schedules.mockResolvedValue([]); mocks.worker.mockResolvedValue(null);
 });
 it("requires management access and always scopes the list to assigned organization clients", async () => {
   mocks.member.mockResolvedValueOnce(null); expect((await GET()).status).toBe(403);

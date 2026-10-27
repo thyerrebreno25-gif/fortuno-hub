@@ -36,6 +36,11 @@ it("lets the meeting cron reach its Bearer authentication without a user session
   expect(response.headers.get("location")).toBeNull();
   expect(response.headers.get("x-middleware-next")).toBe("1");
 });
+it("lets the management scheduler reach its Bearer check without a browser session", async () => {
+  const response = await proxy(new NextRequest("https://example.test/api/cron/management", { method: "POST" }));
+  expect(response.headers.get("location")).toBeNull();
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+});
 
 it("restores the email central for an authenticated member with MFA", async () => {
   session.user = { id: "user" };
