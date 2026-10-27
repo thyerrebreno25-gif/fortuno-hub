@@ -1,3 +1,4 @@
+import { rerouteGmailTickets } from "../routing/reprocess";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
@@ -365,6 +366,7 @@ async function ingestGmailMessage(
         .catch(() => undefined);
     }
   });
+  if (existingTicket && !existingTicket.assignedToId) await rerouteGmailTickets(connection.organizationId, existingTicket.id);
 }
 
 // A database lease serializes webhook, browser and scheduled polling across instances.

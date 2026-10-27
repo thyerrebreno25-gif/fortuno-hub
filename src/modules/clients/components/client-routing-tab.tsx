@@ -22,6 +22,8 @@ type MemberOption = {
 };
 
 type RoutingClient = {
+  notionSyncedAt?: string | null;
+  notionSquad?: string | null;
   id: string;
   serviceSquad: "SQUAD_1" | "SQUAD_2" | null;
   operationLeaderId: string | null;
@@ -192,6 +194,8 @@ export function ClientRoutingTab({ clientId }: Props) {
       <Stack gap={4}>
         <Group gap="xs">
           <Text fw={800}>Equipe e distribuição de e-mails</Text>
+          {routing.notionSquad && <Badge variant="light">{routing.notionSquad}</Badge>}
+          {routing.notionSyncedAt && <Badge color="green" variant="light">Sincronizado com Notion</Badge>}
           {routing.serviceSquad && (
             <Badge variant="light">
               {routing.serviceSquad === "SQUAD_1"

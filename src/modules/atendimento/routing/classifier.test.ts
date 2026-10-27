@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const database = vi.hoisted(() => ({
+  findMember: vi.fn(),
   findClients: vi.fn(),
   findIdentities: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    organizationMember: { findFirst: database.findMember },
     client: { findMany: database.findClients },
     clientEmailIdentity: { findMany: database.findIdentities },
   },
@@ -30,6 +32,7 @@ const abismoClient = {
 
 describe("classificação e roteamento do Atendimento", () => {
   beforeEach(() => {
+    database.findMember.mockResolvedValue({ userId: "member" });
     database.findClients.mockReset();
     database.findIdentities.mockReset();
     database.findIdentities.mockResolvedValue([]);
@@ -85,5 +88,30 @@ describe("classificação e roteamento do Atendimento", () => {
     expect(decision.area).toBe("ACCOUNTS_PAYABLE");
     expect(decision.isSpam).toBe(false);
     expect(decision.assignedToId).toBeNull();
+  });
+  it("routes issued invoices to receivables even when a boleto is mentioned", async () => {
+    database.findClients.mockResolvedValue([abismoClient]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "financeiro@cliente.com", subject: "Abismo Anhumas: boleto emitido para cobrar cliente", textBody: "Segue nota fiscal emitida e boleto para recebimento." });
+    expect(result.clientId).toBe(abismoClient.id); expect(result.area).toBe("ACCOUNTS_RECEIVABLE"); expect(result.assignedToId).toBe("user-ar");
+  });
+  it("keeps ambiguous payable/receivable matters unassigned for review", async () => {
+    database.findClients.mockResolvedValue([abismoClient]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Abismo Anhumas", textBody: "Contas a pagar e contas a receber." });
+    expect(result.area).toBe("UNKNOWN"); expect(result.assignedToId).toBeNull(); expect(result.isSpam).toBe(false);
+  });
+  it("does not concatenate unrelated numbers into a client's CNPJ", async () => {
+    database.findClients.mockResolvedValue([abismoClient]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Comunicado", textBody: "Pedido 12345678. Código de acesso 000190." });
+    expect(result.clientId).toBeNull();
+  });
+  it("does not choose between equally matching companies", async () => {
+    database.findClients.mockResolvedValue([abismoClient, { ...abismoClient, id: "other" }]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Abismo Anhumas: boleto", textBody: "Pagamento" });
+    expect(result.clientId).toBeNull(); expect(result.assignedToId).toBeNull();
+  });
+  it("ignores a quoted old client conversation", async () => {
+    database.findClients.mockResolvedValue([abismoClient]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Outra demanda", textBody: "Vamos conversar amanhã.\n> Abismo Anhumas: contas a pagar" });
+    expect(result.clientId).toBeNull();
   });
 });

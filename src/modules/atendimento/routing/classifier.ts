@@ -46,7 +46,7 @@ const normalize = (value: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}@._ -]+/gu, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -71,6 +71,10 @@ const AP_TERMS: Array<[string, number]> = [
 
 const AR_TERMS: Array<[string, number]> = [
   ["contas a receber", 14],
+  ["boleto emitido", 18],
+  ["cobrar cliente", 18],
+  ["nota fiscal emitida", 16],
+  ["comprovante de recebimento", 18],
   ["recebimento", 7],
   ["receber", 6],
   ["cobranca", 4],
@@ -117,7 +121,7 @@ function scoreTerms(text: string, terms: Array<[string, number]>) {
   const hits: string[] = [];
 
   for (const [term, weight] of terms) {
-    if (text.includes(term)) {
+    if ((` ${text} `).includes(` ${term.trim()} `)) {
       score += weight;
       hits.push(term);
     }
@@ -139,15 +143,15 @@ function aliasesFor(client: ClientForRouting) {
 export async function classifyAndRouteEmail(
   input: Input,
 ): Promise<RoutingDecision> {
-  const sender = normalize(input.senderEmail);
+  const sender = input.senderEmail.trim().toLowerCase();
   const recipients = new Set(
-    (input.recipientEmails || []).map(normalize).filter(Boolean),
+    (input.recipientEmails || []).map((email) => email.trim().toLowerCase()).filter(Boolean),
   );
   const subject = normalize(input.subject);
   const body = normalize(
     [
-      input.textBody,
-      input.htmlBody?.replace(/<[^>]+>/g, " "),
+      input.textBody.split(/\n(?:Em .{5,120}escreveu:|On .{5,120}wrote:|>)/i)[0]?.slice(0, 30000),
+      !input.textBody.trim() ? input.htmlBody?.replace(/<blockquote\b[^>]*>[\s\S]*?<\/blockquote>/gi, " ").replace(/<[^>]+>/g, " ").slice(0, 30000) : "",
       ...(input.attachmentNames || []),
     ].join(" "),
   );
@@ -191,7 +195,7 @@ export async function classifyAndRouteEmail(
   const identityMap = new Map<string, Set<string>>();
 
   for (const identity of identities) {
-    const email = normalize(identity.normalizedEmail);
+    const email = identity.normalizedEmail.trim().toLowerCase();
     const clientIds = identityMap.get(email) || new Set<string>();
     clientIds.add(identity.clientId);
     identityMap.set(email, clientIds);
@@ -206,7 +210,7 @@ export async function classifyAndRouteEmail(
         client.operationalEmail || "",
         ...(client.operationalEmailCc || "").split(","),
       ]
-        .map(normalize)
+        .map((email) => email.trim().toLowerCase())
         .filter(Boolean);
 
       const identityClients = identityMap.get(sender);
@@ -229,25 +233,28 @@ export async function classifyAndRouteEmail(
         reasons.push("destinatário conhecido");
       }
 
+      let aliasScore = 0;
       for (const rawAlias of aliasesFor(client)) {
         const alias = normalize(rawAlias);
-        if (!alias || alias.length < 3) continue;
+        if (!alias || alias.length < 5) continue;
 
-        if (subject.includes(alias)) {
-          score += 38;
+        if ((` ${subject} `).includes(` ${alias} `)) {
+          aliasScore = Math.max(aliasScore, 38);
           reasons.push(`nome/alias no assunto: ${rawAlias}`);
-        } else if (body.includes(alias)) {
-          score += 25;
+        } else if ((` ${body} `).includes(` ${alias} `)) {
+          aliasScore = Math.max(aliasScore, 25);
           reasons.push(`nome/alias no corpo/anexo: ${rawAlias}`);
         }
       }
 
+      score += aliasScore;
       const document = compactDocument(client.document);
-      const compactText = fullText.replace(/\D/g, "");
+      const rawText = fullText;
+      const documentFound = document.length >= 11 && new RegExp(`(?<!\\d)${document.split("").join("[.\\s/\\-]*")}(?!\\d)`).test(rawText);
 
       if (
         document.length >= 11 &&
-        compactText.includes(document)
+        documentFound
       ) {
         score += 55;
         reasons.push("CNPJ/CPF encontrado no conteúdo");
@@ -273,6 +280,8 @@ export async function classifyAndRouteEmail(
 
   const ap = scoreTerms(fullText, AP_TERMS);
   const ar = scoreTerms(fullText, AR_TERMS);
+  ap.score += scoreTerms(subject, AP_TERMS).score;
+  ar.score += scoreTerms(subject, AR_TERMS).score;
   const spam = scoreTerms(fullText, SPAM_TERMS);
 
   let area: RoutingArea = "GENERAL";
@@ -360,6 +369,7 @@ export async function classifyAndRouteEmail(
       null;
   }
 
+  if (assignedToId && !await prisma.organizationMember.findFirst({ where: { organizationId: input.organizationId, userId: assignedToId, role: { not: "CLIENT" } }, select: { userId: true } })) assignedToId = null;
   const clientConfidence = Math.min(98, 55 + best.score);
 
   const areaConfidence =
@@ -376,7 +386,7 @@ export async function classifyAndRouteEmail(
 
   return {
     clientId: client.id,
-    assignedToId: confidence >= 70 ? assignedToId : null,
+    assignedToId: confidence >= 70 && area !== "UNKNOWN" ? assignedToId : null,
     area,
     squad: client.serviceSquad,
     confidence,

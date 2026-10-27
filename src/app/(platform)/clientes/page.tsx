@@ -1,5 +1,6 @@
 "use client";
 
+import { NotionClientSyncControl } from "@/modules/notion/client-sync-control";
 import type { Route } from "next";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -78,6 +79,10 @@ type Client = {
   document: string;
   active: boolean;
   createdAt: string;
+  notionSquad?: string | null;
+  payableResponsible?: { name: string | null; email: string } | null;
+  receivableResponsible?: { name: string | null; email: string } | null;
+  operationLeader?: { name: string | null; email: string } | null;
   acquirers: ClientAcquirer[];
   categoryMappings: ClientCategoryMapping[];
   banks: Array<{ id: string; active: boolean }>;
@@ -893,6 +898,7 @@ export default function ClientesPage() {
             <Title order={2}>Clientes</Title>
           </Stack>
 
+          <Group>{clientPermission.canEdit && <NotionClientSyncControl onSynced={() => setReloadKey((key) => key + 1)} />}
           {clientPermission.canCreate && (
             <Button
               leftSection={<IconPlus size={18} />}
@@ -900,7 +906,7 @@ export default function ClientesPage() {
             >
               Novo cliente
             </Button>
-          )}
+          )}</Group>
         </Group>
 
         <SimpleGrid
@@ -1055,6 +1061,7 @@ export default function ClientesPage() {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Cliente</Table.Th>
+                      <Table.Th>Pagar</Table.Th><Table.Th>Receber</Table.Th><Table.Th>Supervisão / Squad</Table.Th>
                       <Table.Th>Adquirentes</Table.Th>
                       <Table.Th>Categorias</Table.Th>
                       <Table.Th>Importações</Table.Th>
@@ -1082,6 +1089,9 @@ export default function ClientesPage() {
                           </Stack>
                         </Table.Td>
 
+                        <Table.Td>{client.payableResponsible?.name || client.payableResponsible?.email || "Não definido"}</Table.Td>
+                        <Table.Td>{client.receivableResponsible?.name || client.receivableResponsible?.email || "Não definido"}</Table.Td>
+                        <Table.Td><Text size="sm">{client.operationLeader?.name || client.operationLeader?.email || "Não definido"}</Text><Text size="xs" c="dimmed">{client.notionSquad || "—"}</Text></Table.Td>
                         <Table.Td>
                           <Group gap={6}>
                             {client.acquirers.length === 0 ? (

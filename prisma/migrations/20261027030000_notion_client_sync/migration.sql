@@ -1,0 +1,9 @@
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSourceId" TEXT;
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSyncEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSyncConfig" JSONB;
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSyncState" JSONB;
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSyncReport" JSONB;
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSyncAt" TIMESTAMP(3);
+ALTER TABLE "NotionConnection" ADD COLUMN IF NOT EXISTS "clientSyncLeaseUntil" TIMESTAMP(3);
+ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "notionSquad" TEXT;
+ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "notionSyncedAt" TIMESTAMP(3);

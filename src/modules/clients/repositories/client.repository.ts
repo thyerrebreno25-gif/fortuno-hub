@@ -112,6 +112,9 @@ export const clientRepository = {
         createdAt: "desc",
       },
       include: {
+        payableResponsible: { select: { name: true, email: true } },
+        receivableResponsible: { select: { name: true, email: true } },
+        operationLeader: { select: { name: true, email: true } },
         acquirers: {
           where: {
             active: true,

@@ -13,6 +13,7 @@ if (!connectionString) {
     await client.query("SET LOCAL lock_timeout = '20s'");
     await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-notion-v1'))");
     await client.query(await readFile(new URL("../prisma/migrations/20261026010000_notion/migration.sql", import.meta.url), "utf8"));
+    await client.query(await readFile(new URL("../prisma/migrations/20261027030000_notion_client_sync/migration.sql", import.meta.url), "utf8"));
     await client.query("COMMIT");
     console.log("Notion storage ready.");
   } catch (error) {

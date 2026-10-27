@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ prisma: { emailConnection: m.connection, managementSyncState: m.state, serviceMessage: m.message, serviceTicket: m.ticket, $transaction: m.transaction } }));
 vi.mock("./client", () => ({ getValidAccessToken: m.token, gmailFetch: m.fetch, GmailApiError: class extends Error { constructor(public status: number, message: string) { super(message); } } }));
 vi.mock("../routing/classifier", () => ({ classifyAndRouteEmail: m.route }));
+vi.mock("../routing/reprocess", () => ({ rerouteGmailTickets: vi.fn() }));
 import { GmailApiError } from "./client";
 import { pollGmailConnections, syncGmailConnection } from "./sync";
 const connection = { id: "box", organizationId: "org", active: true, email: "mail@test.com", externalId: "10", encryptedAccessToken: null, encryptedRefreshToken: null, tokenExpiresAt: null, metadata: { inboxBackfillComplete: true } };

@@ -42,7 +42,7 @@ export async function GET() {
         payableResponsibleId: true,
         receivableResponsibleId: true,
         generalResponsibleId: true,
-        serviceAliases: true,
+        serviceAliases: true, notionSyncedAt: true, notionSquad: true,
         operationLeader: {
           select: { id: true, name: true, email: true },
         },

@@ -357,6 +357,14 @@ model NotionConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientSourceId String?
+  clientSyncEnabled Boolean @default(false)
+  clientSyncConfig Json?
+  clientSyncState Json?
+  clientSyncReport Json?
+  clientSyncAt DateTime?
+  clientSyncLeaseUntil DateTime?
+
 }
 
 model User {
@@ -455,6 +463,8 @@ model Client {
   payableResponsibleId    String?
   receivableResponsibleId String?
   generalResponsibleId    String?
+  notionSquad             String?
+  notionSyncedAt          DateTime?
   serviceAliases          String?
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt

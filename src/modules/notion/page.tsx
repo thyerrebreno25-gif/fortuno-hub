@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Badge, Button, Group, Loader, Modal, Paper, PasswordInput, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import styles from "./notion.module.css";
+import { NotionClientSyncControl } from "./client-sync-control";
 import { NotionBrowser } from "./browser";
 
 type Status = { organizationId?: string; connection: { botName: string; workspaceName: string; checkedAt: string } | null; canManage: boolean; configured: boolean };
@@ -49,6 +50,7 @@ export function NotionPage() {
       </>}
       {!status.canManage && !status.connection && <Alert color="blue">Peça a um gestor para conectar o Notion.</Alert>}
     </Stack></Paper>}
+    {status?.connection && status.canManage && <NotionClientSyncControl />}
     {status?.connection && <NotionBrowser key={status.connection.checkedAt} storageKey={`fortuno-notion-base:${status.organizationId || status.connection.workspaceName}`} />}
     <Modal opened={connectOpen} onClose={() => { if (!busy) { setConnectOpen(false); setToken(""); } }} title="Conectar Notion" centered><Stack><Text size="sm">Cole o token da integração interna. Ele será enviado ao servidor do Hub, validado no Notion e armazenado criptografado. Não será exibido novamente.</Text><PasswordInput label="Token da integração" autoComplete="new-password" value={token} onChange={(event) => setToken(event.currentTarget.value)} disabled={busy} /><Alert color="blue">Os perfis autorizados neste módulo poderão consultar o conteúdo compartilhado com esta integração.</Alert><Button loading={busy} disabled={token.trim().length < 20} onClick={() => void connect()}>Validar e conectar</Button></Stack></Modal>
     <Modal opened={disconnectOpen} onClose={() => !busy && setDisconnectOpen(false)} title="Desconectar Notion" centered><Stack><Text size="sm">A credencial será removida do Hub. As páginas e bases do Notion serão preservadas.</Text><Button color="red" loading={busy} onClick={() => void disconnect()}>Desconectar integração</Button></Stack></Modal>

@@ -1,3 +1,4 @@
+import { responsibleForProcess } from "./responsible";
 import { prisma } from "@/lib/prisma";
 import { activityInclude, createEvent } from "@/modules/operations/activity";
 
@@ -80,7 +81,7 @@ export async function generateActivityForConfiguration(configurationId: string, 
 
   let activity;
   try {
-    activity=await prisma.operationActivity.create({data:{organizationId:configuration.client.organizationId,clientId:configuration.clientId,processId:configuration.processId,clientProcessId:configuration.id,responsibleId:configuration.responsibleId,team:configuration.team,scheduledDate,title:configuration.process.name,department:configuration.process.department,description:configuration.process.description,dueAt:withDueTime(scheduledDate,cfg.dueTime),legalDate:scheduledDate,competence:`${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth()+1).padStart(2,"0")}`,subjectToFine:configuration.process.subjectToFine,priority:configuration.priority,clientCluster:configuration.client.cluster,checklistItems:{create:configuration.process.checklistTemplates.map(i=>({templateId:i.id,title:i.title,description:i.description,mandatory:i.mandatory,requiresComment:i.requiresComment,requiresAttachment:i.requiresAttachment,allowedFileTypes:i.allowedFileTypes,allowDisregard:i.allowDisregard,position:i.position}))}},include:activityInclude});
+    activity=await prisma.operationActivity.create({data:{organizationId:configuration.client.organizationId,clientId:configuration.clientId,processId:configuration.processId,clientProcessId:configuration.id,responsibleId:configuration.responsibleId || responsibleForProcess(configuration.client, configuration.process),team:configuration.team,scheduledDate,title:configuration.process.name,department:configuration.process.department,description:configuration.process.description,dueAt:withDueTime(scheduledDate,cfg.dueTime),legalDate:scheduledDate,competence:`${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth()+1).padStart(2,"0")}`,subjectToFine:configuration.process.subjectToFine,priority:configuration.priority,clientCluster:configuration.client.cluster,checklistItems:{create:configuration.process.checklistTemplates.map(i=>({templateId:i.id,title:i.title,description:i.description,mandatory:i.mandatory,requiresComment:i.requiresComment,requiresAttachment:i.requiresAttachment,allowedFileTypes:i.allowedFileTypes,allowDisregard:i.allowDisregard,position:i.position}))}},include:activityInclude});
   } catch(error) {
     if((error as {code?:string})?.code!=="P2002") throw error;
     activity=await prisma.operationActivity.findUnique({where:{clientProcessId_scheduledDate:{clientProcessId:configuration.id,scheduledDate}},include:activityInclude});

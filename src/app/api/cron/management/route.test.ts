@@ -3,6 +3,7 @@ const mocks = vi.hoisted(() => ({ after: vi.fn(), sync: vi.fn() }));
 vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: mocks.after }));
 vi.mock("@/modules/management/sync", () => ({ runScheduledManagementSync: mocks.sync }));
 vi.mock("@/modules/atendimento/gmail/sync", () => ({ pollGmailConnections: vi.fn() }));
+vi.mock("@/modules/notion/client-sync", () => ({ runNotionClientSync: vi.fn().mockResolvedValue(undefined) }));
 import { POST } from "./route";
 beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRON_SECRET", "test-secret"); vi.stubEnv("INTEGRATION_TOKEN_ENCRYPTION_KEY", ""); vi.stubEnv("GMAIL_TOKEN_ENCRYPTION_KEY", ""); });
 afterEach(() => vi.unstubAllEnvs());

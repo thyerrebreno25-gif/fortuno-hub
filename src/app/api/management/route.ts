@@ -18,7 +18,7 @@ export async function GET() {
     const member = await getMemberForModule("MANAGEMENT");
     if (!member || member.role === "CLIENT") return NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 });
     const permission = (await getRolePermissions(member.organizationId, member.role)).MANAGEMENT;
-    const clients = await prisma.client.findMany({ where: { organizationId: member.organizationId, active: true, ...assistantClientAccessWhere(member) }, orderBy: { name: "asc" }, select: { id: true, name: true, document: true, cluster: true, operationLeader: { select: { name: true } }, contaAzulConnection: { select: { active: true, status: true } }, management: true } });
+    const clients = await prisma.client.findMany({ where: { organizationId: member.organizationId, active: true, ...assistantClientAccessWhere(member) }, orderBy: { name: "asc" }, select: { id: true, name: true, document: true, cluster: true, notionSquad: true, payableResponsible: { select: { name: true } }, receivableResponsible: { select: { name: true } }, operationLeader: { select: { name: true } }, contaAzulConnection: { select: { active: true, status: true } }, management: true } });
     const [schedules, worker] = await Promise.all([
       prisma.managementSyncState.findMany({ where: { id: { startsWith: "schedule-" } }, select: { configuredAt: true, setupError: true } }),
       prisma.managementSyncState.findUnique({ where: { id: "worker" } }),
