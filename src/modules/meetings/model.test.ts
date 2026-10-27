@@ -23,3 +23,8 @@ it("does not grant a team leader editing rights over an unrelated organizer", ()
   expect(editableMeeting({ userId: "a", role: "OPERATOR", isTeamLeader: true }, { createdById: "b" })).toBe(false);
   expect(editableMeeting({ userId: "a", role: "OPERATOR", isTeamLeader: false }, { createdById: "a" })).toBe(true);
 });
+
+it("normalizes guest emails and rejects invalid external addresses", () => {
+  expect(meetingInput.parse({ ...input, externalEmails: [" Cliente@Example.com ", "cliente@example.com"] }).externalEmails).toEqual(["cliente@example.com"]);
+  expect(meetingInput.safeParse({ ...input, externalEmails: ["email invalido"] }).success).toBe(false);
+});

@@ -17,6 +17,8 @@ if (!connectionString) {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-meetings-calendar-v1'))");
     const sql = await readFile(new URL("../prisma/migrations/20261026000000_meetings_calendar/migration.sql", import.meta.url), "utf8");
     await client.query(sql.replace(/^\uFEFF/, ""));
+    const guestsSql = await readFile(new URL("../prisma/migrations/20261026020000_meeting_guests/migration.sql", import.meta.url), "utf8");
+    await client.query(guestsSql);
     await client.query("COMMIT");
     console.log("Meetings and calendar storage ready.");
   } catch (error) {

@@ -29,7 +29,7 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
     await tx.meetingParticipant.createMany({ data: participantIds.map((userId) => ({ meetingId: meeting.id, userId })), skipDuplicates: true });
     await tx.teamCalendarEvent.updateMany({ where: { meetingId: meeting.id, actionItemId: null, userId: { notIn: participantIds } }, data: { status: "CANCELLED", googleSyncStatus: "PENDING", revision: { increment: 1 } } });
     for (const userId of participantIds) {
-      const event = { title: meeting.title, description: meeting.agenda, startsAt: meeting.startsAt, endsAt: meeting.endsAt, location: meeting.location, status: meeting.status === "CANCELLED" ? "CANCELLED" : meeting.status === "COMPLETED" ? "COMPLETED" : "ACTIVE", googleSyncStatus: "PENDING" };
+      const event = { title: meeting.title, description: meeting.agenda, startsAt: meeting.startsAt, endsAt: meeting.endsAt, location: [meeting.location, meeting.meetLink].filter(Boolean).join("\n"), status: meeting.status === "CANCELLED" ? "CANCELLED" : meeting.status === "COMPLETED" ? "COMPLETED" : "ACTIVE", googleSyncStatus: "PENDING" };
       await tx.teamCalendarEvent.upsert({ where: { userId_sourceKey: { userId, sourceKey: `meeting:${meeting.id}` } }, create: { ...event, organizationId: member.organizationId, userId, sourceKey: `meeting:${meeting.id}`, meetingId: meeting.id }, update: { ...event, revision: { increment: 1 } } });
     }
     if (meeting.status === "CANCELLED") await tx.teamCalendarEvent.updateMany({ where: { meetingId: meeting.id }, data: { status: "CANCELLED", googleSyncStatus: "PENDING", revision: { increment: 1 } } });

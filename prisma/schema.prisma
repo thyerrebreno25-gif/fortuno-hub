@@ -1862,6 +1862,9 @@ model TeamMeeting {
   createdById String
   title String
   type String @default("Semanal de squad")
+  externalEmails String[] @default([])
+  generateMeet Boolean @default(false)
+  meetLink String @default("")
   startsAt DateTime
   endsAt DateTime
   location String @default("")

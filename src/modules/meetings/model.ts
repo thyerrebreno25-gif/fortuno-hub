@@ -1,12 +1,14 @@
 import { z } from "zod";
 
-export const meetingTypes = ["Daily", "Semanal de squad", "Planejamento", "Retrospectiva", "Alinhamento", "Reunião com cliente"];
+export const meetingTypes = ["Alinhamento operacional (equipe)", "Reunião operacional (clientes)", "Reunião interna", "Reunião externa", "Daily", "Semanal de squad", "Planejamento", "Retrospectiva", "Acompanhamento de metas", "Onboarding de cliente", "Reunião comercial", "Reunião de diretoria"];
 const date = z.string().datetime({ offset: true }).transform((value) => new Date(value));
 export const meetingInput = z.object({
   title: z.string().trim().min(3).max(180), type: z.string().trim().min(2).max(100),
   startsAt: date, endsAt: date,
   location: z.string().trim().max(1000).default(""), agenda: z.string().max(20000).default(""), notes: z.string().max(30000).default(""),
   participantIds: z.array(z.string().min(1).max(100)).min(1).max(100).transform((ids) => [...new Set(ids)]),
+  externalEmails: z.array(z.string().trim().toLowerCase().email().max(254)).max(100).default([]).transform((emails) => [...new Set(emails)]),
+  generateMeet: z.boolean().default(false),
   status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]).default("SCHEDULED"),
 }).refine((value) => value.endsAt > value.startsAt, { message: "O término deve ser depois do início.", path: ["endsAt"] });
 export const actionInput = z.object({ title: z.string().trim().min(2).max(300), description: z.string().max(5000).default(""), responsibleId: z.string().min(1).max(100), dueAt: date });

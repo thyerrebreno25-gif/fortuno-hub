@@ -10,6 +10,9 @@ export function googleConfigured() {
 export function redirectUri(request: Request) {
   return process.env.GOOGLE_CALENDAR_REDIRECT_URI?.trim() || `${new URL(process.env.NEXT_PUBLIC_APP_URL || request.url).origin}/api/calendar/google/callback`;
 }
+export function safeMeetLink(value: unknown) {
+  try { const url = new URL(typeof value === "string" ? value : ""); return url.protocol === "https:" && url.hostname === "meet.google.com" ? url.href : ""; } catch { return ""; }
+}
 export function googleEventId(id: string) { return `fh${createHash("sha256").update(id).digest("hex")}`; }
 export function googleEventBody(event: Pick<TeamCalendarEvent, "id" | "title" | "description" | "startsAt" | "endsAt" | "location" | "status" | "meetingId">) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -60,9 +63,11 @@ export async function reconcileGoogleDeletions(organizationId: string, userId: s
     }));
   }
 }
-export async function syncCalendarEvents(filter: { organizationId?: string; userId?: string } = {}) {
+export async function syncCalendarEvents(filter: { organizationId?: string; userId?: string; meetingId?: string } = {}) {
   if (!googleConfigured()) return { synced: 0, pending: true };
-  const events = await prisma.teamCalendarEvent.findMany({ where: { ...filter, googleSyncStatus: { in: ["PENDING", "ERROR"] } }, orderBy: { updatedAt: "asc" }, take: 40 });
+  const events = await prisma.teamCalendarEvent.findMany({ where: { ...filter, googleSyncStatus: { in: ["PENDING", "ERROR"] } }, include: { meeting: true }, orderBy: { updatedAt: "asc" }, take: 40 });
+  // Generate the shared call before syncing other participants.
+  events.sort((a, b) => Number(b.meeting?.createdById === b.userId) - Number(a.meeting?.createdById === a.userId));
   let synced = 0;
   const deadline = Date.now() + 45000;
   const connections = new Map<string, { connection: GoogleCalendarConnection; token: string } | null>();
@@ -79,26 +84,44 @@ export async function syncCalendarEvents(filter: { organizationId?: string; user
       const id = event.googleEventId || googleEventId(event.id);
       const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(auth.connection.calendarId)}/events`;
       const headers = { Authorization: `Bearer ${auth.token}`, "Content-Type": "application/json" };
+      const meeting = event.meeting;
+      const organizer = Boolean(meeting && !event.actionItemId && event.userId === meeting.createdById);
+      const updates = organizer ? "all" : "none";
+      const query = `sendUpdates=${updates}&conferenceDataVersion=1`;
       let response;
       if (event.status === "CANCELLED") {
-        response = await fetch(`${base}/${id}?sendUpdates=none`, { method: "DELETE", headers, signal: AbortSignal.timeout(15000) });
+        response = await fetch(`${base}/${id}?${query}`, { method: "DELETE", headers, signal: AbortSignal.timeout(15000) });
         if (![200, 204, 404, 410].includes(response.status)) throw new Error("O Google não confirmou o cancelamento.");
       } else {
         if (event.googleEventId) {
           const remote = await readGoogleEvent(base, event.googleEventId, auth.token);
           if (remote.cancelled) { await cancelFromGoogle(event); continue; }
         }
-        const body = googleEventBody(event);
-        response = await fetch(`${base}/${id}?sendUpdates=none`, { method: "PUT", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+        const body = { ...googleEventBody({ ...event, location: meeting?.meetLink && !event.actionItemId ? [meeting.location, meeting.meetLink].filter(Boolean).join("\n") : event.location }), ...(organizer && meeting ? { attendees: meeting.externalEmails.map((email) => ({ email })), ...(meeting.generateMeet && !meeting.meetLink ? { conferenceData: { createRequest: { requestId: googleEventId(meeting.id), conferenceSolutionKey: { type: "hangoutsMeet" } } } } : {}) } : {}) };
+        response = await fetch(`${base}/${id}?${query}`, { method: organizer ? "PATCH" : "PUT", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
         if (!event.googleEventId && (response.status === 404 || response.status === 410)) {
-          response = await fetch(`${base}?sendUpdates=none`, { method: "POST", headers, body: JSON.stringify({ ...body, id }), signal: AbortSignal.timeout(15000) });
-          if (response.status === 409) response = await fetch(`${base}/${id}?sendUpdates=none`, { method: "PUT", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+          response = await fetch(`${base}?${query}`, { method: "POST", headers, body: JSON.stringify({ ...body, id }), signal: AbortSignal.timeout(15000) });
+          if (response.status === 409) response = await fetch(`${base}/${id}?${query}`, { method: organizer ? "PATCH" : "PUT", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
         }
         if (event.googleEventId && response.status === 410) { await cancelFromGoogle(event); continue; }
         if (response.status === 401) await prisma.googleCalendarConnection.update({ where: { id: auth.connection.id }, data: { status: "RECONNECT", lastError: "Autorize o Google Agenda novamente." } });
         if (!response.ok) throw new Error("O Google não confirmou a sincronização.");
       }
-      const updated = await prisma.teamCalendarEvent.updateMany({ where: { id: event.id, revision: event.revision }, data: { googleEventId: id, googleSyncStatus: "SYNCED", syncError: null } });
+      let waitingForMeet = false;
+      if (organizer && meeting && event.status !== "CANCELLED" && meeting.generateMeet && !meeting.meetLink) {
+        const remote = await response.clone().json();
+        const link = safeMeetLink(remote.hangoutLink) || safeMeetLink(remote.conferenceData?.entryPoints?.find((point: { entryPointType?: string }) => point.entryPointType === "video")?.uri);
+        if (link) {
+          const changed = await prisma.teamMeeting.updateMany({ where: { id: meeting.id, organizationId: event.organizationId, revision: meeting.revision }, data: { meetLink: link } });
+          if (changed.count) {
+            await prisma.teamCalendarEvent.updateMany({ where: { meetingId: meeting.id, actionItemId: null, id: { not: event.id } }, data: { location: [meeting.location, link].filter(Boolean).join("\n"), googleSyncStatus: "PENDING", revision: { increment: 1 } } });
+          }
+        } else {
+          if (remote.conferenceData?.createRequest?.status?.statusCode === "failure") throw new Error("O Google não conseguiu gerar o Meet. Confira se a conta permite videochamadas.");
+          waitingForMeet = true;
+        }
+      }
+      const updated = await prisma.teamCalendarEvent.updateMany({ where: { id: event.id, revision: event.revision }, data: { googleEventId: id, googleSyncStatus: waitingForMeet ? "PENDING" : "SYNCED", syncError: null } });
       // If an edit won the race while the HTTP call was running, replay its newer
       // state instead of leaving Google with a stale version marked as synced.
       if (!updated.count) await prisma.teamCalendarEvent.updateMany({ where: { id: event.id, revision: { gt: event.revision } }, data: { googleSyncStatus: "PENDING" } });

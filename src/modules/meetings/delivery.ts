@@ -15,7 +15,7 @@ export async function deliverMeetingEmails(organizationId?: string) {
   const key = process.env.RESEND_API_KEY?.trim();
   if (!key) return { sent: 0, configured: false };
   const now = new Date();
-  const rows = await prisma.meetingDelivery.findMany({ where: { ...(organizationId ? { organizationId } : {}), emailStatus: "PENDING", attempts: { lt: 8 }, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, include: { user: { select: { email: true } }, actionItem: { select: { completedAt: true, responsibleId: true } }, meeting: { select: { status: true } } }, orderBy: { createdAt: "asc" }, take: 40 });
+  const rows = await prisma.meetingDelivery.findMany({ where: { ...(organizationId ? { organizationId } : {}), emailStatus: "PENDING", attempts: { lt: 8 }, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, include: { user: { select: { email: true } }, actionItem: { select: { completedAt: true, responsibleId: true } }, meeting: { select: { status: true, meetLink: true } } }, orderBy: { createdAt: "asc" }, take: 40 });
   let sent = 0;
   const deadline = Date.now() + 45000;
   for (const row of rows) {
@@ -25,7 +25,7 @@ export async function deliverMeetingEmails(organizationId?: string) {
     if (!claim.count) continue;
     try {
       const link = process.env.NEXT_PUBLIC_APP_URL ? new URL(`/reunioes?meeting=${encodeURIComponent(row.meetingId)}`, process.env.NEXT_PUBLIC_APP_URL).href : "";
-      const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": row.dedupeKey }, body: JSON.stringify({ from: resolvePlatformEmailFrom([process.env.MEETINGS_FROM_EMAIL, process.env.OPERATIONS_FROM_EMAIL]), to: [row.user.email], subject: row.title, text: `${row.body}\n\n${link}` }), signal: AbortSignal.timeout(15000) });
+      const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": row.dedupeKey }, body: JSON.stringify({ from: resolvePlatformEmailFrom([process.env.MEETINGS_FROM_EMAIL, process.env.OPERATIONS_FROM_EMAIL]), to: [row.user.email], subject: row.title, text: `${row.body}${row.meeting.meetLink ? `\nGoogle Meet: ${row.meeting.meetLink}` : ""}\n\n${link}` }), signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw new Error(`O provedor de e-mail recusou o envio (${response.status}).`);
       await prisma.meetingDelivery.update({ where: { id: row.id }, data: { emailStatus: "SENT", sentAt: new Date(), lastError: null, leaseUntil: null } });
       sent++;

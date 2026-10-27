@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const db = vi.hoisted(() => ({ teamCalendarEvent: { findMany: vi.fn(), updateMany: vi.fn() }, googleCalendarConnection: { findUnique: vi.fn(), update: vi.fn() } }));
+const db = vi.hoisted(() => ({ teamMeeting: { updateMany: vi.fn() }, teamCalendarEvent: { findMany: vi.fn(), updateMany: vi.fn() }, googleCalendarConnection: { findUnique: vi.fn(), update: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "token", encryptIntegrationSecret: (value: string) => value }));
 import { googleEventBody, googleEventId, reconcileGoogleDeletions, syncCalendarEvents } from "./google-calendar";
@@ -46,4 +46,25 @@ it("never recreates a previously synchronized event deleted in Google", async ()
   await syncCalendarEvents();
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(db.teamCalendarEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "CANCELLED" }) }));
+});
+
+it("creates a single Meet on the organizer event and invites external emails", async () => {
+  const meeting = { id: "m", createdById: "u", revision: 1, location: "Sala", generateMeet: true, meetLink: "", externalEmails: ["convidado@example.com"] };
+  db.teamCalendarEvent.findMany.mockResolvedValue([{ ...event, actionItemId: null, meeting }]);
+  db.teamMeeting.updateMany.mockResolvedValue({ count: 1 });
+  const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 404 })).mockResolvedValueOnce(new Response(JSON.stringify({ hangoutLink: "https://meet.google.com/abc-defg-hij" })));
+  vi.stubGlobal("fetch", fetchMock);
+  await syncCalendarEvents({ organizationId: "org", meetingId: "m" });
+  const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+  expect(fetchMock.mock.calls[1][0]).toContain("sendUpdates=all&conferenceDataVersion=1");
+  expect(body.attendees).toEqual([{ email: "convidado@example.com" }]);
+  expect(body.conferenceData.createRequest.requestId).toBe(googleEventId("m"));
+  expect(db.teamMeeting.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { meetLink: "https://meet.google.com/abc-defg-hij" } }));
+});
+it("leaves a pending conference queued instead of inventing a Meet link", async () => {
+  db.teamCalendarEvent.findMany.mockResolvedValue([{ ...event, actionItemId: null, meeting: { id: "m", createdById: "u", generateMeet: true, externalEmails: [], meetLink: "" } }]);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ conferenceData: { createRequest: { status: { statusCode: "pending" } } } }))));
+  await syncCalendarEvents();
+  expect(db.teamCalendarEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ googleSyncStatus: "PENDING" }) }));
+  expect(db.teamMeeting.updateMany).not.toHaveBeenCalled();
 });

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, Checkbox, Group, Loader, Modal, MultiSelect, Paper, Progress, Select, SimpleGrid, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { Alert, Autocomplete, Badge, Button, Checkbox, Group, Loader, Modal, MultiSelect, Paper, Progress, Select, SimpleGrid, Stack, TagsInput, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { RecordingCapture } from "./recording-capture";
@@ -9,7 +9,7 @@ import { formatMeetingDate, inputToIso, jsonRequest, localDateInput, meetingRequ
 import styles from "./meetings.module.css";
 
 type Summary = Pick<Meeting, "id" | "title" | "type" | "startsAt" | "status"> & { _count: { participants: number; actions: number }; actions: Array<{ completedAt: string | null }> };
-const emptyForm = () => ({ title: "", type: "Semanal de squad", startsAt: localDateInput(new Date()), endsAt: localDateInput(new Date(Date.now() + 3600000)), agenda: "", notes: "", location: "", status: "SCHEDULED", participantIds: [] as string[] });
+const emptyForm = () => ({ title: "", type: "Alinhamento operacional (equipe)", externalEmails: [] as string[], generateMeet: false, startsAt: localDateInput(new Date()), endsAt: localDateInput(new Date(Date.now() + 3600000)), agenda: "", notes: "", location: "", status: "SCHEDULED", participantIds: [] as string[] });
 export function MeetingsPage() {
   const [options, setOptions] = useState<MeetingOptions | null>(null), [meetings, setMeetings] = useState<Summary[]>([]), [meeting, setMeeting] = useState<Meeting | null>(null);
   const [canManage, setCanManage] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -37,7 +37,7 @@ export function MeetingsPage() {
   }, [openMeeting]);
   useEffect(() => { void Promise.resolve().then(loadList).catch((error) => setError(error.message)); }, [loadList]);
   useEffect(() => {
-    if (!meeting?.recordings.some((item) => item.status === "TRANSCRIBING" || item.status === "READY" && options?.transcriptionConfigured)) return;
+    if (!meeting || (!(meeting.generateMeet && !meeting.meetLink) && !meeting.recordings.some((item) => item.status === "TRANSCRIBING" || item.status === "READY" && options?.transcriptionConfigured))) return;
     const timer = setInterval(() => { void openMeeting(meeting.id).catch(() => {}); }, 10000);
     return () => clearInterval(timer);
   }, [meeting, openMeeting, options?.transcriptionConfigured]);
@@ -49,7 +49,7 @@ export function MeetingsPage() {
   function showForm(source?: Meeting, next = false) {
     setEditing(Boolean(source) && !next);
     const offset = next ? (source?.type === "Daily" ? 86400000 : 7 * 86400000) : 0;
-    setForm(source ? { title: source.title, type: source.type, startsAt: localDateInput(new Date(+new Date(source.startsAt) + offset)), endsAt: localDateInput(new Date(+new Date(source.endsAt) + offset)), agenda: source.agenda, notes: next ? "" : source.notes, status: next ? "SCHEDULED" : source.status, location: source.location, participantIds: source.participants.map((item) => item.userId) } : { ...emptyForm(), participantIds: options ? [options.userId] : [] });
+    setForm(source ? { title: source.title, type: source.type, externalEmails: source.externalEmails || [], generateMeet: source.generateMeet || false, startsAt: localDateInput(new Date(+new Date(source.startsAt) + offset)), endsAt: localDateInput(new Date(+new Date(source.endsAt) + offset)), agenda: source.agenda, notes: next ? "" : source.notes, status: next ? "SCHEDULED" : source.status, location: source.location, participantIds: source.participants.map((item) => item.userId) } : { ...emptyForm(), generateMeet: Boolean(options?.googleConnected), participantIds: options ? [options.userId] : [] });
     setModal(true);
   }
   function showTask(item?: MeetingAction) {
@@ -72,6 +72,10 @@ export function MeetingsPage() {
         <Paper withBorder radius="lg" p="lg"><Stack>
           <Group justify="space-between"><div><Badge variant="light">{meeting.type}</Badge><Title order={3} mt="xs">{meeting.title}</Title><Text size="sm" c="dimmed">{formatMeetingDate(meeting.startsAt)} até {formatMeetingDate(meeting.endsAt)} · Horário de Brasília</Text></div><Button size="xs" variant="subtle" leftSection={<IconRefresh size={14} />} disabled={busy} onClick={() => void run(() => openMeeting(meeting.id))}>Atualizar</Button></Group>
           <Group gap="xs"><Badge color={meeting.status === "CANCELLED" ? "gray" : "blue"}>{meetingStatus[meeting.status]}</Badge>{meeting.participants.map(({ user }) => <Badge key={user.id} variant="outline" color="gray">{user.name || user.email}</Badge>)}</Group>
+          {meeting.meetLink && <Button component="a" href={meeting.meetLink} target="_blank" rel="noreferrer" w="fit-content">Entrar no Google Meet</Button>}
+          {meeting.integration?.syncError && <Alert color="orange">{meeting.integration.syncError}</Alert>}
+          {meeting.generateMeet && !meeting.meetLink && <Text size="sm" c="dimmed">Link do Meet pendente. Confira a conexão Google do organizador e clique em Atualizar.</Text>}
+          {meeting.externalEmails?.length > 0 && <Text size="sm">Convidados externos: {meeting.externalEmails.join(", ")}</Text>}
           {meeting.location && <Text size="sm" className={styles.prose}>Local / link: {meeting.location}</Text>}
           <div><Text fw={700} size="sm">Pauta</Text><Text size="sm" className={styles.prose} c={meeting.agenda ? undefined : "dimmed"}>{meeting.agenda || "Nenhuma pauta registrada."}</Text></div>
           {meeting.notes && <div><Text fw={700} size="sm">Ata / notas gerais</Text><Text size="sm" className={styles.prose}>{meeting.notes}</Text></div>}
@@ -91,9 +95,12 @@ export function MeetingsPage() {
     </div>}
     <Modal opened={modal} onClose={() => !busy && setModal(false)} title={editing ? "Editar reunião" : "Criar reunião"} size="lg"><Stack>
       <TextInput label="Título" required value={form.title} maxLength={180} onChange={(event) => setForm({ ...form, title: event.currentTarget.value })} />
-      <TextInput label="Tipo de reunião" list="meeting-types" description="Escolha uma sugestão ou escreva outro tipo." value={form.type} maxLength={100} onChange={(event) => setForm({ ...form, type: event.currentTarget.value })} /><datalist id="meeting-types">{meetingTypes.map((type) => <option key={type} value={type} />)}</datalist>
+      <Autocomplete label="Tipo de reunião" data={meetingTypes} limit={20} comboboxProps={{ withinPortal: false }} description="Escolha uma sugestão ou escreva outro tipo." value={form.type} maxLength={100} onChange={(type) => setForm({ ...form, type })} />
       <SimpleGrid cols={{ base: 1, sm: 2 }}><TextInput type="datetime-local" label="Início · Brasília" required value={form.startsAt} onChange={(event) => setForm({ ...form, startsAt: event.currentTarget.value })} /><TextInput type="datetime-local" label="Término · Brasília" required value={form.endsAt} onChange={(event) => setForm({ ...form, endsAt: event.currentTarget.value })} /></SimpleGrid>
       <MultiSelect label="Participantes" searchable required data={(options?.members || []).map((user) => ({ value: user.id, label: user.name || user.email }))} value={form.participantIds} onChange={(participantIds) => setForm({ ...form, participantIds })} />
+      <TagsInput label="Convidados externos" description="Digite o e-mail e pressione Enter. Convites são enviados pelo Google Agenda do organizador." placeholder="nome@empresa.com" value={form.externalEmails} onChange={(externalEmails) => setForm({ ...form, externalEmails })} splitChars={[",", ";", " "]} maxTags={100} />
+      <Checkbox label="Gerar link do Google Meet automaticamente" checked={form.generateMeet} onChange={(event) => setForm({ ...form, generateMeet: event.currentTarget.checked })} disabled={editing && Boolean(meeting?.meetLink)} />
+      {(form.generateMeet || form.externalEmails.length > 0) && !options?.googleConnected && <Alert color="orange">Conecte a agenda Google do organizador em Minha agenda para gerar o Meet e enviar convites externos. A reunião pode ser salva no Hub enquanto isso.</Alert>}
       <TextInput label="Local ou link da chamada" value={form.location} maxLength={1000} onChange={(event) => setForm({ ...form, location: event.currentTarget.value })} />
       <Textarea label="Pauta" value={form.agenda} autosize minRows={3} maxLength={20000} onChange={(event) => setForm({ ...form, agenda: event.currentTarget.value })} /><Textarea label="Ata / notas gerais" value={form.notes} autosize minRows={3} maxLength={30000} onChange={(event) => setForm({ ...form, notes: event.currentTarget.value })} />
       {editing && meeting && <Select label="Situação" allowDeselect={false} data={Object.entries(meetingStatus).map(([value, label]) => ({ value, label }))} value={form.status} onChange={(status) => setForm({ ...form, status: status || "SCHEDULED" })} />}
