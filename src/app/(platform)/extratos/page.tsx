@@ -125,7 +125,7 @@ export default function ExtratosPage() {
   }
 
   return <Stack gap="xl">
-    <Group justify="space-between" align="flex-end"><Stack gap={4}><Text size="xs" fw={800} c="blue" tt="uppercase">Importações</Text><Title order={2}>Extratos bancários</Title><Text c="dimmed">Selecione o banco, envie o arquivo e confira o fechamento antes de gerar o OFX.</Text></Stack>{statement && <Button variant="default" leftSection={<IconRefresh size={17}/>} onClick={reset}>Novo processamento</Button>}</Group>
+    <Group justify="space-between" align="flex-end"><Stack gap={4}><Text size="xs" fw={800} c="blue" tt="uppercase">Importações</Text><Title order={2}>Extratos bancários</Title></Stack>{statement && <Button variant="default" leftSection={<IconRefresh size={17}/>} onClick={reset}>Novo processamento</Button>}</Group>
 
     {!statement ? <Paper withBorder radius="xl" p={{ base: "lg", md: 40 }}><Stack gap="xl">
       <Center><Stack align="center" gap="sm"><ThemeIcon size={68} radius="xl" variant="light"><IconUpload size={34}/></ThemeIcon><Title order={3}>Importe o extrato bancário</Title><Text c="dimmed" ta="center">O banco é selecionado manualmente. Cada opção utiliza uma lógica própria de leitura.</Text></Stack></Center>

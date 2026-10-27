@@ -23,11 +23,6 @@ export function ClientPageHeader({ onNewClient }: Props) {
         <Title order={2}>
           Clientes
         </Title>
-
-        <Text c="dimmed">
-          Empresas cadastradas para utilização
-          dos módulos do ConvertNow.
-        </Text>
       </Stack>
 
       <Button

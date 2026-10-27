@@ -225,9 +225,6 @@ export default function DashboardPage() {
             )}
           </Group>
           <Title order={2}>Olá, {data.user.name}</Title>
-          <Text c="dimmed">
-            Seus resultados financeiros e operacionais, conectados em um só lugar.
-          </Text>
         </Stack>
 
         <Group align="flex-end">

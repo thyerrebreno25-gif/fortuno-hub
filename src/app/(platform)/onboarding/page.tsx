@@ -428,7 +428,6 @@ export default function OnboardingPage() {
         <Stack gap={4}>
           <Text size="xs" fw={800} c="blue" tt="uppercase">Central de implantação</Text>
           <Title order={2}>Onboarding</Title>
-          <Text c="dimmed">O cliente nasce aqui. Acompanhe tarefas, gargalos, horas, progresso e a passagem para a operação.</Text>
         </Stack>
         <Button leftSection={<IconPlus size={17} />} onClick={() => setNewOpened(true)}>Novo onboarding</Button>
       </Group>

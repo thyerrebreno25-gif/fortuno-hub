@@ -241,10 +241,6 @@ export default function ConciliacaoPage() {
             Importações
           </Text>
           <Title order={2}>Conciliação</Title>
-          <Text c="dimmed">
-            Desmembre pagamentos consolidados a partir de relatórios em PDF e
-            exporte os lançamentos individualizados no padrão Conta Azul.
-          </Text>
         </Stack>
 
         {step === "review" && (

@@ -305,9 +305,6 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
             <div className={styles.empty}>
               <ThemeIcon size={64} radius={20} variant="light"><IconBrain size={34} /></ThemeIcon>
               <Title order={2} mt="md">Como posso ajudar?</Title>
-              <Text c="dimmed" ta="center" maw={620} mt={8}>
-                Pergunte sobre o Fortuno, selecione um cliente para consultar o Conta Azul ou anexe arquivos para análise. As respostas respeitam seu perfil e sua carteira.
-              </Text>
               <div className={styles.starters}>
                 {starterPrompts.map((starter) => (
                   <button key={starter.title} type="button" className={styles.starter} onClick={() => void sendMessage(starter.text)}>

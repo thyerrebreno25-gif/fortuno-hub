@@ -573,10 +573,6 @@ export default function CurrencyConversionPage() {
             Conversões
           </Text>
           <Title order={2}>Conversão inteligente de moedas</Title>
-          <Text c="dimmed">
-            Leia PDF ou planilhas, aplique a PTAX de cada movimentação e gere
-            um OFX em reais para o Conta Azul.
-          </Text>
         </Stack>
 
         <Button

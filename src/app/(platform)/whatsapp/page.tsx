@@ -370,11 +370,6 @@ export default function WhatsAppPage() {
               {bootstrap?.mode === "CONNECTED" ? "Conectado" : "Modo de teste"}
             </Badge>
           </Group>
-          <Text c="dimmed">
-            {section === "INBOX"
-              ? "Distribua conversas e mantenha cada atendimento ligado ao cliente certo."
-              : "Acompanhe demanda, tempos, clientes e desempenho da equipe em qualquer período."}
-          </Text>
         </div>
         {section === "INBOX" && (
           <Button leftSection={<IconPlus size={17} />} onClick={() => setSimulatorOpen(true)}>

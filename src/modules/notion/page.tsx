@@ -38,7 +38,7 @@ export function NotionPage() {
     finally { setBusy(false); }
   }
   return <div className={styles.page}>
-    <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" c="blue" fw={800}>CONHECIMENTO DA EQUIPE</Text><Title order={2}>Notion</Title><Text size="sm" c="dimmed">Páginas, bases e documentos acessíveis no Fortuno Hub.</Text></div><Badge color={status?.connection ? "green" : "gray"}>{status?.connection ? "Conectado" : "Não conectado"}</Badge></Group></div>
+    <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" c="blue" fw={800}>CONHECIMENTO DA EQUIPE</Text><Title order={2}>Notion</Title></div><Badge color={status?.connection ? "green" : "gray"}>{status?.connection ? "Conectado" : "Não conectado"}</Badge></Group></div>
     {error && <Alert color="red">{error}</Alert>}
     {!status && !error && <Loader />}
     {status && <Paper withBorder p="lg" radius="lg"><Stack gap="sm"><Group justify="space-between"><div><Title order={4}>{status.connection?.workspaceName || "Conecte o workspace da equipe"}</Title><Text size="sm" c="dimmed">{status.connection ? `Integração: ${status.connection.botName}` : "Use o token da sua integração interna do Notion."}</Text></div>{status.canManage && <Group>{status.connection && <Button variant="subtle" size="xs" onClick={() => setConnectionDetails((value) => !value)}>{connectionDetails ? "Recolher detalhes" : "Detalhes da conexão"}</Button>}<Button disabled={!status.configured || busy} onClick={() => setConnectOpen(true)}>{status.connection ? "Trocar conexão" : "Conectar Notion"}</Button>{status.connection && <Button variant="subtle" color="red" disabled={busy} onClick={() => setDisconnectOpen(true)}>Desconectar</Button>}</Group>}</Group>

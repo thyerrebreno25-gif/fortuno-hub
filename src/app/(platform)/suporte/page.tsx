@@ -413,9 +413,6 @@ export default function SuportePage() {
             Fortuno Hub
           </Text>
           <Title order={2}>Suporte</Title>
-          <Text size="sm" c="dimmed">
-            Registre problemas, acompanhe o atendimento e mantenha todo o histórico.
-          </Text>
         </Stack>
 
         <Button

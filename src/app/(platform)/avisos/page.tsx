@@ -510,9 +510,6 @@ export default function AvisosPage() {
         <div>
           <Text size="xs" fw={800} c="blue" tt="uppercase" lts={1.1}>Organização</Text>
           <Title order={1}>Central de Avisos</Title>
-          <Text c="dimmed" mt={6}>
-            Alertas de clientes, lembretes e notas pessoais reunidos em um só lugar.
-          </Text>
         </div>
         <Button leftSection={<IconBellPlus size={18} />} onClick={openCreateModal}>
           Novo aviso

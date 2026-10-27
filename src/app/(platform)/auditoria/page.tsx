@@ -650,10 +650,6 @@ export default function AuditoriaPage() {
             Auditoria
           </Text>
           <Title order={2}>Pendências de Auditoria</Title>
-          <Text c="dimmed">
-            Correções encaminhadas pela liderança, organizadas por cliente e
-            auditoria.
-          </Text>
           <Button component={Link} href="/auditoria/minhas" variant="light" mt="sm">
             Abrir Minhas Auditorias
           </Button>
@@ -845,10 +841,6 @@ export default function AuditoriaPage() {
             Auditoria Inteligente
           </Text>
           <Title order={2}>Análise de Auditoria</Title>
-          <Text c="dimmed">
-            Foque impostos, folha, pró-labore e obrigações materiais, seguindo
-            o fluxo Líder → Operador → Líder até o check final.
-          </Text>
         </div>
 
         <Group>

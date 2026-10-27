@@ -996,11 +996,6 @@ export default function FaturasPage() {
           </Text>
 
           <Title order={2}>Faturas de cartão</Title>
-
-          <Text c="dimmed">
-            Importe a fatura em PDF ou imagem, revise os lançamentos e exporte no padrão
-            do Conta Azul com categorização aprendida por cliente.
-          </Text>
         </Stack>
 
         {view === "review" && (

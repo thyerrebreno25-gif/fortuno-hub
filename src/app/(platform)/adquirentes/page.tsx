@@ -805,7 +805,6 @@ export default function AdquirentesPage() {
         <Stack gap={4}>
           <Text size="xs" fw={800} c="blue" tt="uppercase">Importações</Text>
           <Title order={2}>Adquirentes</Title>
-          <Text c="dimmed">Leia todas as abas da planilha e exporte venda bruta, taxas e demais eventos em linhas separadas no padrão Conta Azul.</Text>
         </Stack>
         {view === "review" && <Button variant="default" leftSection={<IconRefresh size={17} />} onClick={resetPage}>Nova importação</Button>}
       </Group>

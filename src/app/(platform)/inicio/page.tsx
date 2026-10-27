@@ -378,17 +378,6 @@ export default function InicioPage() {
               >
                 O que você deseja fazer hoje?
               </Title>
-
-              <Text
-                c="dimmed"
-                mt={8}
-                maw={720}
-              >
-                Acesse rapidamente as ferramentas
-                disponíveis para o seu perfil e siga
-                direto para a atividade que precisa
-                executar.
-              </Text>
             </div>
 
             <TextInput
@@ -476,15 +465,6 @@ export default function InicioPage() {
                   <Title order={4} mt="md" className={styles.cardTitle}>
                     {feature.title}
                   </Title>
-
-                  <Text
-                    size="sm"
-                    c="dimmed"
-                    mt={6}
-                    className={styles.cardDescription}
-                  >
-                    {feature.description}
-                  </Text>
 
                   <Group gap={6} mt="md" className={styles.cardAction}>
                     <Text

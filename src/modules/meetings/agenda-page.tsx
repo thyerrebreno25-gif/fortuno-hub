@@ -88,7 +88,7 @@ export function AgendaPage() {
   const periodLabel = view === "day" ? calendarDate(anchor).toLocaleDateString("pt-BR", { timeZone: "UTC", dateStyle: "long" }) : view === "week" ? `${calendarDate(range.days[0]).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "numeric", month: "short" })} – ${calendarDate(range.days.at(-1)!).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" })}` : calendarDate(anchor).toLocaleDateString("pt-BR", { timeZone: "UTC", month: "long", year: "numeric" });
   function selectDay(key: string) { setAnchor(key); setView("day"); }
   return <div className={styles.page}>
-    <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" fw={800} c="blue">COMPROMISSOS · METAS · PRAZOS</Text><Title order={2}>Minha Agenda</Title><Text size="sm" c="dimmed">Reuniões e entregas da equipe entram aqui automaticamente. Horários de Brasília.</Text></div><Group><Button variant="default" component="a" href="/reunioes">Central de reuniões</Button>{createMenu()}</Group></Group></div>
+    <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" fw={800} c="blue">COMPROMISSOS · METAS · PRAZOS</Text><Title order={2}>Minha Agenda</Title></div><Group><Button variant="default" component="a" href="/reunioes">Central de reuniões</Button>{createMenu()}</Group></Group></div>
     {error && <Alert color="red">{error}</Alert>}
     {!data && loading && <Loader />}
     {data && <>

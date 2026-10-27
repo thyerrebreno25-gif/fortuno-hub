@@ -26,6 +26,8 @@ export async function POST(request: Request) {
     ]);
     if (!client || !process) return NextResponse.json({ error: "Cliente ou processo não encontrado." }, { status: 404 });
 
+    const previous = await prisma.operationClientProcess.findUnique({ where: { clientId_processId: { clientId, processId } }, select: { id: true, active: true } });
+    if (previous && !previous.active) await prisma.operationActivity.updateMany({ where: { organizationId: member.organizationId, clientProcessId: previous.id, deletedAt: { not: null } }, data: { clientProcessId: null } });
     const configuration = await prisma.operationClientProcess.upsert({
       where: { clientId_processId: { clientId, processId } },
       create: {

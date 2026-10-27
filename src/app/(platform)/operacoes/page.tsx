@@ -3,6 +3,7 @@ import { useCallback,useEffect,useMemo,useState } from "react";
 import { ActionIcon,Alert,Badge,Button,Checkbox,Divider,Drawer,Group,Modal,MultiSelect,NumberInput,Paper,ScrollArea,Select,SimpleGrid,Stack,Switch,Table,Tabs,Text,Textarea,TextInput,Timeline,Title } from "@mantine/core";
 import { IconAlertTriangle,IconChartBar,IconClock,IconDownload,IconListCheck,IconPaperclip,IconPlayerPause,IconPlayerPlay,IconPlus,IconRefresh,IconTrash,IconUser,IconX } from "@tabler/icons-react";
 
+import { OperationsResetControl } from "@/modules/operations/reset-control";
 import { OperationsAnalyticsPanel } from "@/modules/operations/analytics-panel";
 type Any=Record<string,any>;
 const formatLocalDate=(date:Date)=>{
@@ -65,7 +66,7 @@ export default function OperationsPage(){
  const missingRequiredFiles=selected?.checklistItems?.filter((item:Any)=>item.mandatory&&item.requiresAttachment&&!item.disregardedAt&&!selected.attachments.some((file:Any)=>file.checklistItemId===item.id))||[];
  const missingGeneralAttachment=Boolean(selected?.process?.requiresAttachment&&!selected?.attachments?.length);
  return <Stack gap="md">
-  <Group justify="space-between"><div><Title order={2}>Gestão de tarefas</Title><Text c="dimmed">Agenda diária, recorrências, apontamento e análise operacional.</Text></div><Group>{data.canManage&&<Button variant="default" loading={seeding} onClick={seedProcesses}>Atualizar processos padrões</Button>}<Button variant="light" leftSection={<IconRefresh size={16}/>} loading={generating} onClick={generate}>Gerar próximos 90 dias</Button><Button leftSection={<IconPlus size={16}/>} onClick={()=>setNewOpen(true)}>Nova rotina</Button></Group></Group>
+  <Group justify="space-between"><div><Title order={2}>Gestão de tarefas</Title></div><Group>{data.canManage&&<OperationsResetControl onChanged={()=>window.location.reload()}/>} {data.canManage&&<Button variant="default" loading={seeding} onClick={seedProcesses}>Atualizar processos padrões</Button>}<Button variant="light" leftSection={<IconRefresh size={16}/>} loading={generating} onClick={generate}>Gerar próximos 90 dias</Button><Button leftSection={<IconPlus size={16}/>} onClick={()=>setNewOpen(true)}>Nova rotina</Button></Group></Group>
   {error&&<Alert color="red" withCloseButton onClose={()=>setError("")}>{error}</Alert>}
   <Tabs value={tab} onChange={setTab} keepMounted={false}><Tabs.List><Tabs.Tab value="analytics" leftSection={<IconChartBar size={16}/>}>Painel de tempo</Tabs.Tab><Tabs.Tab value="activities" leftSection={<IconListCheck size={16}/>}>Atividades</Tabs.Tab><Tabs.Tab value="routines" leftSection={<IconClock size={16}/>}>Rotinas configuradas</Tabs.Tab></Tabs.List>
    <Tabs.Panel value="analytics" pt="md"><OperationsAnalyticsPanel onOpenActivity={(id)=>void openActivity(id)} onOpenActivities={()=>setTab("activities")}/></Tabs.Panel>

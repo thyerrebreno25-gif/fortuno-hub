@@ -112,7 +112,6 @@ export default function HistoricoPage() {
         <Stack gap={4}>
           <Text size="xs" fw={800} c="blue" tt="uppercase">Rastreabilidade</Text>
           <Title order={2}>Histórico unificado</Title>
-          <Text c="dimmed">Movimentações de importações, operações, onboarding e atendimento em uma única linha do tempo.</Text>
         </Stack>
         <Button variant="default" leftSection={<IconRefresh size={17} />} onClick={load} loading={loading}>Atualizar</Button>
       </Group>

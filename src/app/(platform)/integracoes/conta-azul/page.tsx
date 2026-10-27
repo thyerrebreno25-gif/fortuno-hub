@@ -235,10 +235,6 @@ export default function ContaAzulConnectionsPage() {
             Integrações
           </Text>
           <Title order={1}>Vínculos Conta Azul</Title>
-          <Text c="dimmed">
-            Autorize cada empresa uma única vez e use o vínculo em todas as
-            importações daquele cliente.
-          </Text>
         </Stack>
 
         <Group>

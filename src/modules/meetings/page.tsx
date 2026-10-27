@@ -60,7 +60,7 @@ export function MeetingsPage() {
   const editable = Boolean(options?.permissions.canEdit);
   const completed = meeting?.actions.filter((item) => item.completedAt).length || 0;
   return <div className={styles.page}>
-    <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" fw={800} c="blue">EQUIPE · ALINHAMENTO · ENTREGAS</Text><Title order={2}>Central de Reuniões</Title><Text c="dimmed" size="sm">Transforme decisões da daily e da reunião semanal em compromissos acompanháveis.</Text></div><Group><Button variant="default" component="a" href="/agenda" leftSection={<IconCalendar size={16} />}>Minha agenda</Button><Button leftSection={<IconPlus size={16} />} disabled={!options?.permissions.canCreate || busy} onClick={() => showForm()}>Criar reunião</Button></Group></Group></div>
+    <div className={styles.hero}><Group justify="space-between"><div><Text size="xs" fw={800} c="blue">EQUIPE · ALINHAMENTO · ENTREGAS</Text><Title order={2}>Central de Reuniões</Title></div><Group><Button variant="default" component="a" href="/agenda" leftSection={<IconCalendar size={16} />}>Minha agenda</Button><Button leftSection={<IconPlus size={16} />} disabled={!options?.permissions.canCreate || busy} onClick={() => showForm()}>Criar reunião</Button></Group></Group></div>
     {error && <Alert color="red" withCloseButton onClose={() => setError("")}>{error}</Alert>}
     {!options && !error && <Loader />}
     {options && <div className={styles.layout}>

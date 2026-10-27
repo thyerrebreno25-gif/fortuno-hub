@@ -341,7 +341,6 @@ export default function SalesReconciliationPage() {
         <div>
           <Text className={styles.eyebrow}>AUDITORIA DE RECEITAS</Text>
           <Title order={1}>Conferência de vendas</Title>
-          <Text c="dimmed">Compare a planilha do cliente com os lançamentos existentes no Conta Azul.</Text>
         </div>
         {result && permission.canExport && <Button loading={exporting} leftSection={<IconFileTypePdf size={17} />} onClick={exportReport}>Baixar divergências em PDF</Button>}
       </Group>

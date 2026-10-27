@@ -891,11 +891,6 @@ export default function ClientesPage() {
             </Text>
 
             <Title order={2}>Clientes</Title>
-
-            <Text c="dimmed">
-              Cadastre e configure os clientes utilizados nos
-              processamentos do ConvertNow.
-            </Text>
           </Stack>
 
           {clientPermission.canCreate && (

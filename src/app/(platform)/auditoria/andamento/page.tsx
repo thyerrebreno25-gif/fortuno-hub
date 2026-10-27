@@ -191,7 +191,6 @@ export default function AuditoriasEmAndamentoPage() {
         <div>
           <Text size="xs" fw={800} c="blue" tt="uppercase" lts={1}>Auditoria • Liderança</Text>
           <Title order={2}>Check das auditorias</Title>
-          <Text c="dimmed">Acompanhe os relatórios auditados, priorize itens vencidos e faça o check das correções devolvidas pelos operadores.</Text>
         </div>
         <Group>
           <Button component={Link} href="/auditoria">+ Nova auditoria</Button>

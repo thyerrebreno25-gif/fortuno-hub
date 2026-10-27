@@ -427,7 +427,6 @@ export default function NotasFiscaisPage() {
         <div>
           <Text className={styles.eyebrow}>Financeiro</Text>
           <Title order={1}>Notas de compra</Title>
-          <Text c="dimmed">Revise os itens da NF-e, aprenda a categorização e gere a despesa rateada no Conta Azul.</Text>
         </div>
         <Group>
           <Button variant="default" leftSection={<IconRefresh size={17} />} onClick={() => void load()} loading={loading}>Atualizar</Button>
@@ -557,7 +556,6 @@ export default function NotasFiscaisPage() {
                   {selected.lastError && <Alert color={requiresInvoiceVerification(selected.lastError) ? "orange" : "red"} title={requiresInvoiceVerification(selected.lastError) ? "Confira a despesa no Conta Azul antes de reenviar" : "Último envio não foi concluído"}>{requiresInvoiceVerification(selected.lastError) ? INVOICE_SEND_PENDING : selected.lastError}</Alert>}
                   <div>
                     <Title order={3}>Dados para o lançamento</Title>
-                    <Text size="sm" c="dimmed">Vincule fornecedor, conta e forma de pagamento antes do envio.</Text>
                   </div>
                   <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                     <Select label="Fornecedor no Conta Azul" searchable data={suppliers} value={selected.supplierContaAzulId} placeholder={connected ? "Selecione o fornecedor" : "Conecte a Conta Azul"} disabled={!connected || selected.status === "SENT"} onChange={(value) => patchSelected((invoice) => ({ ...invoice, supplierContaAzulId: value, supplierContaAzulName: suppliers.find((item) => item.value === value)?.label || null }))} />

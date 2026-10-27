@@ -313,9 +313,6 @@ export default function AtendimentoPage() {
           <Title order={2} className={styles.pageTitle}>
             Central de e-mails
           </Title>
-          <Text c="dimmed" size="sm" className={styles.pageDescription}>
-            Caixa geral, distribuição por colaborador e acompanhamento até a resolução.
-          </Text>
         </Stack>
 
         <Group className={styles.headerActions}>

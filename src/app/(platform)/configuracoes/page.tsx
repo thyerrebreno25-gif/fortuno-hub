@@ -526,9 +526,6 @@ export default function ConfiguracoesPage() {
             Fortuno Hub
           </Text>
           <Title order={2}>Configurações</Title>
-          <Text size="sm" c="dimmed">
-            Organização, equipe, segurança e auditoria da plataforma.
-          </Text>
         </Stack>
 
         <Badge color={roleColors[data.currentUser.role]} variant="light" size="lg">

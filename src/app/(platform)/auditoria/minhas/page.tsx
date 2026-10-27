@@ -113,7 +113,6 @@ export default function MinhasAuditoriasPage() {
         <div>
           <Text size="xs" fw={800} c="blue" tt="uppercase" lts={1}>Auditoria • Operador</Text>
           <Title order={2}>Minhas Auditorias</Title>
-          <Text c="dimmed">Cada cliente fica agrupado em uma auditoria. Corrija os apontamentos, registre sua devolutiva e envie para o check do líder.</Text>
         </div>
         <Button variant="default" leftSection={<IconRefresh size={16} />} loading={loading} onClick={() => void load()}>Atualizar</Button>
       </Group>

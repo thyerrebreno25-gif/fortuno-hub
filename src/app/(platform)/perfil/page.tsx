@@ -172,9 +172,6 @@ export default function PerfilPage() {
           Fortuno Hub
         </Text>
         <Title order={2}>Meu perfil</Title>
-        <Text size="sm" c="dimmed">
-          Consulte seus dados e mantenha sua conta atualizada.
-        </Text>
       </Stack>
 
       {error && (
