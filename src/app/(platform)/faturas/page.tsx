@@ -1,4 +1,5 @@
 "use client";
+import { FinancialExportHistory } from "@/components/conta-azul/financial-export-history";
 
 import { invoiceReviewItems } from "@/modules/card-invoices/review-items";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -997,6 +998,7 @@ export default function FaturasPage() {
 
           <Title order={2}>Faturas de cartão</Title>
         </Stack>
+        <FinancialExportHistory clientId={clientId} clients={clients} exportModule="CREDIT_CARD_INVOICE" />
 
         {view === "review" && (
           <Group>

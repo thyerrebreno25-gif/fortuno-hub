@@ -1,4 +1,5 @@
 "use client";
+import { FinancialExportHistory } from "@/components/conta-azul/financial-export-history";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -806,6 +807,7 @@ export default function AdquirentesPage() {
           <Text size="xs" fw={800} c="blue" tt="uppercase">Importações</Text>
           <Title order={2}>Adquirentes</Title>
         </Stack>
+        <FinancialExportHistory clientId={clientId} clients={clients} exportModule="ACQUIRER" />
         {view === "review" && <Button variant="default" leftSection={<IconRefresh size={17} />} onClick={resetPage}>Nova importação</Button>}
       </Group>
 
