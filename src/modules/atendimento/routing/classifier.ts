@@ -59,6 +59,8 @@ const AP_TERMS: Array<[string, number]> = [
   ["pagar", 6],
   ["boleto", 7],
   ["vencimento", 4],
+  ["portal do credor", 10],
+  ["seu vencimento", 8],
   ["fornecedor", 7],
   ["nota fiscal", 5],
   ["nf ", 3],
@@ -75,8 +77,12 @@ const AR_TERMS: Array<[string, number]> = [
   ["cobrar cliente", 18],
   ["nota fiscal emitida", 16],
   ["comprovante de recebimento", 18],
-  ["recebimento", 7],
-  ["receber", 6],
+  ["recebimento de cliente", 12],
+  ["recebimento de vendas", 12],
+  ["recebimento de boleto", 10],
+  ["recebimento via pix", 10],
+  ["recebimentos", 8],
+  ["credito recebido", 8],
   ["cobranca", 4],
   ["inadimplencia", 8],
   ["cliente inadimplente", 9],
@@ -148,10 +154,11 @@ export async function classifyAndRouteEmail(
     (input.recipientEmails || []).map((email) => email.trim().toLowerCase()).filter(Boolean),
   );
   const subject = normalize(input.subject);
+  const stripPlatformFooter = (value: string) => value.split(/constru[ií]do por\s+i\s?recebi|uma plataforma completa para o engajamento de contas a receber|powered by\s+(?:irecebi|asaas)/i)[0];
   const body = normalize(
     [
-      input.textBody.split(/\n(?:Em .{5,120}escreveu:|On .{5,120}wrote:|>)/i)[0]?.slice(0, 30000),
-      !input.textBody.trim() ? input.htmlBody?.replace(/<blockquote\b[^>]*>[\s\S]*?<\/blockquote>/gi, " ").replace(/<[^>]+>/g, " ").slice(0, 30000) : "",
+      stripPlatformFooter(input.textBody).split(/\n(?:Em .{5,120}escreveu:|On .{5,120}wrote:|>)/i)[0]?.slice(0, 30000),
+      !input.textBody.trim() ? stripPlatformFooter(input.htmlBody || "").replace(/<blockquote\b[^>]*>[\s\S]*?<\/blockquote>/gi, " ").replace(/<[^>]+>/g, " ").slice(0, 30000) : "",
       ...(input.attachmentNames || []),
     ].join(" "),
   );
@@ -288,7 +295,11 @@ export async function classifyAndRouteEmail(
   let areaScore = 0;
   let areaReason = "assunto geral";
 
-  if (ap.score >= 6 && ap.score >= ar.score + 3) {
+  if (fullText.includes("contas a pagar") && fullText.includes("contas a receber")) {
+    area = "UNKNOWN";
+    areaScore = Math.max(ap.score, ar.score);
+    areaReason = "conteúdo financeiro menciona pagar e receber; revisar direcionamento";
+  } else if (ap.score >= 6 && ap.score >= ar.score + 3) {
     area = "ACCOUNTS_PAYABLE";
     areaScore = ap.score;
     areaReason = `sinais de contas a pagar: ${ap.hits.join(", ")}`;

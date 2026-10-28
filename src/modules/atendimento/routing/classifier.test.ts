@@ -109,6 +109,18 @@ describe("classificação e roteamento do Atendimento", () => {
     const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Abismo Anhumas: boleto", textBody: "Pagamento" });
     expect(result.clientId).toBeNull(); expect(result.assignedToId).toBeNull();
   });
+  it("ignores collection platform advertising when routing a vendor invoice", async () => {
+    database.findClients.mockResolvedValue([abismoClient]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "financeiro@fornecedor.com", subject: "Abismo Anhumas: seu vencimento é hoje", textBody: "Lembrete sobre o vencimento de um título dos serviços prestados. Construído por IRecebi - Uma plataforma completa para o engajamento de contas a receber e cobrança.", attachmentNames: ["BOLETO_RPS_42910.pdf"] });
+    expect(result.area).toBe("ACCOUNTS_PAYABLE");
+    expect(result.assignedToId).toBe("user-ap");
+  });
+  it("does not treat acknowledgment of an email as a financial receipt", async () => {
+    database.findClients.mockResolvedValue([abismoClient]);
+    const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Abismo Anhumas: documentos", textBody: "Por favor, confirmar o recebimento deste e-mail. Preciso receber a documentação." });
+    expect(result.area).toBe("GENERAL");
+    expect(result.assignedToId).toBe("user-general");
+  });
   it("ignores a quoted old client conversation", async () => {
     database.findClients.mockResolvedValue([abismoClient]);
     const result = await classifyAndRouteEmail({ organizationId: "org-1", senderEmail: "contato@test.com", subject: "Outra demanda", textBody: "Vamos conversar amanhã.\n> Abismo Anhumas: contas a pagar" });
