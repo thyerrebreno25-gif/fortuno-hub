@@ -59,3 +59,10 @@ it("still redirects unauthenticated visitors of the meetings API to login", asyn
   expect(response.status).toBe(307);
   expect(response.headers.get("location")).toBe("https://example.test/login");
 });
+
+it("serves the privacy policy without authentication", async () => {
+  const response = await proxy(new NextRequest("https://example.test/politica-de-privacidade"));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("location")).toBeNull();
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+});

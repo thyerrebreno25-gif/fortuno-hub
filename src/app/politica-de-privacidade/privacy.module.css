@@ -1,0 +1,24 @@
+.page { color-scheme: light; min-height: 100vh; background: #f5f8fb; color: #1b2c43; font-family: Inter, system-ui, sans-serif; line-height: 1.72; }
+.page a { color: #124677; text-underline-offset: 3px; }
+.page a:focus-visible { outline: 3px solid #118c8b; outline-offset: 4px; }
+.wrap { max-width: 940px; margin: 0 auto; }
+.top { background: white; border-bottom: 1px solid #dfe8ef; }
+.top .wrap { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 24px; }
+.logo { font-size: 21px; font-weight: 800; text-decoration: none; }
+.logo span { color: #118c8b; }
+.hero { background: linear-gradient(120deg, #143c67, #126278); color: white; padding: 56px 24px 66px; }
+.hero h1 { font-size: clamp(30px, 5vw, 45px); line-height: 1.17; margin: 0 0 16px; letter-spacing: -1px; }
+.hero p { max-width: 700px; margin: 0; }
+.hero .eyebrow { margin-bottom: 11px; font-size: 12px; letter-spacing: .14em; font-weight: 700; text-transform: uppercase; }
+.version { display: inline-block; margin-top: 24px; padding: 5px 13px; border: 1px solid #ffffff66; border-radius: 50px; font-size: 12px; }
+.content { max-width: 940px; margin: -26px auto 40px; padding: 0 24px; position: relative; }
+.content article { background: white; padding: 40px 46px; border: 1px solid #dfe8ef; border-radius: 16px; box-shadow: 0 12px 35px #1433510e; overflow-wrap: anywhere; }
+.content section + section { border-top: 1px solid #dfe8ef; margin-top: 28px; padding-top: 24px; }
+.content h2 { color: #124677; font-size: 20px; line-height: 1.35; margin: 0 0 14px; }
+.content p { margin: 0 0 14px; }
+.content ul { padding-left: 24px; margin: 8px 0 12px; }
+.content li { margin: 8px 0; }
+.content article section div { background: #f0f7f8; border-left: 4px solid #118c8b; border-radius: 8px; padding: 18px 20px; margin-bottom: 14px; }
+.content section p:last-child { margin-bottom: 0; }
+.footer { color: #52657b; text-align: center; font-size: 13px; padding: 0 24px 40px; }
+@media (max-width: 640px) { .top .wrap { padding: 16px 18px; font-size: 13px; } .hero { padding: 42px 20px 58px; } .content { padding: 0 12px; } .content article { padding: 26px 22px; } }

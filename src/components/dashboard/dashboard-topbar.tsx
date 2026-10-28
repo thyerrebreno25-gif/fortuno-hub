@@ -308,6 +308,9 @@ export function DashboardTopbar() {
               <Link href="/configuracoes" role="menuitem">
                 Configurações
               </Link>
+              <Link href="/politica-de-privacidade" role="menuitem" target="_blank" rel="noopener noreferrer">
+                Política de Privacidade
+              </Link>
               <button
                 type="button"
                 role="menuitem"

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -315,7 +316,7 @@ export default function LoginPage() {
           <footer className={styles.footer}>
             <span>© 2026 Fortuno Gestão Financeira</span>
             <span className={styles.footerDot}>•</span>
-            <span>Fortuno Hub</span>
+            <Link href="/politica-de-privacidade" className={styles.privacyLink}>Política de Privacidade</Link>
           </footer>
         </div>
       </section>

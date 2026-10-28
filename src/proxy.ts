@@ -32,6 +32,8 @@ function redirectTo(request: NextRequest, pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  // The public policy must remain readable even when the auth provider is unavailable.
+  if (request.nextUrl.pathname === "/politica-de-privacidade") return NextResponse.next({ request });
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
