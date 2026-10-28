@@ -7,7 +7,6 @@ const cents = z.number().int().min(0).max(100_000_000_000);
 const date = z.string().max(10).refine((s) => !s || validDate(s), "Data inválida");
 export const investmentSchema = z.object({
   kind: z.literal("INVESTMENT"), periodStart: date, periodEnd: date, bankAccount: text,
-  customerId: text.default(""), serviceId: text.default(""),
   rows: z.array(z.object({ key: text, description: text, date, amountCents: cents, categoryId: text, accountId: text,
     evidence: z.array(z.object({ page: z.number().int().positive(), text, amountCents: cents })).max(2000),
   })).max(100), warnings: z.array(text).max(50),
@@ -56,7 +55,6 @@ export function schedule(review: ContractReview) {
 export function reviewIssues(review: Review, requireLinks = false): string[] {
   const errors: string[] = [];
   if (review.kind === "INVESTMENT") {
-    if (requireLinks && (!review.customerId || !review.serviceId)) errors.push("Selecione o cliente e o serviço cadastrados no CA para as vendas de rendimento.");
     if (!review.rows.length) errors.push("Nenhuma linha de rendimento foi identificada. O PDF precisa conter texto selecionável.");
     if (!validDate(review.periodStart) || !validDate(review.periodEnd)) errors.push("Confira o período do extrato.");
     if (review.periodStart > review.periodEnd) errors.push("O início do período deve anteceder o término.");

@@ -1105,6 +1105,7 @@ model DocumentImportDelivery {
   marker         String   @unique
   payload        Json
   status         String   @default("PENDING")
+  eventId        String?
   saleNumber     Int?
   saleId         String?
   installmentId  String?
