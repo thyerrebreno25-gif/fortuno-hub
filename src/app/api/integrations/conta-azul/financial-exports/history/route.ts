@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const exportModule = params.get("module");
   if (exportModule && exportModule !== "CREDIT_CARD_INVOICE" && exportModule !== "ACQUIRER") return NextResponse.json({ error: "Módulo inválido." }, { status: 400 });
   const batches = await prisma.contaAzulFinancialExport.findMany({
-    where: { organizationId: member.organizationId, clientId, ...(exportModule ? { module: exportModule } : {}), ...(params.get("exportId") ? { id: params.get("exportId")! } : {}) },
+    where: { organizationId: member.organizationId, clientId, ...(exportModule ? { module: exportModule as "CREDIT_CARD_INVOICE" | "ACQUIRER" } : {}), ...(params.get("exportId") ? { id: params.get("exportId")! } : {}) },
     orderBy: { createdAt: "desc" }, take: 20,
     select: { id: true, module: true, sourceName: true, status: true, financialAccountId: true, financialAccountName: true, settleRequested: true, lastError: true, createdAt: true, updatedAt: true, completedAt: true,
       _count: { select: { lines: true } },
