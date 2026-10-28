@@ -27,7 +27,7 @@ export function normalizeWhatsappIdentity(
     return trimmed.toLocaleLowerCase("pt-BR").replace(/\s+/g, "-");
   }
 
-  return trimmed.replace(/\D/g, "");
+  return /^\d+@lid$/.test(trimmed) ? trimmed : trimmed.replace(/\D/g, "");
 }
 
 export function whatsappChannelAddress(

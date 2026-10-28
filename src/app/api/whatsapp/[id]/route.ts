@@ -10,7 +10,8 @@ import {
   responsibleForRoutingArea,
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
-import { sendWhatsAppText } from "@/modules/whatsapp/meta";
+import { sendUazapiText } from "@/modules/whatsapp/uazapi-server";
+import { object, text } from "@/modules/whatsapp/uazapi";
 import { getWhatsappTicket } from "@/modules/whatsapp/server";
 
 type Context = { params: Promise<{ id: string }> };
@@ -250,25 +251,24 @@ export async function PATCH(request: Request, context: Context) {
     }
 
     let externalMessageId: string | null = null;
+    let providerMetadata: { provider: string; instanceId: string; connectionId: string } | undefined;
     if (current.source === "WHATSAPP_API") {
       const channel = parseWhatsappChannelAddress(current.senderEmail);
-      if (channel.kind !== "CONTACT") {
-        return NextResponse.json(
-          { error: "O envio real para grupos ainda não está disponível." },
-          { status: 400 },
-        );
-      }
-
       const latestInbound = [...current.messages]
         .reverse()
         .find((message) => message.direction === "INBOUND");
       try {
-        const sent = await sendWhatsAppText({
-          to: channel.externalId,
+        const metadata = object(latestInbound?.providerMetadata);
+        if (metadata.provider !== "UAZAPI" || !text(metadata.instanceId)) throw new Error("A conversa pertence à integração anterior. Aguarde uma mensagem pela conexão Uazapi atual.");
+        const sent = await sendUazapiText({
+          organizationId: member.organizationId,
+          instanceId: text(metadata.instanceId),
+          to: text(metadata.chatId) || channel.externalId,
           body: content,
-          replyToMessageId: latestInbound?.externalMessageId,
+          replyToMessageId: text(metadata.messageId),
         });
         externalMessageId = sent.messageId;
+        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId };
       } catch (error) {
         console.error("Falha ao enviar resposta pelo WhatsApp:", error);
         return NextResponse.json(
@@ -292,9 +292,7 @@ export async function PATCH(request: Request, context: Context) {
           externalMessageId,
           deliveryStatus: externalMessageId ? "accepted" : null,
           statusUpdatedAt: externalMessageId ? now : null,
-          providerMetadata: externalMessageId
-            ? { provider: "META_WHATSAPP" }
-            : undefined,
+          providerMetadata,
           direction: "OUTBOUND",
           fromName: member.user.name || member.user.email,
           fromEmail: member.user.email,

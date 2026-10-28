@@ -2091,3 +2091,39 @@ model MeetingRecording {
   uploadedBy User @relation(fields:[uploadedById],references:[id],onDelete:Restrict)
   @@index([meetingId,createdAt])
 }
+
+model WhatsAppConnection {
+  id String @id @default(cuid())
+  organizationId String @unique
+  serverUrl String
+  tokenEncrypted String
+  tokenHash String @unique
+  instanceId String
+  instanceName String?
+  phone String?
+  profileName String?
+  status String @default("DISCONNECTED")
+  webhookId String?
+  webhookConfiguredAt DateTime?
+  lastWebhookAt DateTime?
+  lastCheckedAt DateTime?
+  expiresAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  inbox WhatsAppWebhookInbox[]
+}
+model WhatsAppWebhookInbox {
+  id String @id
+  connectionId String
+  eventType String
+  payload Json
+  status String @default("PENDING")
+  attempts Int @default(0)
+  lastError String?
+  receivedAt DateTime @default(now())
+  processedAt DateTime?
+  claimedAt DateTime?
+  connection WhatsAppConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  @@index([connectionId, status, receivedAt])
+}

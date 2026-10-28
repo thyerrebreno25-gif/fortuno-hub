@@ -4,7 +4,7 @@ import {
   getServiceCenterMember,
   getWhatsAppPermission,
 } from "@/modules/atendimento/auth";
-import { downloadWhatsAppMedia } from "@/modules/whatsapp/meta";
+import { downloadUazapiMedia } from "@/modules/whatsapp/uazapi-server";
 
 type Context = {
   params: Promise<{ id: string; attachmentId: string }>;
@@ -53,7 +53,8 @@ export async function GET(_request: Request, context: Context) {
   }
 
   try {
-    const file = await downloadWhatsAppMedia(attachment.externalAttachmentId);
+    if (!attachment.externalAttachmentId.startsWith("uazapi:")) throw new Error("Anexo da integração anterior. Consulte o arquivo no WhatsApp original.");
+    const file = await downloadUazapiMedia(member.organizationId, attachment.externalAttachmentId);
     const encodedName = encodeURIComponent(attachment.name || "anexo-whatsapp");
     return new Response(file.body, {
       status: 200,

@@ -12,6 +12,7 @@ const PUBLIC_ROUTES = [
   "/api/auth/member-invite",
   "/api/atendimento/gmail/webhook",
   "/api/whatsapp/webhook",
+  "/api/whatsapp/uazapi/webhook",
   "/api/cron/atendimento-retention",
   "/api/cron/member-invite-reminders",
   "/api/cron/meeting-reminders",

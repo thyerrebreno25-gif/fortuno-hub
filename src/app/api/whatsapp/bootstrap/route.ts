@@ -5,7 +5,7 @@ import {
   getWhatsAppPermission,
   SERVICE_CENTER_MANAGER_ROLES,
 } from "@/modules/atendimento/auth";
-import { isWhatsAppMetaConfigured } from "@/modules/whatsapp/meta";
+import { connectionView, whatsappConnection } from "@/modules/whatsapp/uazapi-server";
 
 export async function GET() {
   const member = await getServiceCenterMember();
@@ -58,8 +58,9 @@ export async function GET() {
     }),
   ]);
 
+  const connection = connectionView(await whatsappConnection(member.organizationId));
   return NextResponse.json({
-    mode: isWhatsAppMetaConfigured() ? "CONNECTED" : "TEST",
+    mode: connection.status === "CONNECTED" && "webhookReady" in connection && connection.webhookReady ? "CONNECTED" : "DISCONNECTED",
     currentUser: member.user,
     canManage:
       permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role),

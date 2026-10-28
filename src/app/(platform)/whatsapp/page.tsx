@@ -25,7 +25,6 @@ import {
   IconInbox,
   IconMessageCircle,
   IconPaperclip,
-  IconPlus,
   IconSearch,
   IconSend,
   IconStar,
@@ -33,13 +32,14 @@ import {
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WhatsAppMonitoring } from "./monitoring";
+import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import styles from "./whatsapp.module.css";
 
 type View = "GENERAL" | "MINE" | "QUEUE";
-type Section = "INBOX" | "MONITORING";
+type Section = "INBOX" | "MONITORING" | "CONNECTION";
 
 type Bootstrap = {
-  mode: "TEST" | "CONNECTED";
+  mode: string;
   currentUser: { id: string; name: string | null; email: string };
   canManage: boolean;
   clients: Array<{
@@ -165,6 +165,7 @@ async function readResponse<T>(response: Response) {
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [section, setSection] = useState<Section>("INBOX");
+  const onConnectionStatus = useCallback((status: string) => setBootstrap((value) => value ? { ...value, mode: status } : value), []);
   const [view, setView] = useState<View>("GENERAL");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -351,6 +352,7 @@ export default function WhatsAppPage() {
         <div>
           <Group gap="sm" mb={7} align="center">
             <div className={styles.sectionTabs}>
+              <button type="button" className={section === "CONNECTION" ? styles.sectionTabActive : ""} onClick={() => setSection("CONNECTION")}>Conexão Uazapi</button>
               <button
                 type="button"
                 className={section === "INBOX" ? styles.sectionTabActive : ""}
@@ -367,18 +369,18 @@ export default function WhatsAppPage() {
               </button>
             </div>
             <Badge color={bootstrap?.mode === "CONNECTED" ? "green" : "yellow"} variant="light">
-              {bootstrap?.mode === "CONNECTED" ? "Conectado" : "Modo de teste"}
+              {bootstrap?.mode === "CONNECTED" ? "Conectado" : "WhatsApp desconectado"}
             </Badge>
           </Group>
         </div>
         {section === "INBOX" && (
-          <Button leftSection={<IconPlus size={17} />} onClick={() => setSimulatorOpen(true)}>
-            Simular mensagem
+          <Button leftSection={<IconBrandWhatsapp size={17} />} onClick={() => setSection("CONNECTION")}>
+            Gerenciar conexão
           </Button>
         )}
       </header>
 
-      {section === "INBOX" ? (
+      {section === "CONNECTION" ? <UazapiConnection onStatus={onConnectionStatus} /> : section === "INBOX" ? (
         <section className={styles.workspace}>
         <aside className={styles.views}>
           <Text fw={800} size="sm" mb="sm">Conversas</Text>
@@ -433,7 +435,7 @@ export default function WhatsAppPage() {
               <div className={styles.emptyList}>
                 <IconInbox size={34} />
                 <Text fw={700}>Nenhuma conversa aqui</Text>
-                <Text size="sm" c="dimmed">Use “Simular mensagem” para iniciar o primeiro teste.</Text>
+                <Text size="sm" c="dimmed">Conecte o WhatsApp na aba Conexão Uazapi para receber mensagens.</Text>
               </div>
             )}
           </div>

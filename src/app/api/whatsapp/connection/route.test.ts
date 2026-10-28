@@ -1,0 +1,23 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), find: vi.fn(), upsert: vi.fn(), audit: vi.fn(), connection: vi.fn(), check: vi.fn(), webhook: vi.fn(), request: vi.fn(), encrypt: vi.fn(), drain: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { findUnique: m.find, upsert: m.upsert }, auditLog: { create: m.audit } } }));
+vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));
+vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ encryptIntegrationSecret: m.encrypt, decryptIntegrationSecret: vi.fn() }));
+vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: m.connection, checkConnection: m.check, configureWebhook: m.webhook, connectionView: (c: { status?: string } | null) => ({ status: c?.status || "NOT_CONFIGURED" }) }));
+vi.mock("@/modules/whatsapp/uazapi", async (original) => ({ ...await original<typeof import("@/modules/whatsapp/uazapi")>(), uazapiRequest: m.request }));
+vi.mock("@/modules/whatsapp/uazapi-events", () => ({ drainUazapiInbox: m.drain }));
+vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: vi.fn() }));
+import { GET, POST } from "./route";
+const req = (body: unknown) => new Request("https://hub/api/whatsapp/connection", { method: "POST", body: JSON.stringify(body) });
+const save = { action: "SAVE", serverUrl: "https://free.uazapi.com", token: "instance-secret" };
+beforeEach(() => { vi.clearAllMocks(); m.member.mockResolvedValue({ organizationId: "org", userId: "user", role: "MASTER" }); m.permission.mockResolvedValue({ canView: true, canManage: true }); m.connection.mockResolvedValue(null); m.find.mockResolvedValue(null); m.request.mockResolvedValue({ instance: { id: "instance", status: "disconnected" } }); m.encrypt.mockReturnValue("encrypted-value"); m.upsert.mockResolvedValue({ id: "conn", instanceId: "instance", serverUrl: "https://free.uazapi.com" }); m.webhook.mockResolvedValue(undefined); });
+describe("Uazapi admin configuration", () => {
+  it("requires an authenticated session", async () => { m.member.mockResolvedValue(null); expect((await POST(req(save))).status).toBe(401); expect(m.request).not.toHaveBeenCalled(); });
+  it("denies operators even when they manage tickets", async () => { m.member.mockResolvedValue({ role: "OPERATOR", organizationId: "org" }); expect((await POST(req(save))).status).toBe(403); expect(m.encrypt).not.toHaveBeenCalled(); });
+  it("denies administrators lacking management permission", async () => { m.member.mockResolvedValue({ role: "ADMIN", organizationId: "org" }); m.permission.mockResolvedValue({ canView: true, canManage: false }); expect((await POST(req(save))).status).toBe(403); });
+  it("rejects an invalid provider token before saving", async () => { m.request.mockRejectedValueOnce(new Error("A Uazapi recusou o token desta instância.")); expect((await POST(req(save))).status).toBe(502); expect(m.upsert).not.toHaveBeenCalled(); });
+  it("prevents linking another organization's instance", async () => { m.find.mockResolvedValue({ organizationId: "other" }); expect((await POST(req(save))).status).toBe(409); expect(m.request).not.toHaveBeenCalled(); });
+  it("encrypts the secret and does not return it to the browser", async () => { const response = await POST(req(save)); expect(response.status).toBe(200); expect(m.encrypt).toHaveBeenCalledWith(save.token); expect(m.upsert.mock.calls[0][0].create.tokenEncrypted).toBe("encrypted-value"); expect(await response.text()).not.toContain(save.token); expect(m.webhook).toHaveBeenCalledOnce(); });
+  it("requires explicit disconnect confirmation", async () => { expect((await POST(req({ action: "DISCONNECT" }))).status).toBe(400); expect(m.request).not.toHaveBeenCalled(); });
+  it("does not expose pairing codes to operators", async () => { m.member.mockResolvedValue({ role: "OPERATOR", organizationId: "org" }); m.connection.mockResolvedValue({ status: "CONNECTED", tokenEncrypted: "private" }); const response = await GET(); expect(response.status).toBe(200); expect(m.check).not.toHaveBeenCalled(); expect(await response.text()).not.toMatch(/qrCode|private/); });
+});
