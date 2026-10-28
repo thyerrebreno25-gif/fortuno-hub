@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   member: vi.fn(), permission: vi.fn(), client: vi.fn(), request: vi.fn(),
-  db: { contaAzulConnection: { findFirst: vi.fn() },
-    contaAzulFinancialExport: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+  db: { documentImportDispatchLease: { upsert: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn() }, contaAzulConnection: { findFirst: vi.fn() },
+    contaAzulFinancialExport: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     contaAzulFinancialExportLine: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn(), findFirst: vi.fn() },
   },
 }));
@@ -42,6 +42,7 @@ function financialCreates() { return mocks.request.mock.calls.filter((call) => c
 function settlementCreates() { return mocks.request.mock.calls.filter((call) => call[2]?.method === "POST" && call[1].endsWith("/baixa")); }
 beforeEach(() => {
   vi.resetAllMocks(); batch = null; protocols = new Map(); eventSequence = 10;
+  mocks.db.documentImportDispatchLease.updateMany.mockResolvedValue({ count: 1 }); mocks.db.documentImportDispatchLease.findFirst.mockResolvedValue({});
   mocks.member.mockResolvedValue({ organizationId: "org1", userId: "user1", role: "OPERATOR" });
   mocks.permission.mockResolvedValue({ IMPORTS: { canExport: true }, PURCHASE_INVOICES: { canExport: true } });
   mocks.client.mockImplementation(async (_member, id: string) => ({ id, name: id === "client1" ? "Unidade 1" : "Unidade 2", document: id === "client1" ? "11111111000111" : "22222222000122" })); mocks.db.contaAzulConnection.findFirst.mockResolvedValue({ id: "connection1" });
@@ -52,8 +53,7 @@ beforeEach(() => {
         externalProtocolId: null, externalEventId: null, externalInstallmentId: null, lastError: null })),
     }; return batch;
   });
-  mocks.db.contaAzulFinancialExportLine.findMany.mockImplementation(async ({ where }) => batch?.lines.filter((line) => where.OR.some((condition: { status: Status; externalProtocolId?: { not: null } | null }) =>
-    line.status === condition.status && (condition.externalProtocolId === undefined || condition.externalProtocolId === null && !line.externalProtocolId || condition.externalProtocolId && !!line.externalProtocolId))) || []);
+  mocks.db.contaAzulFinancialExportLine.findMany.mockImplementation(async ({ where }) => batch?.lines.filter((line) => where.status ? line.status === where.status : where.OR.some((condition: Record<string, unknown>) => line.status === condition.status && ["externalProtocolId", "externalEventId", "externalInstallmentId"].every((key) => condition[key] === undefined || condition[key] === null ? condition[key] === undefined || !(line as unknown as Record<string, unknown>)[key] : Boolean((line as unknown as Record<string, unknown>)[key])))) || []);
   mocks.db.contaAzulFinancialExportLine.update.mockImplementation(async ({ where, data }) => { const line = batch!.lines.find((item) => item.id === where.id)!; Object.assign(line, data); return line; });
   mocks.db.contaAzulFinancialExportLine.groupBy.mockImplementation(async () => [...new Set(batch!.lines.map((line) => line.status))].map((status) => ({ status, _count: { _all: batch!.lines.filter((line) => line.status === status).length } })));
   mocks.db.contaAzulFinancialExportLine.findFirst.mockImplementation(async () => batch?.lines.find((line) => line.status === "FAILED") || null);
@@ -64,11 +64,17 @@ beforeEach(() => {
     if (path.startsWith("/v1/categorias?")) return { itens: [{ id: CATEGORY, nome: "Sistemas", tipo: "DESPESA" }, { id: uuid(5), nome: "Reembolsos", tipo: "RECEITA" }] };
     if (path.startsWith("/v1/centro-de-custo?")) return { itens: [] };
     if (options?.method === "POST" && /contas-a-(?:pagar|receber)$/.test(path)) {
-      const id = uuid(eventSequence++), protocol = `protocol-${id}`; protocols.set(protocol, id); return { protocolId: protocol };
+      const id = uuid(eventSequence++); return { id, condicao_pagamento: { parcelas: [{ id: uuid(100 + Number(id.slice(0, 8))) }] } };
     }
     if (path.startsWith("/v1/protocolo/")) return { status: "SUCCESS", resourceId: protocols.get(path.split("/").at(-1)!) };
     if (path.endsWith("/parcelas")) return { itens: [{ id: uuid(100 + Number(path.split("/").at(-2)?.slice(0, 8))) }] };
     if (path.endsWith("/baixa")) return options?.method === "POST" ? { id: uuid(999) } : { itens: [] };
+    if (path.includes("/parcelas/")) {
+      const installmentId = path.split("/").at(-1)!;
+      const line = batch!.lines.find((line) => line.externalInstallmentId === installmentId || line.externalEventId && installmentId === uuid(100 + Number(line.externalEventId.slice(0, 8)))) || batch!.lines[1];
+      const metadata = line.metadata as Record<string, unknown>;
+      return { id: installmentId, descricao: line.description, nota: metadata.creationReference || "", data_vencimento: line.dueDate.toISOString().slice(0, 10), valor_liquido: line.amount, conta_financeira: { id: metadata.financialAccountId || batch!.financialAccountId }, evento: { id: line.externalEventId, tipo: line.direction === "RECEIVABLE" ? "RECEITA" : "DESPESA", data_competencia: line.competenceDate.toISOString().slice(0, 10), rateio: [{ id_categoria: (line as MemoryLine & { contaAzulCategoryId: string }).contaAzulCategoryId, valor: line.amount }] } };
+    }
     throw new Error(`Endpoint inesperado no teste: ${path}`);
   });
 });
@@ -107,8 +113,8 @@ describe("rateio da mesma fatura entre cadastros/CNPJs", () => {
     expect(financialCreates().map((call) => JSON.parse(call[2].body).rateio[0].id_categoria)).toEqual([CATEGORY, CATEGORY_2]);
     expect(financialCreates().map((call) => JSON.parse(call[2].body).id_fornecedor)).toEqual([CONTACT, CONTACT_2]);
     expect(settlementCreates().map((call) => [call[0], JSON.parse(call[2].body).conta_financeira])).toEqual([["client1", ACCOUNT_X], ["client2", ACCOUNT_Z]]);
-    expect(mocks.request.mock.calls.filter((call) => call[1].startsWith("/v1/protocolo/")).map((call) => call[0])).toEqual(["client1", "client2"]);
-    expect(mocks.request.mock.calls.filter((call) => call[1].endsWith("/parcelas")).map((call) => call[0])).toEqual(["client1", "client2"]);
+    expect(mocks.request.mock.calls.filter((call) => call[1].startsWith("/v1/protocolo/"))).toHaveLength(0);
+    expect(mocks.request.mock.calls.filter((call) => call[1].includes("/parcelas/") && !call[1].endsWith("/baixa")).map((call) => call[0])).toEqual(["client1", "client2"]);
     expect(batch!.lines.map((line) => line.metadata)).toMatchObject([{ destinationClientId: "client1", destinationClientName: "Unidade 1" }, { destinationClientId: "client2", destinationClientName: "Unidade 2" }]);
     expect(mocks.db.contaAzulFinancialExport.create.mock.calls[0][0].data.clientId).toBe("client1");
   });
@@ -146,7 +152,7 @@ describe("rateio da mesma fatura entre cadastros/CNPJs", () => {
   it("retoma falha de uma unidade sem recriar ou baixar novamente os itens concluídos da outra", async () => {
     const original = mocks.request.getMockImplementation()!; let fail = true;
     mocks.request.mockImplementation(async (...args) => {
-      if (fail && args[0] === "client2" && args[2]?.method === "POST" && args[1].endsWith("/contas-a-pagar")) { fail = false; throw new Error("Falha temporária da unidade 2"); }
+      if (fail && args[0] === "client2" && args[2]?.method === "POST" && args[1].endsWith("/contas-a-pagar")) { fail = false; throw Object.assign(new Error("Rejeição de validação da unidade 2"), { status: 400 }); }
       return original(...args);
     });
     const first = await (await send(multiClientBody())).json(); expect(first.done).toBe(false); expect(first.counts).toMatchObject({ SETTLED: 1, FAILED: 1 });
@@ -222,6 +228,7 @@ describe("envio de fatura com conta por lançamento", () => {
     const original = mocks.request.getMockImplementation()!;
     mocks.request.mockImplementation(async (...args) => {
       const path: string = args[1];
+      if (args[2]?.method === "POST" && /contas-a-pagar$/.test(path)) { const result = await original(...args); return { id: result.id }; }
       if (path.endsWith(`/${uuid(11)}/parcelas`)) return { itens: [] };
       if (path.includes("/contas-a-pagar/buscar?")) {
         expect(new URL(`http://local${path}`).searchParams.get("ids_contas_financeiras")).toBe(ACCOUNT_Y);
@@ -284,4 +291,43 @@ describe("envio de fatura com conta por lançamento", () => {
     await send(body()); expect(batch!.lines[0].lineKey).toBe(crypto.createHash("sha256").update("compra-1").digest("hex"));
     expect(mocks.db.contaAzulFinancialExport.create.mock.calls[0][0].data.sourceKey).toBe(crypto.createHash("sha256").update("CREDIT_CARD_INVOICE|fatura-teste.pdf").digest("hex"));
   });
+});
+
+describe("confirmação real no CA e proteção contra reenvio", () => {
+  it("não conclui quando o CA devolve ID mas a parcela não existe", async () => {
+    const original = mocks.request.getMockImplementation()!;
+    mocks.request.mockImplementation(async (...args) => { if (args[1].includes("/parcelas/") && !args[1].endsWith("/baixa")) throw Object.assign(new Error("Parcela não encontrada"), { status: 404 }); return original(...args); });
+    expect((await (await send(body())).json()).done).toBe(false);
+    expect(batch!.lines.every((line) => line.status === "FAILED")).toBe(true);
+    await send(body()); expect(financialCreates()).toHaveLength(2); expect(settlementCreates()).toHaveLength(0);
+  });
+  it("não repete um POST com resultado incerto mesmo sem localizar a parcela", async () => {
+    const original = mocks.request.getMockImplementation()!;
+    mocks.request.mockImplementation(async (...args) => {
+      if (args[2]?.method === "POST" && /contas-a-pagar$/.test(args[1])) throw new TypeError("timeout");
+      if (args[1].includes("/buscar?")) return { itens: [] };
+      return original(...args);
+    });
+    expect((await (await send(body())).json()).done).toBe(false);
+    await send(body()); expect(financialCreates()).toHaveLength(2);
+    expect(batch!.lines.every((line) => line.status === "FAILED")).toBe(true);
+  }, 15000);
+  it("não repete baixa com resultado incerto", async () => {
+    const original = mocks.request.getMockImplementation()!;
+    mocks.request.mockImplementation(async (...args) => { if (args[1].endsWith("/baixa") && args[2]?.method === "POST") throw new TypeError("timeout"); return original(...args); });
+    expect((await (await send(body(true, true))).json()).done).toBe(false);
+    await send(body(true, true)); expect(settlementCreates()).toHaveLength(2); expect(financialCreates()).toHaveLength(2);
+  });
+  it("bloqueia envio concorrente da mesma empresa antes de chamadas ao CA", async () => {
+    mocks.db.documentImportDispatchLease.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect((await send(body())).status).toBe(409); expect(mocks.request).not.toHaveBeenCalled();
+  });
+});
+
+it("rejeita baixa futura antes de qualquer lançamento no CA", async () => { const data = body(true, true); data.lines[0].paymentDate = "2199-01-01"; expect((await send(data)).status).toBe(400); expect(mocks.request).not.toHaveBeenCalled(); });
+it("não troca silenciosamente valor ou categoria de um envio existente", async () => { await send(body()); const data = body(); data.lines[0].amount = 999; expect((await send(data)).status).toBe(409); expect(financialCreates()).toHaveLength(2); });
+
+it("retoma a partir dos dados salvos sem exigir novo upload nem recriar itens concluídos", async () => {
+  await send(body()); mocks.db.contaAzulFinancialExport.findFirst.mockResolvedValue({ ...batch!, clientId: "client1", module: "CREDIT_CARD_INVOICE", sourceName: "fatura-teste.pdf", contactName: "Banco Teste" });
+  const result = await send({ resumeExportId: "export1", confirmation: "ENVIAR AO CA" }); expect(result.status).toBe(200); expect((await result.json()).done).toBe(true); expect(financialCreates()).toHaveLength(2);
 });

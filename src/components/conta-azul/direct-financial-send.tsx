@@ -314,11 +314,11 @@ export function DirectFinancialSend({
             autoClose: 6000,
             withCloseButton: true,
             color: "green",
-            title: "Envio concluído",
+            title: result.alreadyRecorded ? "Envio já registrado" : "Envio concluído",
             message: result.message,
           });
           try {
-            await onSuccess?.();
+            if (!result.alreadyRecorded) await onSuccess?.();
           } catch {
             // O envio já terminou; uma eventual falha ao atualizar a tela não altera o resultado.
           }

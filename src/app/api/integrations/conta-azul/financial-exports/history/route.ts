@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { Prisma } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRolePermissions } from "@/modules/permissions/permissions";
@@ -57,4 +59,57 @@ export async function GET(request: Request) {
     }
   }
   return NextResponse.json({ batches, checks, page, readOnly: true }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function POST(request: Request) {
+  const member = await getPurchaseInvoiceMember();
+  if (!member) return NextResponse.json({ error: "Sua sessão expirou." }, { status: 401 });
+  const permissions = await getRolePermissions(member.organizationId, member.role);
+  if (!(permissions.IMPORTS.canExport && permissions.IMPORTS.canEdit) && !(permissions.PURCHASE_INVOICES.canExport && permissions.PURCHASE_INVOICES.canEdit)) return NextResponse.json({ error: "Sem permissão para preparar a retomada." }, { status: 403 });
+  const body = await request.json().catch(() => null);
+  if (!body || body.confirmation !== "PREPARAR REENVIO" || typeof body.exportId !== "string") return NextResponse.json({ error: "Confirme a preparação do reenvio." }, { status: 400 });
+  const requestedIds = Array.isArray(body.lineIds) && body.lineIds.length > 0 && body.lineIds.length <= 20 && body.lineIds.every((id: unknown) => typeof id === "string") ? body.lineIds as string[] : null;
+  const batch = await prisma.contaAzulFinancialExport.findFirst({ where: { id: body.exportId, organizationId: member.organizationId }, include: { lines: { where: requestedIds ? { id: { in: requestedIds }, status: { in: ["FAILED", "CREATED", "SETTLED"] } } : { status: "FAILED" }, orderBy: { createdAt: "asc" }, take: 20 } } });
+  if (!batch || !await findAuthorizedClient(member, batch.clientId)) return NextResponse.json({ error: "Envio não encontrado." }, { status: 404 });
+  const token = randomUUID();
+  await prisma.documentImportDispatchLease.upsert({ where: { clientId: batch.clientId }, create: { clientId: batch.clientId, organizationId: member.organizationId, token: "", expiresAt: new Date(0) }, update: {} });
+  const locked = await prisma.documentImportDispatchLease.updateMany({ where: { clientId: batch.clientId, organizationId: member.organizationId, expiresAt: { lte: new Date() } }, data: { token, expiresAt: new Date(Date.now() + 10 * 60000) } });
+  if (!locked.count) return NextResponse.json({ error: "Já há um envio em andamento para esta empresa." }, { status: 409 });
+  const prepared: string[] = [], blocked: Array<{ description: string; reason: string }> = [];
+  try {
+    for (const line of batch.lines) {
+      try {
+        if (Date.now() - line.createdAt.getTime() < 10 * 60000 || !line.externalInstallmentId && !line.externalEventId) throw new Error("Tentativa recente ou sem identificador financeiro confiável. Exige conferência manual.");
+        const destinationId = exportLineDestinationClient(line.metadata, batch.clientId);
+        if (!await findAuthorizedClient(member, destinationId)) throw new Error("Cadastro de destino não autorizado.");
+        if (line.externalInstallmentId) {
+          try { await contaAzulRequest(destinationId, "/v1/financeiro/eventos-financeiros/parcelas/" + line.externalInstallmentId); throw new Error("A parcela ainda existe no CA. O vínculo foi preservado."); }
+          catch (error) { if (!(error && typeof error === "object" && "status" in error && error.status === 404)) throw error; }
+        }
+        if (line.externalEventId) {
+          try { const event = await contaAzulRequest(destinationId, "/v1/financeiro/eventos-financeiros/" + line.externalEventId + "/parcelas");
+            if (!Array.isArray(event) && !(event && typeof event === "object" && "itens" in event && Array.isArray(event.itens))) throw new Error("Resposta de parcelas inválida. O vínculo foi preservado.");
+            if (apiItems(event).length) throw new Error("O evento ainda possui parcela no CA. O vínculo foi preservado.");
+          } catch (error) { if (!(error && typeof error === "object" && "status" in error && error.status === 404)) throw error; }
+        }
+        const query = new URLSearchParams({ pagina: "1", tamanho_pagina: "100", data_vencimento_de: line.dueDate.toISOString().slice(0, 10), data_vencimento_ate: line.dueDate.toISOString().slice(0, 10), valor_de: Number(line.amount).toFixed(2), valor_ate: Number(line.amount).toFixed(2), descricao: line.description });
+        const kind = line.direction === "RECEIVABLE" ? "contas-a-receber" : "contas-a-pagar";
+        const found = await contaAzulRequest(destinationId, "/v1/financeiro/eventos-financeiros/" + kind + "/buscar?" + query);
+        if (!Array.isArray(found) && !(found && typeof found === "object" && "itens" in found && Array.isArray(found.itens))) throw new Error("A consulta não confirmou a ausência do lançamento.");
+        const rows = apiItems(found);
+        if (rows.length >= 100 || rows.some((item) => normalizeContaAzulLabel(String(item.descricao || "")) === normalizeContaAzulLabel(line.description))) throw new Error("Existe possível lançamento correspondente no CA. Confira antes de reenviar.");
+        if (found && typeof found === "object" && "itens_totais" in found && Number(found.itens_totais) > rows.length) throw new Error("Consulta incompleta. O vínculo foi preservado.");
+        const metadata = line.metadata && typeof line.metadata === "object" && !Array.isArray(line.metadata) ? line.metadata as Record<string, unknown> : {};
+        await prisma.$transaction(async (tx) => {
+          const lease = await tx.documentImportDispatchLease.findFirst({ where: { clientId: batch.clientId, organizationId: member.organizationId, token, expiresAt: { gt: new Date() } } });
+          if (!lease) throw new Error("A preparação foi pausada. Confira o histórico.");
+          await tx.contaAzulFinancialExportLine.update({ where: { id: line.id }, data: { status: "PENDING", externalProtocolId: null, externalEventId: null, externalInstallmentId: null, externalSettlementId: null, lastError: null, metadata: JSON.parse(JSON.stringify({ ...metadata, creationOutcome: "ABSENCE_CONFIRMED", creationConfirmedAt: null, settlementOutcome: null, previousExternal: { protocolId: line.externalProtocolId, eventId: line.externalEventId, installmentId: line.externalInstallmentId, settlementId: line.externalSettlementId, checkedAt: new Date().toISOString(), checkedBy: member.userId } })) as Prisma.InputJsonValue } });
+          await tx.auditLog.create({ data: { userId: member.userId, action: "FINANCIAL_EXPORT_MISSING_PREPARED", entity: "ContaAzulFinancialExportLine", entityId: line.id, afterData: { exportId: batch.id, clientId: batch.clientId, previousEventId: line.externalEventId, previousInstallmentId: line.externalInstallmentId } } });
+        });
+        prepared.push(line.id);
+      } catch (error) { blocked.push({ description: line.description, reason: error instanceof Error ? error.message : "Conferência não concluída." }); }
+    }
+    if (prepared.length) await prisma.contaAzulFinancialExport.update({ where: { id: batch.id }, data: { status: "PROCESSING", completedAt: null, lastError: null } });
+    return NextResponse.json({ prepared: prepared.length, blocked, writesToContaAzul: 0 });
+  } finally { await prisma.documentImportDispatchLease.updateMany({ where: { clientId: batch.clientId, token }, data: { expiresAt: new Date(0) } }); }
 }
