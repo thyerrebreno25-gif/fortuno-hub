@@ -1075,6 +1075,25 @@ model SupportTicket {
   user           User         @relation(fields: [userId], references: [id], onDelete: Restrict)
 }
 
+model DocumentImportReview {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  clientId       String
+  kind           String
+  fingerprint    String
+  fileName       String
+  data           Json
+  status         String   @default("REVIEW")
+  version        Int      @default(1)
+  simulation     Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, clientId, kind, fingerprint])
+  @@index([organizationId, kind, updatedAt])
+}
+
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String

@@ -7,7 +7,7 @@ export type PdfTextLine = {
   parts: Array<{ x: number; text: string }>;
 };
 
-export async function extractPdfTextLines(file: File, password?: string): Promise<PdfTextLine[]> {
+export async function extractPdfTextLines(file: File, password?: string, maxPages = Infinity): Promise<PdfTextLine[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   if (typeof window !== "undefined") {
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -17,11 +17,13 @@ export async function extractPdfTextLines(file: File, password?: string): Promis
   }
 
   let pdf;
+  let loadingTask;
   try {
-    pdf = await pdfjs.getDocument({
+    loadingTask = pdfjs.getDocument({
       data: new Uint8Array(await file.arrayBuffer()),
       password: password || undefined,
-    }).promise;
+    });
+    pdf = await loadingTask.promise;
   } catch (error) {
     if (error instanceof Error && error.name === "PasswordException") {
       throw new Error("O PDF é protegido. Informe a senha correta para continuar.");
@@ -29,6 +31,7 @@ export async function extractPdfTextLines(file: File, password?: string): Promis
     throw error;
   }
 
+  if (pdf.numPages > maxPages) { await loadingTask.destroy(); throw new Error(`O PDF ultrapassa o limite de ${maxPages} páginas.`); }
   const lines: PdfTextLine[] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
@@ -52,6 +55,7 @@ export async function extractPdfTextLines(file: File, password?: string): Promis
         if (text) lines.push({ page: pageNumber, y, text, parts });
       });
   }
+  await loadingTask.destroy();
   return lines;
 }
 

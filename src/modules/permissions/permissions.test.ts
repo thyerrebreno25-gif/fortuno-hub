@@ -19,6 +19,15 @@ import {
   getRolePermissions,
 } from "./permissions";
 
+it("restricts the new financial test modules to Master by default", () => {
+  for (const module of ["INVESTMENT_INCOME", "CONTRACT_IMPORTS"] as const) {
+    expect(defaultPermission("MASTER", module).canView).toBe(true);
+    for (const role of ["ADMIN", "MANAGER", "OPERATOR", "CLIENT"]) {
+      expect(Object.values(defaultPermission(role, module)).every((value) => value === false)).toBe(true);
+    }
+  }
+});
+
 describe("permissões do módulo de clientes", () => {
   beforeEach(() => {
     findMany.mockReset();

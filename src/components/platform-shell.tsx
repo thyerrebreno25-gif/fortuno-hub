@@ -250,6 +250,10 @@ const menuItems: MenuItem[] = [
     group: "Financeiro",
   },
   {
+    label: "Rendimentos de aplicações", href: "/rendimentos", moduleCode: "INVESTMENT_INCOME", icon: icons.bank, group: "Financeiro",
+  },
+  { label: "Importação de contratos", href: "/contratos", moduleCode: "CONTRACT_IMPORTS", icon: icons.document, group: "Financeiro" },
+  {
     label: "Clientes",
     href: "/clientes",
     moduleCode: "CLIENTS",

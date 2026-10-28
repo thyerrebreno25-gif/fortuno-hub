@@ -15,6 +15,7 @@ if (!connectionString) {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-management-v1'))");
     await client.query(await readFile(new URL("../prisma/migrations/20261027000000_management/migration.sql", import.meta.url), "utf8"));
     await client.query(await readFile(new URL("../prisma/migrations/20261027010000_management_sync/migration.sql", import.meta.url), "utf8"));
+    await client.query(await readFile(new URL("../prisma/migrations/20261028000000_document_import_reviews/migration.sql", import.meta.url), "utf8"));
     await client.query("COMMIT");
     console.log("Management storage ready.");
     try { await setupManagementSchedule(client); }

@@ -1,0 +1,8 @@
+.page { width: 100%; max-width: 1700px; margin: 0 auto; }
+.company { flex: 1; min-width: 280px; }
+.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; align-items: start; }
+.draft { border: 1px solid var(--mantine-color-default-border); padding: 12px; border-radius: 8px; text-align: left; background: var(--mantine-color-body); color: var(--mantine-color-text); cursor: pointer; width: 100%; }
+.draft:hover, .selected { border-color: var(--mantine-color-blue-5); }
+.details { margin-top: 12px; font-size: 13px; }
+.details summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+@media (max-width: 950px) { .workspace { grid-template-columns: 1fr; } }

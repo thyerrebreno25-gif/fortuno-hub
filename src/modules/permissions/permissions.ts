@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 
 export const MODULE_CODES = [
-  "DASHBOARD","MANAGEMENT","NOTICES","ASSISTANT","CLIENTS","IMPORTS","PURCHASE_INVOICES","SALES_RECONCILIATION","OPERATIONS","SERVICE_CENTER","WHATSAPP","OPERATIONAL_MAPPING","MEETINGS","CALENDAR","NOTION","AUDIT","ONBOARDING","REPORTS","SUPPORT","SETTINGS","MOTOR_EXCHANGE","HISTORY"
+  "DASHBOARD","MANAGEMENT","NOTICES","ASSISTANT","CLIENTS","IMPORTS","PURCHASE_INVOICES","INVESTMENT_INCOME","CONTRACT_IMPORTS","SALES_RECONCILIATION","OPERATIONS","SERVICE_CENTER","WHATSAPP","OPERATIONAL_MAPPING","MEETINGS","CALENDAR","NOTION","AUDIT","ONBOARDING","REPORTS","SUPPORT","SETTINGS","MOTOR_EXCHANGE","HISTORY"
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 export type PermissionShape = { canView:boolean; canCreate:boolean; canEdit:boolean; canDelete:boolean; canImport:boolean; canExport:boolean; canManage:boolean };
@@ -11,6 +11,7 @@ const full: PermissionShape = {canView:true,canCreate:true,canEdit:true,canDelet
 const none: PermissionShape = {canView:false,canCreate:false,canEdit:false,canDelete:false,canImport:false,canExport:false,canManage:false};
 
 export function defaultPermission(role:string,module:ModuleCode): PermissionShape {
+  if(module === "INVESTMENT_INCOME" || module === "CONTRACT_IMPORTS") return role === "MASTER" ? full : none;
   if(role === "MASTER" || role === "ADMIN") return full;
   if(role === "MANAGER") return module === "SETTINGS" ? {...full,canDelete:false} : full;
   if(role === "OPERATOR") {

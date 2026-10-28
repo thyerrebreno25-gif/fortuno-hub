@@ -25,6 +25,8 @@ const modules = [
   ["CLIENTS", "Clientes"],
   ["IMPORTS", "Importações"],
   ["PURCHASE_INVOICES", "Notas de compra"],
+  ["INVESTMENT_INCOME", "Rendimentos de aplicações"],
+  ["CONTRACT_IMPORTS", "Importação de contratos"],
   ["SALES_RECONCILIATION", "Conferência de vendas"],
   ["OPERATIONS", "Gestão de tarefas"],
   ["SERVICE_CENTER", "Central de e-mail"],
