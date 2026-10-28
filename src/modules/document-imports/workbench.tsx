@@ -7,6 +7,7 @@ import { extractPdfTextLines } from "@/modules/bank-statements/pdf-reader.client
 import { parseContract, parseInvestment } from "./parsers";
 import { type ImportKind, type Review, type Option, type ContractReview, digits, displayDate, money, monthDate, reviewIssues, schedule } from "./model";
 import styles from "./workbench.module.css";
+import { BalanceCheck } from "./balance-check";
 type Company = { id: string; name: string; document: string | null; contaAzulConnection: null | { active: boolean; status: string } };
 type Sale = { number: number; saleDate: string; dueDate: string; amountCents: number; description?: string };
 type Simulation = { validatedAt: string; errors: string[]; sales: Sale[]; totalCents: number; endDate: string | null };
@@ -111,7 +112,7 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
           {optionsLoading && <Group gap="xs"><Loader size="xs" /><Text size="sm">Consultando categorias e contas do CA…</Text></Group>}
           {issues.length > 0 && <Alert color="orange" title="Conferir antes de simular">{issues.map((issue) => <Text key={issue} size="sm">{issue}</Text>)}</Alert>}
           {review.kind === "INVESTMENT" ? <>
-            <Paper withBorder p="md" radius="md"><SimpleGrid cols={{ base: 1, sm: 3 }}><TextInput label="Início do período" type="date" value={review.periodStart} disabled={!canEdit || busy} onChange={(event) => setReview({ ...review, periodStart: event.currentTarget.value })} /><TextInput label="Fim do período" type="date" value={review.periodEnd} disabled={!canEdit || busy} onChange={(event) => setReview({ ...review, periodEnd: event.currentTarget.value })} /><div><Text size="sm" fw={500}>Total dos rendimentos</Text><Title order={3}>{money(review.rows.reduce((sum, row) => sum + row.amountCents, 0))}</Title><Text size="xs" c="dimmed">{review.rows.length} venda(s) consolidada(s)</Text></div></SimpleGrid></Paper>
+            <Paper withBorder p="md" radius="md"><SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }}><TextInput label="Início do período" type="date" value={review.periodStart} disabled={!canEdit || busy} onChange={(event) => setReview({ ...review, periodStart: event.currentTarget.value })} /><TextInput label="Fim do período" type="date" value={review.periodEnd} disabled={!canEdit || busy} onChange={(event) => setReview({ ...review, periodEnd: event.currentTarget.value })} /><div><Text size="sm" fw={500}>Total dos rendimentos</Text><Title order={3}>{money(review.rows.reduce((sum, row) => sum + row.amountCents, 0))}</Title><Text size="xs" c="dimmed">{review.rows.length} venda(s) consolidada(s)</Text></div><BalanceCheck review={review} clientId={clientId} accounts={options.financialAccounts} connected={connected} /></SimpleGrid></Paper>
             {review.rows.map((row, index) => <Paper withBorder p="md" radius="md" key={row.key}>
               <Group justify="space-between" mb="sm"><Text fw={700}>{row.description}</Text><Badge>{row.evidence.length} aplicação(ões)</Badge></Group>
               <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }}>

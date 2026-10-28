@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { reviewSchema } from "@/modules/document-imports/model";
 import { authorizedCompany, importAccess, simulateReview } from "@/modules/document-imports/server";
+export const maxDuration = 300;
 const bodySchema = z.object({ version: z.number().int().positive(), data: reviewSchema, action: z.enum(["save", "simulate"]) });
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const body = bodySchema.safeParse(await request.json().catch(() => null));
