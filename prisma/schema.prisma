@@ -1087,11 +1087,41 @@ model DocumentImportReview {
   status         String   @default("REVIEW")
   version        Int      @default(1)
   simulation     Json?
+  deliveries     DocumentImportDelivery[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@unique([organizationId, clientId, kind, fingerprint])
   @@index([organizationId, kind, updatedAt])
+}
+
+model DocumentImportDelivery {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  reviewId       String
+  rowKey         String
+  businessKey    String   @unique
+  marker         String   @unique
+  payload        Json
+  status         String   @default("PENDING")
+  saleNumber     Int?
+  saleId         String?
+  installmentId  String?
+  settlementId   String?
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  review         DocumentImportReview @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, clientId, reviewId])
+}
+
+model DocumentImportDispatchLease {
+  clientId       String   @id
+  organizationId String
+  token          String
+  expiresAt      DateTime
 }
 
 model AuditLog {

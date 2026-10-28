@@ -2,7 +2,7 @@ import { brDate, digits, moneyCents, normalize, type ContractReview, type Invest
 
 export type DocumentLine = { text: string; page: number };
 export function parseInvestment(lines: DocumentLine[]): InvestmentReview {
-  const result: InvestmentReview = { kind: "INVESTMENT", periodStart: "", periodEnd: "", bankAccount: "", rows: [], warnings: [] };
+  const result: InvestmentReview = { kind: "INVESTMENT", periodStart: "", periodEnd: "", bankAccount: "", customerId: "", serviceId: "", rows: [], warnings: [] };
   let group = "";
   for (const line of lines) {
     const normalized = normalize(line.text);

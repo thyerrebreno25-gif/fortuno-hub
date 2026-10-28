@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   if (!body.success) return NextResponse.json({ error: "Selecione contas e uma data válida." }, { status: 400 });
   if (!await authorizedCompany(access.member.organizationId, body.data.clientId)) return NextResponse.json({ error: "Empresa não encontrada." }, { status: 404 });
   try {
-    const options = await importOptions(body.data.clientId, "INVESTMENT");
+    const options = await importOptions(body.data.clientId, "INVESTMENT", "", false);
     const accounts = [...new Set(body.data.accountIds)];
     if (accounts.some((id) => !options.financialAccounts.some((item) => item.value === id))) return NextResponse.json({ error: "Conta não pertence à empresa selecionada." }, { status: 400 });
     const balances = [];

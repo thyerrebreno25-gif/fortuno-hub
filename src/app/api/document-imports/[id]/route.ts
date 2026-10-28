@@ -21,7 +21,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     try { simulation = await simulateReview(draft.clientId, body.data.data); }
     catch { return NextResponse.json({ error: "A consulta ao Conta Azul falhou. Nenhum lançamento foi criado." }, { status: 502 }); }
   }
-  const result = await prisma.documentImportReview.updateMany({ where: { id, organizationId: access.member.organizationId, version: body.data.version }, data: { data: body.data.data as Prisma.InputJsonValue, version: { increment: 1 }, simulation: simulation ? simulation as unknown as Prisma.InputJsonValue : Prisma.DbNull, status: simulation && !simulation.errors.length ? "TESTED" : "REVIEW" } });
-  if (!result.count) return NextResponse.json({ error: "A revisão foi alterada. Recarregue a tela." }, { status: 409 });
+  const result = await prisma.documentImportReview.updateMany({ where: { id, organizationId: access.member.organizationId, version: body.data.version, deliveries: { none: {} } }, data: { data: body.data.data as Prisma.InputJsonValue, version: { increment: 1 }, simulation: simulation ? simulation as unknown as Prisma.InputJsonValue : Prisma.DbNull, status: simulation && !simulation.errors.length ? "TESTED" : "REVIEW" } });
+  if (!result.count) return NextResponse.json({ error: "A revisão foi alterada ou já possui envio iniciado. Recarregue a tela; envios iniciados não podem ser editados." }, { status: 409 });
   return NextResponse.json({ draft: await prisma.documentImportReview.findFirst({ where: { id, organizationId: access.member.organizationId } }), mode: "SIMULATION" });
 }

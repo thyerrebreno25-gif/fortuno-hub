@@ -13,7 +13,7 @@ it("scopes the record to the organization and rejects stale versions", async () 
 });
 it("invalidates a previous simulation when the review changes", async () => {
   expect((await PATCH(request(), context)).status).toBe(200);
-  expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", version: 1 }, data: expect.objectContaining({ status: "REVIEW", version: { increment: 1 } }) }));
+  expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", version: 1, deliveries: { none: {} } }, data: expect.objectContaining({ status: "REVIEW", version: { increment: 1 } }) }));
   expect(mocks.simulate).not.toHaveBeenCalled();
 });
 it("does not mark the draft tested when CA validation has errors", async () => {

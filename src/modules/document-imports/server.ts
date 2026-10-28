@@ -17,22 +17,37 @@ export async function importAccess(kind: ImportKind) {
 export function authorizedCompany(organizationId: string, clientId: string) {
   return prisma.client.findFirst({ where: { id: clientId, organizationId, active: true }, select: { id: true, name: true, document: true } });
 }
-export async function importOptions(clientId: string, kind: ImportKind, term = "") {
+async function readCatalog(clientId: string, path: string, filters: Record<string, string>) {
+  const items: Array<Record<string, unknown>> = [];
+  for (let page = 1; page <= 30; page++) {
+    const body = await contaAzulRequest<unknown>(clientId, `${path}?${new URLSearchParams({ ...filters, pagina: String(page), tamanho_pagina: "100" })}`);
+    const rows = apiItems(body);
+    if (!Array.isArray(body) && (!body || typeof body !== "object" || !Array.isArray((body as Record<string, unknown>).itens))) throw new Error("Catálogo do CA indisponível.");
+    items.push(...rows);
+    const metadata = body as Record<string, unknown>;
+    const total = metadata.itens_totais ?? metadata.total_itens;
+    if (typeof total === "number" ? items.length >= total : rows.length < 100) return items;
+    if (!rows.length) throw new Error("Catálogo do CA incompleto.");
+  }
+  throw new Error("Catálogo excede o limite de consulta.");
+}
+export async function importOptions(clientId: string, kind: ImportKind, term = "", salesCatalogs = true) {
   // Sequential requests share the existing OAuth refresh lock.
   const categories = contaAzulOptions(await contaAzulRequest(clientId, "/v1/categorias?pagina=1&tamanho_pagina=1000")).filter((item) => !item.type || item.type === "RECEITA");
-  const financialAccounts = contaAzulOptions(await contaAzulRequest(clientId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true"));
+  const financialAccounts = contaAzulOptions(apiItems(await contaAzulRequest(clientId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true")).filter((item) => item.ativo !== false));
   let customers: Array<{ value: string; label: string; document: string }> = [];
-  if (kind === "CONTRACT") {
+  if (kind === "CONTRACT" || kind === "INVESTMENT" && salesCatalogs) {
     const query = new URLSearchParams({ pagina: "1", tamanho_pagina: "1000", tipo_perfil: "CLIENTE", status: "ATIVO" });
     if (term.trim()) query.set("termo_busca", term.trim());
-    const body = await contaAzulRequest(clientId, `/v1/pessoa?${query}`);
+    const body = kind === "INVESTMENT" ? await readCatalog(clientId, "/v1/pessoa", { tipo_perfil: "CLIENTE", status: "ATIVO" }) : await contaAzulRequest(clientId, `/v1/pessoa?${query}`);
     customers = apiItems(body).flatMap((item) => {
       const value = String(item.id || item.uuid || "");
       const label = String(item.nome || item.razao_social || "");
       return value && label ? [{ value, label, document: digits(String(item.documento || item.cpf_cnpj || "")) }] : [];
     });
   }
-  return { categories, financialAccounts, customers };
+  const services = kind === "INVESTMENT" && salesCatalogs ? contaAzulOptions((await readCatalog(clientId, "/v1/servicos", {})).filter((item) => item.status === "ATIVO" && item.tipo_servico !== "TOMADO")) : [];
+  return { categories, financialAccounts, customers, services };
 }
 export async function simulateReview(clientId: string, review: Review) {
   const options = await importOptions(clientId, review.kind, review.kind === "CONTRACT" ? review.buyerDocument : "");
@@ -50,6 +65,8 @@ export async function simulateReview(clientId: string, review: Review) {
   }
   const balances: AccountClosingBalance[] = [];
   if (review.kind === "INVESTMENT") {
+    if (!options.customers.some((item) => item.value === review.customerId)) errors.push("Cliente da venda não encontrado na empresa selecionada.");
+    if (!options.services.some((item) => item.value === review.serviceId)) errors.push("Serviço da venda não encontrado ou inativo na empresa selecionada.");
     const deadline = Date.now() + 220000;
     for (const accountId of new Set(review.rows.map((row) => row.accountId).filter(Boolean))) {
       if (options.financialAccounts.some((item) => item.value === accountId)) balances.push(await closingAccountBalance(clientId, accountId, review.periodEnd, new Date(), deadline));
