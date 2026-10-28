@@ -317,6 +317,8 @@ export default function LoginPage() {
             <span>© 2026 Fortuno Gestão Financeira</span>
             <span className={styles.footerDot}>•</span>
             <Link href="/politica-de-privacidade" className={styles.privacyLink}>Política de Privacidade</Link>
+            <span className={styles.footerDot}>•</span>
+            <Link href="/termos-de-servico" className={styles.privacyLink}>Termos de Serviço</Link>
           </footer>
         </div>
       </section>

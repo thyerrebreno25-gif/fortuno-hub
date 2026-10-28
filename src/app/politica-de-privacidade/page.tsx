@@ -17,6 +17,6 @@ export default function PrivacyPolicyPage() {
     <header className={styles.top}><div className={styles.wrap}><Link href="/inicio" className={styles.logo}>FORTUNO <span>HUB</span></Link><Link href="/login">Acessar o sistema</Link></div></header>
     <div className={styles.hero}><div className={styles.wrap}><p className={styles.eyebrow}>Privacidade e proteção de dados</p><h1>Política de Privacidade</h1><p>Conheça como os dados pessoais podem ser tratados no Fortuno Hub, incluindo as comunicações realizadas por meio de integrações com o WhatsApp Business.</p><span className={styles.version}>Versão de 28 de outubro de 2026</span></div></div>
     <main className={styles.content}><article dangerouslySetInnerHTML={{ __html: policyContent }} /></main>
-    <footer className={styles.footer}>Fortuno Hub · Fortuno Gestão Financeira<br /><a href="https://fortunogestao.com.br/">Site institucional</a> · <Link href="/login">Acessar o sistema</Link></footer>
+    <footer className={styles.footer}>Fortuno Hub · Fortuno Gestão Financeira<br /><Link href="/termos-de-servico">Termos de Serviço</Link> · <a href="https://fortunogestao.com.br/">Site institucional</a> · <Link href="/login">Acessar o sistema</Link></footer>
   </div>;
 }

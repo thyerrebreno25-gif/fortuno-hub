@@ -66,3 +66,10 @@ it("serves the privacy policy without authentication", async () => {
   expect(response.headers.get("location")).toBeNull();
   expect(response.headers.get("x-middleware-next")).toBe("1");
 });
+
+it("serves the terms of service without authentication", async () => {
+  const response = await proxy(new NextRequest("https://example.test/termos-de-servico"));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("location")).toBeNull();
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+});
