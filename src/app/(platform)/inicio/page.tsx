@@ -378,6 +378,9 @@ export default function InicioPage() {
               >
                 O que você deseja fazer hoje?
               </Title>
+              <Text c="dimmed" mt="sm">
+                Encontre todas as telas do Fortuno Hub e veja o que você pode fazer em cada uma.
+              </Text>
             </div>
 
             <TextInput
@@ -465,6 +468,10 @@ export default function InicioPage() {
                   <Title order={4} mt="md" className={styles.cardTitle}>
                     {feature.title}
                   </Title>
+
+                  <Text size="sm" c="dimmed" mt="xs">
+                    {feature.description}
+                  </Text>
 
                   <Group gap={6} mt="md" className={styles.cardAction}>
                     <Text

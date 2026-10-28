@@ -491,7 +491,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
       <main className={styles.main}>
         <DashboardTopbar />
 
-        <section className={styles.content}>
+        <section className={`${styles.content} ${pathname === "/atendimento" ? styles.mailContent : ""}`}>
           {!permissionsLoaded ? (
             <div style={{ padding: 32 }}>Carregando permissões...</div>
           ) : currentAllowed ? (

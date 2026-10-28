@@ -91,7 +91,8 @@ export default function AtendimentoPage() {
   const [error, setError] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [archiveAction, setArchiveAction] = useState<"archive" | "restore" | null>(null);
+  const [archiveAction, setArchiveAction] = useState<"archive" | "restore" | "delete" | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [note, setNote] = useState("");
 
   const [form, setForm] = useState({
@@ -130,15 +131,16 @@ export default function AtendimentoPage() {
     setStats(body.stats || {});
   }, [view, search, selectedMemberId]);
 
-  async function archiveMailbox(action: "archive" | "restore") {
+  async function archiveMailbox(action: "archive" | "restore" | "delete") {
     setArchiveAction(null);
     setSaving(true);
     setError("");
     try {
-      const response = await fetch("/api/atendimento/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const response = await fetch("/api/atendimento/archive", { method: action === "delete" ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, confirmation: deleteConfirmation }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Falha ao atualizar a caixa.");
       setSelected(null); setSelectedId(null);
+      setDeleteConfirmation("");
       await loadTickets();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao atualizar a caixa."); }
     finally { setSaving(false); }
@@ -297,9 +299,13 @@ export default function AtendimentoPage() {
 
 
   return (
-    <Stack gap="lg" className={styles.page}>
-      <Modal opened={archiveAction !== null} onClose={() => setArchiveAction(null)} title={archiveAction === "restore" ? "Restaurar arquivados" : "Limpar caixa de e-mails"}>
-        <Stack><Text size="sm">{archiveAction === "restore" ? "Os atendimentos arquivados voltarão às caixas originais." : "Os atendimentos atuais serão movidos para Arquivados e poderão ser restaurados. Os e-mails originais no Gmail não serão alterados."}</Text><Group justify="flex-end"><Button variant="default" onClick={() => setArchiveAction(null)}>Cancelar</Button><Button onClick={() => archiveAction && void archiveMailbox(archiveAction)}>{archiveAction === "restore" ? "Restaurar atendimentos" : "Arquivar atendimentos"}</Button></Group></Stack>
+    <Stack gap="sm" className={styles.page}>
+      <Modal opened={archiveAction !== null} onClose={() => setArchiveAction(null)} title={archiveAction === "delete" ? "Excluir todos os arquivados" : archiveAction === "restore" ? "Restaurar arquivados" : "Limpar caixa de e-mails"}>
+        <Stack>
+          <Text size="sm">{archiveAction === "delete" ? `Excluir definitivamente os ${stats.archived ?? 0} atendimentos arquivados, incluindo mensagens, anexos e histórico no Fortuno Hub. Esta ação não pode ser desfeita. Os originais no Gmail não serão alterados.` : archiveAction === "restore" ? "Os atendimentos arquivados voltarão às caixas originais." : "Os atendimentos atuais serão movidos para Arquivados e poderão ser restaurados. Os e-mails originais no Gmail não serão alterados."}</Text>
+          {archiveAction === "delete" && <TextInput label="Digite EXCLUIR ARQUIVADOS para confirmar" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.currentTarget.value)} />}
+          <Group justify="flex-end"><Button variant="default" onClick={() => setArchiveAction(null)}>Cancelar</Button><Button color={archiveAction === "delete" ? "red" : undefined} disabled={archiveAction === "delete" && deleteConfirmation !== "EXCLUIR ARQUIVADOS"} onClick={() => archiveAction && void archiveMailbox(archiveAction)}>{archiveAction === "delete" ? "Excluir definitivamente" : archiveAction === "restore" ? "Restaurar atendimentos" : "Arquivar atendimentos"}</Button></Group>
+        </Stack>
       </Modal>
       <Group
         justify="space-between"
@@ -316,6 +322,7 @@ export default function AtendimentoPage() {
         </Stack>
 
         <Group className={styles.headerActions}>
+          {bootstrap.permission?.canManage && view === "ARCHIVED" && <Button color="red" variant="light" loading={saving} onClick={() => { setDeleteConfirmation(""); setArchiveAction("delete"); }}>Excluir todos os arquivados</Button>}
           {bootstrap.permission?.canManage && <Button variant="default" loading={saving} onClick={() => setArchiveAction(view === "ARCHIVED" ? "restore" : "archive")}>{view === "ARCHIVED" ? "Restaurar arquivados" : "Limpar caixa"}</Button>}
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
             Atendimento por e-mail
@@ -446,7 +453,7 @@ export default function AtendimentoPage() {
             </Group>
           </div>
 
-          <ScrollArea h={610}>
+          <ScrollArea style={{ flex: 1, minHeight: 0 }} type="auto">
             {!tickets.length ? (
               <Stack align="center" gap="xs" py={80} px="md">
                 <ThemeIcon size={50} radius="xl" variant="light">

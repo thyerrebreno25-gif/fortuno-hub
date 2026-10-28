@@ -264,7 +264,7 @@ export function EmailTicketDrawer({
       opened={opened}
       onClose={onClose}
       position="right"
-      size="92%"
+      size="98%"
       padding={0}
       withCloseButton={false}
       classNames={{ body: styles.emailDrawerBody }}

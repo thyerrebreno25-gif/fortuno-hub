@@ -1,6 +1,6 @@
 .page {
   width: 100%;
-  max-width: 1480px;
+  max-width: none;
   margin: 0 auto;
 }
 
@@ -30,7 +30,7 @@
 .layout {
   display: grid;
   grid-template-columns: 225px minmax(0, 1fr);
-  min-height: 650px;
+  height: max(560px, calc(100dvh - 230px));
   border: 1px solid #dfe6ee;
   border-radius: 12px;
   overflow: hidden;
@@ -39,6 +39,7 @@
 }
 
 .sidebar {
+  overflow-y: auto;
   border-right: 1px solid var(--mantine-color-gray-2);
   background: #f8fafc;
   padding: 11px 9px;
@@ -71,11 +72,15 @@
 }
 
 .list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   min-width: 0;
   background: white;
 }
 
 .searchBar {
+  flex: 0 0 auto;
   padding: 12px 14px;
   border-bottom: 1px solid var(--mantine-color-gray-2);
   background: #fbfcfe;
@@ -172,7 +177,7 @@
 }
 
 .emailMainInner {
-  max-width: 940px;
+  max-width: none;
   margin: 0 auto;
   padding: 24px 26px 44px;
 }
@@ -315,11 +320,17 @@
 
   .layout {
     display: block;
+    height: auto;
   }
 
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--mantine-color-gray-2);
+  }
+
+  .list {
+    height: 70dvh;
+    min-height: 420px;
   }
 
   .ticketRow {

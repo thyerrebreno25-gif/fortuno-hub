@@ -512,6 +512,10 @@
   padding: 24px 28px 36px;
 }
 
+.content.mailContent {
+  padding: 12px;
+}
+
 .pageHeading {
   display: flex;
   align-items: flex-end;
