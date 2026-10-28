@@ -60,7 +60,8 @@ export async function GET(_request: Request, context: Context) {
       status: 200,
       headers: {
         "Content-Type": file.mimeType || attachment.mimeType || "application/octet-stream",
-        "Content-Disposition": `inline; filename*=UTF-8''${encodedName}`,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodedName}`,
+        "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
         ...(file.size ? { "Content-Length": String(file.size) } : {}),
       },
