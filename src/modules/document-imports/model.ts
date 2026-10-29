@@ -12,7 +12,7 @@ export const investmentSchema = z.object({
   })).max(100), warnings: z.array(text).max(50),
 });
 export const contractSchema = z.object({
-  kind: z.literal("CONTRACT"), buyer: text, buyerDocument: text, seller: text, sellerDocument: text,
+  kind: z.literal("CONTRACT"), buyer: text, buyerDocument: text, buyerEmail: text.default(""), buyerPhone: text.default(""), autoCreateBuyer: z.boolean().default(true), seller: text, sellerDocument: text,
   description: text, originalDate: date, firstDueDate: date, startMonth: date,
   installments: z.number().int().min(0).max(240), amountCents: cents, totalCents: cents,
   frequency: z.enum(["MONTHLY", "YEARLY"]), interval: z.number().int().min(1).max(120), dueDay: z.number().int().min(0).max(31),
@@ -73,7 +73,9 @@ export function reviewIssues(review: Review, requireLinks = false): string[] {
     const dates = schedule(review);
     if (dates[0] && dates[0].dueDate !== review.firstDueDate) errors.push("O primeiro vencimento deve coincidir com o mês inicial e o dia escolhido.");
     if (!review.paymentMethod) errors.push("Selecione a forma de pagamento.");
-    if (requireLinks && (!review.categoryId || !review.accountId || !review.customerId)) errors.push("Selecione categoria, conta financeira e comprador no CA.");
+    if (requireLinks && (!review.categoryId || !review.accountId || (!review.customerId && review.autoCreateBuyer === false))) errors.push("Selecione categoria, conta financeira e comprador no CA.");
+    if (review.buyerEmail && !z.email().safeParse(review.buyerEmail).success) errors.push("Confira o e-mail do comprador.");
+    if (review.buyerPhone && (digits(review.buyerPhone).length < 10 || digits(review.buyerPhone).length > 13)) errors.push("Confira o telefone do comprador com DDD.");
     if (requireLinks && !review.serviceId) errors.push("Selecione o serviço cadastrado no CA para o item único do contrato.");
     if (review.interval > 60) errors.push("O intervalo da recorrência no CA deve ser de até 60 meses ou anos.");
   }

@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, FileButton, Group, Loader, Modal, NumberInput, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Checkbox, FileButton, Group, Loader, Modal, NumberInput, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
 import { IconFileUpload, IconPlayerPlay, IconRefresh } from "@tabler/icons-react";
 import { extractPdfTextLines } from "@/modules/bank-statements/pdf-reader.client";
 import { parseContract, parseInvestment } from "./parsers";
@@ -132,7 +132,10 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
             <Paper withBorder p="md" radius="md"><SimpleGrid cols={{ base: 1, sm: 2 }}>
               <TextInput label="Comprador identificado" value={review.buyer} disabled={!editable || busy} onChange={(event) => changeContract({ buyer: event.currentTarget.value })} />
               <TextInput label="CPF/CNPJ do comprador" value={review.buyerDocument} disabled={!editable || busy} onChange={(event) => changeContract({ buyerDocument: digits(event.currentTarget.value), customerId: "" })} />
-              <Select label="Comprador cadastrado no CA" searchable data={options.customers} value={review.customerId || null} placeholder="Localizar pelo CPF/CNPJ do contrato" disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ customerId: value || "" })} />
+              <TextInput label="E-mail do comprador" type="email" value={review.buyerEmail || ""} disabled={!editable || busy} onChange={(event) => changeContract({ buyerEmail: event.currentTarget.value })} />
+              <TextInput label="Telefone do comprador" value={review.buyerPhone || ""} disabled={!editable || busy} onChange={(event) => changeContract({ buyerPhone: event.currentTarget.value })} />
+              <Checkbox label="Cadastrar comprador automaticamente no CA se o CPF/CNPJ não existir" checked={review.autoCreateBuyer !== false} disabled={!editable || busy} onChange={(event) => changeContract({ autoCreateBuyer: event.currentTarget.checked })} />
+              <Select label="Comprador cadastrado no CA" description="Se não for localizado, será cadastrado no envio confirmado usando os dados revisados." clearable searchable data={options.customers} value={review.customerId || null} placeholder="Localizar pelo CPF/CNPJ do contrato" disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ customerId: value || "" })} />
               <Select label="Serviço cadastrado no CA" description="Um único item para todo o contrato, sem separar site e branding." searchable data={options.services} value={review.serviceId || null} disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ serviceId: value || "" })} />
               <TextInput label="Descrição do contrato (item único)" value={review.description} disabled={!editable || busy} onChange={(event) => changeContract({ description: event.currentTarget.value })} />
               <Select label="Categoria de receita no CA" searchable data={options.categories} value={review.categoryId || null} disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ categoryId: value || "" })} />

@@ -1120,6 +1120,19 @@ model DocumentImportDelivery {
   @@index([organizationId, clientId, reviewId])
 }
 
+model DocumentImportBuyer {
+  id             String @id @default(cuid())
+  organizationId String
+  clientId       String
+  document       String
+  status         String @default("PENDING")
+  personId       String?
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@unique([organizationId, clientId, document])
+}
+
 model DocumentImportDispatchLease {
   clientId       String   @id
   organizationId String

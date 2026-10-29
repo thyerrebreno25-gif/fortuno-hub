@@ -5,6 +5,10 @@ import { monthDate, reviewIssues, reviewSchema, schedule, validDate } from "./mo
 const contractLines = ["CONTRATO DE PRESTAÇÃO DE SERVIÇOS", "Site institucional e Branding", "CONTRATANTE: MHS SOLUCOES AMBIENTAIS LTDA, pessoa jurídica, inscrita no CNPJ nº 43.541.033/0001-51.", "CONTRATADA: GIM DIGITAL LTDA, inscrita no CNPJ 33.822.179/0001-11. As partes concordam.", "Entrega do site em 90 dias e Branding em 60 dias.", "A CONTRATANTE pagará o valor de R$ 18.000,00 (dezoito mil reais) em 8 parcelas de R$ 2.250,00 (dois mil duzentos e cinquenta reais), com vencimento da primeira para o dia 15/11/2026 e as demais nos dias 15 dos meses subsequentes.", "R$ 3.000,00 se referem ao Site e R$ 15.000,00 ao Branding. O pagamento será feito mediante boleto bancário.", "Brasília/DF, 19 de outubro de 2026."].map((text) => ({ text, page: 1 }));
 export const sampleContract = () => parseContract(contractLines);
 describe("revisão de contratos", () => {
+  it("extracts optional buyer contacts only from the buyer section",()=>{
+    const result=parseContract([{page:1,text:"CONTRATANTE: EMPRESA LTDA, CNPJ 43.541.033/0001-51, e-mail comprador@example.test, telefone (61) 99999-8888. CONTRATADA: PRESTADORA LTDA, CNPJ 33.822.179/0001-11, contato vendedor@example.test. As partes concordam."}]);
+    expect(result.buyerEmail).toBe("comprador@example.test");expect(result.buyerPhone).toBe("61999998888");expect(result.autoCreateBuyer).toBe(true);
+  });
   it("extracts parties and the installment amount without splitting Site and Branding", () => {
     const result = sampleContract();
     expect(result.buyerDocument).toBe("43541033000151"); expect(result.sellerDocument).toBe("33822179000111");

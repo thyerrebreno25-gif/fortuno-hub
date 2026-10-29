@@ -53,7 +53,10 @@ export function parseContract(lines: DocumentLine[]): ContractReview {
   if (!installments) warnings.push("Quantidade de cobranças e valor por venda não identificados. Preencha na revisão.");
   if (!buyer.document || !seller.document) warnings.push("Não foi possível identificar com segurança as duas partes do contrato.");
   if (installments && !/meses subsequentes|parcelas mensais|mensal/.test(all)) warnings.push("Periodicidade mensal sugerida: confirme no documento.");
-  return { kind: "CONTRACT", buyer: buyer.name.toUpperCase(), buyerDocument: digits(buyer.document), seller: seller.name.toUpperCase(), sellerDocument: digits(seller.document), description,
+  return { kind: "CONTRACT", buyer: buyer.name.toUpperCase(), buyerDocument: digits(buyer.document),
+    buyerEmail: buyerBlock.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || "",
+    buyerPhone: digits(buyerBlock.match(/(?:telefone|celular|whatsapp|fone)\s*[:\-]?\s*([+\d(][\d()\s+\-]{8,24})/i)?.[1] || ""), autoCreateBuyer: true,
+    seller: seller.name.toUpperCase(), sellerDocument: digits(seller.document), description,
     originalDate, firstDueDate, startMonth: firstDueDate ? firstDueDate.slice(0, 7) + "-01" : "", installments: Number(installments?.[1] || 0), amountCents: installments ? moneyCents(installments[2]) : 0,
     totalCents: price ? moneyCents(price[1]) : 0, frequency: "MONTHLY", interval: 1, dueDay: firstDueDate ? Number(firstDueDate.slice(-2)) : 0,
     paymentMethod: all.includes("boleto bancario") ? "BOLETO_BANCARIO" : "", categoryId: "", accountId: "", customerId: "", serviceId: "", warnings };

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m=vi.hoisted(()=>({request:vi.fn(),validate:vi.fn(),find:vi.fn(),freeze:vi.fn(),draftUpdate:vi.fn(),deliveryFind:vi.fn(),unique:vi.fn(),create:vi.fn(),update:vi.fn(),lease:vi.fn(),leaseFind:vi.fn(),audit:vi.fn()}));
+const m=vi.hoisted(()=>({request:vi.fn(),validate:vi.fn(),ensureBuyer:vi.fn(),find:vi.fn(),freeze:vi.fn(),draftUpdate:vi.fn(),deliveryFind:vi.fn(),unique:vi.fn(),create:vi.fn(),update:vi.fn(),lease:vi.fn(),leaseFind:vi.fn(),audit:vi.fn()}));
+vi.mock("./contract-buyer",()=>({ensureContractBuyer:m.ensureBuyer}));
 vi.mock("./server",()=>({simulateReview:m.validate}));
 vi.mock("@/modules/purchase-invoices/server/conta-azul",()=>({contaAzulRequest:m.request,ContaAzulApiError:class extends Error {status=400;}}));
 vi.mock("@/lib/prisma",()=>{const tx={documentImportReview:{findFirst:m.find,updateMany:m.freeze,update:m.draftUpdate},documentImportDelivery:{findFirst:m.deliveryFind,findUnique:m.unique,create:m.create,update:m.update},documentImportDispatchLease:{upsert:vi.fn(),updateMany:m.lease,findFirst:m.leaseFind},auditLog:{create:m.audit}};return {prisma:{...tx,$transaction:async(fn:(tx:unknown)=>unknown)=>fn(tx)}};});
@@ -29,6 +30,15 @@ beforeEach(()=>{
   });
 });
 describe("Real recurring contracts",()=>{
+  it("resolves or creates a missing buyer only after validating the contract, and freezes its CA identity with the review",async()=>{
+    m.find.mockImplementation(async()=>({id:"review",clientId:"company",organizationId:"org",kind:"CONTRACT",data:{...review(),customerId:""},version}));
+    m.ensureBuyer.mockResolvedValue(id(1));
+    expect(await send()).toEqual({completed:true});
+    expect(m.ensureBuyer).toHaveBeenCalledWith("org","company",expect.objectContaining({buyerDocument:"43541033000151"}),"user");
+    expect(m.validate.mock.invocationCallOrder[0]).toBeLessThan(m.ensureBuyer.mock.invocationCallOrder[0]);
+    expect(m.freeze.mock.calls[0][0].data.data.customerId).toBe(id(1));
+    expect(JSON.parse(posts()[0][2].body).id_cliente).toBe(id(1));
+  });
   it("sends one unsplit item with first-day generation, fifteenth-day due dates and exact month-end termination",async()=>{
     expect(await send()).toEqual({completed:true});expect(posts()).toHaveLength(1);
     const payload=JSON.parse(posts()[0][2].body);

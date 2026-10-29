@@ -25,7 +25,10 @@ export async function importOptions(clientId: string, kind: ImportKind, term = "
   const services: Array<{ value: string; label: string }> = [];
   if (kind === "CONTRACT") {
     const query = new URLSearchParams({ pagina: "1", tamanho_pagina: "1000", tipo_perfil: "Cliente", com_endereco: "false" });
-    if (term.trim()) query.set("busca", term.trim());
+    if (term.trim()) {
+      query.set("documentos", digits(term));
+      query.set("tipos_pessoa", digits(term).length === 14 ? "Jurídica" : "Física");
+    }
     const body = await contaAzulRequest(clientId, `/v1/pessoas?${query}`);
     customers = apiItems(body).filter(item => item.ativo !== false).flatMap((item) => {
       const value = String(item.id || item.uuid || "");
@@ -56,7 +59,7 @@ export async function simulateReview(clientId: string, review: Review) {
     const company = await prisma.client.findUnique({ where: { id: clientId }, select: { document: true } });
     if (!review.sellerDocument || digits(company?.document || "") !== digits(review.sellerDocument)) errors.push("A empresa selecionada não corresponde ao CNPJ da contratada no documento.");
     const customer = options.customers.find((item) => item.value === review.customerId);
-    if (!customer || customer.document !== digits(review.buyerDocument)) errors.push("O comprador selecionado no CA não corresponde ao CPF/CNPJ do contrato.");
+    if ((review.customerId || review.autoCreateBuyer === false) && (!customer || customer.document !== digits(review.buyerDocument))) errors.push("O comprador selecionado no CA não corresponde ao CPF/CNPJ do contrato.");
   }
   const balances: AccountClosingBalance[] = [];
   if (review.kind === "INVESTMENT") {

@@ -15,6 +15,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const draft = await prisma.documentImportReview.findFirst({ where: { id, organizationId: access.member.organizationId, kind: body.data.kind } });
   if (!draft || !await authorizedCompany(access.member.organizationId, draft.clientId)) return NextResponse.json({ error: "Revisão não encontrada." }, { status: 404 });
+  const reviewData = draft.data && typeof draft.data === "object" && !Array.isArray(draft.data) ? draft.data as Record<string,unknown> : {};
+  if (body.data.kind === "CONTRACT" && !reviewData.customerId && reviewData.autoCreateBuyer !== false && !access.permission.canCreate) return NextResponse.json({ error: "Sem permissão para cadastrar o comprador automaticamente." }, { status: 403 });
   try {
     const send = body.data.kind === "CONTRACT" ? sendContractReview : sendInvestmentReview;
     const result = await send({ organizationId: access.member.organizationId, userId: access.member.userId, reviewId: id, version: body.data.version });

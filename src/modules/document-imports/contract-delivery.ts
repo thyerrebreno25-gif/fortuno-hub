@@ -6,6 +6,7 @@ import { contaAzulRequest, ContaAzulApiError } from "@/modules/purchase-invoices
 import { apiItems } from "@/modules/conta-azul/financial-export";
 import { contractSchema, digits, monthDate, normalize, reviewIssues, schedule, type ContractReview } from "./model";
 import { simulateReview } from "./server";
+import { ensureContractBuyer } from "./contract-buyer";
 const object = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const uuid = (v: unknown): v is string => typeof v === "string" && /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i.test(v);
 export function contractBusinessKey(org: string, client: string, review: ContractReview) {
@@ -56,13 +57,15 @@ export async function sendContractReview(input: { organizationId: string; userId
     if (!delivery) {
       const validation = await simulateReview(draft.clientId, review);
       if (validation.errors.length) throw new Error(validation.errors.join(" "));
+      contractPayload({ ...review, customerId: review.customerId || "00000000-0000-4000-8000-000000000000" }, 1, "validation");
+      if (!review.customerId && review.autoCreateBuyer !== false) review.customerId = await ensureContractBuyer(input.organizationId, draft.clientId, review, input.userId);
       // Validate identifiers before reserving the review or querying the next number.
       contractPayload(review, 1, "validation");
       const businessKey = contractBusinessKey(input.organizationId, draft.clientId, review);
       delivery = await prisma.$transaction(async tx => {
         const existing = await tx.documentImportDelivery.findUnique({ where: { businessKey } });
         if (existing) throw new Error("Este contrato já possui envio em outro arquivo. Abra a revisão original para evitar duplicidade.");
-        const frozen = await tx.documentImportReview.updateMany({ where: { id: draft.id, organizationId: input.organizationId, version: input.version, deliveries: { none: {} } }, data: { status: "SENDING", version: { increment: 1 } } });
+        const frozen = await tx.documentImportReview.updateMany({ where: { id: draft.id, organizationId: input.organizationId, version: input.version, deliveries: { none: {} } }, data: { status: "SENDING", data: review as unknown as Prisma.InputJsonValue, version: { increment: 1 } } });
         if (!frozen.count) throw new Error("A revisão mudou durante a conferência. Recarregue.");
         const saved = await tx.documentImportDelivery.create({ data: { organizationId: input.organizationId, clientId: draft.clientId, reviewId: draft.id, rowKey: "CONTRACT", businessKey, marker: `FORTUNO-CONT-${businessKey.slice(0,24)}`, payload: { flow: "CONTRACT", review } as unknown as Prisma.InputJsonValue } });
         await tx.auditLog.create({ data: { userId: input.userId, action: "CONTRACT_SEND_CONFIRMED", entity: "DocumentImportReview", entityId: draft.id, afterData: { clientId: draft.clientId, totalCents: review.totalCents, installments: review.installments, version: input.version } } });
