@@ -11,3 +11,7 @@ it("uses a safe fallback and bounds the displayed response",()=>{
   expect(contractRejection(403,{},"Acesso ao módulo recusado")).toContain("Acesso ao módulo recusado");
   expect(contractRejection(400,{message:"x".repeat(5000)},"erro").length).toBeLessThanOrEqual(1200);
 });
+it("reads validation maps without exposing protected fields",()=>{
+  const result=contractRejection(400,{errors:{"termos.numero":["Número já utilizado"],authorization:"private"}},"erro");
+  expect(result).toContain("termos.numero · Número já utilizado");expect(result).not.toContain("private");
+});

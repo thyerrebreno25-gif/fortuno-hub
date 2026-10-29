@@ -11,9 +11,17 @@ export function contractRejection(status: number, body: unknown, fallback: strin
     if(Array.isArray(value)) {for(const item of value.slice(0,8)) read(item,depth+1);return;}
     if(!value || typeof value!=="object") return;
     const row=value as Record<string,unknown>;
-    const field=typeof row.field==="string" ? row.field : typeof row.campo==="string" ? row.campo : "";
+    const field=typeof row.field==="string" ? row.field : typeof row.campo==="string" ? row.campo : typeof row.propertyPath==="string" ? row.propertyPath : "";
     if(field && /^[\w.[\]-]{1,100}$/.test(field)) add(`Campo: ${field}`);
-    for(const key of ["message","mensagem","detail","detalhe","description","descricao","error","errors","erros","details","detalhes","violations"]) if(row[key]!==undefined) read(row[key],depth+1);
+    for(const key of ["message","mensagem","detail","detalhe","description","descricao","error","errors","erros","details","detalhes","violations"]) if(row[key]!==undefined) {
+      const nested=row[key];
+      if(["errors","erros"].includes(key) && nested && typeof nested==="object" && !Array.isArray(nested)) {
+        for(const [path,value] of Object.entries(nested).slice(0,8)) {
+          if(!/^[\w.[\]-]{1,100}$/.test(path) || /token|secret|password|cookie|authorization|stack|trace/i.test(path)) continue;
+          add(`Campo: ${path}`);read(value,depth+1);
+        }
+      } else read(nested,depth+1);
+    }
   }
   read(body);
   if(!messages.length && !/^[\[{]/.test(fallback.trim())) add(fallback);
