@@ -24,12 +24,14 @@ type ContaAzulErrorBody = {
 };
 
 export class ContaAzulApiError extends Error {
+  readonly responseBody: unknown;
   readonly status: number;
   readonly code: string | null;
   readonly transient: boolean;
   readonly technicalMessage: string | null;
 
   constructor(input: {
+    responseBody?: unknown;
     message: string;
     status: number;
     code?: string | null;
@@ -37,6 +39,7 @@ export class ContaAzulApiError extends Error {
     technicalMessage?: string | null;
   }) {
     super(input.message);
+    this.responseBody = input.responseBody;
     this.name = "ContaAzulApiError";
     this.status = input.status;
     this.code = input.code || null;
@@ -68,6 +71,7 @@ function contaAzulApiError(response: Response, body: unknown, rawText: string) {
       || (rawText && rawText.length <= 500 ? rawText : null)
       || `Conta Azul respondeu com erro ${response.status}.`;
   return new ContaAzulApiError({
+    responseBody: body,
     message,
     status: response.status,
     code: errorCode,

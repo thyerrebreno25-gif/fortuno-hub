@@ -7,6 +7,7 @@ import { apiItems } from "@/modules/conta-azul/financial-export";
 import { contractSchema, digits, monthDate, normalize, reviewIssues, schedule, type ContractReview } from "./model";
 import { simulateReview } from "./server";
 import { ensureContractBuyer } from "./contract-buyer";
+import { contractRejection } from "./contract-errors";
 const object = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const uuid = (v: unknown): v is string => typeof v === "string" && /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i.test(v);
 export function contractBusinessKey(org: string, client: string, review: ContractReview) {
@@ -84,8 +85,9 @@ export async function sendContractReview(input: { organizationId: string; userId
       try { response = object(await contaAzulRequest(draft.clientId, "/v1/contratos", { method: "POST", body: JSON.stringify(payload) })); }
       catch (error) {
         const rejected = error instanceof ContaAzulApiError && [400,401,403,404,405,422].includes(error.status);
-        await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { status: rejected ? "FAILED" : "UNCERTAIN_CONTRACT", lastError: rejected ? "O CA rejeitou o contrato. Confira os cadastros e a disponibilidade do módulo de contratos na empresa." : "O CA não confirmou a criação. Confira o contrato no CA antes de qualquer nova tentativa." } });
-        throw new Error(rejected ? "O CA rejeitou a criação do contrato. Nenhum envio foi confirmado." : "A criação do contrato ficou incerta. Não repetiremos a criação automaticamente.");
+        const reason = rejected ? contractRejection(error.status, error.responseBody, error.message) : "A criação do contrato ficou incerta. Não repetiremos a criação automaticamente.";
+        await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { status: rejected ? "FAILED" : "UNCERTAIN_CONTRACT", lastError: reason } });
+        throw new Error(reason);
       }
       if (!uuid(response.id)) {
         await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { status: "UNCERTAIN_CONTRACT", lastError: "O CA não retornou o identificador do contrato. Confira manualmente; o POST não será repetido." } });
