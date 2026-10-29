@@ -1,7 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ access: vi.fn(), company: vi.fn(), find: vi.fn(), send: vi.fn() }));
+const mocks = vi.hoisted(() => ({ access: vi.fn(), company: vi.fn(), find: vi.fn(), send: vi.fn(), contractSend: vi.fn() }));
 vi.mock("@/modules/document-imports/server", () => ({ importAccess: mocks.access, authorizedCompany: mocks.company }));
 vi.mock("@/modules/document-imports/delivery", () => ({ sendInvestmentReview: mocks.send, deliverySummary: {} }));
+vi.mock("@/modules/document-imports/contract-delivery", () => ({ sendContractReview: mocks.contractSend }));
 vi.mock("@/lib/prisma", () => ({ prisma: { documentImportReview: { findFirst: mocks.find } } }));
 import { POST } from "./route";
 const context = { params: Promise.resolve({ id: "draft" }) };
@@ -18,4 +19,13 @@ it("passes the stored review identity and version rather than accepting a financ
   expect((await POST(request(), context)).status).toBe(200);
   expect(mocks.send).toHaveBeenCalledWith({ organizationId: "org", userId: "master", reviewId: "draft", version: 1 });
   expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", kind: "INVESTMENT" } }));
+});
+it("uses contract permissions and the contract sender for real recurring contracts", async () => {
+  mocks.contractSend.mockResolvedValueOnce({ completed: true });
+  const response = await POST(new Request("https://example.test/api/document-imports/draft/send", { method: "POST", body: JSON.stringify({ kind: "CONTRACT", version: 1, confirmation: "ENVIAR AO CA" }) }), context);
+  expect(response.status).toBe(200);
+  expect(mocks.access).toHaveBeenCalledWith("CONTRACT");
+  expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", kind: "CONTRACT" } }));
+  expect(mocks.contractSend).toHaveBeenCalledWith({ organizationId: "org", userId: "master", reviewId: "draft", version: 1 });
+  expect(mocks.send).not.toHaveBeenCalled();
 });

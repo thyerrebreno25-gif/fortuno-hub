@@ -20,8 +20,8 @@ export async function GET(request: Request) {
     catch { return NextResponse.json({ error: "Não foi possível consultar o Conta Azul. Confira a conexão da empresa e tente novamente." }, { status: 502 }); }
   }
   const clients = await prisma.client.findMany({ where: { organizationId: access.member.organizationId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, document: true, contaAzulConnection: { select: { active: true, status: true } } } });
-  const drafts = clientId ? await prisma.documentImportReview.findMany({ where: { organizationId: access.member.organizationId, clientId, kind: kind.data }, orderBy: { updatedAt: "desc" }, include: { deliveries: { select: { id: true, rowKey: true, status: true, saleNumber: true, saleId: true, eventId: true, settlementId: true, lastError: true }, orderBy: { createdAt: "asc" } } }, take: 100 }) : [];
-  return NextResponse.json({ clients, drafts, permission: access.permission, mode: kind.data === "INVESTMENT" ? "LIVE" : "SIMULATION" });
+  const drafts = clientId ? await prisma.documentImportReview.findMany({ where: { organizationId: access.member.organizationId, clientId, kind: kind.data }, orderBy: { updatedAt: "desc" }, include: { deliveries: { select: { id: true, rowKey: true, status: true, saleNumber: true, saleId: true, eventId: true, settlementId: true, contractId: true, contractNumber: true, lastError: true }, orderBy: { createdAt: "asc" } } }, take: 100 }) : [];
+  return NextResponse.json({ clients, drafts, permission: access.permission, mode: "LIVE" });
 }
 const createSchema = z.object({ clientId: z.string().min(1).max(100), fingerprint: z.string().regex(/^[a-f0-9]{64}$/), fileName: z.string().min(1).max(250), data: reviewSchema });
 export async function POST(request: Request) {
@@ -34,6 +34,6 @@ export async function POST(request: Request) {
   if (!await authorizedCompany(access.member.organizationId, clientId)) return NextResponse.json({ error: "Empresa não encontrada." }, { status: 404 });
   const key = { organizationId: access.member.organizationId, clientId, kind: data.kind, fingerprint };
   const existing = await prisma.documentImportReview.findUnique({ where: { organizationId_clientId_kind_fingerprint: key } });
-  const draft = await prisma.documentImportReview.upsert({ where: { organizationId_clientId_kind_fingerprint: key }, create: { ...key, fileName, data: data as Prisma.InputJsonValue, userId: access.member.userId }, update: {}, include: { deliveries: { select: { id: true, rowKey: true, status: true, saleNumber: true, saleId: true, eventId: true, settlementId: true, lastError: true } } } });
-  return NextResponse.json({ draft, duplicate: Boolean(existing), mode: data.kind === "INVESTMENT" ? "LIVE" : "SIMULATION" });
+  const draft = await prisma.documentImportReview.upsert({ where: { organizationId_clientId_kind_fingerprint: key }, create: { ...key, fileName, data: data as Prisma.InputJsonValue, userId: access.member.userId }, update: {}, include: { deliveries: { select: { id: true, rowKey: true, status: true, saleNumber: true, saleId: true, eventId: true, settlementId: true, contractId: true, contractNumber: true, lastError: true } } } });
+  return NextResponse.json({ draft, duplicate: Boolean(existing), mode: "LIVE" });
 }

@@ -44,7 +44,7 @@ async function incomeContact(clientId: string) {
   return id;
 }
 const definiteRejection = (error: unknown) => error instanceof ContaAzulApiError && [400, 401, 403, 404, 405, 422].includes(error.status);
-export const deliverySummary = { id: true, rowKey: true, status: true, saleNumber: true, saleId: true, eventId: true, settlementId: true, lastError: true } as const;
+export const deliverySummary = { id: true, rowKey: true, status: true, saleNumber: true, saleId: true, eventId: true, settlementId: true, contractId: true, contractNumber: true, lastError: true } as const;
 
 async function readIncome(delivery: Delivery, row: Row) {
   if (delivery.eventId) return { eventId: delivery.eventId };

@@ -56,5 +56,5 @@ export function parseContract(lines: DocumentLine[]): ContractReview {
   return { kind: "CONTRACT", buyer: buyer.name.toUpperCase(), buyerDocument: digits(buyer.document), seller: seller.name.toUpperCase(), sellerDocument: digits(seller.document), description,
     originalDate, firstDueDate, startMonth: firstDueDate ? firstDueDate.slice(0, 7) + "-01" : "", installments: Number(installments?.[1] || 0), amountCents: installments ? moneyCents(installments[2]) : 0,
     totalCents: price ? moneyCents(price[1]) : 0, frequency: "MONTHLY", interval: 1, dueDay: firstDueDate ? Number(firstDueDate.slice(-2)) : 0,
-    paymentMethod: all.includes("boleto bancario") ? "BOLETO_BANCARIO" : "", categoryId: "", accountId: "", customerId: "", warnings };
+    paymentMethod: all.includes("boleto bancario") ? "BOLETO_BANCARIO" : "", categoryId: "", accountId: "", customerId: "", serviceId: "", warnings };
 }

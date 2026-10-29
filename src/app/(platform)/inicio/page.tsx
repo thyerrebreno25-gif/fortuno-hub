@@ -64,7 +64,7 @@ type Feature = {
 
 const features: Feature[] = [
   { title: "Rendimentos de aplicações", description: "Importe extratos de aplicações, confira saldos e envie vendas de rendimento com baixa na conta selecionada do CA.", href: "/rendimentos", moduleCode: "INVESTMENT_INCOME", group: "Operação financeira", icon: <IconBuildingBank size={24} />, badge: "Integrado" },
-  { title: "Importação de contratos", description: "Leia contratos em lote e revise compradores, valores, vencimentos e a programação das vendas. Disponível para testes sem envio.", href: "/contratos", moduleCode: "CONTRACT_IMPORTS", group: "Operação financeira", icon: <IconFileInvoice size={24} />, badge: "Testes" },
+  { title: "Importação de contratos", description: "Importe contratos, revise compradores, valores e recorrência e crie os contratos diretamente no Conta Azul.", href: "/contratos", moduleCode: "CONTRACT_IMPORTS", group: "Operação financeira", icon: <IconFileInvoice size={24} />, badge: "Integrado" },
   { title: "Gestão", description: "Acompanhe vencidos, importações, validação de saldo e conciliações por cliente.", href: "/gestao", moduleCode: "MANAGEMENT", group: "Visão geral", icon: <IconChartBar size={24} />, badge: "Novo" },
   { title: "Gestão de tarefas", description: "Organize tarefas, rotinas recorrentes, responsáveis e prazos da operação.", href: "/operacoes", moduleCode: "OPERATIONS", group: "Atendimento e clientes", icon: <IconClipboardCheck size={24} /> },
   { title: "Notion", description: "Consulte páginas, bases e documentos compartilhados com sua integração.", href: "/integracoes/notion", moduleCode: "NOTION", group: "Atendimento e clientes", icon: <IconFileAnalytics size={24} /> },

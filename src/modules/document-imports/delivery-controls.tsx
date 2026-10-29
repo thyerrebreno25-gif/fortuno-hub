@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Alert, Badge, Button, Checkbox, Group, Modal, Stack, Table, Text } from "@mantine/core";
 import { type InvestmentReview, type Option, money } from "./model";
-export type DeliveryState = { id: string; rowKey: string; status: string; saleNumber: number | null; saleId: string | null; eventId?: string | null; settlementId: string | null; lastError: string | null };
+export type DeliveryState = { id: string; rowKey: string; status: string; saleNumber: number | null; saleId: string | null; eventId?: string | null; contractId?: string | null; contractNumber?: number | null; settlementId: string | null; lastError: string | null };
 export type DeliveryDraft = { id: string; version: number; status: string; deliveries?: DeliveryState[] };
 const labels: Record<string, string> = { PENDING: "Aguardando envio", CREATING: "Verificar criação", UNCERTAIN_RECEIVABLE: "Criação não confirmada", RECEIVABLE_CREATED: "Receita criada · baixa pendente", SETTLING: "Verificar baixa", UNCERTAIN_SETTLEMENT: "Baixa não confirmada", SENT: "Receita criada e recebida", FAILED: "CA rejeitou a criação" };
 export function DeliveryControls({ draft, review, companyName, clientId, accounts, canSend, busy, dirty, onBusy, onResult }: {

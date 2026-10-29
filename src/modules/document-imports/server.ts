@@ -22,17 +22,26 @@ export async function importOptions(clientId: string, kind: ImportKind, term = "
   const categories = contaAzulOptions(await contaAzulRequest(clientId, "/v1/categorias?pagina=1&tamanho_pagina=1000")).filter((item) => !item.type || item.type === "RECEITA");
   const financialAccounts = contaAzulOptions(apiItems(await contaAzulRequest(clientId, "/v1/conta-financeira?pagina=1&tamanho_pagina=1000&apenas_ativo=true")).filter((item) => item.ativo !== false));
   let customers: Array<{ value: string; label: string; document: string }> = [];
+  const services: Array<{ value: string; label: string }> = [];
   if (kind === "CONTRACT") {
-    const query = new URLSearchParams({ pagina: "1", tamanho_pagina: "1000", tipo_perfil: "CLIENTE", status: "ATIVO" });
-    if (term.trim()) query.set("termo_busca", term.trim());
-    const body = await contaAzulRequest(clientId, `/v1/pessoa?${query}`);
-    customers = apiItems(body).flatMap((item) => {
+    const query = new URLSearchParams({ pagina: "1", tamanho_pagina: "1000", tipo_perfil: "Cliente", com_endereco: "false" });
+    if (term.trim()) query.set("busca", term.trim());
+    const body = await contaAzulRequest(clientId, `/v1/pessoas?${query}`);
+    customers = apiItems(body).filter(item => item.ativo !== false).flatMap((item) => {
       const value = String(item.id || item.uuid || "");
       const label = String(item.nome || item.razao_social || "");
-      return value && label ? [{ value, label, document: digits(String(item.documento || item.cpf_cnpj || "")) }] : [];
+      return value && label ? [{ value, label, document: digits(String(item.documento || item.cpf_cnpj || item.cnpj || item.cpf || "")) }] : [];
     });
+    for (let page = 1; page <= 20; page++) {
+      const body = await contaAzulRequest(clientId, `/v1/servicos?pagina=${page}&tamanho_pagina=50`);
+      // The official service API may wrap its paginated result in an array.
+      const rows = apiItems(body).flatMap(item => Array.isArray(item.itens) ? apiItems(item) : [item]);
+      services.push(...contaAzulOptions(rows.filter(item => item.status === "ATIVO" && item.tipo_servico !== "TOMADO")));
+      if (rows.length < 50) break;
+      if (page === 20) throw new Error("O catálogo de serviços excede o limite desta consulta.");
+    }
   }
-  return { categories, financialAccounts, customers };
+  return { categories, financialAccounts, customers, services };
 }
 export async function simulateReview(clientId: string, review: Review) {
   const options = await importOptions(clientId, review.kind, review.kind === "CONTRACT" ? review.buyerDocument : "");
@@ -43,6 +52,7 @@ export async function simulateReview(clientId: string, review: Review) {
     if (!options.financialAccounts.some((item) => item.value === row.accountId)) errors.push("Conta financeira não encontrada na empresa selecionada.");
   }
   if (review.kind === "CONTRACT") {
+    if (!options.services.some(item => item.value === review.serviceId)) errors.push("Serviço ativo não encontrado na empresa selecionada.");
     const company = await prisma.client.findUnique({ where: { id: clientId }, select: { document: true } });
     if (!review.sellerDocument || digits(company?.document || "") !== digits(review.sellerDocument)) errors.push("A empresa selecionada não corresponde ao CNPJ da contratada no documento.");
     const customer = options.customers.find((item) => item.value === review.customerId);

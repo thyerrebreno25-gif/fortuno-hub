@@ -17,7 +17,7 @@ export const contractSchema = z.object({
   installments: z.number().int().min(0).max(240), amountCents: cents, totalCents: cents,
   frequency: z.enum(["MONTHLY", "YEARLY"]), interval: z.number().int().min(1).max(120), dueDay: z.number().int().min(0).max(31),
   paymentMethod: z.enum(["BOLETO_BANCARIO", "PIX_PAGAMENTO_INSTANTANEO", "TRANSFERENCIA_BANCARIA", "CARTAO_CREDITO", "OUTRO", ""]),
-  categoryId: text, accountId: text, customerId: text, warnings: z.array(text).max(50),
+  categoryId: text, accountId: text, customerId: text, serviceId: text.default(""), warnings: z.array(text).max(50),
 });
 export const reviewSchema = z.discriminatedUnion("kind", [investmentSchema, contractSchema]);
 export type Review = z.infer<typeof reviewSchema>;
@@ -74,6 +74,8 @@ export function reviewIssues(review: Review, requireLinks = false): string[] {
     if (dates[0] && dates[0].dueDate !== review.firstDueDate) errors.push("O primeiro vencimento deve coincidir com o mês inicial e o dia escolhido.");
     if (!review.paymentMethod) errors.push("Selecione a forma de pagamento.");
     if (requireLinks && (!review.categoryId || !review.accountId || !review.customerId)) errors.push("Selecione categoria, conta financeira e comprador no CA.");
+    if (requireLinks && !review.serviceId) errors.push("Selecione o serviço cadastrado no CA para o item único do contrato.");
+    if (review.interval > 60) errors.push("O intervalo da recorrência no CA deve ser de até 60 meses ou anos.");
   }
   return [...new Set(errors)];
 }

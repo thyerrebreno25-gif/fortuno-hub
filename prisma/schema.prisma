@@ -1108,6 +1108,8 @@ model DocumentImportDelivery {
   eventId        String?
   saleNumber     Int?
   saleId         String?
+  contractId     String?
+  contractNumber Int?
   installmentId  String?
   settlementId   String?
   lastError      String?

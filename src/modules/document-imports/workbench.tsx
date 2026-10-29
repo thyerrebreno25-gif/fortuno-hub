@@ -7,14 +7,15 @@ import { extractPdfTextLines } from "@/modules/bank-statements/pdf-reader.client
 import { parseContract, parseInvestment } from "./parsers";
 import { type ImportKind, type Review, type Option, type ContractReview, digits, displayDate, money, monthDate, reviewIssues, schedule } from "./model";
 import styles from "./workbench.module.css";
+import { ContractDeliveryControls } from "./contract-delivery-controls";
 import { BalanceCheck } from "./balance-check";
 import { DeliveryControls, type DeliveryState } from "./delivery-controls";
 type Company = { id: string; name: string; document: string | null; contaAzulConnection: null | { active: boolean; status: string } };
 type Sale = { number: number; saleDate: string; dueDate: string; amountCents: number; description?: string };
 type Simulation = { validatedAt: string; errors: string[]; sales: Sale[]; totalCents: number; endDate: string | null };
 type Draft = { id: string; fileName: string; version: number; data: Review; status: string; simulation: Simulation | null; deliveries?: DeliveryState[] };
-type Options = { categories: Option[]; financialAccounts: Option[]; customers: Option[] };
-const emptyOptions: Options = { categories: [], financialAccounts: [], customers: [] };
+type Options = { categories: Option[]; financialAccounts: Option[]; customers: Option[]; services: Option[] };
+const emptyOptions: Options = { categories: [], financialAccounts: [], customers: [], services: [] };
 const paymentOptions = [{ value: "BOLETO_BANCARIO", label: "Boleto bancário" }, { value: "PIX_PAGAMENTO_INSTANTANEO", label: "Pix" }, { value: "TRANSFERENCIA_BANCARIA", label: "Transferência bancária" }, { value: "CARTAO_CREDITO", label: "Cartão de crédito" }, { value: "OUTRO", label: "Outro" }];
 async function jsonResponse(response: Response) { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Não foi possível concluir a operação."); return body; }
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Não foi possível concluir a operação.";
@@ -85,7 +86,7 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
       const body = await jsonResponse(await fetch(`/api/document-imports/${selected.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, version: selected.version, data: review }) }));
       setSelected(body.draft); setReview(body.draft.data); setDrafts((previous) => previous.map((draft) => draft.id === selected.id ? body.draft : draft));
       if (action === "simulate") setPreview(true);
-      setNotice(action === "save" ? "Revisão salva." : kind === "INVESTMENT" ? "Conferência concluída. O envio depende da confirmação em Enviar ao CA." : "Simulação concluída. Nenhum lançamento enviado ao CA.");
+      setNotice(action === "save" ? "Revisão salva." : "Conferência concluída. O envio depende da confirmação em Enviar ao CA.");
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
   const changeContract = (patch: Partial<ContractReview>) => setReview((previous) => previous?.kind === "CONTRACT" ? { ...previous, ...patch } : previous);
@@ -94,7 +95,7 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
   const changed = Boolean(review && selected && JSON.stringify(review) !== JSON.stringify(selected.data));
   if (loading) return <Group justify="center" p="xl"><Loader /></Group>;
   return <Stack gap="md" className={styles.page}>
-    <Group justify="space-between"><Title order={2}>{kind === "INVESTMENT" ? "Rendimentos de aplicações" : "Importação de contratos"}</Title><Badge color={kind === "INVESTMENT" ? "green" : "orange"} variant="light">{kind === "INVESTMENT" ? "Envio ao CA habilitado" : "Modo teste · sem envio ao CA"}</Badge></Group>
+    <Group justify="space-between"><Title order={2}>{kind === "INVESTMENT" ? "Rendimentos de aplicações" : "Importação de contratos"}</Title><Badge color="green" variant="light">Envio ao CA habilitado</Badge></Group>
     <Paper withBorder radius="md" p="md"><Group align="flex-end">
       <Select className={styles.company} label="Empresa no Fortuno / Conta Azul" placeholder="Selecione a empresa" searchable clearable disabled={busy} value={clientId || null} onChange={(value) => { if (changed && !window.confirm("Descartar as alterações não salvas?")) return; setClientId(value || ""); setNotice(""); }} data={companies.map((item) => ({ value: item.id, label: item.name }))} />
       {clientId && <Badge color={connected ? "green" : "gray"}>{connected ? "CA conectado" : "CA não conectado"}</Badge>}
@@ -107,12 +108,13 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
     {!clientId ? <Paper withBorder p="xl"><Text c="dimmed">Selecione a empresa para importar e revisar os documentos.</Text></Paper> : <div className={styles.workspace}>
       <Paper withBorder radius="md" p="sm"><Text fw={700} mb="sm">Arquivos <Badge variant="light">{drafts.length}</Badge></Text><Stack gap={7}>
         {!drafts.length && <Text size="sm" c="dimmed">Nenhum arquivo importado.</Text>}
-        {drafts.map((draft) => <button key={draft.id} disabled={busy} className={`${styles.draft} ${selected?.id === draft.id ? styles.selected : ""}`} onClick={() => { if (changed && !window.confirm("Descartar as alterações não salvas e abrir outro arquivo?")) return; setSelected(draft); setReview(draft.data); setPreview(false); }}><Text size="sm" fw={600} lineClamp={2}>{draft.fileName}</Text><Badge size="xs" mt={6} color={draft.status === "TESTED" ? "teal" : "gray"}>{draft.status === "SENT" ? "Enviado ao CA" : draft.deliveries?.length ? "Envio iniciado" : draft.status === "TESTED" ? kind === "INVESTMENT" ? "Validado" : "Simulado" : "Em revisão"}</Badge></button>)}
+        {drafts.map((draft) => <button key={draft.id} disabled={busy} className={`${styles.draft} ${selected?.id === draft.id ? styles.selected : ""}`} onClick={() => { if (changed && !window.confirm("Descartar as alterações não salvas e abrir outro arquivo?")) return; setSelected(draft); setReview(draft.data); setPreview(false); }}><Text size="sm" fw={600} lineClamp={2}>{draft.fileName}</Text><Badge size="xs" mt={6} color={draft.status === "TESTED" ? "teal" : "gray"}>{draft.status === "SENT" ? "Enviado ao CA" : draft.deliveries?.length ? "Envio iniciado" : draft.status === "TESTED" ? "Validado" : "Em revisão"}</Badge></button>)}
       </Stack></Paper>
       <Stack gap="md" miw={0}>
         {!review || !selected ? <Paper withBorder p="xl"><Text c="dimmed">Importe um PDF ou abra uma revisão salva.</Text></Paper> : <>
-          <Group justify="space-between"><div><Text fw={700}>{selected.fileName}</Text><Text size="xs" c="dimmed">{changed ? "Alterações não salvas" : "Revisão salva"}</Text></div><Group><Button variant="default" disabled={!editable} loading={busy} onClick={() => void save("save")}>Salvar revisão</Button><Button leftSection={<IconPlayerPlay size={16} />} disabled={!editable || !connected || optionsLoading || issues.length > 0} loading={busy} onClick={() => void save("simulate")}>{kind === "INVESTMENT" ? "Validar dados e saldo" : "Simular com dados do CA"}</Button></Group></Group>
+          <Group justify="space-between"><div><Text fw={700}>{selected.fileName}</Text><Text size="xs" c="dimmed">{changed ? "Alterações não salvas" : "Revisão salva"}</Text></div><Group><Button variant="default" disabled={!editable} loading={busy} onClick={() => void save("save")}>Salvar revisão</Button><Button leftSection={<IconPlayerPlay size={16} />} disabled={!editable || !connected || optionsLoading || issues.length > 0} loading={busy} onClick={() => void save("simulate")}>{kind === "INVESTMENT" ? "Validar dados e saldo" : "Validar contrato no CA"}</Button></Group></Group>
           {review.kind === "INVESTMENT" && <DeliveryControls draft={selected} review={review} companyName={company?.name || ""} clientId={clientId} accounts={options.financialAccounts} canSend={canSend && connected && !optionsLoading && !reviewIssues(review, true).length} busy={busy} dirty={changed} onBusy={setBusy} onResult={(updated, message, failure) => { if (updated) { const draft = updated as Draft; setSelected(draft); setReview(draft.data); setDrafts((previous) => previous.map((item) => item.id === draft.id ? draft : item)); setRevision((value) => value + 1); } setPreview(false); setNotice(message); setError(failure); }} />}
+          {review.kind === "CONTRACT" && <ContractDeliveryControls draft={selected} review={review} companyName={company?.name || ""} clientId={clientId} customers={options.customers} services={options.services} accounts={options.financialAccounts} categories={options.categories} canSend={canSend && connected && !optionsLoading && !reviewIssues(review, true).length} busy={busy} dirty={changed} onBusy={setBusy} onResult={(updated: unknown, message: string, failure: string) => { if (updated) { const draft = updated as Draft; setSelected(draft); setReview(draft.data); setDrafts((previous) => previous.map((item) => item.id === draft.id ? draft : item)); setRevision((value) => value + 1); } setPreview(false); setNotice(message); setError(failure); }} />}
           {optionsLoading && <Group gap="xs"><Loader size="xs" /><Text size="sm">Consultando categorias e contas do CA…</Text></Group>}
           {issues.length > 0 && <Alert color="orange" title="Conferir os dados">{issues.map((issue) => <Text key={issue} size="sm">{issue}</Text>)}</Alert>}
           {review.kind === "INVESTMENT" ? <>
@@ -131,7 +133,8 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
               <TextInput label="Comprador identificado" value={review.buyer} disabled={!editable || busy} onChange={(event) => changeContract({ buyer: event.currentTarget.value })} />
               <TextInput label="CPF/CNPJ do comprador" value={review.buyerDocument} disabled={!editable || busy} onChange={(event) => changeContract({ buyerDocument: digits(event.currentTarget.value), customerId: "" })} />
               <Select label="Comprador cadastrado no CA" searchable data={options.customers} value={review.customerId || null} placeholder="Localizar pelo CPF/CNPJ do contrato" disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ customerId: value || "" })} />
-              <TextInput label="Serviço (item único)" value={review.description} disabled={!editable || busy} onChange={(event) => changeContract({ description: event.currentTarget.value })} />
+              <Select label="Serviço cadastrado no CA" description="Um único item para todo o contrato, sem separar site e branding." searchable data={options.services} value={review.serviceId || null} disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ serviceId: value || "" })} />
+              <TextInput label="Descrição do contrato (item único)" value={review.description} disabled={!editable || busy} onChange={(event) => changeContract({ description: event.currentTarget.value })} />
               <Select label="Categoria de receita no CA" searchable data={options.categories} value={review.categoryId || null} disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ categoryId: value || "" })} />
               <Select label="Conta financeira no CA" searchable data={options.financialAccounts} value={review.accountId || null} disabled={!editable || optionsLoading || busy} onChange={(value) => changeContract({ accountId: value || "" })} />
               <NumberInput label="Valor de cada venda (R$)" value={review.amountCents / 100} decimalScale={2} fixedDecimalScale decimalSeparator="," thousandSeparator="." min={0} disabled={!editable || busy} onChange={(value) => changeContract({ amountCents: Math.round(Number(value) * 100) })} />
@@ -153,11 +156,11 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
         </>}
       </Stack>
     </div>}
-    <Modal opened={preview} onClose={() => setPreview(false)} title={kind === "INVESTMENT" ? "Resultado da conferência" : "Resultado da simulação"} size="xl"><Stack>{selected?.simulation && <>
+    <Modal opened={preview} onClose={() => setPreview(false)} title={kind === "INVESTMENT" ? "Resultado da conferência" : "Validação do contrato"} size="xl"><Stack>{selected?.simulation && <>
       <Alert color={selected.simulation.errors.length ? "orange" : "teal"}>{selected.simulation.errors.length ? "Há pendências para corrigir." : "Dados conferidos com os cadastros do CA."} Nenhuma venda, contrato ou baixa foi criada.</Alert>
       {selected.simulation.errors.map((issue) => <Text key={issue} size="sm" c="red">{issue}</Text>)}<ScheduleTable sales={selected.simulation.sales} /><Text fw={700}>Total: {money(selected.simulation.totalCents)}</Text>
       {selected.simulation.endDate && <Text>Término da recorrência: {displayDate(selected.simulation.endDate)}</Text>}
-      <Text size="sm" c="dimmed">{kind === "INVESTMENT" ? "Conferência de leitura, cálculos e vínculos. Para criar as vendas e baixas, use Enviar ao CA e confirme os dados." : "Esta etapa testa leitura, cálculos e vínculos. O envio real ao CA ainda não está habilitado."}</Text>
+      <Text size="sm" c="dimmed">{kind === "INVESTMENT" ? "Conferência de leitura, cálculos e vínculos. Para criar as vendas e baixas, use Enviar ao CA e confirme os dados." : "Dados conferidos. Para criar o contrato recorrente, use Enviar contrato ao CA e confirme os dados."}</Text>
     </>}</Stack></Modal>
   </Stack>;
 }
