@@ -6,6 +6,7 @@ import {
 } from "@/modules/atendimento/auth";
 import { downloadUazapiMedia } from "@/modules/whatsapp/uazapi-server";
 import { byteRange, previewMime } from "@/modules/whatsapp/media";
+import { resolveWhatsappTicketId } from "@/modules/whatsapp/server";
 
 type Context = {
   params: Promise<{ id: string; attachmentId: string }>;
@@ -28,11 +29,12 @@ export async function GET(request: Request, context: Context) {
   }
 
   const { id, attachmentId } = await context.params;
+  const ticketId = await resolveWhatsappTicketId(id, member.organizationId);
   const attachment = await prisma.serviceAttachment.findFirst({
     where: {
       id: attachmentId,
       message: {
-        ticketId: id,
+        ticketId,
         ticket: {
           organizationId: member.organizationId,
           source: "WHATSAPP_API",

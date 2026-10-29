@@ -49,6 +49,7 @@ export async function GET(request: Request) {
     organizationId: member.organizationId,
     source: { in: [...WHATSAPP_SOURCES] },
     isSpam: false,
+    mergedIntoId: null,
     status: { notIn: ["SPAM"] },
   };
   const where: Prisma.ServiceTicketWhereInput = { ...baseWhere, ...inboxWhere(filters, member.userId) };

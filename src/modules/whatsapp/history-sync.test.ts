@@ -37,6 +37,14 @@ describe("Reconnect reconciliation checkpoints", () => {
 });
 describe("History pagination and normalization", () => {
   const since = new Date("2026-10-29T12:00:00Z");
+  it("keeps both sent and received messages from the disconnected interval", () => {
+    const events = normalizeUazapiHistory({ EventType: "history", event: "messages", messages: [
+      { id: "incoming", chatid: "5511999999999@s.whatsapp.net", fromMe: false, messageTimestamp: 1793278800000, text: "Recebida" },
+      { id: "outgoing", chatid: "5511999999999@s.whatsapp.net", fromMe: true, messageTimestamp: 1793278860000, text: "Enviada" },
+    ] });
+    expect(events).toHaveLength(2);
+    expect(events.map(event => ({ fromMe: event.fromMe, historical: event.historical }))).toEqual([{ fromMe: false, historical: true }, { fromMe: true, historical: true }]);
+  });
   it("advances through pages instead of truncating history to the first page", () => {
     expect(historyPage({ messages: [{ messageTimestamp: Date.parse("2026-10-29T13:00:00Z") }], pagination: { hasMore: true, nextOffset: 400 } }, 200, since)).toMatchObject({ done: false, nextOffset: 400 });
   });

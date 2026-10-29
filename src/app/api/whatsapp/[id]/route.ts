@@ -12,7 +12,8 @@ import {
 } from "@/modules/whatsapp/core";
 import { sendUazapiText } from "@/modules/whatsapp/uazapi-server";
 import { object, text } from "@/modules/whatsapp/uazapi";
-import { getWhatsappTicket } from "@/modules/whatsapp/server";
+import { getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
+import { chatLock } from "@/modules/whatsapp/merge";
 import { transferWhatsappTicket, WhatsAppTransferError } from "@/modules/whatsapp/transfer";
 
 type Context = { params: Promise<{ id: string }> };
@@ -62,8 +63,8 @@ export async function PATCH(request: Request, context: Context) {
     return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   }
 
-  const { id } = await context.params;
-  const current = await getWhatsappTicket(id, member.organizationId);
+  const { id: requestedId } = await context.params;
+  const current = await getWhatsappTicket(requestedId, member.organizationId);
   if (!current) {
     return NextResponse.json(
       { error: "Atendimento não encontrado." },
@@ -71,6 +72,7 @@ export async function PATCH(request: Request, context: Context) {
     );
   }
 
+  const id = current.id;
   const body = (await request.json()) as Record<string, unknown>;
   const action = String(body.action || "");
   const canManage =
@@ -106,7 +108,7 @@ export async function PATCH(request: Request, context: Context) {
 
     await prisma.$transaction([
       prisma.serviceTicket.update({
-        where: { id },
+        where: { id, mergedIntoId: null },
         data: {
           assignedToId,
           assignedAt: new Date(),
@@ -177,7 +179,7 @@ export async function PATCH(request: Request, context: Context) {
         update: { active: true, displayName: current.senderName },
       }),
       prisma.serviceTicket.update({
-        where: { id },
+        where: { id, mergedIntoId: null },
         data: {
           clientId,
           routingSquad: client.serviceSquad,
@@ -222,7 +224,7 @@ export async function PATCH(request: Request, context: Context) {
     const assignedToId = current.assignedToId || automaticAssignee;
     await prisma.$transaction([
       prisma.serviceTicket.update({
-        where: { id },
+        where: { id, mergedIntoId: null },
         data: {
           routingArea,
           assignedToId,
@@ -292,11 +294,14 @@ export async function PATCH(request: Request, context: Context) {
     }
 
     const now = new Date();
-    const assignedToId = current.assignedToId || member.userId;
-    await prisma.$transaction([
-      prisma.serviceMessage.create({
+    await prisma.$transaction(async (tx) => {
+      if (providerMetadata) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chatLock(providerMetadata.connectionId, current.senderEmail)}))`;
+      const currentId = await resolveWhatsappTicketId(id, member.organizationId, tx);
+      const active = await tx.serviceTicket.findFirst({ where: { id: currentId, organizationId: member.organizationId } });
+      const assignedToId = active?.assignedToId || current.assignedToId || member.userId;
+      await tx.serviceMessage.create({
         data: {
-          ticketId: id,
+          ticketId: currentId,
           externalMessageId,
           deliveryStatus: externalMessageId ? "accepted" : null,
           statusUpdatedAt: externalMessageId ? now : null,
@@ -308,21 +313,21 @@ export async function PATCH(request: Request, context: Context) {
           textBody: content,
           receivedAt: now,
         },
-      }),
-      prisma.serviceTicket.update({
-        where: { id },
+      });
+      await tx.serviceTicket.update({
+        where: { id: currentId, mergedIntoId: null },
         data: {
           assignedToId,
-          assignedAt: current.assignedAt || now,
-          firstResponseAt: current.firstResponseAt || now,
+          assignedAt: active?.assignedAt || current.assignedAt || now,
+          firstResponseAt: active?.firstResponseAt || current.firstResponseAt || now,
           lastMessageAt: now,
           snippet: content.slice(0, 220),
           status: "IN_PROGRESS",
         },
-      }),
-      prisma.serviceTicketHistory.create({
+      });
+      await tx.serviceTicketHistory.create({
         data: {
-          ticketId: id,
+          ticketId: currentId,
           userId: member.userId,
           type: "WHATSAPP_REPLIED",
           message:
@@ -331,8 +336,8 @@ export async function PATCH(request: Request, context: Context) {
               : "Resposta registrada no ambiente de teste.",
           metadata: externalMessageId ? { externalMessageId } : undefined,
         },
-      }),
-    ]);
+      });
+    });
   } else if (action === "finalize") {
     if (occupiedByAnother && !canManage) {
       return NextResponse.json(
@@ -343,7 +348,7 @@ export async function PATCH(request: Request, context: Context) {
     const now = new Date();
     await prisma.$transaction([
       prisma.serviceTicket.update({
-        where: { id },
+        where: { id, mergedIntoId: null },
         data: { status: "RESOLVED", resolvedAt: now },
       }),
       prisma.serviceTicketHistory.create({
@@ -363,14 +368,19 @@ export async function PATCH(request: Request, context: Context) {
         { status: 400 },
       );
     }
-    await prisma.serviceTicketHistory.create({
+    await prisma.$transaction(async (tx) => {
+    const connectionId = text(object(current.messages.find((message) => object(message.providerMetadata).provider === "UAZAPI")?.providerMetadata).connectionId);
+    if (connectionId) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chatLock(connectionId, current.senderEmail)}))`;
+    const currentId = await resolveWhatsappTicketId(id, member.organizationId, tx);
+    await tx.serviceTicketHistory.create({
       data: {
-        ticketId: id,
+        ticketId: currentId,
         userId: member.userId,
         type: "WHATSAPP_SATISFACTION",
         message: `Satisfação registrada: ${score}/5.`,
         metadata: { score, comment: String(body.comment || "").trim() || null },
       },
+    });
     });
   } else {
     return NextResponse.json({ error: "Ação inválida." }, { status: 400 });

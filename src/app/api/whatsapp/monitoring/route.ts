@@ -111,6 +111,7 @@ export async function GET(request: Request) {
     organizationId: member.organizationId,
     source: { in: [...WHATSAPP_SOURCES] },
     isSpam: false,
+    mergedIntoId: null,
     receivedAt: { gte: start, lte: end },
     ...(clientId ? { clientId } : {}),
     ...(selectedAssignee

@@ -33,7 +33,7 @@ export async function transferWhatsappTicket(current: Current, actor: Actor, can
   const note = input.note || "";
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    const changed = await tx.serviceTicket.updateMany({ where: { id: current.id, organizationId: actor.organizationId, assignedToId: current.assignedToId, status: { notIn: ["RESOLVED", "SPAM"] } }, data: {
+    const changed = await tx.serviceTicket.updateMany({ where: { id: current.id, organizationId: actor.organizationId, mergedIntoId: null, assignedToId: current.assignedToId, status: { notIn: ["RESOLVED", "SPAM"] } }, data: {
       assignedToId, assignedAt: now, status: "IN_PROGRESS", clientId: client?.id || current.clientId,
       routingArea: area, routingSquad: client?.serviceSquad ?? current.routingSquad,
       routingReason: input.mode === "AREA" ? `Transferido para o responsável de ${areaName} do cliente.` : "Transferido manualmente para outro operador.",

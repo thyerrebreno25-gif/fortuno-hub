@@ -9,7 +9,7 @@ export async function GET() {
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   const permission = await getWhatsAppPermission(member.organizationId, member.role);
   if (!permission.canView) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  const where = { organizationId: member.organizationId, source: { in: [...WHATSAPP_SOURCES] } };
+  const where = { organizationId: member.organizationId, source: { in: [...WHATSAPP_SOURCES] }, mergedIntoId: null };
   const [tickets, connection] = await Promise.all([
     prisma.serviceTicket.aggregate({ where, _count: true, _max: { updatedAt: true } }),
     prisma.whatsAppConnection.findUnique({ where: { organizationId: member.organizationId }, select: { id: true, status: true, webhookConfiguredAt: true, expiresAt: true } }),

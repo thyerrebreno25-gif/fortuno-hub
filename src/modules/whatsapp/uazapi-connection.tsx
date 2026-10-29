@@ -3,6 +3,7 @@ import { ActionIcon, Alert, Badge, Button, Group, Image, Loader, Modal, Paper, P
 import { IconBrandWhatsapp, IconQrcode, IconSettings } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import styles from "./pairing.module.css";
+import { WhatsAppDuplicateCleanup } from "./duplicate-cleanup";
 type Connection = { configured: boolean; status: string; serverUrl?: string; instanceName?: string; phone?: string; profileName?: string; isTestServer?: boolean; expiresAt?: string; webhookReady?: boolean; lastWebhookAt?: string; lastError?: string };
 const labels: Record<string, string> = { NOT_CONFIGURED: "Não configurado", DISCONNECTED: "Desconectado", CONNECTING: "Aguardando pareamento", CONNECTED: "Conectado", PAUSED: "Pausado", UNAVAILABLE: "Indisponível", EXPIRED: "Teste expirado" };
 export function UazapiConnection({ onStatus, compact = false }: { onStatus: (status: string) => void; compact?: boolean }) {
@@ -54,6 +55,7 @@ export function UazapiConnection({ onStatus, compact = false }: { onStatus: (sta
     {connection?.lastError && <Alert color="orange">{connection.lastError}</Alert>}
     {(connection?.isTestServer || base === "https://free.uazapi.com") && <Alert color="orange" title="Servidor gratuito · teste de uma hora">A Uazapi exclui a instância após uma hora. {connection?.expiresAt ? `Validade estimada: ${new Date(connection.expiresAt).toLocaleString("pt-BR")}.` : "O prazo começa na criação da instância."}</Alert>}
     {canConfigure ? <>
+      <WhatsAppDuplicateCleanup />
       <Paper withBorder p="lg" radius="md"><Stack><Title order={4}>Credenciais da instância</Title><TextInput label="URL do servidor Uazapi" value={base} onChange={(e) => setBase(e.currentTarget.value)} /><PasswordInput label="Token da instância" description="Use o token da instância, disponível no painel Uazapi." value={token} onChange={(e) => setToken(e.currentTarget.value)} autoComplete="off" /><Group><Button loading={busy} disabled={!token.trim()} onClick={() => action({ action: "SAVE", serverUrl: base.trim(), token: token.trim() })}>Validar e salvar conexão</Button><Button variant="default" onClick={() => refresh()}>Atualizar status</Button></Group></Stack></Paper>
       {connection?.configured && <Paper withBorder p="lg" radius="md"><Stack><Title order={4}>Vincular WhatsApp</Title>
         {connection.status !== "CONNECTED" && <><Group><Button loading={busy} onClick={() => action({ action: "CONNECT" })}>Gerar QR Code</Button><Button variant="light" loading={busy} onClick={() => action({ action: "WEBHOOK" })}>Configurar recebimento</Button></Group>

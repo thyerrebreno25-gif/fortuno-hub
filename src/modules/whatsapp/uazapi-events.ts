@@ -59,7 +59,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     // Serialize each chat so simultaneous deliveries cannot create separate active tickets.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${connection.id + event.chatId}))`;
     if (await tx.serviceMessage.findFirst({ where: { externalMessageId, ticket: { organizationId: connection.organizationId } }, select: { id: true } })) return;
-    const scope = { organizationId: connection.organizationId, source: "WHATSAPP_API" as const, senderEmail: address, OR: [{ recipientEmail: recipient }, { recipientEmail: { startsWith: `wa-uazapi:${connection.id}:` } }] };
+    const scope = { organizationId: connection.organizationId, source: "WHATSAPP_API" as const, senderEmail: address, mergedIntoId: null, OR: [{ recipientEmail: recipient }, { recipientEmail: { startsWith: `wa-uazapi:${connection.id}:` } }] };
     const closed = event.historical ? await tx.serviceTicket.findFirst({ where: { ...scope, status: "RESOLVED", resolvedAt: { gte: timestamp } }, orderBy: { resolvedAt: "asc" } }) : null;
     const active = closed || await tx.serviceTicket.findFirst({ where: { ...scope, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } });
     if (event.fromMe && !active && !event.historical) return;

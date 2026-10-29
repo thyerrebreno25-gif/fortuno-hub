@@ -102,10 +102,21 @@ export function whatsappTicketAddress(
   return whatsappChannelAddress(kind, externalId);
 }
 
-export function getWhatsappTicket(id: string, organizationId: string) {
-  return prisma.serviceTicket.findFirst({
+export async function resolveWhatsappTicketId(id: string, organizationId: string, database: Pick<typeof prisma, "serviceTicket"> = prisma) {
+  let current = id;
+  for (let depth = 0; depth < 5; depth++) {
+    const row = await database.serviceTicket.findFirst({ where: { id: current, organizationId, source: { in: ["WHATSAPP_SIMULATOR", "WHATSAPP_API"] } }, select: { mergedIntoId: true } });
+    if (!row?.mergedIntoId) return current;
+    current = row.mergedIntoId;
+  }
+  throw new Error("Referência circular de atendimento.");
+}
+export async function getWhatsappTicket(id: string, organizationId: string) {
+  let current = id;
+  for (let depth = 0; depth < 5; depth++) {
+  const ticket = await prisma.serviceTicket.findFirst({
     where: {
-      id,
+      id: current,
       organizationId,
       source: { in: ["WHATSAPP_SIMULATOR", "WHATSAPP_API"] },
     },
@@ -131,4 +142,8 @@ export function getWhatsappTicket(id: string, organizationId: string) {
       },
     },
   });
+  if (!ticket?.mergedIntoId) return ticket;
+  current = ticket.mergedIntoId;
+  }
+  return null;
 }
