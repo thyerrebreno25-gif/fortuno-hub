@@ -63,7 +63,6 @@ type Feature = {
 };
 
 const features: Feature[] = [
-  { title: "Conta Azul", description: "Gerencie as conexões das empresas e acompanhe a autorização de acesso aos dados financeiros.", href: "/integracoes/conta-azul", moduleCode: "PURCHASE_INVOICES", group: "Administração", icon: <IconLink size={24} /> },
   { title: "Rendimentos de aplicações", description: "Importe extratos de aplicações, confira saldos e envie vendas de rendimento com baixa na conta selecionada do CA.", href: "/rendimentos", moduleCode: "INVESTMENT_INCOME", group: "Operação financeira", icon: <IconBuildingBank size={24} />, badge: "Integrado" },
   { title: "Importação de contratos", description: "Leia contratos em lote e revise compradores, valores, vencimentos e a programação das vendas. Disponível para testes sem envio.", href: "/contratos", moduleCode: "CONTRACT_IMPORTS", group: "Operação financeira", icon: <IconFileInvoice size={24} />, badge: "Testes" },
   { title: "Gestão", description: "Acompanhe vencidos, importações, validação de saldo e conciliações por cliente.", href: "/gestao", moduleCode: "MANAGEMENT", group: "Visão geral", icon: <IconChartBar size={24} />, badge: "Novo" },
