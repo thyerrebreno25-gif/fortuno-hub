@@ -12,7 +12,10 @@ export function connectionView(connection: Awaited<ReturnType<typeof whatsappCon
 export async function checkConnection(connection: NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>) {
   const state = instanceState(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/instance/status"));
   if (state.instanceId && state.instanceId !== connection.instanceId) throw new Error("A credencial passou a apontar para outra instância. Confira a configuração.");
-  await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { status: state.status, phone: state.phone || connection.phone, profileName: state.profileName || connection.profileName, lastCheckedAt: new Date(), lastError: null } });
+  const updated = await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { status: state.status, phone: state.phone || connection.phone, profileName: state.profileName || connection.profileName, lastCheckedAt: new Date(), lastError: null, ...(state.status !== "CONNECTED" && !connection.lastDisconnectedAt ? { lastDisconnectedAt: connection.lastWebhookAt || new Date() } : {}) } });
+  if (state.status === "CONNECTED") {
+    try { const { scheduleHistorySync } = await import("./history-sync"); await scheduleHistorySync(updated, { reconnected: connection.status !== "CONNECTED" }); } catch { /* Keep connection status independent from history scheduling. */ }
+  }
   return state;
 }
 export async function configureWebhook(connection: NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>) {
@@ -22,8 +25,8 @@ export async function configureWebhook(connection: NonNullable<Awaited<ReturnTyp
   const hooks = asList(await uazapiRequest(connection.serverUrl, token, "/webhook"));
   const own = hooks.find((hook) => hook.url === url);
   if (own && !own.id) throw new Error("A Uazapi não informou o identificador do webhook. Confira o painel da instância.");
-  await uazapiRequest(connection.serverUrl, token, "/webhook", { ...(own ? { action: "update", id: own.id } : { action: "add" }), enabled: true, url, events: ["connection", "messages", "messages_update"], excludeMessages: [], addUrlEvents: false, addUrlTypesMessages: false });
-  const confirmed = asList(await uazapiRequest(connection.serverUrl, token, "/webhook")).find((hook) => hook.url === url && hook.enabled === true && Array.isArray(hook.events) && ["messages", "messages_update", "connection"].every((name) => (hook.events as unknown[]).includes(name)));
+  await uazapiRequest(connection.serverUrl, token, "/webhook", { ...(own ? { action: "update", id: own.id } : { action: "add" }), enabled: true, url, events: ["connection", "messages", "messages_update", "history"], excludeMessages: [], addUrlEvents: false, addUrlTypesMessages: false });
+  const confirmed = asList(await uazapiRequest(connection.serverUrl, token, "/webhook")).find((hook) => hook.url === url && hook.enabled === true && Array.isArray(hook.events) && ["messages", "messages_update", "connection", "history"].every((name) => (hook.events as unknown[]).includes(name)));
   if (!confirmed) throw new Error("A configuração do recebimento não foi confirmada pela Uazapi.");
   await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { webhookId: text(confirmed.id, 200) || null, webhookConfiguredAt: new Date(), lastError: null } });
 }
@@ -34,7 +37,7 @@ export async function sendUazapiText(input: { organizationId: string; to: string
   const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/send/text", { number: input.to, text: input.body, ...(input.replyToMessageId ? { replyid: input.replyToMessageId } : {}) }));
   const id = text(response.messageid || text(response.id).split(":").at(-1), 250);
   if (!id) throw new Error("A Uazapi não confirmou o identificador da mensagem. Confira o WhatsApp antes de repetir.");
-  return { messageId: "uazapi:" + connection.instanceId + ":" + id, instanceId: connection.instanceId, connectionId: connection.id };
+  return { messageId: "uazapi:" + (connection.phone || connection.instanceId) + ":" + id, instanceId: connection.instanceId, connectionId: connection.id };
 }
 type MediaFile = { body: Uint8Array; mimeType: string; size: number };
 // A bounded warm-instance cache avoids downloading the same audio for each range request.

@@ -2107,11 +2107,31 @@ model WhatsAppConnection {
   webhookConfiguredAt DateTime?
   lastWebhookAt DateTime?
   lastCheckedAt DateTime?
+  lastDisconnectedAt DateTime?
   expiresAt DateTime?
   lastError String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   inbox WhatsAppWebhookInbox[]
+}
+model WhatsAppHistorySync {
+  id String @id @default(cuid())
+  connectionId String
+  instanceId String
+  accountPhone String
+  status String @default("PENDING")
+  since DateTime
+  until DateTime @default(now())
+  offset Int @default(0)
+  queued Int @default(0)
+  attempts Int @default(0)
+  lastError String?
+  claimedAt DateTime?
+  nextRunAt DateTime @default(now())
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([connectionId,status,createdAt])
 }
 model WhatsAppWebhookInbox {
   id String @id

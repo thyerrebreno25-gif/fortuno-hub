@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconBrandWhatsapp,
   IconArrowRight,
+  IconRefresh,
   IconChartBar,
   IconCheck,
   IconInbox,
@@ -35,7 +36,7 @@ import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
-import type { InboxKind, InboxStatus, InboxView } from "@/modules/whatsapp/inbox-filters";
+import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
 import styles from "./whatsapp.module.css";
 
 type View = InboxView;
@@ -133,6 +134,7 @@ type Stats = {
   satisfaction: number | null;
   satisfactionResponses: number;
 };
+type HistorySync = { status: string; queued: number; lastError: string | null; completedAt: string | null };
 
 const areaOptions = [
   { value: "UNKNOWN", label: "Ainda não identificado" },
@@ -171,9 +173,9 @@ export default function WhatsAppPage() {
   const [chatKind, setChatKind] = useState<InboxKind>("ALL");
   const [chatStatus, setChatStatus] = useState<InboxStatus>("OPEN");
   const [transferOpened, setTransferOpened] = useState(false);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [inbox, setInbox] = useState<{ tickets: Ticket[]; complete: boolean; key: string }>({ tickets: [], complete: false, key: "" });
+  const [baseStats, setStats] = useState<Stats | null>(null);
+  const [preferredId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -182,12 +184,26 @@ export default function WhatsAppPage() {
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [connectionSettingsOpened, setConnectionSettingsOpened] = useState(false);
   const [reply, setReply] = useState("");
+  const [historySync, setHistorySync] = useState<HistorySync | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const filterKey = JSON.stringify([view, chatKind, chatStatus, search.trim()]);
+  const currentUserId = bootstrap?.currentUser.id || "";
+  const filters = useMemo(() => ({ view, kind: chatKind, status: chatStatus }), [view, chatKind, chatStatus]);
+  const tickets = useMemo(() => {
+    if (!inbox.complete) return inbox.key === filterKey ? inbox.tickets : [];
+    const needle = search.trim().toLocaleLowerCase("pt-BR");
+    return inbox.tickets.filter((ticket) => matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, filters, currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
+  }, [inbox, filterKey, filters, search, currentUserId]);
+  const stats = useMemo(() => baseStats && inbox.complete ? { ...baseStats, facets: inboxFacets(inbox.tickets.map((ticket) => ({ ...ticket, assignedToId: ticket.assignedTo?.id || null })), filters, currentUserId) } : baseStats, [baseStats, inbox, filters, currentUserId]);
+  const selectedId = tickets.some((ticket) => ticket.id === preferredId) ? preferredId : tickets[0]?.id || null;
   const selectedRef = useRef<string | null>(null);
+  const detailCache = useRef(new Map<string, TicketDetail>());
+  const lastRevision = useRef("");
   const listRequest = useRef(0), detailRequest = useRef(0);
   const [syncError, setSyncError] = useState(false);
   const connected = bootstrap?.mode === "CONNECTED";
   const onConnectionStatus = useCallback((status: string) => {
-    setBootstrap((value) => value ? { ...value, mode: status } : value);
+    setBootstrap((value) => value && value.mode !== status ? { ...value, mode: status } : value);
     if (status !== "CONNECTED") { setSection("INBOX"); setTransferOpened(false); setSimulatorOpen(false); setConnectionSettingsOpened(false); }
   }, []);
   useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
@@ -202,29 +218,31 @@ export default function WhatsAppPage() {
 
   const loadList = useCallback(async () => {
     const request = ++listRequest.current;
+    const snapshot = await readResponse<{ tickets: Ticket[]; stats: Stats; hasMore: boolean }>(await fetch("/api/whatsapp?view=GENERAL&kind=ALL&status=ALL", { cache: "no-store" }));
+    if (request !== listRequest.current) return;
+    if (!snapshot.hasMore) {
+      setInbox({ tickets: snapshot.tickets, complete: true, key: "" }); setStats(snapshot.stats); return;
+    }
     const params = new URLSearchParams({ view, kind: chatKind, status: chatStatus });
     if (search.trim()) params.set("search", search.trim());
     const payload = await readResponse<{ tickets: Ticket[]; stats: Stats }>(
       await fetch(`/api/whatsapp?${params}`, { cache: "no-store" }),
     );
     if (request !== listRequest.current) return;
-    setTickets(payload.tickets);
+    setInbox({ tickets: payload.tickets, complete: false, key: JSON.stringify([view, chatKind, chatStatus, search.trim()]) });
     setStats(payload.stats);
-    setSelectedId((current) =>
-      current && payload.tickets.some((ticket) => ticket.id === current)
-        ? current
-        : payload.tickets[0]?.id || null,
-    );
   }, [search, view, chatKind, chatStatus]);
 
   const loadDetail = useCallback(async (id: string, silent = false) => {
     const request = ++detailRequest.current;
-    if (!silent) setDetailLoading(true);
+    const cached = detailCache.current.get(id);
+    if (cached && selectedRef.current === id) { setDetail(cached); setDetailLoading(false); }
+    else if (!silent) setDetailLoading(true);
     try {
       const payload = await readResponse<{ ticket: TicketDetail }>(
         await fetch(`/api/whatsapp/${id}`, { cache: "no-store" }),
       );
-      if (request === detailRequest.current && selectedRef.current === id) setDetail(payload.ticket);
+      if (request === detailRequest.current && selectedRef.current === id) { detailCache.current.set(id, payload.ticket); setDetail(payload.ticket); }
     } catch (error) {
       if (!silent) notifications.show({
         color: "red",
@@ -252,34 +270,35 @@ export default function WhatsAppPage() {
   }, []);
 
   useEffect(() => {
-    if (!connected || section !== "INBOX") return;
-    loadList().catch(() => setSyncError(true));
-  }, [connected, section, loadList]);
+    if (!connected || section !== "INBOX" || inbox.complete || !inbox.key) return;
+    const timer = setTimeout(() => { void loadList().catch(() => setSyncError(true)); }, 0);
+    return () => clearTimeout(timer);
+  }, [connected, section, loadList, inbox.complete, inbox.key]);
 
   useEffect(() => {
     if (connected && section === "INBOX" && selectedId) {
-      // O detalhe remoto acompanha a conversa selecionada.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadDetail(selectedId);
+      const timer = setTimeout(() => { void loadDetail(selectedId); }, 0);
+      return () => clearTimeout(timer);
     }
   }, [connected, section, loadDetail, selectedId]);
 
   // Check a lightweight revision every two seconds; reload the inbox only when it changes.
   useEffect(() => {
     if (!connected || saving) return;
-    let cancelled = false, busy = false, revision = "";
+    let cancelled = false, busy = false;
     const controller = new AbortController();
     async function sync() {
       if (cancelled || busy || document.hidden) return;
       busy = true;
       try {
-        const state = await readResponse<{ revision: string; mode: string }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
+        const state = await readResponse<{ revision: string; mode: string; historySync: HistorySync | null }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
         if (cancelled) return;
         onConnectionStatus(state.mode);
+        setHistorySync(state.historySync || null);
         if (state.mode !== "CONNECTED") return;
-        if (section === "INBOX" && revision !== state.revision) {
+        if (section === "INBOX" && lastRevision.current !== state.revision) {
           await Promise.all([loadList(), selectedId ? loadDetail(selectedId, true) : Promise.resolve()]);
-          if (!cancelled) revision = state.revision;
+          if (!cancelled) lastRevision.current = state.revision;
         }
         if (!cancelled) setSyncError(false);
       } catch { if (!cancelled) setSyncError(true); }
@@ -322,6 +341,7 @@ export default function WhatsAppPage() {
           body: JSON.stringify(action),
         }),
       );
+      detailCache.current.set(id, payload.ticket);
       if (selectedRef.current === id) setDetail(payload.ticket);
       await loadList();
       notifications.show({ color: "green", title: "Tudo certo", message: success });
@@ -348,6 +368,15 @@ export default function WhatsAppPage() {
         : "Resposta registrada no teste.",
     );
     if (sent) setReply((current) => current.trim() === content ? "" : current);
+  }
+
+  async function syncHistory() {
+    setHistoryBusy(true);
+    try {
+      const result = await readResponse<{ sync: HistorySync | null }>(await fetch("/api/whatsapp/history", { method: "POST" }));
+      setHistorySync(result.sync);
+    } catch (error) { notifications.show({ color: "red", title: "Histórico do WhatsApp", message: error instanceof Error ? error.message : "Não foi possível atualizar o histórico." }); }
+    finally { setHistoryBusy(false); }
   }
 
   async function simulateMessage() {
@@ -421,13 +450,18 @@ export default function WhatsAppPage() {
               {bootstrap?.mode === "CONNECTED" ? "Conectado" : "WhatsApp desconectado"}
             </Badge>
             {section === "INBOX" && syncError && <Text size="xs" c="orange">Reconectando atualização automática…</Text>}
+            {connected && historySync && ["PENDING", "RUNNING", "IMPORTING"].includes(historySync.status) && <Badge color="teal" variant="light">Sincronizando histórico…</Badge>}
+            {connected && historySync?.status === "FAILED" && <Text size="xs" c="orange">Histórico pendente de atualização</Text>}
           </Group>
         </div>
-        {connected && bootstrap?.canConfigureConnection && (
+        {connected && <Group gap="xs">
+          {bootstrap?.canEdit && <Button variant="light" color="teal" leftSection={<IconRefresh size={17} />} loading={historyBusy || Boolean(historySync && ["PENDING", "RUNNING", "IMPORTING"].includes(historySync.status))} onClick={syncHistory}>Atualizar conversas</Button>}
+        {bootstrap?.canConfigureConnection && (
           <Button variant="subtle" leftSection={<IconBrandWhatsapp size={17} />} onClick={() => setConnectionSettingsOpened(true)}>
             Configurar WhatsApp
           </Button>
         )}
+        </Group>}
       </header>
 
       {!connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "INBOX" ? (

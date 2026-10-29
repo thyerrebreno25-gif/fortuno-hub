@@ -15,10 +15,10 @@
 .viewActive { background: color-mix(in srgb, #00a884 13%, var(--fortuno-surface)) !important; color: #008069; }
 .helpBox { margin-top: 22px; padding: 14px; border: 1px solid var(--fortuno-line); border-radius: 13px; background: var(--fortuno-surface); display: grid; gap: 6px; }
 .helpBox > svg { color: #16864b; }
-.listPanel { min-width: 0; border-right: 1px solid var(--fortuno-line); display: flex; flex-direction: column; }
+.listPanel { min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--fortuno-line); display: flex; flex-direction: column; }
 .listHeader { padding: 13px; border-bottom: 1px solid var(--fortuno-line); }
 .search { width: 100%; }
-.ticketList { min-height: 0; flex: 1; overflow-y: auto; }
+.ticketList { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .ticket { width: 100%; border: 0; border-bottom: 1px solid var(--fortuno-line); background: transparent; color: var(--fortuno-ink); display: grid; grid-template-columns: 40px 1fr; gap: 10px; padding: 13px; text-align: left; cursor: pointer; }
 .ticket:hover { background: var(--fortuno-surface-soft); }
 .ticketActive { background: color-mix(in srgb, var(--mantine-color-blue-6) 9%, var(--fortuno-surface)) !important; box-shadow: inset 3px 0 var(--mantine-color-blue-6); }

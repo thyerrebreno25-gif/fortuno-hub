@@ -1,0 +1,11 @@
+ALTER TABLE "WhatsAppConnection" ADD COLUMN IF NOT EXISTS "lastDisconnectedAt" TIMESTAMP(3);
+CREATE TABLE IF NOT EXISTS "WhatsAppHistorySync" (
+ "id" TEXT PRIMARY KEY, "connectionId" TEXT NOT NULL REFERENCES "WhatsAppConnection"("id") ON DELETE CASCADE,
+ "instanceId" TEXT NOT NULL, "accountPhone" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'PENDING',
+ "since" TIMESTAMP(3) NOT NULL, "until" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ "offset" INTEGER NOT NULL DEFAULT 0, "queued" INTEGER NOT NULL DEFAULT 0, "attempts" INTEGER NOT NULL DEFAULT 0,
+ "lastError" TEXT, "claimedAt" TIMESTAMP(3), "nextRunAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ "completedAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "WhatsAppHistorySync_connectionId_status_createdAt_idx" ON "WhatsAppHistorySync"("connectionId","status","createdAt");

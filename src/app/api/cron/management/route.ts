@@ -3,7 +3,7 @@ import { after, NextResponse } from "next/server";
 import { runScheduledManagementSync } from "@/modules/management/sync";
 import { pollGmailConnections } from "@/modules/atendimento/gmail/sync";
 import { runNotionClientSync } from "@/modules/notion/client-sync";
-import { drainUazapiInbox } from "@/modules/whatsapp/uazapi-events";
+import { processWhatsAppHistory, scheduleConnectedHistory } from "@/modules/whatsapp/history-sync";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: Request) {
@@ -11,6 +11,6 @@ export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET || (integrationKey ? createHmac("sha256", integrationKey).update("fortuno-management-sync-v1").digest("hex") : "");
   const expected = Buffer.from(`Bearer ${secret || ""}`), provided = Buffer.from(request.headers.get("authorization") || "");
   if (!secret || expected.length !== provided.length || !timingSafeEqual(expected, provided)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  after(async () => { await runNotionClientSync().catch(() => undefined); await Promise.allSettled([runScheduledManagementSync(), pollGmailConnections(), drainUazapiInbox()]); });
+  after(async () => { await runNotionClientSync().catch(() => undefined); await scheduleConnectedHistory().catch(() => undefined); await Promise.allSettled([runScheduledManagementSync(), pollGmailConnections(), processWhatsAppHistory()]); });
   return NextResponse.json({ accepted: true }, { status: 202 });
 }

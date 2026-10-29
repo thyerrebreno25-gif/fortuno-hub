@@ -14,7 +14,7 @@ describe("Uazapi server-side connection", () => {
   });
   it("adds its webhook without replacing other subscriptions", async () => {
     const url = "https://app.hubsuporte.shop/api/whatsapp/uazapi/webhook/connection";
-    m.request.mockResolvedValueOnce([{ id: "other", url: "https://other.example/hook" }]).mockResolvedValueOnce({}).mockResolvedValueOnce([{ id: "own", url, enabled: true, events: ["messages", "messages_update", "connection"] }]);
+    m.request.mockResolvedValueOnce([{ id: "other", url: "https://other.example/hook" }]).mockResolvedValueOnce({}).mockResolvedValueOnce([{ id: "own", url, enabled: true, events: ["messages", "messages_update", "connection", "history"] }]);
     await configureWebhook(connection);
     expect(m.request.mock.calls[1][3]).toMatchObject({ action: "add", url, excludeMessages: [] }); expect(m.request.mock.calls[1][3].id).toBeUndefined(); expect(m.update.mock.calls[0][0].data.webhookId).toBe("own");
   });

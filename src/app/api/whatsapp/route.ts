@@ -58,6 +58,7 @@ export async function GET(request: Request) {
       { subject: { contains: search, mode: "insensitive" } },
       { senderName: { contains: search, mode: "insensitive" } },
       { senderEmail: { contains: search, mode: "insensitive" } },
+      { snippet: { contains: search, mode: "insensitive" } },
       { client: { name: { contains: search, mode: "insensitive" } } },
     ];
   }
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
     prisma.serviceTicket.findMany({
       where,
       orderBy: [{ lastMessageAt: "desc" }, { receivedAt: "desc" }],
-      take: 250,
+      take: 251,
       select: {
         id: true,
         subject: true,
@@ -134,7 +135,8 @@ export async function GET(request: Request) {
     .filter((score): score is number => score !== null);
 
   return NextResponse.json({
-    tickets: tickets.map((ticket) => ({
+    hasMore: tickets.length > 250,
+    tickets: tickets.slice(0, 250).map((ticket) => ({
       ...ticket,
       channel: parseWhatsappChannelAddress(ticket.senderEmail),
       lastDirection: ticket.messages[0]?.direction || null,

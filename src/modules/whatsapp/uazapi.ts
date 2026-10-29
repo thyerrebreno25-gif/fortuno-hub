@@ -37,14 +37,26 @@ export function normalizeUazapiEvent(payload: unknown) {
     const status = states.includes("read") || states.includes("played") ? "read" : states.includes("delivered") ? "delivered" : states.includes("sent") ? "sent" : states.includes("failed") ? "failed" : "";
     return { kind: "messages_update" as const, ids: Array.isArray(event.MessageIDs) ? event.MessageIDs.filter((id): id is string => typeof id === "string").slice(0, 200) : [], status, timestamp: Number(event.Timestamp) || 0 };
   }
-  const content = object(message.content), chatId = text(message.chatid || chat.wa_chatid, 150), id = text(message.messageid || text(message.id).split(":").at(-1), 200);
+  let content = object(message.content);
+  if (typeof message.content === "string") { try { content = object(JSON.parse(message.content)); } catch { /* Plain text content. */ } }
+  const chatId = text(message.chatid || chat.wa_chatid, 150), id = text(message.messageid || text(message.id).split(":").at(-1), 200);
   if (!id || !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(chatId)) return null;
   const fromMe = message.fromMe === true;
   const mediaType = text(message.messageType, 80);
   const media = /image|document|audio|video|sticker/i.test(mediaType);
-  return { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: message.wasSentByApi === true,
+  const result = { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: message.wasSentByApi === true,
     senderName: text(message.senderName, 250), chatName: text(chat.name, 250), sender: text(message.sender, 150),
-    body: text(message.text || content.caption || content.text || content.conversation || (typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
+    body: text(message.text || content.caption || content.text || content.conversation || (!media && typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
     media: media ? { id: text(message.id || id, 250), name: text(content.fileName || content.filename, 250) || mediaType, mimeType: text(content.mimetype || content.mimeType, 150) || null } : null,
   };
+  return result as typeof result & { historical?: boolean };
+}
+export function normalizeUazapiHistory(payload: unknown, names: Record<string, string> = {}) {
+  const root = object(payload);
+  if (root.EventType !== "history" || root.event !== "messages" || !Array.isArray(root.messages)) return [];
+  return root.messages.slice(0, 1000).flatMap((message) => {
+    if (!(Number(object(message).messageTimestamp) > 0)) return [];
+    const normalized = normalizeUazapiEvent({ EventType: "messages", message, chat: { name: names[text(object(message).chatid)] || "" } });
+    return normalized?.kind === "messages" ? [{ ...normalized, historical: true }] : [];
+  });
 }

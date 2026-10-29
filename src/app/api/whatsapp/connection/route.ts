@@ -5,7 +5,7 @@ import { encryptIntegrationSecret, decryptIntegrationSecret } from "@/modules/pu
 import { getServiceCenterMember, getWhatsAppPermission } from "@/modules/atendimento/auth";
 import { instanceState, serverUrl, tokenHash, uazapiRequest } from "@/modules/whatsapp/uazapi";
 import { checkConnection, configureWebhook, connectionView, whatsappConnection } from "@/modules/whatsapp/uazapi-server";
-import { drainUazapiInbox } from "@/modules/whatsapp/uazapi-events";
+import { processWhatsAppHistory } from "@/modules/whatsapp/history-sync";
 export const maxDuration = 120;
 async function access() {
   const member = await getServiceCenterMember();
@@ -22,7 +22,7 @@ export async function GET() {
   if (connection && auth.canConfigure) {
     try { state = await checkConnection(connection); }
     catch { await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { status: "UNAVAILABLE", lastError: "Não foi possível consultar a instância. Confira a credencial e a validade do servidor de teste.", lastCheckedAt: new Date() } }); }
-    after(() => drainUazapiInbox(connection.id));
+    after(async () => { await processWhatsAppHistory(connection.id); });
   }
   return NextResponse.json({ connection: connectionView(await whatsappConnection(auth.member.organizationId)), ...(auth.canConfigure && state ? { qrCode: state.qrCode, pairCode: state.pairCode } : {}), canConfigure: auth.canConfigure }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       if (!state.instanceId) throw new Error("A Uazapi não confirmou o identificador da instância.");
       if (connection?.status === "CONNECTED" && connection.instanceId !== state.instanceId) throw new Error("Desconecte a instância atual antes de substituí-la.");
       const created = /T.*(?:Z|[+-]\d\d:\d\d)$/.test(state.created) ? Date.parse(state.created) : Date.now();
-      const data = { serverUrl: base, tokenEncrypted: encryptIntegrationSecret(input.data.token), tokenHash: hash, instanceId: state.instanceId, instanceName: state.instanceName || null, status: state.status, phone: state.phone || null, profileName: state.profileName || null, lastCheckedAt: new Date(), lastError: null, webhookConfiguredAt: null, webhookId: null, expiresAt: base === "https://free.uazapi.com" ? new Date((Number.isFinite(created) ? created : Date.now()) + 3600000) : null };
+      const data = { serverUrl: base, tokenEncrypted: encryptIntegrationSecret(input.data.token), tokenHash: hash, instanceId: state.instanceId, instanceName: state.instanceName || null, status: state.status, phone: state.phone || connection?.phone || null, profileName: state.profileName || null, lastCheckedAt: new Date(), lastError: null, webhookConfiguredAt: null, webhookId: null, ...(connection?.instanceId !== state.instanceId ? { lastDisconnectedAt: connection?.lastDisconnectedAt || connection?.lastWebhookAt || new Date() } : {}), expiresAt: base === "https://free.uazapi.com" ? new Date((Number.isFinite(created) ? created : Date.now()) + 3600000) : null };
       connection = await prisma.whatsAppConnection.upsert({ where: { organizationId: auth.member.organizationId }, create: { ...data, organizationId: auth.member.organizationId }, update: data });
       await configureWebhook(connection);
     } else {

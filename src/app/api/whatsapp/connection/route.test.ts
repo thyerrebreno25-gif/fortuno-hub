@@ -6,6 +6,7 @@ vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ encryptIntegration
 vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: m.connection, checkConnection: m.check, configureWebhook: m.webhook, connectionView: (c: { status?: string } | null) => ({ status: c?.status || "NOT_CONFIGURED" }) }));
 vi.mock("@/modules/whatsapp/uazapi", async (original) => ({ ...await original<typeof import("@/modules/whatsapp/uazapi")>(), uazapiRequest: m.request }));
 vi.mock("@/modules/whatsapp/uazapi-events", () => ({ drainUazapiInbox: m.drain }));
+vi.mock("@/modules/whatsapp/history-sync", () => ({ processWhatsAppHistory: m.drain }));
 vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: vi.fn() }));
 import { GET, POST } from "./route";
 const req = (body: unknown) => new Request("https://hub/api/whatsapp/connection", { method: "POST", body: JSON.stringify(body) });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/modules/whatsapp/history-sync", () => ({ latestHistorySync: async () => null, processWhatsAppHistory: vi.fn() }));
 const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), tickets: vi.fn(), connection: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { serviceTicket: { aggregate: m.tickets }, whatsAppConnection: { findUnique: m.connection } } }));
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));

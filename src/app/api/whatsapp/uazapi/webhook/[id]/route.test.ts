@@ -22,6 +22,6 @@ describe("Uazapi webhook authentication and durable delivery", () => {
     await expect(POST(request("secret"), context)).rejects.toThrow("db unavailable"); expect(mocks.after).not.toHaveBeenCalled();
   });
   it("rejects oversized payloads before querying connection credentials", async () => {
-    expect((await POST(new Request("https://hub", { method: "POST", headers: { "content-length": "2000000" }, body: "{}" }), context)).status).toBe(413); expect(mocks.find).not.toHaveBeenCalled();
+    expect((await POST(new Request("https://hub", { method: "POST", headers: { "content-length": "5000000" }, body: "{}" }), context)).status).toBe(413); expect(mocks.find).not.toHaveBeenCalled();
   });
 });
