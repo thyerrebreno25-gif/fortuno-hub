@@ -7,6 +7,28 @@ const object = (v: unknown): Record<string,unknown> => v && typeof v === "object
 const uuid = (v: unknown): v is string => typeof v === "string" && /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i.test(v);
 const documentOf = (person: Record<string,unknown>) => digits(String(person.documento || person.cnpj || person.cpf || ""));
 const isCustomer = (person: Record<string,unknown>) => Array.isArray(person.perfis) && person.perfis.some(p=>normalize(typeof p === "string" ? p : String(object(p).tipo_perfil || "")) === "cliente");
+export function peoplePage(body: unknown) {
+  const root=object(body);
+  if (Array.isArray(body) || Array.isArray(root.items) || Array.isArray(root.itens)) return apiItems(body);
+  // Empty searches may omit/null the array. Only an explicit zero total proves absence.
+  if (root.totalItems === 0 && (root.items === undefined || root.items === null) && (root.itens === undefined || root.itens === null)) return [];
+  throw new Error("Não foi possível confirmar a busca do CPF/CNPJ no CA. Nenhum comprador foi cadastrado.");
+}
+export async function findContractBuyer(clientId: string, document: string) {
+  const matches=new Map<string,Record<string,unknown>>();
+  for (const profile of ["Cliente","Fornecedor","Transportadora"]) {
+    const query=new URLSearchParams({pagina:"1",tamanho_pagina:"1000",documentos:document,tipos_pessoa:document.length===14?"Jurídica":"Física",tipo_perfil:profile,com_endereco:"false"});
+    const body=await contaAzulRequest(clientId,"/v1/pessoas?"+query);
+    const rows=peoplePage(body);
+    if (rows.length>=1000 || Number(object(body).totalItems)>1000) throw new Error("A busca do CPF/CNPJ ficou incompleta. Confira os cadastros no CA.");
+    for(const row of rows) if(documentOf(row)===document && uuid(row.id)) matches.set(row.id,row);
+  }
+  if(matches.size>1) throw new Error("Há mais de um cadastro para este CPF/CNPJ no CA. Confira antes de enviar o contrato.");
+  if(!matches.size) return null;
+  const [id,person]=[...matches][0];
+  if(person.ativo===false || !isCustomer(person)) throw new Error("O CPF/CNPJ já existe no CA, mas está inativo ou sem perfil de Cliente. Ajuste esse cadastro no CA; não será criada outra pessoa.");
+  return id;
+}
 export function buyerPayload(review: ContractReview) {
   const document = digits(review.buyerDocument);
   if (!review.buyer.trim() || ![11,14].includes(document.length) || /^(\d)\1+$/.test(document)) throw new Error("Confira nome e CPF/CNPJ do comprador antes de cadastrar.");
@@ -21,20 +43,8 @@ export async function ensureContractBuyer(organizationId: string, clientId: stri
   const payload = buyerPayload(review), document=digits(review.buyerDocument);
   const key={organizationId,clientId,document};
   const state = await prisma.documentImportBuyer.upsert({where:{organizationId_clientId_document:key},create:key,update:{}});
-  const matches=new Map<string,Record<string,unknown>>();
-  // Include other business profiles so a supplier is never duplicated as a new person.
-  for (const profile of ["Cliente","Fornecedor","Transportadora"]) {
-    const query=new URLSearchParams({pagina:"1",tamanho_pagina:"1000",documentos:document,tipos_pessoa:document.length===14?"Jurídica":"Física",tipo_perfil:profile,com_endereco:"false"});
-    const body=await contaAzulRequest(clientId,"/v1/pessoas?"+query);
-    if (!Array.isArray(body) && !Array.isArray(object(body).items) && !Array.isArray(object(body).itens)) throw new Error("Não foi possível confirmar a busca do CPF/CNPJ no CA. Nenhum comprador foi cadastrado.");
-    const rows=apiItems(body);
-    if (rows.length>=1000 || Number(object(body).totalItems)>1000) throw new Error("A busca do CPF/CNPJ ficou incompleta. Confira os cadastros no CA.");
-    for(const row of rows) if(documentOf(row)===document && uuid(row.id)) matches.set(row.id,row);
-  }
-  if(matches.size>1) throw new Error("Há mais de um cadastro para este CPF/CNPJ no CA. Confira antes de enviar o contrato.");
-  if(matches.size===1) {
-    const [id,person]=[...matches][0];
-    if(person.ativo===false || !isCustomer(person)) throw new Error("O CPF/CNPJ já existe no CA, mas está inativo ou sem perfil de Cliente. Ajuste esse cadastro no CA; não será criada outra pessoa.");
+  const id=await findContractBuyer(clientId,document);
+  if(id) {
     await prisma.documentImportBuyer.update({where:{id:state.id},data:{status:"CREATED",personId:id,lastError:null}});
     return id;
   }

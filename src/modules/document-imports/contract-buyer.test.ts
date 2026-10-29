@@ -3,7 +3,7 @@ vi.mock("server-only",()=>({}));
 const m=vi.hoisted(()=>({request:vi.fn(),upsert:vi.fn(),update:vi.fn(),claim:vi.fn(),audit:vi.fn()}));
 vi.mock("@/lib/prisma",()=>({prisma:{documentImportBuyer:{upsert:m.upsert,update:m.update,updateMany:m.claim},auditLog:{create:m.audit}}}));
 vi.mock("@/modules/purchase-invoices/server/conta-azul",()=>({contaAzulRequest:m.request,ContaAzulApiError:class extends Error {status=400;}}));
-import { buyerPayload, ensureContractBuyer } from "./contract-buyer";
+import { buyerPayload, ensureContractBuyer, peoplePage } from "./contract-buyer";
 import { parseContract } from "./parsers";
 const personId="00000000-0000-4000-8000-000000000001";
 const review=()=>({...parseContract([]),buyer:"MHS SOLUCOES AMBIENTAIS LTDA",buyerDocument:"43541033000151",buyerEmail:"comprador@example.test",buyerPhone:"61999998888"});
@@ -19,6 +19,12 @@ beforeEach(()=>{
   m.request.mockImplementation(async(_client:string,path:string,init?:RequestInit)=>init?.method==="POST"?{id:personId}:path.includes("/pessoas/")?person():{items:[],totalItems:0});
 });
 describe("Contract buyer registration",()=>{
+  it("accepts omitted or null item arrays only with an explicit zero result total",async()=>{
+    expect(peoplePage({totalItems:0})).toEqual([]);expect(peoplePage({items:null,totalItems:0})).toEqual([]);
+    expect(()=>peoplePage({})).toThrow("busca");expect(()=>peoplePage({items:null,totalItems:1})).toThrow("busca");
+    m.request.mockImplementation(async(_client,path,init)=>init?.method==="POST"?{id:personId}:path.includes("/pessoas/")?person():{totalItems:0});
+    expect(await ensure()).toBe(personId);expect(posts()).toHaveLength(1);
+  });
   it("creates a legal-person customer from reviewed contract data and verifies it before returning",async()=>{
     expect(await ensure()).toBe(personId);expect(posts()).toHaveLength(1);
     expect(JSON.parse(posts()[0][2].body)).toMatchObject({nome:review().buyer,tipo_pessoa:"Jurídica",cnpj:review().buyerDocument,email:"comprador@example.test",telefone_celular:"61999998888",perfis:[{tipo_perfil:"Cliente"}]});

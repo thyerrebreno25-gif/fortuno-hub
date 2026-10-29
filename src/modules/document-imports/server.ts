@@ -6,6 +6,7 @@ import { apiItems, contaAzulOptions } from "@/modules/conta-azul/financial-expor
 import { type ImportKind, type Review, digits, reviewIssues, schedule, monthDate } from "./model";
 import { closingAccountBalance } from "./account-balance";
 import { compareBalances, type AccountClosingBalance } from "./balance-model";
+import { findContractBuyer } from "./contract-buyer";
 
 export const kindPermission = (kind: ImportKind) => kind === "INVESTMENT" ? "INVESTMENT_INCOME" : "CONTRACT_IMPORTS";
 export async function importAccess(kind: ImportKind) {
@@ -55,6 +56,10 @@ export async function simulateReview(clientId: string, review: Review) {
     if (!options.financialAccounts.some((item) => item.value === row.accountId)) errors.push("Conta financeira não encontrada na empresa selecionada.");
   }
   if (review.kind === "CONTRACT") {
+    if (!review.customerId && review.autoCreateBuyer !== false) {
+      try { await findContractBuyer(clientId, digits(review.buyerDocument)); }
+      catch(error) { errors.push(error instanceof Error && !(error instanceof Error && /token|bearer|https?:|prisma/i.test(error.message)) ? error.message : "Não foi possível conferir o comprador no CA."); }
+    }
     if (!options.services.some(item => item.value === review.serviceId)) errors.push("Serviço ativo não encontrado na empresa selecionada.");
     const company = await prisma.client.findUnique({ where: { id: clientId }, select: { document: true } });
     if (!review.sellerDocument || digits(company?.document || "") !== digits(review.sellerDocument)) errors.push("A empresa selecionada não corresponde ao CNPJ da contratada no documento.");
