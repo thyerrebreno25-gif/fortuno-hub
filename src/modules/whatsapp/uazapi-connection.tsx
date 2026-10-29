@@ -1,14 +1,17 @@
 "use client";
-import { Alert, Badge, Button, Group, Image, Paper, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Group, Image, Loader, Modal, Paper, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import { IconBrandWhatsapp, IconQrcode, IconSettings } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
+import styles from "./pairing.module.css";
 type Connection = { configured: boolean; status: string; serverUrl?: string; instanceName?: string; phone?: string; profileName?: string; isTestServer?: boolean; expiresAt?: string; webhookReady?: boolean; lastWebhookAt?: string; lastError?: string };
 const labels: Record<string, string> = { NOT_CONFIGURED: "Não configurado", DISCONNECTED: "Desconectado", CONNECTING: "Aguardando pareamento", CONNECTED: "Conectado", PAUSED: "Pausado", UNAVAILABLE: "Indisponível", EXPIRED: "Teste expirado" };
-export function UazapiConnection({ onStatus }: { onStatus: (status: string) => void }) {
+export function UazapiConnection({ onStatus, compact = false }: { onStatus: (status: string) => void; compact?: boolean }) {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [canConfigure, setCanConfigure] = useState(false);
   const [base, setBase] = useState("https://free.uazapi.com"), [token, setToken] = useState(""), [phone, setPhone] = useState("");
   const [qr, setQr] = useState<string | null>(null), [pairCode, setPairCode] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [confirm, setConfirm] = useState(false);
+  const [advancedOpened, setAdvancedOpened] = useState(false), [showPhone, setShowPhone] = useState(false);
   const receive = useCallback((data: { connection: Connection; qrCode?: string; pairCode?: string; canConfigure?: boolean }) => {
     setConnection(data.connection);
     if (data.canConfigure !== undefined) setCanConfigure(data.canConfigure);
@@ -24,6 +27,24 @@ export function UazapiConnection({ onStatus }: { onStatus: (status: string) => v
     setBusy(true); setError("");
     try { const response = await fetch("/api/whatsapp/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível concluir."); receive(data); if (input.action === "SAVE") setToken(""); setConfirm(false); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Falha na conexão."); } finally { setBusy(false); }
   }
+  if (compact) return <div className={styles.pairing}>
+    <div className={styles.brand}><IconBrandWhatsapp size={30} /><Text fw={800}>WhatsApp · Fortuno Hub</Text></div>
+    <Paper className={styles.card} radius="xl" withBorder>
+      <div className={styles.instructions}><Title order={2}>Conecte seu WhatsApp</Title><Text c="dimmed" mt="xs">Escaneie o QR Code para abrir suas conversas na central.</Text>
+        <ol className={styles.steps}><li>Abra o <strong>WhatsApp</strong> no seu celular.</li><li>Entre em <strong>Aparelhos conectados</strong> e toque em <strong>Conectar um aparelho</strong>.</li><li>Aponte a câmera para o QR Code ao lado.</li></ol>
+        {connection?.isTestServer && <Text size="sm" c="dimmed">Teste gratuito de uma hora.{connection.expiresAt ? ` Validade estimada: ${new Date(connection.expiresAt).toLocaleString("pt-BR")}.` : ""}</Text>}
+        {canConfigure && <Group mt="lg" gap="xs"><ActionIcon variant="subtle" color="gray" aria-label="Configurar integração" onClick={() => setAdvancedOpened(true)}><IconSettings size={18} /></ActionIcon><Text size="xs" c="dimmed">Configuração da integração</Text></Group>}
+      </div>
+      <Stack align="center" gap="md" className={styles.qrColumn}>
+        {!connection ? <div className={styles.qrPlaceholder}><Loader color="teal" /></div> : qr ? <Image src={qr} alt="QR Code de conexão do WhatsApp" w={280} h={280} fit="contain" className={styles.qr} /> : <div className={styles.qrPlaceholder}><IconQrcode size={90} stroke={1} /><Text size="sm" ta="center" c="dimmed">{connection.status === "EXPIRED" ? "A conexão de teste expirou." : "Gere o QR Code para conectar."}</Text></div>}
+        {canConfigure ? <Button color="teal" loading={busy} disabled={!connection?.configured || connection.status === "EXPIRED"} leftSection={<IconQrcode size={18} />} onClick={() => action({ action: "CONNECT" })}>{qr ? "Atualizar QR Code" : "Gerar QR Code"}</Button> : connection && <Text size="sm" ta="center" c="dimmed">Solicite a conexão a um administrador.</Text>}
+        {canConfigure && connection?.configured && connection.status !== "EXPIRED" && <Button variant="transparent" color="teal" onClick={() => setShowPhone((value) => !value)}>Conectar com número de telefone →</Button>}
+        {showPhone && <Stack w="100%"><TextInput label="Telefone com código do país" placeholder="55 + DDD + número" value={phone} onChange={(event) => setPhone(event.currentTarget.value.replace(/\D/g, ""))} /><Button color="teal" variant="light" loading={busy} disabled={!/^\d{10,15}$/.test(phone)} onClick={() => action({ action: "CONNECT", phone })}>Gerar código de pareamento</Button>{pairCode && <Text fw={800} ta="center" size="xl">{pairCode}</Text>}</Stack>}
+      </Stack>
+      {error && <Alert color="red" className={styles.error}>{error}</Alert>}
+    </Paper>
+    <Modal opened={advancedOpened} onClose={() => setAdvancedOpened(false)} title="Configuração da integração WhatsApp" size="xl" centered><UazapiConnection onStatus={onStatus} /></Modal>
+  </div>;
   return <Stack gap="md">
     <Paper withBorder p="lg" radius="md"><Group justify="space-between"><div><Title order={3}>Conexão Uazapi</Title><Text c="dimmed" size="sm">{connection?.instanceName || "WhatsApp da equipe"}</Text></div><Badge color={connection?.status === "CONNECTED" ? "green" : "gray"}>{labels[connection?.status || "NOT_CONFIGURED"] || connection?.status}</Badge></Group>
       {connection?.phone && <Text mt="sm">{connection.profileName} · +{connection.phone}</Text>}

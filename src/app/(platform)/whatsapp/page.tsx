@@ -39,13 +39,14 @@ import type { InboxKind, InboxStatus, InboxView } from "@/modules/whatsapp/inbox
 import styles from "./whatsapp.module.css";
 
 type View = InboxView;
-type Section = "INBOX" | "MONITORING" | "CONNECTION";
+type Section = "INBOX" | "MONITORING";
 
 type Bootstrap = {
   mode: string;
   currentUser: { id: string; name: string | null; email: string };
   canManage: boolean;
   canEdit: boolean;
+  canConfigureConnection: boolean;
   clients: Array<{
     id: string;
     name: string;
@@ -166,7 +167,6 @@ async function readResponse<T>(response: Response) {
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [section, setSection] = useState<Section>("INBOX");
-  const onConnectionStatus = useCallback((status: string) => setBootstrap((value) => value ? { ...value, mode: status } : value), []);
   const [view, setView] = useState<View>("GENERAL");
   const [chatKind, setChatKind] = useState<InboxKind>("ALL");
   const [chatStatus, setChatStatus] = useState<InboxStatus>("OPEN");
@@ -180,10 +180,16 @@ export default function WhatsAppPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [simulatorOpen, setSimulatorOpen] = useState(false);
+  const [connectionSettingsOpened, setConnectionSettingsOpened] = useState(false);
   const [reply, setReply] = useState("");
   const selectedRef = useRef<string | null>(null);
   const listRequest = useRef(0), detailRequest = useRef(0);
   const [syncError, setSyncError] = useState(false);
+  const connected = bootstrap?.mode === "CONNECTED";
+  const onConnectionStatus = useCallback((status: string) => {
+    setBootstrap((value) => value ? { ...value, mode: status } : value);
+    if (status !== "CONNECTED") { setSection("INBOX"); setTransferOpened(false); setSimulatorOpen(false); setConnectionSettingsOpened(false); }
+  }, []);
   useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
   const [simulation, setSimulation] = useState({
     kind: "CONTACT",
@@ -232,14 +238,9 @@ export default function WhatsAppPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/whatsapp/bootstrap", { cache: "no-store" }).then((response) =>
-        readResponse<Bootstrap>(response),
-      ),
-      // A lista remota é sincronizada quando filtros ou caixa mudam.
-      loadList(),
-    ])
-      .then(([base]) => setBootstrap(base))
+    fetch("/api/whatsapp/bootstrap", { cache: "no-store" })
+      .then((response) => readResponse<Bootstrap>(response))
+      .then(setBootstrap)
       .catch((error) =>
         notifications.show({
           color: "red",
@@ -248,19 +249,24 @@ export default function WhatsAppPage() {
         }),
       )
       .finally(() => setLoading(false));
-  }, [loadList]);
+  }, []);
 
   useEffect(() => {
-    if (selectedId) {
+    if (!connected || section !== "INBOX") return;
+    loadList().catch(() => setSyncError(true));
+  }, [connected, section, loadList]);
+
+  useEffect(() => {
+    if (connected && section === "INBOX" && selectedId) {
       // O detalhe remoto acompanha a conversa selecionada.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       loadDetail(selectedId);
     }
-  }, [loadDetail, selectedId]);
+  }, [connected, section, loadDetail, selectedId]);
 
   // Check a lightweight revision every two seconds; reload the inbox only when it changes.
   useEffect(() => {
-    if (section !== "INBOX" || saving) return;
+    if (!connected || saving) return;
     let cancelled = false, busy = false, revision = "";
     const controller = new AbortController();
     async function sync() {
@@ -269,8 +275,9 @@ export default function WhatsAppPage() {
       try {
         const state = await readResponse<{ revision: string; mode: string }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
         if (cancelled) return;
-        setBootstrap((current) => current ? { ...current, mode: state.mode } : current);
-        if (revision !== state.revision) {
+        onConnectionStatus(state.mode);
+        if (state.mode !== "CONNECTED") return;
+        if (section === "INBOX" && revision !== state.revision) {
           await Promise.all([loadList(), selectedId ? loadDetail(selectedId, true) : Promise.resolve()]);
           if (!cancelled) revision = state.revision;
         }
@@ -283,7 +290,7 @@ export default function WhatsAppPage() {
     const resume = () => { void sync(); };
     window.addEventListener("focus", resume); document.addEventListener("visibilitychange", resume);
     return () => { cancelled = true; controller.abort(); clearTimeout(start); clearInterval(timer); window.removeEventListener("focus", resume); document.removeEventListener("visibilitychange", resume); };
-  }, [section, selectedId, saving, loadList, loadDetail]);
+  }, [connected, section, selectedId, saving, loadList, loadDetail, onConnectionStatus]);
 
   const clientOptions = useMemo(
     () =>
@@ -394,7 +401,6 @@ export default function WhatsAppPage() {
         <div>
           <Group gap="sm" mb={7} align="center">
             <div className={styles.sectionTabs}>
-              <button type="button" className={section === "CONNECTION" ? styles.sectionTabActive : ""} onClick={() => setSection("CONNECTION")}>Conexão Uazapi</button>
               <button
                 type="button"
                 className={section === "INBOX" ? styles.sectionTabActive : ""}
@@ -405,6 +411,7 @@ export default function WhatsAppPage() {
               <button
                 type="button"
                 className={section === "MONITORING" ? styles.sectionTabActive : ""}
+                disabled={!connected}
                 onClick={() => setSection("MONITORING")}
               >
                 <IconChartBar size={18} /> Central de monitoramento
@@ -416,14 +423,14 @@ export default function WhatsAppPage() {
             {section === "INBOX" && syncError && <Text size="xs" c="orange">Reconectando atualização automática…</Text>}
           </Group>
         </div>
-        {section === "INBOX" && (
-          <Button leftSection={<IconBrandWhatsapp size={17} />} onClick={() => setSection("CONNECTION")}>
-            Gerenciar conexão
+        {connected && bootstrap?.canConfigureConnection && (
+          <Button variant="subtle" leftSection={<IconBrandWhatsapp size={17} />} onClick={() => setConnectionSettingsOpened(true)}>
+            Configurar WhatsApp
           </Button>
         )}
       </header>
 
-      {section === "CONNECTION" ? <UazapiConnection onStatus={onConnectionStatus} /> : section === "INBOX" ? (
+      {!connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "INBOX" ? (
         <section className={styles.workspace}>
         <aside className={styles.views}>
           <div className={styles.filterSection}>
@@ -487,7 +494,7 @@ export default function WhatsAppPage() {
               <div className={styles.emptyList}>
                 <IconInbox size={34} />
                 <Text fw={700}>Nenhuma conversa aqui</Text>
-                <Text size="sm" c="dimmed">{bootstrap?.mode === "CONNECTED" ? "As mensagens recebidas pelo WhatsApp aparecerão aqui." : "Conecte o WhatsApp na aba Conexão Uazapi para receber mensagens."}</Text>
+                <Text size="sm" c="dimmed">As mensagens recebidas pelo WhatsApp aparecerão aqui.</Text>
               </div>
             )}
           </div>
@@ -607,9 +614,11 @@ export default function WhatsAppPage() {
         />
       )}
 
-      {detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} clients={bootstrap.clients} operators={bootstrap.members} clientId={detail.client?.id || null} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
+      {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} clients={bootstrap.clients} operators={bootstrap.members} clientId={detail.client?.id || null} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
-      <Modal opened={simulatorOpen} onClose={() => setSimulatorOpen(false)} title="Simular mensagem recebida" centered size="lg">
+      <Modal opened={connectionSettingsOpened && connected} onClose={() => setConnectionSettingsOpened(false)} title="Configuração do WhatsApp" size="xl" centered><UazapiConnection onStatus={onConnectionStatus} /></Modal>
+
+      <Modal opened={simulatorOpen && connected} onClose={() => setSimulatorOpen(false)} title="Simular mensagem recebida" centered size="lg">
         <Stack>
           <Paper p="md" radius="md" withBorder className={styles.testNotice}>
             <Text size="sm" fw={750}>Teste sem conectar o WhatsApp real</Text>

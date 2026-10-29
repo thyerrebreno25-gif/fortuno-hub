@@ -64,6 +64,7 @@ export async function GET() {
     mode: connection.status === "CONNECTED" && "webhookReady" in connection && connection.webhookReady ? "CONNECTED" : "DISCONNECTED",
     currentUser: member.user,
     canEdit: permission.canEdit,
+    canConfigureConnection: member.role === "MASTER" || member.role === "ADMIN" && permission.canManage,
     canManage:
       permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role),
     clients,
