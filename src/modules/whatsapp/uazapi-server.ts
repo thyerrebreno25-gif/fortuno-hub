@@ -36,11 +36,32 @@ export async function sendUazapiText(input: { organizationId: string; to: string
   if (!id) throw new Error("A Uazapi não confirmou o identificador da mensagem. Confira o WhatsApp antes de repetir.");
   return { messageId: "uazapi:" + connection.instanceId + ":" + id, instanceId: connection.instanceId, connectionId: connection.id };
 }
-export async function downloadUazapiMedia(organizationId: string, externalId: string) {
+type MediaFile = { body: Uint8Array; mimeType: string; size: number };
+// A bounded warm-instance cache avoids downloading the same audio for each range request.
+const mediaCache = new Map<string, { expires: number; file: MediaFile }>();
+const mediaPending = new Map<string, Promise<MediaFile>>();
+export async function downloadUazapiMedia(organizationId: string, externalId: string): Promise<MediaFile> {
   const connection = await whatsappConnection(organizationId);
   const [instance, ...parts] = externalId.replace(/^uazapi:/, "").split(":");
   if (!connection || connection.instanceId !== instance || !parts.length) throw new Error("Anexo de outra instância ou conexão indisponível.");
-  const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/message/download", { id: parts.join(":"), return_base64: true, generate_mp3: false }));
+  const key = organizationId + ":" + connection.id + ":" + externalId;
+  for (const [id, entry] of mediaCache) if (entry.expires < Date.now()) mediaCache.delete(id);
+  const cached = mediaCache.get(key);
+  if (cached) return cached.file;
+  const pending = mediaPending.get(key);
+  if (pending) return pending;
+  const download = fetchMedia(connection, parts.join(":"));
+  mediaPending.set(key, download);
+  try {
+    const file = await download;
+    let bytes = [...mediaCache.values()].reduce((sum, entry) => sum + entry.file.size, 0);
+    for (const [id, entry] of mediaCache) { if (bytes + file.size <= 40000000) break; bytes -= entry.file.size; mediaCache.delete(id); }
+    mediaCache.set(key, { file, expires: Date.now() + 120000 });
+    return file;
+  } finally { mediaPending.delete(key); }
+}
+async function fetchMedia(connection: NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>, id: string): Promise<MediaFile> {
+  const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/message/download", { id, return_base64: true, generate_mp3: false }));
   const data = text(response.base64Data, 35000000).replace(/^data:[^;]+;base64,/, "");
   if (!data || !/^[A-Za-z0-9+/=\s]+$/.test(data)) throw new Error("A Uazapi não disponibilizou o conteúdo do anexo. Arquivos grandes podem exigir download pelo WhatsApp.");
   const body = Buffer.from(data, "base64");

@@ -24,15 +24,15 @@ import {
   IconCheck,
   IconInbox,
   IconMessageCircle,
-  IconPaperclip,
   IconSearch,
   IconSend,
   IconStar,
   IconUsers,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
+import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import styles from "./whatsapp.module.css";
 
 type View = "GENERAL" | "MINE" | "QUEUE";
@@ -148,14 +148,6 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-const deliveryLabels: Record<string, string> = {
-  accepted: "Enviando",
-  sent: "Enviada",
-  delivered: "Entregue",
-  read: "Lida",
-  failed: "Falha no envio",
-};
-
 async function readResponse<T>(response: Response) {
   const payload = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || "Não foi possível concluir a ação.");
@@ -177,6 +169,10 @@ export default function WhatsAppPage() {
   const [saving, setSaving] = useState(false);
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [reply, setReply] = useState("");
+  const selectedRef = useRef<string | null>(null);
+  const listRequest = useRef(0), detailRequest = useRef(0);
+  const [syncError, setSyncError] = useState(false);
+  useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
   const [simulation, setSimulation] = useState({
     kind: "CONTACT",
     displayName: "",
@@ -187,11 +183,13 @@ export default function WhatsAppPage() {
   });
 
   const loadList = useCallback(async () => {
+    const request = ++listRequest.current;
     const params = new URLSearchParams({ view });
     if (search.trim()) params.set("search", search.trim());
     const payload = await readResponse<{ tickets: Ticket[]; stats: Stats }>(
       await fetch(`/api/whatsapp?${params}`, { cache: "no-store" }),
     );
+    if (request !== listRequest.current) return;
     setTickets(payload.tickets);
     setStats(payload.stats);
     setSelectedId((current) =>
@@ -201,21 +199,23 @@ export default function WhatsAppPage() {
     );
   }, [search, view]);
 
-  const loadDetail = useCallback(async (id: string) => {
-    setDetailLoading(true);
+  const loadDetail = useCallback(async (id: string, silent = false) => {
+    const request = ++detailRequest.current;
+    if (!silent) setDetailLoading(true);
     try {
       const payload = await readResponse<{ ticket: TicketDetail }>(
         await fetch(`/api/whatsapp/${id}`, { cache: "no-store" }),
       );
-      setDetail(payload.ticket);
+      if (request === detailRequest.current && selectedRef.current === id) setDetail(payload.ticket);
     } catch (error) {
-      notifications.show({
+      if (!silent) notifications.show({
         color: "red",
         title: "Central WhatsApp",
         message: error instanceof Error ? error.message : "Não foi possível abrir a conversa.",
       });
+      if (silent) throw error;
     } finally {
-      setDetailLoading(false);
+      if (request === detailRequest.current) setDetailLoading(false);
     }
   }, []);
 
@@ -225,7 +225,6 @@ export default function WhatsAppPage() {
         readResponse<Bootstrap>(response),
       ),
       // A lista remota é sincronizada quando filtros ou caixa mudam.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadList(),
     ])
       .then(([base]) => setBootstrap(base))
@@ -247,6 +246,33 @@ export default function WhatsAppPage() {
     }
   }, [loadDetail, selectedId]);
 
+  // Check a lightweight revision every two seconds; reload the inbox only when it changes.
+  useEffect(() => {
+    if (section !== "INBOX" || saving) return;
+    let cancelled = false, busy = false, revision = "";
+    const controller = new AbortController();
+    async function sync() {
+      if (cancelled || busy || document.hidden) return;
+      busy = true;
+      try {
+        const state = await readResponse<{ revision: string; mode: string }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
+        if (cancelled) return;
+        setBootstrap((current) => current ? { ...current, mode: state.mode } : current);
+        if (revision !== state.revision) {
+          await Promise.all([loadList(), selectedId ? loadDetail(selectedId, true) : Promise.resolve()]);
+          if (!cancelled) revision = state.revision;
+        }
+        if (!cancelled) setSyncError(false);
+      } catch { if (!cancelled) setSyncError(true); }
+      finally { busy = false; }
+    }
+    const start = setTimeout(() => { void sync(); }, 0);
+    const timer = setInterval(() => { void sync(); }, 2000);
+    const resume = () => { void sync(); };
+    window.addEventListener("focus", resume); document.addEventListener("visibilitychange", resume);
+    return () => { cancelled = true; controller.abort(); clearTimeout(start); clearInterval(timer); window.removeEventListener("focus", resume); document.removeEventListener("visibilitychange", resume); };
+  }, [section, selectedId, saving, loadList, loadDetail]);
+
   const clientOptions = useMemo(
     () =>
       (bootstrap?.clients || []).map((client) => ({
@@ -265,7 +291,9 @@ export default function WhatsAppPage() {
   );
 
   async function mutate(action: Record<string, unknown>, success: string) {
-    if (!selectedId) return;
+    if (!selectedId) return false;
+    const id = selectedId;
+    ++detailRequest.current;
     setSaving(true);
     try {
       const payload = await readResponse<{ ticket: TicketDetail }>(
@@ -275,15 +303,17 @@ export default function WhatsAppPage() {
           body: JSON.stringify(action),
         }),
       );
-      setDetail(payload.ticket);
+      if (selectedRef.current === id) setDetail(payload.ticket);
       await loadList();
       notifications.show({ color: "green", title: "Tudo certo", message: success });
+      return true;
     } catch (error) {
       notifications.show({
         color: "red",
         title: "Não foi possível concluir",
         message: error instanceof Error ? error.message : "Tente novamente.",
       });
+      return false;
     } finally {
       setSaving(false);
     }
@@ -292,13 +322,13 @@ export default function WhatsAppPage() {
   async function sendReply() {
     const content = reply.trim();
     if (!content) return;
-    await mutate(
+    const sent = await mutate(
       { action: "reply", content },
       detail?.source === "WHATSAPP_API"
         ? "Resposta enviada pelo WhatsApp."
         : "Resposta registrada no teste.",
     );
-    setReply("");
+    if (sent) setReply((current) => current.trim() === content ? "" : current);
   }
 
   async function simulateMessage() {
@@ -371,6 +401,7 @@ export default function WhatsAppPage() {
             <Badge color={bootstrap?.mode === "CONNECTED" ? "green" : "yellow"} variant="light">
               {bootstrap?.mode === "CONNECTED" ? "Conectado" : "WhatsApp desconectado"}
             </Badge>
+            {section === "INBOX" && syncError && <Text size="xs" c="orange">Reconectando atualização automática…</Text>}
           </Group>
         </div>
         {section === "INBOX" && (
@@ -444,7 +475,7 @@ export default function WhatsAppPage() {
         <div className={styles.detailPanel}>
           {detailLoading ? (
             <div className={styles.detailEmpty}><Loader size="sm" /></div>
-          ) : selectedId && detail ? (
+          ) : selectedId && detail?.id === selectedId ? (
             <>
               <div className={styles.detailHeader}>
                 <div>
@@ -507,40 +538,7 @@ export default function WhatsAppPage() {
                 </div>
               </div>
 
-              <div className={styles.messages}>
-                {detail.messages.map((message) => (
-                  <div key={message.id} className={`${styles.messageRow} ${message.direction === "OUTBOUND" ? styles.outbound : message.direction === "INTERNAL" ? styles.internal : ""}`}>
-                    <div className={styles.bubble}>
-                      <Text size="xs" fw={800} mb={4}>{message.direction === "OUTBOUND" ? message.fromName || "Fortuno" : detail.senderName || "Cliente"}</Text>
-                      <Text size="sm" className={styles.messageBody}>{message.textBody || "Mensagem sem texto"}</Text>
-                      {message.attachments?.map((attachment) => (
-                        <Button
-                          key={attachment.id}
-                          component="a"
-                          href={`/api/whatsapp/${detail.id}/attachments/${attachment.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          variant="light"
-                          color="gray"
-                          size="compact-xs"
-                          mt="xs"
-                          leftSection={<IconPaperclip size={14} />}
-                        >
-                          {attachment.name}
-                        </Button>
-                      ))}
-                      <Group justify="flex-end" gap={6} mt={5}>
-                        {message.direction === "OUTBOUND" && message.deliveryStatus && (
-                          <Text size="xs" c={message.deliveryStatus === "failed" ? "red" : "dimmed"}>
-                            {deliveryLabels[message.deliveryStatus] || message.deliveryStatus}
-                          </Text>
-                        )}
-                        <Text size="xs" c="dimmed">{formatDate(message.receivedAt)}</Text>
-                      </Group>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} />
 
               {detail.status !== "RESOLVED" ? (
                 <div className={styles.composer}>

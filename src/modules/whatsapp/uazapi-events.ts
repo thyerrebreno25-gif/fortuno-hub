@@ -41,6 +41,7 @@ async function receiveMessage(connection: Connection, event: Extract<Event, { ki
     const active = await tx.serviceTicket.findFirst({ where: { organizationId: connection.organizationId, source: "WHATSAPP_API", senderEmail: address, recipientEmail: recipient, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } });
     if (event.fromMe && !active) return;
     const ticket = active ? await tx.serviceTicket.update({ where: { id: active.id }, data: {
+      updatedAt: new Date(),
       ...(timestamp >= active.lastMessageAt ? { snippet: event.body.slice(0, 220), lastMessageAt: timestamp, senderName: name } : {}),
       ...(event.fromMe && !active.firstResponseAt ? { firstResponseAt: timestamp } : {}),
     } }) : await tx.serviceTicket.create({ data: {
@@ -69,8 +70,13 @@ async function processEvent(connection: Connection, event: Event) {
   if (event.kind === "messages") return receiveMessage(connection, event);
   if (event.kind === "connection") { await checkConnection(connection); return; }
   if (!event.status || !event.ids.length) return;
-  const messages = await prisma.serviceMessage.findMany({ where: { externalMessageId: { in: event.ids.map((id) => `uazapi:${connection.instanceId}:${id}`) }, ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API" } }, select: { id: true, deliveryStatus: true } });
-  for (const message of messages) if (advancesDelivery(message.deliveryStatus, event.status)) await prisma.serviceMessage.updateMany({ where: { id: message.id, deliveryStatus: message.deliveryStatus }, data: { deliveryStatus: event.status, statusUpdatedAt: at(event.timestamp) } });
+  const messages = await prisma.serviceMessage.findMany({ where: { externalMessageId: { in: event.ids.map((id) => `uazapi:${connection.instanceId}:${id}`) }, ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API" } }, select: { id: true, ticketId: true, deliveryStatus: true } });
+  for (const message of messages) if (advancesDelivery(message.deliveryStatus, event.status)) {
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.serviceMessage.updateMany({ where: { id: message.id, deliveryStatus: message.deliveryStatus }, data: { deliveryStatus: event.status, statusUpdatedAt: at(event.timestamp) } });
+      if (changed.count) await tx.serviceTicket.update({ where: { id: message.ticketId }, data: { updatedAt: new Date() } });
+    });
+  }
 }
 export async function drainUazapiInbox(connectionId?: string) {
   const now = new Date();

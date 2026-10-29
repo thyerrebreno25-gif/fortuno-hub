@@ -5,6 +5,7 @@ import {
   getWhatsAppPermission,
 } from "@/modules/atendimento/auth";
 import { downloadUazapiMedia } from "@/modules/whatsapp/uazapi-server";
+import { byteRange, previewMime } from "@/modules/whatsapp/media";
 
 type Context = {
   params: Promise<{ id: string; attachmentId: string }>;
@@ -12,7 +13,7 @@ type Context = {
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, context: Context) {
+export async function GET(request: Request, context: Context) {
   const member = await getServiceCenterMember();
   if (!member) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
@@ -55,15 +56,25 @@ export async function GET(_request: Request, context: Context) {
   try {
     if (!attachment.externalAttachmentId.startsWith("uazapi:")) throw new Error("Anexo da integração anterior. Consulte o arquivo no WhatsApp original.");
     const file = await downloadUazapiMedia(member.organizationId, attachment.externalAttachmentId);
+    const preview = new URL(request.url).searchParams.get("preview") === "1";
+    const safeMime = previewMime(file.body, file.mimeType || attachment.mimeType || "");
+    if (preview && !safeMime) return NextResponse.json({ error: "Este formato está disponível somente para download." }, { status: 415 });
+    const range = byteRange(request.headers.get("range"), file.body.length);
+    if (range === false) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${file.body.length}` } });
+    const body = range ? file.body.slice(range.start, range.end + 1) : file.body;
     const encodedName = encodeURIComponent(attachment.name || "anexo-whatsapp");
-    return new Response(file.body, {
-      status: 200,
+    return new Response(new Uint8Array(body), {
+      status: range ? 206 : 200,
       headers: {
-        "Content-Type": file.mimeType || attachment.mimeType || "application/octet-stream",
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodedName}`,
+        "Content-Type": safeMime || file.mimeType || attachment.mimeType || "application/octet-stream",
+        "Content-Disposition": `${preview ? "inline" : "attachment"}; filename*=UTF-8''${encodedName}`,
         "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "private, no-store",
-        ...(file.size ? { "Content-Length": String(file.size) } : {}),
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Cache-Control": preview ? "private, max-age=120" : "private, no-store",
+        "Vary": "Cookie",
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(body.length),
+        ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${file.body.length}` } : {}),
       },
     });
   } catch (error) {
