@@ -435,7 +435,7 @@ export default function WhatsAppPage() {
               <div className={styles.emptyList}>
                 <IconInbox size={34} />
                 <Text fw={700}>Nenhuma conversa aqui</Text>
-                <Text size="sm" c="dimmed">Conecte o WhatsApp na aba Conexão Uazapi para receber mensagens.</Text>
+                <Text size="sm" c="dimmed">{bootstrap?.mode === "CONNECTED" ? "As mensagens recebidas pelo WhatsApp aparecerão aqui." : "Conecte o WhatsApp na aba Conexão Uazapi para receber mensagens."}</Text>
               </div>
             )}
           </div>
