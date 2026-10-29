@@ -1,5 +1,6 @@
 "use client";
 
+import { navigationGroup, navigationGroups, type NavigationGroup } from "./navigation-groups";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -17,20 +18,8 @@ type MenuItem = {
   moduleCode: string;
 };
 
-type MenuGroup =
-  | "Visão geral"
-  | "Financeiro"
-  | "Operação"
-  | "Análises"
-  | "Administração";
-
-const menuGroups: MenuGroup[] = [
-  "Visão geral",
-  "Financeiro",
-  "Operação",
-  "Análises",
-  "Administração",
-];
+type MenuGroup = NavigationGroup;
+const menuGroups = navigationGroups;
 
 const icons = {
   home: (
@@ -182,10 +171,10 @@ const icons = {
 
 const menuItems: MenuItem[] = [
   { label: "Gestão", href: "/gestao", moduleCode: "MANAGEMENT", icon: icons.dashboard, group: "Visão geral" },
-  { label: "Gestão de tarefas", href: "/operacoes", moduleCode: "OPERATIONS", icon: icons.operations, group: "Operação" },
-  { label: "Notion", href: "/integracoes/notion", moduleCode: "NOTION", icon: icons.document, group: "Operação" },
-  { label: "Central de Reuniões", href: "/reunioes", moduleCode: "MEETINGS", icon: icons.users, group: "Operação" },
-  { label: "Agenda", href: "/agenda", moduleCode: "CALENDAR", icon: icons.operations, group: "Operação" },
+  { label: "Gestão de tarefas", href: "/operacoes", moduleCode: "OPERATIONS", icon: icons.operations, group: "Operações" },
+  { label: "Notion", href: "/integracoes/notion", moduleCode: "NOTION", icon: icons.document, group: "Operações" },
+  { label: "Central de Reuniões", href: "/reunioes", moduleCode: "MEETINGS", icon: icons.users, group: "Operações" },
+  { label: "Agenda", href: "/agenda", moduleCode: "CALENDAR", icon: icons.operations, group: "Operações" },
   {
     label: "Início",
     href: "/inicio",
@@ -219,82 +208,82 @@ const menuItems: MenuItem[] = [
     href: "/extratos",
     moduleCode: "IMPORTS",
     icon: icons.bank,
-    group: "Financeiro",
+    group: "Operações",
   },
   {
     label: "Faturas",
     href: "/faturas",
     moduleCode: "IMPORTS",
     icon: icons.card,
-    group: "Financeiro",
+    group: "Operações",
   },
   {
     label: "Notas de compra",
     href: "/notas-fiscais",
     moduleCode: "PURCHASE_INVOICES",
     icon: icons.document,
-    group: "Financeiro",
+    group: "Operações",
   },
   {
     label: "Adquirentes",
     href: "/adquirentes",
     moduleCode: "IMPORTS",
     icon: icons.activity,
-    group: "Financeiro",
+    group: "Operações",
   },
   {
     label: "Conferência de vendas",
     href: "/conferencia-vendas",
     moduleCode: "SALES_RECONCILIATION",
     icon: icons.audit,
-    group: "Financeiro",
+    group: "Operações",
   },
   {
-    label: "Rendimentos de aplicações", href: "/rendimentos", moduleCode: "INVESTMENT_INCOME", icon: icons.bank, group: "Financeiro",
+    label: "Rendimentos de aplicações", href: "/rendimentos", moduleCode: "INVESTMENT_INCOME", icon: icons.bank, group: "Operações",
   },
-  { label: "Importação de contratos", href: "/contratos", moduleCode: "CONTRACT_IMPORTS", icon: icons.document, group: "Financeiro" },
+  { label: "Importação de contratos", href: "/contratos", moduleCode: "CONTRACT_IMPORTS", icon: icons.document, group: "Operações" },
   {
     label: "Clientes",
     href: "/clientes",
     moduleCode: "CLIENTS",
     icon: icons.users,
-    group: "Operação",
+    group: "Operações",
   },
   {
     label: "WhatsApp",
     href: "/whatsapp",
     moduleCode: "WHATSAPP",
     icon: icons.whatsapp,
-    group: "Operação",
+    group: "Operações",
   },
   {
     label: "Central de e-mails",
     href: "/atendimento",
     moduleCode: "SERVICE_CENTER",
     icon: icons.email,
-    group: "Operação",
+    group: "Operações",
   },
   {
     label: "Motor Cambial",
     href: "/motor-cambial",
     moduleCode: "MOTOR_EXCHANGE",
     icon: icons.currency,
-    group: "Financeiro",
+    group: "Operações",
   },
-  { label: "Mapeamento Operacional", href: "/mapeamento-operacional", moduleCode: "OPERATIONAL_MAPPING", icon: icons.activity, group: "Operação" },
+  { label: "Mapeamento Operacional", href: "/mapeamento-operacional", moduleCode: "OPERATIONAL_MAPPING", icon: icons.activity, group: "Operações" },
   {
     label: "Onboarding",
     href: "/onboarding",
     moduleCode: "ONBOARDING",
     icon: icons.rocket,
-    group: "Operação",
+    group: "Operações",
   },
   {
     label: "Auditoria",
     href: "/auditoria",
     moduleCode: "AUDIT",
     icon: icons.audit,
-    group: "Operação",
+    group: "Operações",
   },
   {
     label: "Relatórios",
@@ -331,7 +320,7 @@ const menuItems: MenuItem[] = [
     icon: icons.settings,
     group: "Administração",
   },
-];
+].map(item => ({ ...item, group: navigationGroup(item.href) }));
 
 function isRouteActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);

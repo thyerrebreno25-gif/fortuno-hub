@@ -1,4 +1,8 @@
 export const dashboardDestinations = [
+  { label: "Gestão", href: "/gestao", module: "MANAGEMENT" },
+  { label: "Rendimentos de aplicações", href: "/rendimentos", module: "INVESTMENT_INCOME" },
+  { label: "Importação de contratos", href: "/contratos", module: "CONTRACT_IMPORTS" },
+  { label: "Notion", href: "/integracoes/notion", module: "NOTION" },
   { label: "Central de Reuniões", href: "/reunioes", module: "MEETINGS" },
   { label: "Agenda", href: "/agenda", module: "CALENDAR" },
   { label: "Rotinas operacionais", href: "/operacoes", module: "OPERATIONS" },

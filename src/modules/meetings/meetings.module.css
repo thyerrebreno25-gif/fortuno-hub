@@ -1,5 +1,5 @@
 .page { display: grid; gap: 22px; min-width: 0; }
-.hero { padding: 24px; border: 1px solid var(--fortuno-line, #dce5ef); background: linear-gradient(120deg, var(--mantine-color-blue-light), var(--fortuno-surface, white)); border-radius: 20px; }
+.hero { padding: 8px 0; }
 .layout { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 20px; align-items: start; }
 .list { display: grid; gap: 10px; max-height: 800px; overflow: auto; }
 .meetingButton { display: grid; gap: 8px; padding: 16px; width: 100%; border: 1px solid var(--fortuno-line, #dce5ef); border-radius: 14px; color: inherit; font: inherit; text-align: left; background: var(--fortuno-surface, white); cursor: pointer; }
@@ -7,6 +7,15 @@
 .meetingButton:focus-visible { outline: 3px solid var(--mantine-color-blue-4); }
 .prose { white-space: pre-wrap; overflow-wrap: anywhere; }
 .task { padding: 14px; border: 1px solid var(--fortuno-line, #dce5ef); border-radius: 12px; }
+.task[data-overdue="true"] { border-left: 3px solid var(--mantine-color-red-5); }
+.task[data-completed="true"] { background: var(--mantine-color-teal-light); }
+.task[data-completed="true"] .taskCheckbox label { text-decoration: line-through; }
+.taskHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.taskCheckbox { min-width: 0; flex: 1; }
+.taskCheckbox label { overflow-wrap: anywhere; line-height: 1.5; cursor: pointer; }
+.taskFilters { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2,minmax(0,1fr)); gap: 10px; }
+.emptyTasks { text-align: center; padding: 28px 16px; border: 1px dashed var(--fortuno-line, #dce5ef); border-radius: 12px; }
+@media (max-width: 650px) { .taskFilters { grid-template-columns: 1fr; } .taskHeading { flex-wrap: wrap; } }
 .calendar { display: grid; grid-template-columns: repeat(7, minmax(95px, 1fr)); min-width: 740px; border-top: 1px solid var(--fortuno-line, #dce5ef); border-left: 1px solid var(--fortuno-line, #dce5ef); }
 .day { min-height: 130px; padding: 8px; border-right: 1px solid var(--fortuno-line, #dce5ef); border-bottom: 1px solid var(--fortuno-line, #dce5ef); }
 .day[data-today="true"] { background: var(--mantine-color-blue-light); }
