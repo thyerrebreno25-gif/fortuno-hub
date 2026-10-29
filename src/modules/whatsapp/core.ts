@@ -80,6 +80,13 @@ export function responsibleForRoutingArea(
   );
 }
 
+// Transfers to a financial area require its configured owner, rather than silently using another area.
+export function responsibleForTransfer(client: WhatsAppRoutingClient, area: WhatsAppRoutingArea) {
+  if (area === "ACCOUNTS_PAYABLE") return client.payableResponsibleId || null;
+  if (area === "ACCOUNTS_RECEIVABLE") return client.receivableResponsibleId || null;
+  return client.generalResponsibleId || client.operationLeaderId || null;
+}
+
 export function minutesBetween(
   start: Date | string | null | undefined,
   end: Date | string | null | undefined,

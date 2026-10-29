@@ -6,11 +6,13 @@
 .sectionTabs .sectionTabActive { color: #1971c2; background: color-mix(in srgb, var(--mantine-color-blue-6) 11%, var(--fortuno-surface)); box-shadow: 0 3px 9px rgba(34, 139, 230, .1); }
 .loading { min-height: 55vh; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .workspace { min-height: 480px; height: calc(100dvh - 180px); display: grid; grid-template-columns: 190px minmax(260px, 330px) minmax(410px, 1fr); overflow: hidden; border: 1px solid var(--fortuno-line); border-radius: 18px; background: var(--fortuno-surface); box-shadow: var(--fortuno-shadow); }
-.views { padding: 18px 14px; border-right: 1px solid var(--fortuno-line); background: var(--fortuno-surface-soft); }
+.views { min-height: 0; overflow-y: auto; padding: 18px 10px; border-right: 1px solid var(--fortuno-line); background: var(--fortuno-surface-soft); }
+.filterSection + .filterSection { margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--fortuno-line); }
+.filterSection > p { padding-left: 10px; }
 .viewButton { width: 100%; border: 0; color: var(--fortuno-ink); background: transparent; padding: 10px 11px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; margin-bottom: 5px; }
 .viewButton > span { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; }
 .viewButton:hover { background: var(--fortuno-surface-raised); }
-.viewActive { background: color-mix(in srgb, var(--mantine-color-blue-6) 12%, var(--fortuno-surface)) !important; color: var(--mantine-color-blue-7); }
+.viewActive { background: color-mix(in srgb, #00a884 13%, var(--fortuno-surface)) !important; color: #008069; }
 .helpBox { margin-top: 22px; padding: 14px; border: 1px solid var(--fortuno-line); border-radius: 13px; background: var(--fortuno-surface); display: grid; gap: 6px; }
 .helpBox > svg { color: #16864b; }
 .listPanel { min-width: 0; border-right: 1px solid var(--fortuno-line); display: flex; flex-direction: column; }
@@ -28,7 +30,8 @@
 .contextBar { padding: 11px 15px; border-bottom: 1px solid var(--fortuno-line); background: var(--fortuno-surface-soft); display: grid; grid-template-columns: minmax(170px, 1.3fr) minmax(145px, 1fr) minmax(145px, 1fr) auto; gap: 10px; align-items: end; }
 .contextInfo { min-height: 55px; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
 .messagesFrame { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.messages { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; padding: 20px; background: color-mix(in srgb, var(--fortuno-canvas) 65%, var(--fortuno-surface)); }
+.messages { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; padding: 24px; background-color: #efeae2; background-image: url('/whatsapp-pattern.svg'); background-repeat: repeat; background-size: 320px 320px; }
+:global([data-mantine-color-scheme="dark"]) .messages { background-color: #0b141a; }
 .newMessages { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); box-shadow: 0 3px 14px #0003; }
 .attachment { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin-top: 5px; max-width: 100%; }
 .imageButton { border: 0; padding: 0; background: transparent; cursor: zoom-in; border-radius: 8px; overflow: hidden; max-width: 100%; }
@@ -38,9 +41,15 @@
 .messageRow { display: flex; margin-bottom: 10px; }
 .outbound { justify-content: flex-end; }
 .internal { justify-content: center; }
-.bubble { max-width: min(72%, 620px); padding: 10px 12px; border: 1px solid var(--fortuno-line); border-radius: 5px 14px 14px 14px; background: var(--fortuno-surface); box-shadow: 0 5px 16px rgba(20, 39, 70, .05); }
-.outbound .bubble { border-radius: 14px 5px 14px 14px; background: color-mix(in srgb, #28c76f 13%, var(--fortuno-surface)); }
-.internal .bubble { background: color-mix(in srgb, #f5b942 15%, var(--fortuno-surface)); }
+.bubble { --bubble-color: #fff; position: relative; max-width: min(78%, 620px); padding: 9px 12px; border: 0; border-radius: 0 9px 9px 9px; background: var(--bubble-color); box-shadow: 0 1px 2px #0b141a25; }
+.bubble::before { content: ''; position: absolute; top: 0; left: -7px; border-top: 8px solid var(--bubble-color); border-left: 8px solid transparent; }
+.outbound .bubble { --bubble-color: #d9fdd3; border-radius: 9px 0 9px 9px; }
+.outbound .bubble::before { left: auto; right: -7px; border-left: 0; border-right: 8px solid transparent; }
+.internal .bubble { --bubble-color: #fff4cf; border-radius: 8px; }
+.internal .bubble::before { display: none; }
+:global([data-mantine-color-scheme="dark"]) .bubble { --bubble-color: #202c33; }
+:global([data-mantine-color-scheme="dark"]) .outbound .bubble { --bubble-color: #005c4b; }
+:global([data-mantine-color-scheme="dark"]) .internal .bubble { --bubble-color: #3e3824; }
 .messageBody { white-space: pre-wrap; overflow-wrap: anywhere; }
 .composer { border-top: 1px solid var(--fortuno-line); padding: 12px 15px; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
 .resolvedBar { min-height: 67px; border-top: 1px solid var(--fortuno-line); padding: 12px 16px; background: var(--fortuno-surface-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -56,6 +65,8 @@
   .sectionTabs button { flex: 1; justify-content: center; }
   .workspace { height: auto; min-height: 700px; grid-template-columns: 1fr; overflow: hidden; }
   .views { border-right: 0; border-bottom: 1px solid var(--fortuno-line); }
+  .views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .filterSection + .filterSection { margin: 0; padding: 0; border: 0; }
   .helpBox { display: none; }
   .listPanel { max-height: 360px; border-right: 0; border-bottom: 1px solid var(--fortuno-line); }
   .detailPanel { min-height: 580px; height: 78dvh; }

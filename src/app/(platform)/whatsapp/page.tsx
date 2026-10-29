@@ -20,6 +20,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   IconBrandWhatsapp,
+  IconArrowRight,
   IconChartBar,
   IconCheck,
   IconInbox,
@@ -33,26 +34,33 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
+import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
+import type { InboxKind, InboxStatus, InboxView } from "@/modules/whatsapp/inbox-filters";
 import styles from "./whatsapp.module.css";
 
-type View = "GENERAL" | "MINE" | "QUEUE";
+type View = InboxView;
 type Section = "INBOX" | "MONITORING" | "CONNECTION";
 
 type Bootstrap = {
   mode: string;
   currentUser: { id: string; name: string | null; email: string };
   canManage: boolean;
+  canEdit: boolean;
   clients: Array<{
     id: string;
     name: string;
     document: string | null;
+    operationLeaderId: string | null;
+    payableResponsibleId: string | null;
+    receivableResponsibleId: string | null;
+    generalResponsibleId: string | null;
     contaAzulConnection: {
       status: string;
       active: boolean;
       externalTenantName: string | null;
     } | null;
   }>;
-  members: Array<{ id: string; name: string | null; email: string; role: string }>;
+  members: Array<{ id: string; name: string | null; email: string; role: string; canAttend: boolean }>;
 };
 
 type Ticket = {
@@ -112,6 +120,7 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
 };
 
 type Stats = {
+  facets?: { view: Record<InboxView, number>; kind: Record<InboxKind, number>; status: Record<InboxStatus, number> };
   general: number;
   active: number;
   mine: number;
@@ -159,6 +168,9 @@ export default function WhatsAppPage() {
   const [section, setSection] = useState<Section>("INBOX");
   const onConnectionStatus = useCallback((status: string) => setBootstrap((value) => value ? { ...value, mode: status } : value), []);
   const [view, setView] = useState<View>("GENERAL");
+  const [chatKind, setChatKind] = useState<InboxKind>("ALL");
+  const [chatStatus, setChatStatus] = useState<InboxStatus>("OPEN");
+  const [transferOpened, setTransferOpened] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -184,7 +196,7 @@ export default function WhatsAppPage() {
 
   const loadList = useCallback(async () => {
     const request = ++listRequest.current;
-    const params = new URLSearchParams({ view });
+    const params = new URLSearchParams({ view, kind: chatKind, status: chatStatus });
     if (search.trim()) params.set("search", search.trim());
     const payload = await readResponse<{ tickets: Ticket[]; stats: Stats }>(
       await fetch(`/api/whatsapp?${params}`, { cache: "no-store" }),
@@ -197,7 +209,7 @@ export default function WhatsAppPage() {
         ? current
         : payload.tickets[0]?.id || null,
     );
-  }, [search, view]);
+  }, [search, view, chatKind, chatStatus]);
 
   const loadDetail = useCallback(async (id: string, silent = false) => {
     const request = ++detailRequest.current;
@@ -414,14 +426,23 @@ export default function WhatsAppPage() {
       {section === "CONNECTION" ? <UazapiConnection onStatus={onConnectionStatus} /> : section === "INBOX" ? (
         <section className={styles.workspace}>
         <aside className={styles.views}>
-          <Text fw={800} size="sm" mb="sm">Conversas</Text>
-          <ViewButton active={view === "GENERAL"} icon={<IconUsers size={18} />} label="Caixa geral" count={stats?.general || 0} onClick={() => setView("GENERAL")} />
-          <ViewButton active={view === "MINE"} icon={<IconMessageCircle size={18} />} label="Minha caixa" count={stats?.mine || 0} onClick={() => setView("MINE")} />
-          <ViewButton active={view === "QUEUE"} icon={<IconInbox size={18} />} label="Fila de atendimento" count={stats?.queue || 0} onClick={() => setView("QUEUE")} />
-          <div className={styles.helpBox}>
-            <IconBrandWhatsapp size={22} />
-            <Text fw={750} size="sm">Distribuição inteligente</Text>
-            <Text size="xs" c="dimmed">Ao vincular um contato, as próximas conversas reconhecem o cliente e seus responsáveis.</Text>
+          <div className={styles.filterSection}>
+            <Text fw={800} size="xs" c="dimmed" mb="xs">CAIXAS</Text>
+            <ViewButton active={view === "GENERAL"} icon={<IconUsers size={18} />} label="Caixa geral" count={stats?.facets?.view.GENERAL ?? stats?.general ?? 0} onClick={() => setView("GENERAL")} />
+            <ViewButton active={view === "MINE"} icon={<IconMessageCircle size={18} />} label="Minha caixa" count={stats?.facets?.view.MINE ?? stats?.mine ?? 0} onClick={() => setView("MINE")} />
+            <ViewButton active={view === "QUEUE"} icon={<IconInbox size={18} />} label="Fila de atendimento" count={stats?.facets?.view.QUEUE ?? stats?.queue ?? 0} onClick={() => setView("QUEUE")} />
+          </div>
+          <div className={styles.filterSection}>
+            <Text fw={800} size="xs" c="dimmed" mb="xs">CONVERSAS</Text>
+            <ViewButton active={chatKind === "ALL"} icon={<IconMessageCircle size={18} />} label="Todas" count={stats?.facets?.kind.ALL || 0} onClick={() => setChatKind("ALL")} />
+            <ViewButton active={chatKind === "GROUP"} icon={<IconUsers size={18} />} label="Grupos" count={stats?.facets?.kind.GROUP || 0} onClick={() => setChatKind("GROUP")} />
+            <ViewButton active={chatKind === "CONTACT"} icon={<IconMessageCircle size={18} />} label="Individuais" count={stats?.facets?.kind.CONTACT || 0} onClick={() => setChatKind("CONTACT")} />
+          </div>
+          <div className={styles.filterSection}>
+            <Text fw={800} size="xs" c="dimmed" mb="xs">SITUAÇÃO</Text>
+            <ViewButton active={chatStatus === "ALL"} icon={<IconMessageCircle size={18} />} label="Todas as situações" count={stats?.facets?.status.ALL || 0} onClick={() => setChatStatus("ALL")} />
+            <ViewButton active={chatStatus === "OPEN"} icon={<IconInbox size={18} />} label="Em aberto" count={stats?.facets?.status.OPEN || 0} onClick={() => setChatStatus("OPEN")} />
+            <ViewButton active={chatStatus === "RESOLVED"} icon={<IconCheck size={18} />} label="Finalizadas" count={stats?.facets?.status.RESOLVED || 0} onClick={() => setChatStatus("RESOLVED")} />
           </div>
         </aside>
 
@@ -488,6 +509,7 @@ export default function WhatsAppPage() {
                   <Text size="xs" c="dimmed">{detail.senderEmail.replace("wa-contact:", "+").replace("wa-group:", "Grupo: ")}</Text>
                 </div>
                 <Group gap="xs">
+                  {detail.status !== "RESOLVED" && bootstrap?.canEdit && <Button size="xs" color="teal" variant="light" leftSection={<IconArrowRight size={15} />} disabled={saving || Boolean(detail.assignedTo && detail.assignedTo.id !== bootstrap.currentUser.id && !bootstrap.canManage)} onClick={() => setTransferOpened(true)}>Transferir</Button>}
                   {!detail.assignedTo && detail.status !== "RESOLVED" && (
                     <Button size="xs" variant="light" loading={saving} onClick={() => mutate({ action: "assign" }, "Atendimento assumido.")}>Assumir</Button>
                   )}
@@ -514,22 +536,10 @@ export default function WhatsAppPage() {
                   disabled={saving || detail.status === "RESOLVED"}
                   onChange={(routingArea) => routingArea && mutate({ action: "routingArea", routingArea }, "Área do atendimento atualizada.")}
                 />
-                {bootstrap?.canManage ? (
-                  <Select
-                    label="Responsável"
-                    placeholder="Na fila"
-                    searchable
-                    data={memberOptions}
-                    value={detail.assignedTo?.id || null}
-                    disabled={saving || detail.status === "RESOLVED"}
-                    onChange={(assignedToId) => assignedToId && mutate({ action: "assign", assignedToId }, "Responsável atualizado.")}
-                  />
-                ) : (
                   <div className={styles.contextInfo}>
                     <Text size="xs" c="dimmed">Responsável</Text>
                     <Text size="sm" fw={700}>{detail.assignedTo?.name || detail.assignedTo?.email || "Na fila"}</Text>
                   </div>
-                )}
                 <div className={styles.contextInfo}>
                   <Text size="xs" c="dimmed">Conta Azul</Text>
                   <Badge size="sm" color={detail.client?.contaAzulConnection?.active ? "green" : "gray"} variant="light">
@@ -597,6 +607,8 @@ export default function WhatsAppPage() {
         />
       )}
 
+      {detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} clients={bootstrap.clients} operators={bootstrap.members} clientId={detail.client?.id || null} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
+
       <Modal opened={simulatorOpen} onClose={() => setSimulatorOpen(false)} title="Simular mensagem recebida" centered size="lg">
         <Stack>
           <Paper p="md" radius="md" withBorder className={styles.testNotice}>
@@ -623,7 +635,7 @@ export default function WhatsAppPage() {
 
 function ViewButton({ active, icon, label, count, onClick }: { active: boolean; icon: React.ReactNode; label: string; count: number; onClick: () => void }) {
   return (
-    <button type="button" className={`${styles.viewButton} ${active ? styles.viewActive : ""}`} onClick={onClick}>
+    <button type="button" aria-pressed={active} className={`${styles.viewButton} ${active ? styles.viewActive : ""}`} onClick={onClick}>
       <span>{icon}{label}</span><Badge size="sm" variant={active ? "filled" : "light"}>{count}</Badge>
     </button>
   );

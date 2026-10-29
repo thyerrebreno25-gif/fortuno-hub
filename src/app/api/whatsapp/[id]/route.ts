@@ -13,6 +13,7 @@ import {
 import { sendUazapiText } from "@/modules/whatsapp/uazapi-server";
 import { object, text } from "@/modules/whatsapp/uazapi";
 import { getWhatsappTicket } from "@/modules/whatsapp/server";
+import { transferWhatsappTicket, WhatsAppTransferError } from "@/modules/whatsapp/transfer";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -77,7 +78,14 @@ export async function PATCH(request: Request, context: Context) {
   const occupiedByAnother =
     current.assignedToId && current.assignedToId !== member.userId;
 
-  if (action === "assign") {
+  if (action === "transfer") {
+    try { await transferWhatsappTicket(current, member, canManage, body); }
+    catch (error) {
+      return NextResponse.json({ error: error instanceof WhatsAppTransferError ? error.message : "Não foi possível transferir o atendimento." }, { status: error instanceof WhatsAppTransferError ? error.status : 500 });
+    }
+  } else if (action === "assign") {
+    if (occupiedByAnother && !canManage) return NextResponse.json({ error: "Este atendimento está com outro operador." }, { status: 403 });
+    if (["RESOLVED", "SPAM"].includes(current.status)) return NextResponse.json({ error: "Este atendimento já foi finalizado." }, { status: 400 });
     let assignedToId =
       typeof body.assignedToId === "string" && body.assignedToId
         ? body.assignedToId

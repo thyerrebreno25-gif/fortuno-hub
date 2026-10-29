@@ -59,12 +59,14 @@ export async function GET() {
   ]);
 
   const connection = connectionView(await whatsappConnection(member.organizationId));
+  const rolePermissions = new Map(await Promise.all([...new Set(members.map((item) => item.role))].map(async (role) => [role, await getWhatsAppPermission(member.organizationId, role)] as const)));
   return NextResponse.json({
     mode: connection.status === "CONNECTED" && "webhookReady" in connection && connection.webhookReady ? "CONNECTED" : "DISCONNECTED",
     currentUser: member.user,
+    canEdit: permission.canEdit,
     canManage:
       permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role),
     clients,
-    members: members.map((item) => ({ ...item.user, role: item.role })),
+    members: members.map((item) => ({ ...item.user, role: item.role, canAttend: Boolean(rolePermissions.get(item.role)?.canView && rolePermissions.get(item.role)?.canEdit) })),
   });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import {
   getServiceCenterMember,
   getWhatsAppPermission,
@@ -14,6 +15,7 @@ import {
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
 import { resolveWhatsappRouting } from "@/modules/whatsapp/server";
+import { inboxFacets, inboxWhere, type InboxFilters } from "@/modules/whatsapp/inbox-filters";
 
 const VALID_AREAS = new Set([
   "ACCOUNTS_PAYABLE",
@@ -39,20 +41,17 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const view = url.searchParams.get("view") || "GENERAL";
   const search = url.searchParams.get("search")?.trim() || "";
-  const baseWhere = {
+  const kind = url.searchParams.get("kind") || "ALL";
+  const status = url.searchParams.get("status") || "ALL";
+  if (!["GENERAL", "MINE", "QUEUE"].includes(view) || !["ALL", "GROUP", "CONTACT"].includes(kind) || !["ALL", "OPEN", "RESOLVED"].includes(status)) return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
+  const filters = { view, kind, status } as InboxFilters;
+  const baseWhere: Prisma.ServiceTicketWhereInput = {
     organizationId: member.organizationId,
     source: { in: [...WHATSAPP_SOURCES] },
     isSpam: false,
+    status: { notIn: ["SPAM"] },
   };
-  const where: Record<string, unknown> = { ...baseWhere };
-
-  if (view === "MINE") {
-    where.assignedToId = member.userId;
-    where.status = { notIn: ["RESOLVED", "SPAM"] };
-  } else if (view === "QUEUE") {
-    where.assignedToId = null;
-    where.status = { notIn: ["RESOLVED", "SPAM"] };
-  }
+  const where: Prisma.ServiceTicketWhereInput = { ...baseWhere, ...inboxWhere(filters, member.userId) };
 
   if (search) {
     where.OR = [
@@ -86,6 +85,7 @@ export async function GET(request: Request) {
         client: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         messages: {
+          where: { direction: { not: "INTERNAL" } },
           orderBy: { receivedAt: "desc" },
           take: 1,
           select: { direction: true },
@@ -104,7 +104,9 @@ export async function GET(request: Request) {
         firstResponseAt: true,
         resolvedAt: true,
         status: true,
+        senderEmail: true,
         messages: {
+          where: { direction: { not: "INTERNAL" } },
           orderBy: { receivedAt: "desc" },
           take: 1,
           select: { direction: true },
@@ -139,6 +141,7 @@ export async function GET(request: Request) {
       messages: undefined,
     })),
     stats: {
+      facets: inboxFacets(metricTickets, filters, member.userId),
       general: metricTickets.length,
       active: active.length,
       mine: active.filter((ticket) => ticket.assignedToId === member.userId)
