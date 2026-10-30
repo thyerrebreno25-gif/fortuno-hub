@@ -87,6 +87,7 @@ export async function POST(request: Request) {
           id: parentId,
           organizationId: member.organizationId,
           parentId: null,
+          sourceClientId: null,
           active: true,
         },
         select: { id: true },
@@ -106,6 +107,7 @@ export async function POST(request: Request) {
       where: {
         organizationId: member.organizationId,
         parentId,
+        sourceClientId: null,
         normalizedName,
       },
       select: { id: true },

@@ -108,12 +108,12 @@ export async function GET(
         where: {
           organizationId: member.organizationId,
           active: true,
-          parentId: null,
+          sourceClientId: id,
         },
         orderBy: { name: "asc" },
         include: {
           children: {
-            where: { active: true },
+            where: { active: true, sourceClientId: id },
             orderBy: { name: "asc" },
           },
         },

@@ -885,6 +885,8 @@ export default function EditarClientePage() {
           <Tabs.Panel value="categories" pt="xl">
             <fieldset disabled={!canEditClient} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <ClientCategoriesTab
+                key={params.id}
+                clientId={params.id}
                 categories={categories}
                 mappings={mappings}
                 saving={savingCategories}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncClientCategories } from "@/modules/clients/ca-categories";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import { getRolePermissions } from "@/modules/permissions/permissions";
@@ -42,6 +43,17 @@ async function getMember() {
       role: true,
     },
   });
+}
+
+export async function GET(_request:Request,context:RouteContext){
+  const member=await getMember();
+  if(!member)return NextResponse.json({error:"Sua sessão expirou."},{status:401});
+  const permissions=await getRolePermissions(member.organizationId,member.role);
+  if(!permissions.CLIENTS.canView)return NextResponse.json({error:"Sem permissão para consultar categorias."},{status:403});
+  const {id:clientId}=await context.params;
+  if(!await prisma.client.findFirst({where:{id:clientId,organizationId:member.organizationId},select:{id:true}}))return NextResponse.json({error:"Cliente não encontrado."},{status:404});
+  try{return NextResponse.json({categories:await syncClientCategories(member.organizationId,clientId),source:"CONTA_AZUL",clientId});}
+  catch{return NextResponse.json({error:"Não foi possível consultar as categorias do CA deste cliente. Confira sua conexão e tente atualizar."},{status:502});}
 }
 
 export async function PUT(
@@ -178,6 +190,8 @@ export async function PUT(
     const categories = await prisma.category.findMany({
       where: {
         organizationId: member.organizationId,
+        sourceClientId: clientId,
+        active: true,
         id: {
           in: selectedCategoryIds,
         },
@@ -199,7 +213,7 @@ export async function PUT(
 
       const category = categoryMap.get(mapping.categoryId);
 
-      if (!category || category.parentId) {
+      if (!category) {
         return NextResponse.json(
           {
             error:
