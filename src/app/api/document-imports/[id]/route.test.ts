@@ -9,7 +9,7 @@ const request = (action = "save") => new Request("https://example.test/api/docum
 beforeEach(() => { vi.clearAllMocks(); mocks.access.mockResolvedValue({ member: { organizationId: "org" }, permission: { canEdit: true } }); mocks.company.mockResolvedValue({}); mocks.findFirst.mockResolvedValue({ id: "draft", clientId: "company", version: 1 }); mocks.updateMany.mockResolvedValue({ count: 1 }); });
 it("scopes the record to the organization and rejects stale versions", async () => {
   mocks.findFirst.mockResolvedValueOnce({ version: 2, clientId: "company" }); expect((await PATCH(request(), context)).status).toBe(409);
-  expect(mocks.findFirst).toHaveBeenCalledWith({ where: { id: "draft", organizationId: "org", kind: "INVESTMENT" } }); expect(mocks.updateMany).not.toHaveBeenCalled();
+  expect(mocks.findFirst).toHaveBeenCalledWith({ where: { id: "draft", organizationId: "org", kind: "INVESTMENT", status: { not: "DELETED" } } }); expect(mocks.updateMany).not.toHaveBeenCalled();
 });
 it("invalidates a previous simulation when the review changes", async () => {
   expect((await PATCH(request(), context)).status).toBe(200);

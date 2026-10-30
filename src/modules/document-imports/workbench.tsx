@@ -25,7 +25,7 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
   const [options, setOptions] = useState<Options>(emptyOptions), [loading, setLoading] = useState(true), [optionsLoading, setOptionsLoading] = useState(false), [busy, setBusy] = useState(false);
   const [canImport, setCanImport] = useState(false), [canEdit, setCanEdit] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0), [preview, setPreview] = useState(false), [password, setPassword] = useState("");
-  const [canSend, setCanSend] = useState(false);
+  const [canSend, setCanSend] = useState(false), [canDelete, setCanDelete] = useState(false), [deleteOpened, setDeleteOpened] = useState(false);
   const editable = canEdit && !selected?.deliveries?.length;
   const company = companies.find((item) => item.id === clientId);
   const connected = Boolean(company?.contaAzulConnection?.active && company.contaAzulConnection.status === "CONNECTED");
@@ -33,7 +33,7 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
     let active = true;
     setLoading(true);
     fetch(`/api/document-imports?kind=${kind}`, { cache: "no-store" }).then(jsonResponse).then((body) => {
-      if (active) { setCompanies(body.clients); setCanImport(body.permission.canImport && body.permission.canCreate); setCanEdit(body.permission.canEdit); setCanSend(body.permission.canExport && body.permission.canEdit); }
+      if (active) { setCompanies(body.clients); setCanImport(body.permission.canImport && body.permission.canCreate); setCanEdit(body.permission.canEdit); setCanDelete(body.permission.canDelete); setCanSend(body.permission.canExport && body.permission.canEdit); }
     }).catch((cause) => { if (active) setError(errorMessage(cause)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [kind]);
@@ -89,6 +89,15 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
       setNotice(action === "save" ? "Revisão salva." : "Conferência concluída. O envio depende da confirmação em Enviar ao CA.");
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
+  async function removeContract() {
+    if (!selected || kind !== "CONTRACT") return;
+    setBusy(true); setError("");
+    try {
+      await jsonResponse(await fetch(`/api/document-imports/${selected.id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: selected.version }) }));
+      setDrafts(previous => previous.filter(item => item.id !== selected.id)); setSelected(null); setReview(null); setDeleteOpened(false);
+      setNotice("Contrato removido do Hub. O contrato e as vendas no CA foram preservados. Para restaurar a revisão, importe o mesmo PDF novamente.");
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  }
   const changeContract = (patch: Partial<ContractReview>) => setReview((previous) => previous?.kind === "CONTRACT" ? { ...previous, ...patch } : previous);
   const issues = review ? reviewIssues(review) : [];
   const planned = review?.kind === "CONTRACT" ? schedule(review) : [];
@@ -108,11 +117,11 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
     {!clientId ? <Paper withBorder p="xl"><Text c="dimmed">Selecione a empresa para importar e revisar os documentos.</Text></Paper> : <div className={styles.workspace}>
       <Paper withBorder radius="md" p="sm"><Text fw={700} mb="sm">Arquivos <Badge variant="light">{drafts.length}</Badge></Text><Stack gap={7}>
         {!drafts.length && <Text size="sm" c="dimmed">Nenhum arquivo importado.</Text>}
-        {drafts.map((draft) => <button key={draft.id} disabled={busy} className={`${styles.draft} ${selected?.id === draft.id ? styles.selected : ""}`} onClick={() => { if (changed && !window.confirm("Descartar as alterações não salvas e abrir outro arquivo?")) return; setSelected(draft); setReview(draft.data); setPreview(false); }}><Text size="sm" fw={600} lineClamp={2}>{draft.fileName}</Text><Badge size="xs" mt={6} color={draft.status === "TESTED" ? "teal" : "gray"}>{draft.status === "SENT" ? "Enviado ao CA" : draft.deliveries?.length ? "Envio iniciado" : draft.status === "TESTED" ? "Validado" : "Em revisão"}</Badge></button>)}
+        {drafts.map((draft) => <button key={draft.id} disabled={busy} className={`${styles.draft} ${selected?.id === draft.id ? styles.selected : ""}`} onClick={() => { if (changed && !window.confirm("Descartar as alterações não salvas e abrir outro arquivo?")) return; setSelected(draft); setReview(draft.data); setPreview(false); }}><Text size="sm" fw={600} lineClamp={2}>{draft.fileName}</Text><Badge size="xs" mt={6} color={draft.status === "TESTED" ? "teal" : "gray"}>{draft.status === "MISSING_CA" ? "Reenvio disponível" : draft.status === "SENT" ? "Enviado ao CA" : draft.deliveries?.length ? "Envio iniciado" : draft.status === "TESTED" ? "Validado" : "Em revisão"}</Badge></button>)}
       </Stack></Paper>
       <Stack gap="md" miw={0}>
         {!review || !selected ? <Paper withBorder p="xl"><Text c="dimmed">Importe um PDF ou abra uma revisão salva.</Text></Paper> : <>
-          <Group justify="space-between"><div><Text fw={700}>{selected.fileName}</Text><Text size="xs" c="dimmed">{changed ? "Alterações não salvas" : "Revisão salva"}</Text></div><Group><Button variant="default" disabled={!editable} loading={busy} onClick={() => void save("save")}>Salvar revisão</Button><Button leftSection={<IconPlayerPlay size={16} />} disabled={!editable || !connected || optionsLoading || issues.length > 0} loading={busy} onClick={() => void save("simulate")}>{kind === "INVESTMENT" ? "Validar dados e saldo" : "Validar contrato no CA"}</Button></Group></Group>
+          <Group justify="space-between"><div><Text fw={700}>{selected.fileName}</Text><Text size="xs" c="dimmed">{changed ? "Alterações não salvas" : "Revisão salva"}</Text></div><Group>{kind === "CONTRACT" && canDelete && <Button color="red" variant="subtle" disabled={busy} onClick={()=>setDeleteOpened(true)}>Excluir do Hub</Button>}<Button variant="default" disabled={!editable} loading={busy} onClick={() => void save("save")}>Salvar revisão</Button><Button leftSection={<IconPlayerPlay size={16} />} disabled={!editable || !connected || optionsLoading || issues.length > 0} loading={busy} onClick={() => void save("simulate")}>{kind === "INVESTMENT" ? "Validar dados e saldo" : "Validar contrato no CA"}</Button></Group></Group>
           {review.kind === "INVESTMENT" && <DeliveryControls draft={selected} review={review} companyName={company?.name || ""} clientId={clientId} accounts={options.financialAccounts} canSend={canSend && connected && !optionsLoading && !reviewIssues(review, true).length} busy={busy} dirty={changed} onBusy={setBusy} onResult={(updated, message, failure) => { if (updated) { const draft = updated as Draft; setSelected(draft); setReview(draft.data); setDrafts((previous) => previous.map((item) => item.id === draft.id ? draft : item)); setRevision((value) => value + 1); } setPreview(false); setNotice(message); setError(failure); }} />}
           {review.kind === "CONTRACT" && <ContractDeliveryControls draft={selected} review={review} companyName={company?.name || ""} clientId={clientId} customers={options.customers} services={options.services} accounts={options.financialAccounts} categories={options.categories} canSend={canSend && connected && !optionsLoading && !reviewIssues(review, true).length} busy={busy} dirty={changed} onBusy={setBusy} onResult={(updated: unknown, message: string, failure: string) => { if (updated) { const draft = updated as Draft; setSelected(draft); setReview(draft.data); setDrafts((previous) => previous.map((item) => item.id === draft.id ? draft : item)); setRevision((value) => value + 1); } setPreview(false); setNotice(message); setError(failure); }} />}
           {optionsLoading && <Group gap="xs"><Loader size="xs" /><Text size="sm">Consultando categorias e contas do CA…</Text></Group>}
@@ -159,6 +168,7 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
         </>}
       </Stack>
     </div>}
+    <Modal opened={deleteOpened} onClose={()=>!busy&&setDeleteOpened(false)} title="Excluir contrato do Hub"><Stack><Text>Remover {selected?.fileName} da lista do Hub? O contrato e as vendas no Conta Azul serão preservados.</Text><Text size="sm" c="dimmed">O histórico de envio será mantido. Você pode restaurar a revisão importando o mesmo PDF novamente.</Text><Group justify="flex-end"><Button variant="default" disabled={busy} onClick={()=>setDeleteOpened(false)}>Cancelar</Button><Button color="red" loading={busy} onClick={()=>void removeContract()}>Excluir do Hub</Button></Group></Stack></Modal>
     <Modal opened={preview} onClose={() => setPreview(false)} title={kind === "INVESTMENT" ? "Resultado da conferência" : "Validação do contrato"} size="xl"><Stack>{selected?.simulation && <>
       <Alert color={selected.simulation.errors.length ? "orange" : "teal"}>{selected.simulation.errors.length ? "Há pendências para corrigir." : "Dados conferidos com os cadastros do CA."} Nenhuma venda, contrato ou baixa foi criada.</Alert>
       {selected.simulation.errors.map((issue) => <Text key={issue} size="sm" c="red">{issue}</Text>)}<ScheduleTable sales={selected.simulation.sales} /><Text fw={700}>Total: {money(selected.simulation.totalCents)}</Text>

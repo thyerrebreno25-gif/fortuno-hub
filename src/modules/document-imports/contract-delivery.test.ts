@@ -102,3 +102,31 @@ describe("Contract confirmation formats",()=>{
     expect(await send()).toEqual({completed:true});expect(posts()).toHaveLength(1);
   });
 });
+
+describe("Deleted CA contracts and Hub removal guards",()=>{
+  const verify=()=>sendContractReview({organizationId:"org",userId:"user",reviewId:"review",version,verifyOnly:true});
+  it("releases an absent previously confirmed contract, but creates again only after explicit resend",async()=>{
+    await send(); visible=false;
+    expect(await verify()).toEqual({completed:false,missing:true});
+    expect(delivery?.status).toBe("MISSING_CA");expect(delivery?.contractId).toBe(id(10));expect(posts()).toHaveLength(1);
+    expect(await send()).toEqual({completed:false});expect(posts()).toHaveLength(2);
+    expect(m.audit).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:"CONTRACT_RESEND_AFTER_CA_REMOVAL",beforeData:expect.objectContaining({contractId:id(10)})})}));
+  });
+  it("never releases a resend on an API failure or an invalid list",async()=>{
+    await send();m.request.mockRejectedValueOnce(Error("offline"));
+    await expect(verify()).rejects.toThrow("offline");expect(delivery?.status).toBe("SENT");
+    m.request.mockResolvedValueOnce({unexpected:[]});await expect(verify()).rejects.toThrow("inválida");expect(delivery?.status).toBe("SENT");expect(posts()).toHaveLength(1);
+  });
+  it("rechecks the whole catalog and restores SENT if an absent contract reappears before resend",async()=>{
+    await send();visible=false;await verify();visible=true;
+    expect(await send()).toEqual({completed:true});expect(delivery?.status).toBe("SENT");expect(posts()).toHaveLength(1);
+    const checks=m.request.mock.calls.filter(call=>call[1].includes("1900-01-01"));expect(checks.length).toBeGreaterThan(0);expect(checks.every(call=>!call[1].includes("cliente_id"))).toBe(true);
+  });
+  it("does not treat a just-created contract awaiting indexing as deleted",async()=>{
+    visible=false;await send();await verify();expect(delivery?.status).toBe("CONTRACT_CREATED");expect(posts()).toHaveLength(1);
+  });
+  it("blocks sending a locally deleted review",async()=>{
+    m.find.mockResolvedValueOnce(null);await expect(send()).rejects.toThrow("não encontrada");expect(posts()).toHaveLength(0);
+    expect(m.find).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({status:{not:"DELETED"}})}));
+  });
+});

@@ -25,16 +25,18 @@ export function contractPayload(review: ContractReview, number: number, marker: 
     itens: [{ id: review.serviceId, descricao: review.description, quantidade: 1, valor: review.amountCents / 100 }],
   };
 }
-export async function confirmContract(clientId: string, review: ContractReview, contractId: string, number: number) {
+export async function confirmContract(clientId: string, review: ContractReview, contractId: string, number: number, exhaustive = false) {
   const sales = schedule(review);
   for (let page = 1; page <= 20; page++) {
     const query = new URLSearchParams({ pagina: String(page), tamanho_pagina: "50", cliente_id: review.customerId, data_inicio: review.startMonth, data_fim: monthDate(sales.at(-1)!.saleDate, 0, "last") });
+    if (exhaustive) { query.delete("cliente_id"); query.set("data_inicio", "1900-01-01"); query.set("data_fim", "2100-12-31"); }
     const body = await contaAzulRequest(clientId, "/v1/contratos?" + query);
     const root = object(body);
     const list = Array.isArray(body) ? body : [root.items, root.itens, root.content, root.conteudo, root.data].find(Array.isArray);
     const total = [root.itens_totais, root.totalItems, root.totalElements].find(value => typeof value === "number" && Number.isSafeInteger(value) && value >= 0) as number | undefined;
     if (!list && total !== 0) throw new Error("O CA retornou uma consulta de contratos inválida. O contrato criado foi preservado; nenhuma nova criação será feita.");
     const rows = (list || []).map(object);
+    if (total !== undefined && rows.length !== Math.min(50, Math.max(0, total - (page - 1) * 50))) throw new Error("O CA retornou uma paginação de contratos incompleta. Nenhum reenvio será liberado.");
     if (rows.some(row => !uuid(row.id))) throw new Error("O CA retornou contratos sem identificadores válidos.");
     const match = rows.find(row => row.id === contractId);
     if (match) {
@@ -48,19 +50,47 @@ export async function confirmContract(clientId: string, review: ContractReview, 
   throw new Error("A consulta de confirmação dos contratos excedeu o limite. Nenhum novo contrato será enviado.");
 }
 export async function sendContractReview(input: { organizationId: string; userId: string; reviewId: string; version: number; verifyOnly?: boolean }) {
-  const draft = await prisma.documentImportReview.findFirst({ where: { id: input.reviewId, organizationId: input.organizationId, kind: "CONTRACT" } });
+  const draft = await prisma.documentImportReview.findFirst({ where: { id: input.reviewId, organizationId: input.organizationId, kind: "CONTRACT", status: { not: "DELETED" } } });
   if (!draft) throw new Error("Revisão de contrato não encontrada.");
   const token = randomUUID();
   await prisma.documentImportDispatchLease.upsert({ where: { clientId: draft.clientId }, create: { clientId: draft.clientId, organizationId: input.organizationId, token: "", expiresAt: new Date(0) }, update: {} });
   const locked = await prisma.documentImportDispatchLease.updateMany({ where: { clientId: draft.clientId, organizationId: input.organizationId, expiresAt: { lte: new Date() } }, data: { token, expiresAt: new Date(Date.now() + 10 * 60000) } });
   if (!locked.count) throw new Error("Já há um envio desta empresa em andamento. Aguarde para retomar.");
   try {
-    const current = await prisma.documentImportReview.findFirst({ where: { id: draft.id, organizationId: input.organizationId, version: input.version } });
+    const current = await prisma.documentImportReview.findFirst({ where: { id: draft.id, organizationId: input.organizationId, version: input.version, status: { not: "DELETED" } } });
     if (!current) throw new Error("A revisão foi alterada. Recarregue antes de enviar.");
     const review = contractSchema.parse(current.data);
     let delivery = await prisma.documentImportDelivery.findFirst({ where: { reviewId: draft.id, organizationId: input.organizationId } });
     if (input.verifyOnly && !delivery?.contractId) throw new Error("Não há contrato criado para verificar. Nenhum envio foi realizado.");
-    if (delivery?.status === "SENT") return { completed: true };
+    if (delivery?.contractId && ["SENT", "MISSING_CA"].includes(delivery.status)) {
+      const exists = await confirmContract(draft.clientId, review, delivery.contractId, delivery.contractNumber!, true);
+      if (exists) {
+        if (delivery.status === "MISSING_CA") {
+          await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", lastError: null } });
+          await prisma.documentImportReview.update({ where: { id: draft.id }, data: { status: "SENT" } });
+        }
+        return { completed: true };
+      }
+      // A second complete read avoids releasing a resend on a transient empty listing.
+      if (await confirmContract(draft.clientId, review, delivery.contractId, delivery.contractNumber!, true)) {
+        await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", lastError: null } });
+        await prisma.documentImportReview.update({ where: { id: draft.id }, data: { status: "SENT" } });
+        return { completed: true };
+      }
+      if (input.verifyOnly || delivery.status !== "MISSING_CA") {
+        await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { status: "MISSING_CA", lastError: "Contrato não localizado nas consultas completas do CA. Reenvio disponível após confirmar os dados." } });
+        await prisma.documentImportReview.update({ where: { id: draft.id }, data: { status: "MISSING_CA" } });
+        return { completed: false, missing: true };
+      }
+      const validation = await simulateReview(draft.clientId, review);
+      if (validation.errors.length) throw new Error(validation.errors.join(" "));
+      contractPayload(review, 1, "validation");
+      const previous = delivery;
+      delivery = await prisma.$transaction(async tx => {
+        await tx.auditLog.create({ data: { userId: input.userId, action: "CONTRACT_RESEND_AFTER_CA_REMOVAL", entity: "DocumentImportReview", entityId: draft.id, beforeData: { contractId: previous.contractId, contractNumber: previous.contractNumber, saleId: previous.saleId }, afterData: { missingVerifiedAt: new Date().toISOString() } } });
+        return tx.documentImportDelivery.update({ where: { id: previous.id }, data: { status: "PENDING", contractId: null, contractNumber: null, saleId: null, lastError: null } });
+      });
+    }
     if (!delivery) {
       const validation = await simulateReview(draft.clientId, review);
       if (validation.errors.length) throw new Error(validation.errors.join(" "));
