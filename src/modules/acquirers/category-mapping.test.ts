@@ -1,0 +1,4 @@
+import { expect, it } from "vitest";
+import { acquirerMappingType } from "./category-mapping";
+it.each([['SALE', 'SALES_REVENUE'], ['FEE', 'MDR_FEES'], ['ANTICIPATION', 'ADVANCE_FEES'], ['CANCELLATION', 'SALE_CANCELLATION'], ['CHARGEBACK', 'REFUNDS_CREDITS'], ['ADJUSTMENT', 'MACHINE_RENTAL_ADJUSTMENTS']])("maps %s to its persisted client slot", (eventType, type) => { expect(acquirerMappingType({ eventType })).toBe(type); });
+it("preserves special adjustment categories and refuses unknown events", () => { expect(acquirerMappingType({ eventType: 'ADJUSTMENT', feeCategory: 'CHARGEBACK' })).toBe('REFUNDS_CREDITS'); expect(acquirerMappingType({ eventType: 'ADJUSTMENT', feeCategory: 'CANCELLATION' })).toBe('SALE_CANCELLATION'); expect(acquirerMappingType({ eventType: 'UNKNOWN' })).toBeNull(); });

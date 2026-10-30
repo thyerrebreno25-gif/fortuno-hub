@@ -1587,6 +1587,13 @@ export default function AdquirentesPage() {
               </SimpleGrid>
               <Group>
                 <DirectFinancialSend
+                  onCategorySaved={(mappings) => setCategories(current => {
+                    if (!current) return current;
+                    const keys = {SALES_REVENUE:"sale",MDR_FEES:"fee",ADVANCE_FEES:"anticipation",MACHINE_RENTAL_ADJUSTMENTS:"adjustment",SALE_CANCELLATION:"cancellation",REFUNDS_CREDITS:"chargeback"} as const;
+                    const next = {...current};
+                    for (const mapping of mappings) next[keys[mapping.mappingType]] = mapping.categoryName;
+                    return next;
+                  })}
                   clientId={clientId}
                   module="ACQUIRER"
                   sourceKey={directSourceKey}

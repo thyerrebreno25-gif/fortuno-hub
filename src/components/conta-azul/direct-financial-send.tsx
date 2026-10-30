@@ -30,6 +30,7 @@ import {
   type ContaAzulOption,
   type FinancialDirection,
 } from "@/modules/conta-azul/financial-export";
+import { acquirerMappingType, type AcquirerMappingType } from "@/modules/acquirers/category-mapping";
 import { beginSessionKeepAlive } from "@/modules/session/client-activity";
 import { allocationCategoryKey, allocationClientId, allocationCostCenterKey, applyAllocationClassifications, invalidDestinationAllocationLines, summarizeDestinationAllocation, type DestinationCatalog } from "@/modules/conta-azul/financial-account-allocation";
 
@@ -60,6 +61,7 @@ type Props = {
   lines: DirectFinancialLine[];
   disabled?: boolean;
   onSuccess?: () => void | Promise<void>;
+  onCategorySaved?: (mappings: { mappingType: AcquirerMappingType; categoryName: string }[]) => void;
   useLineAccounts?: boolean;
   onSendingChange?: (sending: boolean) => void;
   destinationClients?: { value: string; label: string }[];
@@ -98,6 +100,7 @@ export function DirectFinancialSend({
   lines,
   disabled,
   onSuccess,
+  onCategorySaved,
   useLineAccounts = false,
   onSendingChange,
   destinationClients,
@@ -119,6 +122,9 @@ export function DirectFinancialSend({
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
   const [costCenterOverrides, setCostCenterOverrides] = useState<Record<string, string>>({});
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [categorySaveError, setCategorySaveError] = useState<string | null>(null);
+  const [categorySaved, setCategorySaved] = useState(false);
   const targetClientIdsKey = JSON.stringify([...new Set(useLineAccounts ? lines.map((line) => allocationClientId(line, clientId || "")) : [clientId || ""])].sort());
   const clientNamesKey = JSON.stringify(destinationClients || []);
   const options = catalogs[clientId || ""] || {};
@@ -223,11 +229,26 @@ export function DirectFinancialSend({
     : 0;
   const invalidAccounts = useLineAccounts ? invalidDestinationAllocationLines(effectiveLines, catalogs, clientId || "") : [];
   const allocationSummary = useLineAccounts ? summarizeDestinationAllocation(effectiveLines, catalogs, clientId || "") : [];
-  const canSend = connected
+  const canSend = !savingCategory && !categorySaveError && connected
     && (useLineAccounts ? invalidAccounts.length === 0 : Boolean(financialAccountId && options.financialAccounts?.some((account) => account.value === financialAccountId)))
     && unresolved.categories.length === 0
     && unresolved.costCenters.length === 0
     && lines.length > 0;
+
+  async function chooseCategory(requirement: {key:string;name:string;direction:FinancialDirection;clientId:string}, value:string|null) {
+    if (module !== "ACQUIRER" || !value) {
+      setCategoryOverrides(current=>{const next={...current};if(value)next[requirement.key]=value;else delete next[requirement.key];return next;});return;
+    }
+    setSavingCategory(true);setCategorySaveError(null);setCategorySaved(false);
+    try {
+      const mappingTypes=[...new Set(lines.filter(line=>line.direction===requirement.direction && line.categoryName===requirement.name).map(line=>acquirerMappingType(line.metadata)).filter((type):type is AcquirerMappingType=>Boolean(type)))];
+      if(!mappingTypes.length)throw Error("Não foi possível identificar o tipo desta categoria para salvar no cliente.");
+      const response=await fetch(`/api/clients/${encodeURIComponent(requirement.clientId)}/category-mappings`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({categoryId:value,direction:requirement.direction,mappingTypes})});
+      const body=await response.json();if(!response.ok)throw Error(body.error || "Não foi possível salvar a categoria do cliente.");
+      setCategoryOverrides(current=>({...current,[requirement.key]:value}));setCategorySaved(true);onCategorySaved?.(body.mappings);
+    }catch(error){setCategorySaveError(error instanceof Error?error.message:"Falha ao salvar categoria.");}
+    finally{setSavingCategory(false);}
+  }
 
   async function send() {
     const selectedAccountId = useLineAccounts ? effectiveLines[0]?.financialAccountId : financialAccountId;
@@ -370,7 +391,7 @@ export function DirectFinancialSend({
 
       <Modal
         opened={opened}
-        onClose={() => setOpened(false)}
+        onClose={() => { if (!savingCategory) setOpened(false); }}
         title="Enviar lançamentos ao Conta Azul"
         size="lg"
       >
@@ -420,7 +441,7 @@ export function DirectFinancialSend({
                 {useLineAccounts ? "Cada lançamento será direcionado para o cadastro/CNPJ e a conta escolhidos na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}
                 {module === "CREDIT_CARD_INVOICE"
                   ? `O Fortuno Hub usará ${counterpartyHint ? `“${counterpartyHint}”` : "o banco selecionado"} como fornecedor das despesas, localizando ou criando esse cadastro automaticamente no Conta Azul.`
-                  : "Como a API do Conta Azul exige um contato técnico, o Fortuno Hub localizará ou criará automaticamente o cadastro “LANÇAMENTO AUTOMÁTICO” para concluir o envio, sem pedir a seleção de um fornecedor."}
+                  : `O Fortuno Hub usará a adquirente ${counterpartyHint ? `“${counterpartyHint}”` : "identificada no arquivo"} como fornecedor das taxas e despesas e como cliente das receitas, localizando ou criando o cadastro no CA.`}
               </Alert>
               {useLineAccounts ? <Stack gap="xs">
                 <Text fw={700}>Rateio por cadastro e conta</Text>
@@ -463,23 +484,22 @@ export function DirectFinancialSend({
                       <Select
                         key={requirement.key}
                         label={`${useLineAccounts ? `${requirement.clientName} — ` : ""}${requirement.name} (${requirement.direction === "RECEIVABLE" ? "receita" : "despesa"})`}
-                        description="Selecione uma categoria equivalente já existente no Conta Azul."
+                        description={module === "ACQUIRER" ? "A escolha será salva neste cliente para as próximas importações." : "Selecione uma categoria equivalente já existente no Conta Azul."}
                         placeholder="Selecionar categoria existente"
                         data={(catalogs[requirement.clientId]?.categories || []).filter(
                           (option) => !option.type || option.type === categoryType(requirement.direction),
                         )}
                         value={categoryOverrides[requirement.key] || null}
-                        onChange={(value) => setCategoryOverrides((current) => {
-                          const next = { ...current };
-                          if (value) next[requirement.key] = value;
-                          else delete next[requirement.key];
-                          return next;
-                        })}
+                        onChange={(value) => void chooseCategory(requirement, value)}
+                        disabled={savingCategory}
                         searchable
-                        clearable
+                        clearable={module !== "ACQUIRER"}
                         nothingFoundMessage="Nenhuma categoria compatível localizada"
                       />
                     ))}
+                    {savingCategory && <Text size="sm">Salvando categoria no cadastro do cliente…</Text>}
+                    {categorySaved && <Text size="sm" c="teal">Categoria salva no cliente para as próximas importações.</Text>}
+                    {categorySaveError && <Alert color="red">{categorySaveError}</Alert>}
                     {costCenterRequirements.map((requirement) => <Select key={requirement.key}
                       label={`${useLineAccounts ? `${requirement.clientName} — ` : ""}Centro de custo: ${requirement.name}`}
                       description="Selecione um centro de custo existente no cadastro de destino." data={catalogs[requirement.clientId]?.costCenters || []}
@@ -526,7 +546,7 @@ export function DirectFinancialSend({
               )}
 
               <Group justify="flex-end">
-                <Button variant="default" onClick={() => setOpened(false)}>
+                <Button variant="default" disabled={savingCategory} onClick={() => setOpened(false)}>
                   Cancelar
                 </Button>
                 <Button

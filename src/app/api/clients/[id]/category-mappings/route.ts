@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { acquirerMappingTypes } from "@/modules/acquirers/category-mapping";
+import { saveAcquirerCategory } from "@/modules/clients/save-acquirer-category";
 import { NextResponse } from "next/server";
 import { syncClientCategories } from "@/modules/clients/ca-categories";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +42,7 @@ async function getMember() {
       createdAt: "asc",
     },
     select: {
+      userId: true,
       organizationId: true,
       role: true,
     },
@@ -325,4 +329,20 @@ export async function PUT(
       },
     );
   }
+}
+
+const learnedSchema=z.object({categoryId:z.string().uuid(),direction:z.enum(["PAYABLE","RECEIVABLE"]),mappingTypes:z.array(z.enum(acquirerMappingTypes)).min(1).max(6)});
+export async function PATCH(request:Request,context:RouteContext){
+  const member=await getMember();
+  if(!member)return NextResponse.json({error:"Sua sessão expirou."},{status:401});
+  const permissions=await getRolePermissions(member.organizationId,member.role);
+  if(!permissions.CLIENTS.canEdit)return NextResponse.json({error:"Sem permissão para salvar categorias do cliente."},{status:403});
+  const {id:clientId}=await context.params;
+  if(!await prisma.client.findFirst({where:{id:clientId,organizationId:member.organizationId},select:{id:true}}))return NextResponse.json({error:"Cliente não encontrado."},{status:404});
+  const body=learnedSchema.safeParse(await request.json().catch(()=>null));
+  if(!body.success)return NextResponse.json({error:"Categoria ou tipo de vínculo inválido."},{status:400});
+  try{
+    const mappings=await saveAcquirerCategory({...body.data,organizationId:member.organizationId,clientId,userId:member.userId});
+    return NextResponse.json({saved:true,mappings});
+  }catch{return NextResponse.json({error:"Não foi possível salvar a categoria deste cliente. Confira a conexão e se ela é compatível com receita ou despesa."},{status:409});}
 }

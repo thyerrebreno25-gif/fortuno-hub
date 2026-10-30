@@ -10,6 +10,7 @@ export type ClientCaCategory = {
     parentRemoteId: string | null;
     code: string | null;
     active: boolean;
+    type?: string;
 };
 export function parseCategoryPage(body: unknown) {
     const root = object(body);
@@ -22,7 +23,7 @@ export function parseCategoryPage(body: unknown) {
         if (!remoteId || !name)
             throw Error("O CA retornou uma categoria sem identificação.");
         const parent = row.categoria_pai;
-        return { remoteId, name, parentRemoteId: typeof parent === "string" ? parent : typeof object(parent).id === "string" ? String(object(parent).id) : null, code: typeof row.codigo === "string" ? row.codigo : null, active: row.ativo !== false && row.status !== "INATIVO" };
+        return { remoteId, name, type: typeof row.tipo === "string" ? row.tipo : undefined, parentRemoteId: typeof parent === "string" ? parent : typeof object(parent).id === "string" ? String(object(parent).id) : null, code: typeof row.codigo === "string" ? row.codigo : null, active: row.ativo !== false && row.status !== "INATIVO" };
     });
     const total = [root.itens_totais, root.totalItems].find(v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0) as number | undefined;
     return { rows, total };
@@ -75,6 +76,6 @@ export async function syncClientCategories(organizationId: string, clientId: str
             names.unshift(item.name);
             parent = item.parentId;
         }
-        return { ...row, name: names.join(" > ") };
+        return { ...row, name: names.join(" > "), type: all.find(item => item.remoteId === row.remoteId)?.type };
     });
 }

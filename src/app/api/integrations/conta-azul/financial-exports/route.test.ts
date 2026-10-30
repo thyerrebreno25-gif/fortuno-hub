@@ -12,6 +12,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: mocks.db }));
 vi.mock("@/modules/permissions/permissions", () => ({ getRolePermissions: mocks.permission }));
 vi.mock("@/modules/purchase-invoices/server/auth", () => ({ getPurchaseInvoiceMember: mocks.member, findAuthorizedClient: mocks.client }));
 vi.mock("@/modules/purchase-invoices/server/conta-azul", () => ({ contaAzulRequest: mocks.request }));
+vi.mock("server-only", () => ({}));
 import { POST } from "./route";
 
 const uuid = (number: number) => `${String(number).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -278,7 +279,7 @@ describe("envio de fatura com conta por lançamento", () => {
     expect((await send({ ...body(false), module: "ACQUIRER" })).status).toBe(200);
     expect(financialCreates().map((call) => JSON.parse(call[2].body).conta_financeira)).toEqual([ACCOUNT_X, ACCOUNT_X]);
     const personSearch = mocks.request.mock.calls.find((call) => call[1].startsWith("/v1/pessoas?"));
-    expect(new URL(`http://local${personSearch?.[1]}`).searchParams.get("busca")).toBe("LANÇAMENTO AUTOMÁTICO");
+    expect(new URL(`http://local${personSearch?.[1]}`).searchParams.get("busca")).toBe("Banco Teste");
   });
   it("não envia sem autenticação, permissão, cliente ou conexão", async () => {
     mocks.member.mockResolvedValueOnce(null); expect((await send(body())).status).toBe(401);

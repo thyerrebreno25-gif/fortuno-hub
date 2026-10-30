@@ -1,3 +1,4 @@
+import { resolveAcquirerContact } from "@/modules/conta-azul/acquirer-contact";
 import crypto from "node:crypto";
 import { confirmFinancialInstallment, confirmFinancialSettlement } from "@/modules/conta-azul/financial-confirmation";
 import { NextResponse } from "next/server";
@@ -161,6 +162,7 @@ async function findOrCreateExport(input: {
         metadata: asJson({
           originalSourceKey: input.body.sourceKey,
           requestedLineCount: input.body.lines.length,
+          counterpartyHint: input.body.counterpartyHint || null,
           useLineAccounts: input.body.useLineAccounts,
         }),
         lines: {
@@ -214,11 +216,10 @@ async function resolveTechnicalContact(
   requestedContactId?: string | null,
   requestedContactName?: string | null,
 ) {
+  if (module === "ACQUIRER") return resolveAcquirerContact(clientId, direction, requestedName, requestedContactId);
   const name = requestedName?.trim()
-    || (module === "ACQUIRER" ? "MOVIMENTAÇÕES DE ADQUIRENTES" : "FATURAS DE CARTÃO");
-  const technicalObservation = module === "ACQUIRER"
-    ? "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de adquirentes."
-    : direction === "PAYABLE" && requestedName?.trim()
+    || "FATURAS DE CARTÃO";
+  const technicalObservation = direction === "PAYABLE" && requestedName?.trim()
       ? `Fornecedor do cartão ${requestedName.trim()} vinculado automaticamente pelo Fortuno Hub.`
       : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
   const requiredProfiles = requiredContactProfiles([direction]);
@@ -662,7 +663,7 @@ export async function POST(request: Request) {
     const metadata = metadataRecord(saved.metadata);
     if (typeof metadata.originalSourceKey !== "string" || saved.lines.some((line) => typeof metadataRecord(line.metadata).originalLineKey !== "string")) return NextResponse.json({ error: "Os dados originais deste envio não estão completos. Reabra a revisão do arquivo original." }, { status: 409 });
     const useLineAccounts = Boolean(metadata.useLineAccounts);
-    incoming = { clientId: saved.clientId, module: saved.module, sourceKey: metadata.originalSourceKey, sourceName: saved.sourceName, contactId: saved.contactId, contactName: saved.contactName, counterpartyHint: saved.contactName || saved.financialAccountName, financialAccountId: saved.financialAccountId, financialAccountName: saved.financialAccountName, settle: saved.settleRequested, useLineAccounts,
+    incoming = { clientId: saved.clientId, module: saved.module, sourceKey: metadata.originalSourceKey, sourceName: saved.sourceName, contactId: saved.contactId, contactName: saved.contactName, counterpartyHint: typeof metadata.counterpartyHint === "string" ? metadata.counterpartyHint : saved.module === "ACQUIRER" ? null : saved.contactName || saved.financialAccountName, financialAccountId: saved.financialAccountId, financialAccountName: saved.financialAccountName, settle: saved.settleRequested, useLineAccounts,
       lines: saved.lines.map((line) => ({ lineKey: String(metadataRecord(line.metadata).originalLineKey), direction: line.direction, competenceDate: dateOnly(line.competenceDate), dueDate: dateOnly(line.dueDate), paymentDate: line.paymentDate ? dateOnly(line.paymentDate) : null, description: line.description, amount: Number(line.amount), categoryName: line.categoryName, costCenterName: line.costCenterName, observation: String(metadataRecord(line.metadata).observation || ""),
         ...(useLineAccounts ? { financialAccountId: exportLineFinancialAccount(line.metadata, saved.financialAccountId), destinationClientId: exportLineDestinationClient(line.metadata, saved.clientId) } : {}),
       })),
@@ -770,8 +771,8 @@ export async function POST(request: Request) {
           destinationId,
           requestedBody.module,
           direction,
-          requestedBody.counterpartyHint || requestedBody.financialAccountName,
-          !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactId : null,
+          requestedBody.module === "ACQUIRER" ? requestedBody.counterpartyHint : requestedBody.counterpartyHint || requestedBody.financialAccountName,
+          requestedBody.module === "ACQUIRER" ? primaryContact?.value || requestedBody.contactId : !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactId : null,
           !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactName : null,
         );
         destinations.get(destinationId)!.contactIds[direction] = technicalContact.value;
