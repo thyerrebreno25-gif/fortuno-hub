@@ -43,7 +43,7 @@ export async function GET(_request: Request, context: Context) {
   const beforeId = new URL(_request.url).searchParams.get("before") || undefined;
   if (beforeId) {
     id = await resolveWhatsappTicketId(id, member.organizationId);
-    const cursor = await prisma.serviceMessage.findFirst({ where: { id: beforeId, ticketId: id }, select: { id: true } });
+    const cursor = await prisma.serviceMessage.findFirst({ where: { id: beforeId, ticketId: id, ticket: { organizationId: member.organizationId } }, select: { id: true } });
     if (!cursor) return NextResponse.json({ error: "Página de mensagens inválida." }, { status: 400 });
   }
   const ticket = await getWhatsappTicket(id, member.organizationId, { beforeId });
