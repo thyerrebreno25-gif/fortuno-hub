@@ -81,3 +81,24 @@ describe("Real recurring contracts",()=>{
     expect(()=>contractPayload({...review(),totalCents:1},851,"marker")).toThrow("total");
   });
 });
+
+describe("Contract confirmation formats",()=>{
+  const row=()=>({id:id(10),numero:851,cliente:{id:id(1)},data_inicio:"2026-11-01"});
+  it.each(["items","itens","content","conteudo","data"])("accepts %s without recreating a known contract",async(key)=>{
+    visible=false;await send();
+    m.request.mockResolvedValue({[key]:[row()],itens_totais:1});
+    expect(await sendContractReview({organizationId:"org",userId:"user",reviewId:"review",version,verifyOnly:true})).toEqual({completed:true});
+    expect(posts()).toHaveLength(1);
+  });
+  it("verification-only cannot create a contract or buyer",async()=>{
+    await expect(sendContractReview({organizationId:"org",userId:"user",reviewId:"review",version,verifyOnly:true})).rejects.toThrow("Nenhum envio");
+    expect(m.request).not.toHaveBeenCalled();expect(m.ensureBuyer).not.toHaveBeenCalled();expect(m.create).not.toHaveBeenCalled();
+  });
+  it("rejects unknown confirmation shapes and preserves the created ID",async()=>{
+    const original=m.request.getMockImplementation()!;
+    m.request.mockImplementation(async(...args)=>args[1].includes("?")?{unexpected:[]}:original(...args));
+    await expect(send()).rejects.toThrow("inválida");expect(delivery?.contractId).toBe(id(10));
+    m.request.mockResolvedValue({itens:[row()],itens_totais:1});
+    expect(await send()).toEqual({completed:true});expect(posts()).toHaveLength(1);
+  });
+});

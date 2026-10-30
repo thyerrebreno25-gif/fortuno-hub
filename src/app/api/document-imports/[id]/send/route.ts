@@ -5,10 +5,11 @@ import { authorizedCompany, importAccess } from "@/modules/document-imports/serv
 import { sendInvestmentReview, deliverySummary } from "@/modules/document-imports/delivery";
 import { sendContractReview } from "@/modules/document-imports/contract-delivery";
 export const maxDuration = 300;
-const schema = z.object({ kind: z.enum(["INVESTMENT", "CONTRACT"]).default("INVESTMENT"), version: z.number().int().positive(), confirmation: z.literal("ENVIAR AO CA") });
+const schema = z.object({ kind: z.enum(["INVESTMENT", "CONTRACT"]).default("INVESTMENT"), version: z.number().int().positive(), confirmation: z.enum(["ENVIAR AO CA", "VERIFICAR NO CA"]) });
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const body = schema.safeParse(await request.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Confirme os valores e o envio real ao CA." }, { status: 400 });
+  if (body.data.confirmation === "VERIFICAR NO CA" && body.data.kind !== "CONTRACT") return NextResponse.json({ error: "Verificação inválida." }, { status: 400 });
   const access = await importAccess(body.data.kind);
   if (!access) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   if (!access.permission.canView || !access.permission.canExport || !access.permission.canEdit) return NextResponse.json({ error: "Sem permissão para enviar ao CA." }, { status: 403 });
@@ -19,7 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (body.data.kind === "CONTRACT" && !reviewData.customerId && reviewData.autoCreateBuyer !== false && !access.permission.canCreate) return NextResponse.json({ error: "Sem permissão para cadastrar o comprador automaticamente." }, { status: 403 });
   try {
     const send = body.data.kind === "CONTRACT" ? sendContractReview : sendInvestmentReview;
-    const result = await send({ organizationId: access.member.organizationId, userId: access.member.userId, reviewId: id, version: body.data.version });
+    const result = await send({ organizationId: access.member.organizationId, userId: access.member.userId, reviewId: id, version: body.data.version, verifyOnly: body.data.confirmation === "VERIFICAR NO CA" });
     return NextResponse.json({ mode: "LIVE", completed: result.completed, draft: await prisma.documentImportReview.findFirst({ where: { id, organizationId: access.member.organizationId }, include: { deliveries: { select: deliverySummary, orderBy: { createdAt: "asc" } } } }) });
   } catch (error) {
     const message = error instanceof Error && !/token|bearer|postgres|prisma|https?:|invalid.*invocation/i.test(error.message) ? error.message.slice(0, 500) : "Não foi possível concluir o envio. Atualize o andamento antes de retomar.";

@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { contaAzulRequest, ContaAzulApiError } from "@/modules/purchase-invoices/server/conta-azul";
-import { apiItems } from "@/modules/conta-azul/financial-export";
 import { contractSchema, digits, monthDate, normalize, reviewIssues, schedule, type ContractReview } from "./model";
 import { simulateReview } from "./server";
 import { ensureContractBuyer } from "./contract-buyer";
@@ -31,18 +30,24 @@ export async function confirmContract(clientId: string, review: ContractReview, 
   for (let page = 1; page <= 20; page++) {
     const query = new URLSearchParams({ pagina: String(page), tamanho_pagina: "50", cliente_id: review.customerId, data_inicio: review.startMonth, data_fim: monthDate(sales.at(-1)!.saleDate, 0, "last") });
     const body = await contaAzulRequest(clientId, "/v1/contratos?" + query);
-    if (!Array.isArray(object(body).items)) throw new Error("O CA retornou uma consulta de contratos inválida.");
-    const rows = apiItems(body);
+    const root = object(body);
+    const list = Array.isArray(body) ? body : [root.items, root.itens, root.content, root.conteudo, root.data].find(Array.isArray);
+    const total = [root.itens_totais, root.totalItems, root.totalElements].find(value => typeof value === "number" && Number.isSafeInteger(value) && value >= 0) as number | undefined;
+    if (!list && total !== 0) throw new Error("O CA retornou uma consulta de contratos inválida. O contrato criado foi preservado; nenhuma nova criação será feita.");
+    const rows = (list || []).map(object);
+    if (rows.some(row => !uuid(row.id))) throw new Error("O CA retornou contratos sem identificadores válidos.");
     const match = rows.find(row => row.id === contractId);
     if (match) {
       if (object(match.cliente).id !== review.customerId || match.numero !== number || String(match.data_inicio).slice(0,10) !== review.startMonth) throw new Error("O contrato retornado pelo CA diverge da revisão. Confira no CA antes de continuar.");
       return true;
     }
-    if (rows.length < 50 && (!Number.isFinite(Number(object(body).itens_totais)) || page * 50 >= Number(object(body).itens_totais))) return false;
+    if (total !== undefined && page * 50 >= total) return false;
+    if (rows.length < 50 && total === undefined) return false;
+    if (!rows.length) throw new Error("O CA retornou uma paginação de contratos incompleta. Verifique novamente mais tarde.");
   }
   throw new Error("A consulta de confirmação dos contratos excedeu o limite. Nenhum novo contrato será enviado.");
 }
-export async function sendContractReview(input: { organizationId: string; userId: string; reviewId: string; version: number }) {
+export async function sendContractReview(input: { organizationId: string; userId: string; reviewId: string; version: number; verifyOnly?: boolean }) {
   const draft = await prisma.documentImportReview.findFirst({ where: { id: input.reviewId, organizationId: input.organizationId, kind: "CONTRACT" } });
   if (!draft) throw new Error("Revisão de contrato não encontrada.");
   const token = randomUUID();
@@ -54,6 +59,7 @@ export async function sendContractReview(input: { organizationId: string; userId
     if (!current) throw new Error("A revisão foi alterada. Recarregue antes de enviar.");
     const review = contractSchema.parse(current.data);
     let delivery = await prisma.documentImportDelivery.findFirst({ where: { reviewId: draft.id, organizationId: input.organizationId } });
+    if (input.verifyOnly && !delivery?.contractId) throw new Error("Não há contrato criado para verificar. Nenhum envio foi realizado.");
     if (delivery?.status === "SENT") return { completed: true };
     if (!delivery) {
       const validation = await simulateReview(draft.clientId, review);
