@@ -201,7 +201,7 @@ export default function WhatsAppPage() {
     return inbox.tickets.filter((ticket) => (!onlyUnread || Boolean(ticket.unreadCount)) && matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, filters, currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
   }, [inbox, filterKey, filters, search, currentUserId, onlyUnread]);
   const stats = useMemo(() => baseStats && inbox.complete ? { ...baseStats, facets: inboxFacets(inbox.tickets.map((ticket) => ({ ...ticket, assignedToId: ticket.assignedTo?.id || null })), filters, currentUserId) } : baseStats, [baseStats, inbox, filters, currentUserId]);
-  const selectedId = tickets.some((ticket) => ticket.id === preferredId) ? preferredId : onlyUnread ? null : tickets[0]?.id || null;
+  const selectedId = onlyUnread ? preferredId : tickets.some((ticket) => ticket.id === preferredId) ? preferredId : tickets[0]?.id || null;
   const selectedRef = useRef<string | null>(null);
   const detailCache = useRef(new Map<string, TicketDetail>());
   const lastRevision = useRef("");
@@ -551,7 +551,7 @@ export default function WhatsAppPage() {
               onChange={(event) => setSearch(event.currentTarget.value)}
               className={styles.search}
             />
-            <Group gap={6} mt="sm"><Button size="compact-xs" radius="xl" variant={onlyUnread ? "light" : "subtle"} onClick={() => setOnlyUnread(value => !value)}>Não lidas</Button>{([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <Button key={item.value} size="compact-xs" radius="xl" variant={chatKind === item.value ? "light" : "subtle"} onClick={() => setChatKind(item.value)}>{item.label}</Button>)}</Group>
+            <Group gap={6} mt="sm"><Button size="compact-xs" radius="xl" variant={onlyUnread ? "light" : "subtle"} onClick={() => { setSelectedId(null); setOnlyUnread(value => !value); }}>Não lidas</Button>{([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <Button key={item.value} size="compact-xs" radius="xl" variant={chatKind === item.value ? "light" : "subtle"} onClick={() => setChatKind(item.value)}>{item.label}</Button>)}</Group>
           </div>
           <div className={styles.ticketList}>
             {tickets.length ? (

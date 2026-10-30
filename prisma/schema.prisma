@@ -1900,6 +1900,7 @@ model ServiceMessage {
 
   @@unique([ticketId, externalMessageId])
   @@index([ticketId, receivedAt])
+  @@index([ticketId, direction, receivedAt, id], map: "ServiceMessage_ticket_direction_received_id_idx")
   @@index([externalMessageId])
 }
 
