@@ -1,12 +1,13 @@
 "use client";
 import { ActionIcon, Alert, Badge, Button, Group, Image, Loader, Modal, Paper, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { IconBrandWhatsapp, IconQrcode, IconSettings } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./pairing.module.css";
 import { WhatsAppDuplicateCleanup } from "./duplicate-cleanup";
 type Connection = { configured: boolean; status: string; serverUrl?: string; instanceName?: string; phone?: string; profileName?: string; isTestServer?: boolean; expiresAt?: string; webhookReady?: boolean; lastWebhookAt?: string; lastError?: string };
 const labels: Record<string, string> = { NOT_CONFIGURED: "Não configurado", DISCONNECTED: "Desconectado", CONNECTING: "Aguardando pareamento", CONNECTED: "Conectado", PAUSED: "Pausado", UNAVAILABLE: "Indisponível", EXPIRED: "Teste expirado" };
 export function UazapiConnection({ onStatus, compact = false }: { onStatus: (status: string) => void; compact?: boolean }) {
+  const baseEdited = useRef(false);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [canConfigure, setCanConfigure] = useState(false);
   const [base, setBase] = useState("https://free.uazapi.com"), [token, setToken] = useState(""), [phone, setPhone] = useState("");
@@ -16,7 +17,7 @@ export function UazapiConnection({ onStatus, compact = false }: { onStatus: (sta
   const receive = useCallback((data: { connection: Connection; qrCode?: string; pairCode?: string; canConfigure?: boolean }) => {
     setConnection(data.connection);
     if (data.canConfigure !== undefined) setCanConfigure(data.canConfigure);
-    if (data.connection.serverUrl) setBase(data.connection.serverUrl);
+    if (data.connection.serverUrl && !baseEdited.current) setBase(data.connection.serverUrl);
     setQr(data.qrCode || null); setPairCode(data.pairCode || "");
     onStatus(data.connection.status === "CONNECTED" && data.connection.webhookReady ? "CONNECTED" : data.connection.status === "CONNECTED" ? "DISCONNECTED" : data.connection.status);
   }, [onStatus]);
@@ -26,7 +27,7 @@ export function UazapiConnection({ onStatus, compact = false }: { onStatus: (sta
   useEffect(() => { const initial = setTimeout(() => { void refresh(); }, 0); const timer = setInterval(() => { void refresh(); }, 10000); return () => { clearTimeout(initial); clearInterval(timer); }; }, [refresh]);
   async function action(input: Record<string, unknown>) {
     setBusy(true); setError("");
-    try { const response = await fetch("/api/whatsapp/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível concluir."); receive(data); if (input.action === "SAVE") setToken(""); setConfirm(false); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Falha na conexão."); } finally { setBusy(false); }
+    try { const response = await fetch("/api/whatsapp/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível concluir."); if (input.action === "SAVE") { baseEdited.current = false; setToken(""); } receive(data); setConfirm(false); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Falha na conexão."); } finally { setBusy(false); }
   }
   if (compact) return <div className={styles.pairing}>
     <div className={styles.brand}><IconBrandWhatsapp size={30} /><Text fw={800}>WhatsApp · Fortuno Hub</Text></div>
@@ -56,7 +57,7 @@ export function UazapiConnection({ onStatus, compact = false }: { onStatus: (sta
     {(connection?.isTestServer || base === "https://free.uazapi.com") && <Alert color="orange" title="Servidor gratuito · teste de uma hora">A Uazapi exclui a instância após uma hora. {connection?.expiresAt ? `Validade estimada: ${new Date(connection.expiresAt).toLocaleString("pt-BR")}.` : "O prazo começa na criação da instância."}</Alert>}
     {canConfigure ? <>
       <WhatsAppDuplicateCleanup />
-      <Paper withBorder p="lg" radius="md"><Stack><Title order={4}>Credenciais da instância</Title><TextInput label="URL do servidor Uazapi" value={base} onChange={(e) => setBase(e.currentTarget.value)} /><PasswordInput label="Token da instância" description="Use o token da instância, disponível no painel Uazapi." value={token} onChange={(e) => setToken(e.currentTarget.value)} autoComplete="off" /><Group><Button loading={busy} disabled={!token.trim()} onClick={() => action({ action: "SAVE", serverUrl: base.trim(), token: token.trim() })}>Validar e salvar conexão</Button><Button variant="default" onClick={() => refresh()}>Atualizar status</Button></Group></Stack></Paper>
+      <Paper withBorder p="lg" radius="md"><Stack><Title order={4}>Credenciais da instância</Title><TextInput label="URL do servidor Uazapi" value={base} onChange={(e) => { baseEdited.current = true; setBase(e.currentTarget.value); }} /><PasswordInput label="Token da instância" description="Use o token da instância, disponível no painel Uazapi." value={token} onChange={(e) => setToken(e.currentTarget.value)} autoComplete="off" /><Group><Button loading={busy} disabled={!token.trim()} onClick={() => action({ action: "SAVE", serverUrl: base.trim(), token: token.trim() })}>Validar e salvar conexão</Button><Button variant="default" onClick={() => refresh()}>Atualizar status</Button></Group></Stack></Paper>
       {connection?.configured && <Paper withBorder p="lg" radius="md"><Stack><Title order={4}>Vincular WhatsApp</Title>
         {connection.status !== "CONNECTED" && <><Group><Button loading={busy} onClick={() => action({ action: "CONNECT" })}>Gerar QR Code</Button><Button variant="light" loading={busy} onClick={() => action({ action: "WEBHOOK" })}>Configurar recebimento</Button></Group>
           {qr && <><Image src={qr} alt="QR Code de conexão do WhatsApp" w={280} h={280} fit="contain" /><Text size="sm">No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. Leia o QR Code.</Text></>}
