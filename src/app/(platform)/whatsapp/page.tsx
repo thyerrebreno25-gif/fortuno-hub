@@ -2,7 +2,6 @@
 
 import {
   ActionIcon,
-  Avatar,
   Badge,
   Button,
   Group,
@@ -35,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
+import { ChatAvatar } from "@/modules/whatsapp/chat-avatar";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
 import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
@@ -544,9 +544,7 @@ export default function WhatsAppPage() {
                   className={`${styles.ticket} ${selectedId === ticket.id ? styles.ticketActive : ""}`}
                   onClick={() => { selectedRef.current = ticket.id; const cached = detailCache.current.get(ticket.id); setDetail(cached || null); setDetailLoading(!cached); setSelectedId(ticket.id); }}
                 >
-                  <Avatar color={ticket.channel.kind === "GROUP" ? "violet" : "green"} radius="xl">
-                    {ticket.channel.kind === "GROUP" ? <IconUsers size={18} /> : (ticket.senderName || "?").slice(0, 1).toUpperCase()}
-                  </Avatar>
+                  <ChatAvatar id={ticket.id} name={ticket.senderName || ticket.subject} group={ticket.channel.kind === "GROUP"} />
                   <div className={styles.ticketText}>
                     <Group justify="space-between" gap="xs" wrap="nowrap">
                       <Text fw={750} size="sm" truncate>{ticket.senderName || ticket.subject}</Text>
@@ -578,6 +576,8 @@ export default function WhatsAppPage() {
           ) : selectedId && detail?.id === selectedId ? (
             <>
               <div className={styles.detailHeader}>
+                <Group gap="sm" wrap="nowrap">
+                <ChatAvatar id={detail.id} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} />
                 <div>
                   <Group gap="xs">
                     <Text fw={850}>{detail.senderName || detail.subject}</Text>
@@ -587,6 +587,7 @@ export default function WhatsAppPage() {
                   </Group>
                   <Text size="xs" c="dimmed">{detail.senderEmail.replace("wa-contact:", "+").replace("wa-group:", "Grupo: ")}</Text>
                 </div>
+                </Group>
                 <Group gap="xs">
                   {detail.status !== "RESOLVED" && bootstrap?.canEdit && <Button size="xs" color="teal" variant="light" leftSection={<IconArrowRight size={15} />} disabled={saving || Boolean(detail.assignedTo && detail.assignedTo.id !== bootstrap.currentUser.id && !bootstrap.canManage)} onClick={() => setTransferOpened(true)}>Transferir</Button>}
                   {!detail.assignedTo && detail.status !== "RESOLVED" && (

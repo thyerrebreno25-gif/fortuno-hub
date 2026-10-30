@@ -1,0 +1,16 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), ticket: vi.fn(), connection: vi.fn(), request: vi.fn() }));
+vi.mock("next/cache", () => ({ unstable_cache: (fn: () => unknown) => fn }));
+vi.mock("@/lib/prisma", () => ({ prisma: { serviceTicket: { findFirst: m.ticket } } }));
+vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));
+vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: m.connection }));
+vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "secret" }));
+vi.mock("@/modules/whatsapp/uazapi", () => ({ object: (value: unknown) => value, uazapiRequest: m.request }));
+import { GET } from "./route";
+const get = () => GET(new Request("https://hub.test/api/whatsapp/ticket/avatar"), { params: Promise.resolve({ id: "ticket" }) });
+beforeEach(() => { vi.clearAllMocks(); m.member.mockResolvedValue({ organizationId: "org", role: "MASTER" }); m.permission.mockResolvedValue({ canView: true }); m.ticket.mockResolvedValue({ senderEmail: "wa-group:123@g.us" }); m.connection.mockResolvedValue({ id: "connection", instanceId: "instance", status: "CONNECTED", serverUrl: "https://example.uazapi.com", tokenEncrypted: "encrypted" }); m.request.mockResolvedValue({ url: "https://pps.whatsapp.net/photo.jpg" }); });
+it("requires view permission before requesting a photo", async () => { m.permission.mockResolvedValue({ canView: false }); expect((await get()).status).toBe(403); expect(m.ticket).not.toHaveBeenCalled(); expect(m.request).not.toHaveBeenCalled(); });
+it("scopes the conversation to the current organization", async () => { m.ticket.mockResolvedValue(null); expect((await get()).status).toBe(404); expect(m.ticket.mock.calls[0][0].where).toMatchObject({ id: "ticket", organizationId: "org" }); expect(m.request).not.toHaveBeenCalled(); });
+it("requests a group preview without exposing credentials", async () => { const response = await get(); expect(await response.json()).toEqual({ url: "https://pps.whatsapp.net/photo.jpg" }); expect(m.request).toHaveBeenCalledWith("https://example.uazapi.com", "secret", "/chat/avatar", { number: "123@g.us", preview: true }); });
+it("does not call disconnected instances", async () => { m.connection.mockResolvedValue({ status: "DISCONNECTED" }); expect(await (await get()).json()).toEqual({ url: null }); expect(m.request).not.toHaveBeenCalled(); });
+it("falls back without disclosing provider errors", async () => { m.request.mockRejectedValue(new Error("secret")); const response = await get(); expect(response.status).toBe(503); expect(await response.json()).toEqual({ url: null }); });
