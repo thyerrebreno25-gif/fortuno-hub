@@ -1,6 +1,6 @@
 .page { padding: 12px 12px 10px; color: var(--fortuno-ink); }
-.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 10px; }
-.sectionTabs { display: inline-flex; gap: 5px; padding: 4px; border: 1px solid var(--fortuno-line); border-radius: 13px; background: var(--fortuno-surface); box-shadow: 0 5px 15px rgba(15, 35, 70, .04); }
+.header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 10px; }
+.sectionTabs { display: inline-flex; flex-wrap: wrap; gap: 5px; padding: 4px; border: 1px solid var(--fortuno-line); border-radius: 13px; background: var(--fortuno-surface); box-shadow: 0 5px 15px rgba(15, 35, 70, .04); }
 .sectionTabs button { border: 0; border-radius: 9px; padding: 8px 12px; color: var(--fortuno-muted); background: transparent; display: inline-flex; align-items: center; gap: 7px; font-weight: 800; font-size: 14px; cursor: pointer; transition: color .18s ease, background .18s ease, box-shadow .18s ease; }
 .sectionTabs button:hover { color: var(--fortuno-ink); background: var(--fortuno-surface-soft); }
 .sectionTabs .sectionTabActive { color: #1971c2; background: color-mix(in srgb, var(--mantine-color-blue-6) 11%, var(--fortuno-surface)); box-shadow: 0 3px 9px rgba(34, 139, 230, .1); }

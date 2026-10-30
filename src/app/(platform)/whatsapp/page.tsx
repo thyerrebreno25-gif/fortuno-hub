@@ -31,6 +31,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WhatsAppManagement } from "./management";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
@@ -41,12 +42,13 @@ import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, typ
 import styles from "./whatsapp.module.css";
 
 type View = InboxView;
-type Section = "INBOX" | "MONITORING";
+type Section = "INBOX" | "MONITORING" | "MANAGEMENT";
 
 type Bootstrap = {
   mode: string;
   currentUser: { id: string; name: string | null; email: string };
   canManage: boolean;
+  canViewManagement: boolean;
   canEdit: boolean;
   canConfigureConnection: boolean;
   clients: Array<{
@@ -180,6 +182,7 @@ export default function WhatsAppPage() {
   const [transferOpened, setTransferOpened] = useState(false);
   const [inbox, setInbox] = useState<{ tickets: Ticket[]; complete: boolean; key: string }>({ tickets: [], complete: false, key: "" });
   const [baseStats, setStats] = useState<Stats | null>(null);
+  const [managementSelection, setManagementSelection] = useState<string | null>(null);
   const [preferredId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   const [search, setSearch] = useState("");
@@ -201,7 +204,7 @@ export default function WhatsAppPage() {
     return inbox.tickets.filter((ticket) => (!onlyUnread || Boolean(ticket.unreadCount)) && matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, filters, currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
   }, [inbox, filterKey, filters, search, currentUserId, onlyUnread]);
   const stats = useMemo(() => baseStats && inbox.complete ? { ...baseStats, facets: inboxFacets(inbox.tickets.map((ticket) => ({ ...ticket, assignedToId: ticket.assignedTo?.id || null })), filters, currentUserId) } : baseStats, [baseStats, inbox, filters, currentUserId]);
-  const selectedId = onlyUnread ? preferredId : tickets.some((ticket) => ticket.id === preferredId) ? preferredId : tickets[0]?.id || null;
+  const selectedId = managementSelection || (onlyUnread ? preferredId : tickets.some((ticket) => ticket.id === preferredId) ? preferredId : tickets[0]?.id || null);
   const selectedRef = useRef<string | null>(null);
   const detailCache = useRef(new Map<string, TicketDetail>());
   const lastRevision = useRef("");
@@ -499,6 +502,7 @@ export default function WhatsAppPage() {
               >
                 <IconChartBar size={18} /> Central de monitoramento
               </button>
+              {bootstrap?.canViewManagement && <button type="button" className={section === "MANAGEMENT" ? styles.sectionTabActive : ""} onClick={() => setSection("MANAGEMENT")}><IconUsers size={18}/> Gestão</button>}
             </div>
             <Badge color={bootstrap?.mode === "CONNECTED" ? "green" : "yellow"} variant="light">
               {bootstrap?.mode === "CONNECTED" ? "Conectado" : "WhatsApp desconectado"}
@@ -518,7 +522,7 @@ export default function WhatsAppPage() {
         </Group>}
       </header>
 
-      {!connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "INBOX" ? (
+      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "INBOX" ? (
         <section className={styles.workspace}>
         <aside className={styles.views}>
           <div className={styles.filterSection}>
@@ -560,7 +564,7 @@ export default function WhatsAppPage() {
                   type="button"
                   key={ticket.id}
                   className={`${styles.ticket} ${selectedId === ticket.id ? styles.ticketActive : ""}`}
-                  onClick={() => { selectedRef.current = ticket.id; const cached = detailCache.current.get(ticket.id); setDetail(cached || null); setDetailLoading(!cached); setSelectedId(ticket.id); }}
+                  onClick={() => { setManagementSelection(null); selectedRef.current = ticket.id; const cached = detailCache.current.get(ticket.id); setDetail(cached || null); setDetailLoading(!cached); setSelectedId(ticket.id); }}
                 >
                   <ChatAvatar id={ticket.id} name={ticket.senderName || ticket.subject} group={ticket.channel.kind === "GROUP"} />
                   <div className={styles.ticketText}>
@@ -698,6 +702,7 @@ export default function WhatsAppPage() {
           clients={clientOptions}
           members={memberOptions}
           onOpenTicket={(id) => {
+            setManagementSelection(null);
             setView("GENERAL");
             setSelectedId(id);
             setSection("INBOX");
