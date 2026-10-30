@@ -1,0 +1,11 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),mark:vi.fn()}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("@/modules/whatsapp/read-state",()=>({markConversationRead:m.mark}));
+import { POST } from "./route";
+const post=(body:unknown)=>POST(new Request("https://hub.test/read",{method:"POST",body:JSON.stringify(body)}),{params:Promise.resolve({id:"ticket"})});
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",userId:"operator",role:"OPERATOR"});m.permission.mockResolvedValue({canView:true,canEdit:false});m.mark.mockResolvedValue(1);});
+it("marks only the authenticated operator and returns concurrent arrivals still unread",async()=>{expect(await(await post({messageId:"shown",userId:"another"})).json()).toEqual({unreadCount:1});expect(m.mark).toHaveBeenCalledWith("org","operator","ticket","shown");});
+it("allows readers without permission to send messages",async()=>{expect((await post({messageId:"shown"})).status).toBe(200);});
+it("rejects inaccessible messages and malformed markers",async()=>{m.mark.mockResolvedValue(null);expect((await post({messageId:"foreign"})).status).toBe(404);m.mark.mockClear();expect((await post({})).status).toBe(400);expect(m.mark).not.toHaveBeenCalled();});
+it("requires permission before changing read state",async()=>{m.permission.mockResolvedValue({canView:false});expect((await post({messageId:"shown"})).status).toBe(403);expect(m.mark).not.toHaveBeenCalled();});

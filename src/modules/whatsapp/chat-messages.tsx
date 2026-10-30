@@ -20,7 +20,7 @@ function AttachmentPreview({ conversationId, attachment, message }: { conversati
     <Button component="a" href={src} target="_blank" rel="noreferrer" size="compact-xs" variant="subtle" color="gray" leftSection={<IconDownload size={13} />}>{kind === "file" ? attachment.name : kind === "audio" ? "Baixar áudio" : kind === "video" ? "Baixar vídeo" : "Baixar imagem"}</Button>
   </div>;
 }
-export const ChatMessages = memo(function ChatMessages({ conversationId, messages, senderName, hasOlder, loadingOlder, onLoadOlder }: { conversationId: string; messages: Message[]; senderName: string; hasOlder?: boolean; loadingOlder?: boolean; onLoadOlder?: () => void }) {
+export const ChatMessages = memo(function ChatMessages({ conversationId, messages, senderName, hasOlder, loadingOlder, onLoadOlder, onRead }: { conversationId: string; messages: Message[]; senderName: string; hasOlder?: boolean; loadingOlder?: boolean; onLoadOlder?: () => void; onRead?: (id: string, messageId: string) => void }) {
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const firstMessageId = messages[0]?.id;
   const prepend = useRef<{id:string;top:number;height:number}|null>(null);
@@ -45,6 +45,15 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
     if (content.current) observer.observe(content.current);
     return () => observer.disconnect();
   }, []);
+  useEffect(() => {
+    const visibleRead = () => { const el = viewport.current; if (last?.id && el && document.visibilityState === "visible" && el.scrollHeight - el.scrollTop - el.clientHeight < 90) onRead?.(conversationId, last.id); };
+    const timer = setTimeout(visibleRead, 700);
+    const el = viewport.current;
+    el?.addEventListener("scroll", visibleRead, { passive: true });
+    document.addEventListener("visibilitychange", visibleRead);
+    window.addEventListener("focus", visibleRead);
+    return () => { clearTimeout(timer); el?.removeEventListener("scroll", visibleRead); document.removeEventListener("visibilitychange", visibleRead); window.removeEventListener("focus", visibleRead); };
+  }, [conversationId, last?.id, onRead]);
   return <div className={styles.messagesFrame}>
     <div ref={viewport} className={styles.messages} role="log" aria-label="Mensagens da conversa" onScroll={() => { const el = viewport.current; if (!el) return; sticky.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90; if (sticky.current) setHasNew(false); }}>
       <div ref={content}>{hasOlder && <Group justify="center" py="sm"><Button variant="light" size="xs" loading={loadingOlder} onClick={() => { sticky.current = false; if (viewport.current) prepend.current = {id:conversationId,top:viewport.current.scrollTop,height:viewport.current.scrollHeight}; onLoadOlder?.(); }}>Carregar mensagens anteriores</Button></Group>}{messages.map((message) => <div key={message.id} className={`${styles.messageRow} ${message.direction === "OUTBOUND" ? styles.outbound : message.direction === "INTERNAL" ? styles.internal : ""}`}>

@@ -1,3 +1,4 @@
+vi.mock("@/modules/whatsapp/read-state",()=>({unreadCounts:vi.fn(async()=>new Map([["ticket",3]]))}));
 import {beforeEach,expect,it,vi} from "vitest";
 const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),find:vi.fn(),history:vi.fn()}));
 vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findMany:m.find},serviceTicketHistory:{findMany:m.history}}}));
@@ -11,3 +12,7 @@ it("loads the lightweight inbox without message joins or satisfaction history",a
   expect((await response.json()).stats.facets.status.OPEN).toBe(0);
 });
 it("enforces permissions before loading the inbox",async()=>{m.permission.mockResolvedValue({canView:false});expect((await GET(new Request("https://example.test/api/whatsapp?light=1"))).status).toBe(403);expect(m.find).not.toHaveBeenCalled();});
+
+it("includes per-operator unread counts without loading message histories",async()=>{m.find.mockResolvedValueOnce([{id:"ticket",senderEmail:"wa-contact:5511999999999"}]).mockResolvedValueOnce([]);const body=await(await GET(new Request("https://example.test/api/whatsapp?light=1"))).json();expect(body.tickets[0].unreadCount).toBe(3);});
+
+it("filters unread conversations before applying the list limit",async()=>{await GET(new Request("https://example.test/api/whatsapp?light=1&unread=1"));expect(m.find.mock.calls[0][0].where.AND).toEqual([{id:{in:["ticket"]}}]);});

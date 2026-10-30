@@ -312,6 +312,7 @@ enum AssistantMessageRole {
 }
 
 model Organization {
+  whatsappReadStates WhatsAppReadState[]
   notionConnection NotionConnection?
   meetings TeamMeeting[]
   calendarEvents TeamCalendarEvent[]
@@ -368,6 +369,7 @@ model NotionConnection {
 }
 
 model User {
+  whatsappReadStates WhatsAppReadState[]
   createdMeetings TeamMeeting[] @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
   meetingActions MeetingActionItem[]
@@ -1832,6 +1834,7 @@ model ClientWhatsAppIdentity {
 }
 
 model ServiceTicket {
+  whatsappReadStates WhatsAppReadState[]
   id                String                @id @default(cuid())
   mergedIntoId      String?
   organizationId    String
@@ -2165,4 +2168,16 @@ model WhatsAppWebhookInbox {
   claimedAt DateTime?
   connection WhatsAppConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   @@index([connectionId, status, receivedAt])
+}
+
+model WhatsAppReadState {
+  organizationId String
+  userId String
+  ticketId String
+  readAt DateTime
+  lastMessageId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticket ServiceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  @@id([organizationId, userId, ticketId])
 }

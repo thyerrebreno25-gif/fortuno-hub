@@ -67,6 +67,7 @@ type Bootstrap = {
 };
 
 type Ticket = {
+  unreadCount?: number;
   id: string;
   subject: string;
   senderName: string | null;
@@ -173,6 +174,7 @@ export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
   const [section, setSection] = useState<Section>("INBOX");
   const [view, setView] = useState<View>("GENERAL");
+  const [onlyUnread, setOnlyUnread] = useState(false);
   const [chatKind, setChatKind] = useState<InboxKind>("ALL");
   const [chatStatus, setChatStatus] = useState<InboxStatus>("OPEN");
   const [transferOpened, setTransferOpened] = useState(false);
@@ -190,16 +192,16 @@ export default function WhatsAppPage() {
   const [reply, setReply] = useState("");
   const [historySync, setHistorySync] = useState<HistorySync | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
-  const filterKey = JSON.stringify([view, chatKind, chatStatus, search.trim()]);
+  const filterKey = JSON.stringify([view, chatKind, chatStatus, search.trim(), onlyUnread]);
   const currentUserId = bootstrap?.currentUser.id || "";
   const filters = useMemo(() => ({ view, kind: chatKind, status: chatStatus }), [view, chatKind, chatStatus]);
   const tickets = useMemo(() => {
     if (!inbox.complete) return inbox.key === filterKey ? inbox.tickets : [];
     const needle = search.trim().toLocaleLowerCase("pt-BR");
-    return inbox.tickets.filter((ticket) => matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, filters, currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
-  }, [inbox, filterKey, filters, search, currentUserId]);
+    return inbox.tickets.filter((ticket) => (!onlyUnread || Boolean(ticket.unreadCount)) && matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, filters, currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
+  }, [inbox, filterKey, filters, search, currentUserId, onlyUnread]);
   const stats = useMemo(() => baseStats && inbox.complete ? { ...baseStats, facets: inboxFacets(inbox.tickets.map((ticket) => ({ ...ticket, assignedToId: ticket.assignedTo?.id || null })), filters, currentUserId) } : baseStats, [baseStats, inbox, filters, currentUserId]);
-  const selectedId = tickets.some((ticket) => ticket.id === preferredId) ? preferredId : tickets[0]?.id || null;
+  const selectedId = tickets.some((ticket) => ticket.id === preferredId) ? preferredId : onlyUnread ? null : tickets[0]?.id || null;
   const selectedRef = useRef<string | null>(null);
   const detailCache = useRef(new Map<string, TicketDetail>());
   const lastRevision = useRef("");
@@ -223,9 +225,22 @@ export default function WhatsAppPage() {
     clientId: "",
   });
 
+  const readMarkers = useRef(new Map<string, string>());
+  const markRead = useCallback(async (id: string, messageId: string) => {
+    if (selectedRef.current !== id || document.visibilityState !== "visible" || readMarkers.current.get(id) === messageId) return;
+    readMarkers.current.set(id, messageId);
+    try {
+      const response = await fetch('/api/whatsapp/' + encodeURIComponent(id) + '/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId }) });
+      const body = await readResponse<{ unreadCount: number }>(response);
+      listRequest.current++;
+      lastRevision.current = "";
+      setInbox(current => ({ ...current, tickets: current.tickets.map(ticket => ticket.id === id ? { ...ticket, unreadCount: body.unreadCount } : ticket) }));
+    } catch { readMarkers.current.delete(id); }
+  }, []);
+
   const loadList = useCallback(async () => {
     const request = ++listRequest.current;
-    if (!partialList.current) {
+    if (!partialList.current && !onlyUnread) {
     const snapshot = await readResponse<{ tickets: Ticket[]; stats: Stats; hasMore: boolean }>(await fetch("/api/whatsapp?view=GENERAL&kind=ALL&status=ALL&light=1", { cache: "no-store" }));
     if (request !== listRequest.current) return;
     for (const ticket of snapshot.tickets) ticketVersions.current.set(ticket.id, (ticket as Ticket & {updatedAt?:string}).updatedAt || "");
@@ -235,15 +250,16 @@ export default function WhatsAppPage() {
     partialList.current = true;
     }
     const params = new URLSearchParams({ view, kind: chatKind, status: chatStatus, light: "1" });
+    if (onlyUnread) params.set("unread", "1");
     if (search.trim()) params.set("search", search.trim());
     const payload = await readResponse<{ tickets: Ticket[]; stats: Stats }>(
       await fetch(`/api/whatsapp?${params}`, { cache: "no-store" }),
     );
     if (request !== listRequest.current) return;
     for (const ticket of payload.tickets) ticketVersions.current.set(ticket.id, (ticket as Ticket & {updatedAt?:string}).updatedAt || "");
-    setInbox({ tickets: payload.tickets, complete: false, key: JSON.stringify([view, chatKind, chatStatus, search.trim()]) });
+    setInbox({ tickets: payload.tickets, complete: false, key: JSON.stringify([view, chatKind, chatStatus, search.trim(), onlyUnread]) });
     setStats(payload.stats);
-  }, [search, view, chatKind, chatStatus]);
+  }, [search, view, chatKind, chatStatus, onlyUnread]);
 
   const loadDetail = useCallback(async (id: string, silent = false) => {
     const request = ++detailRequest.current;
@@ -527,6 +543,7 @@ export default function WhatsAppPage() {
 
         <div className={styles.listPanel}>
           <div className={styles.listHeader}>
+            <Text fw={850} size="lg" mb="sm">Conversas</Text>
             <TextInput
               leftSection={<IconSearch size={16} />}
               placeholder="Buscar contato, cliente ou mensagem"
@@ -534,6 +551,7 @@ export default function WhatsAppPage() {
               onChange={(event) => setSearch(event.currentTarget.value)}
               className={styles.search}
             />
+            <Group gap={6} mt="sm"><Button size="compact-xs" radius="xl" variant={onlyUnread ? "light" : "subtle"} onClick={() => setOnlyUnread(value => !value)}>Não lidas</Button>{([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <Button key={item.value} size="compact-xs" radius="xl" variant={chatKind === item.value ? "light" : "subtle"} onClick={() => setChatKind(item.value)}>{item.label}</Button>)}</Group>
           </div>
           <div className={styles.ticketList}>
             {tickets.length ? (
@@ -550,7 +568,7 @@ export default function WhatsAppPage() {
                       <Text fw={750} size="sm" truncate>{ticket.senderName || ticket.subject}</Text>
                       <Text size="xs" c="dimmed" className={styles.ticketDate}>{formatDate(ticket.lastMessageAt)}</Text>
                     </Group>
-                    <Text size="xs" c="dimmed" lineClamp={1}>{ticket.snippet || "Sem mensagem"}</Text>
+                    <Group justify="space-between" gap="xs" wrap="nowrap"><Text size="xs" c="dimmed" lineClamp={1} style={{ flex: 1 }}>{ticket.snippet || "Sem mensagem"}</Text>{Boolean(ticket.unreadCount) && <Badge circle color="teal" size="lg" aria-label={`${ticket.unreadCount} mensagens não lidas`}>{ticket.unreadCount! > 99 ? "99+" : ticket.unreadCount}</Badge>}</Group>
                     <Group gap={6} mt={6} wrap="nowrap">
                       <Badge size="xs" variant="light" color={ticket.status === "RESOLVED" ? "gray" : ticket.assignedTo ? "blue" : "orange"}>
                         {statusLabels[ticket.status] || ticket.status}
@@ -628,7 +646,7 @@ export default function WhatsAppPage() {
                 </div>
               </div>
 
-              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} />
+              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} />
 
               {detail.status !== "RESOLVED" ? (
                 <div className={styles.composer}>
