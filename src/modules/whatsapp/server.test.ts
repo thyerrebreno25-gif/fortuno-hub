@@ -24,3 +24,16 @@ describe("Merged ticket aliases", () => {
     await expect(resolveWhatsappTicketId("old", "org")).rejects.toThrow("circular");
   });
 });
+
+it("loads only the latest message page and exposes older history without querying all messages",async()=>{
+  const messages=Array.from({length:51},(_,index)=>({id:String(100-index)}));
+  m.find.mockResolvedValue({id:"chat",mergedIntoId:null,messages});
+  const ticket=await getWhatsappTicket("chat","org",{});
+  expect(ticket?.messages).toHaveLength(50);expect(ticket).toHaveProperty("hasOlderMessages",true);
+  expect(ticket?.messages[0].id).toBe("51");expect(ticket?.messages.at(-1)?.id).toBe("100");
+  expect(m.find.mock.calls[0][0].include.messages).toMatchObject({take:51,orderBy:[{receivedAt:"desc"},{id:"desc"}]});
+});
+it("uses a stable cursor for older messages",async()=>{
+  m.find.mockResolvedValue({id:"chat",mergedIntoId:null,messages:[]});await getWhatsappTicket("chat","org",{beforeId:"message"});
+  expect(m.find.mock.calls[0][0].include.messages).toMatchObject({cursor:{id:"message"},skip:1,take:51});
+});

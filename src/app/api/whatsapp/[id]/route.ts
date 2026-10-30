@@ -39,8 +39,14 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   }
 
-  const { id } = await context.params;
-  const ticket = await getWhatsappTicket(id, member.organizationId);
+  let { id } = await context.params;
+  const beforeId = new URL(_request.url).searchParams.get("before") || undefined;
+  if (beforeId) {
+    id = await resolveWhatsappTicketId(id, member.organizationId);
+    const cursor = await prisma.serviceMessage.findFirst({ where: { id: beforeId, ticketId: id }, select: { id: true } });
+    if (!cursor) return NextResponse.json({ error: "Página de mensagens inválida." }, { status: 400 });
+  }
+  const ticket = await getWhatsappTicket(id, member.organizationId, { beforeId });
   return ticket
     ? NextResponse.json({ ticket })
     : NextResponse.json(
@@ -64,7 +70,7 @@ export async function PATCH(request: Request, context: Context) {
   }
 
   const { id: requestedId } = await context.params;
-  const current = await getWhatsappTicket(requestedId, member.organizationId);
+  const current = await getWhatsappTicket(requestedId, member.organizationId, {});
   if (!current) {
     return NextResponse.json(
       { error: "Atendimento não encontrado." },
@@ -387,6 +393,6 @@ export async function PATCH(request: Request, context: Context) {
   }
 
   return NextResponse.json({
-    ticket: await getWhatsappTicket(id, member.organizationId),
+    ticket: await getWhatsappTicket(id, member.organizationId, {}),
   });
 }

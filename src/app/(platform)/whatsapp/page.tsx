@@ -34,6 +34,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
+import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
 import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
@@ -98,6 +99,8 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
       externalTenantName: string | null;
     } | null;
   } | null;
+  hasOlderMessages?: boolean;
+  updatedAt?: string;
   messages: Array<{
     id: string;
     direction: "INBOUND" | "OUTBOUND" | "INTERNAL";
@@ -180,6 +183,7 @@ export default function WhatsAppPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [connectionSettingsOpened, setConnectionSettingsOpened] = useState(false);
@@ -199,6 +203,9 @@ export default function WhatsAppPage() {
   const selectedRef = useRef<string | null>(null);
   const detailCache = useRef(new Map<string, TicketDetail>());
   const lastRevision = useRef("");
+  const partialList = useRef(false);
+  const ticketVersions = useRef(new Map<string,string>());
+  const detailController = useRef<AbortController | null>(null);
   const listRequest = useRef(0), detailRequest = useRef(0);
   const [syncError, setSyncError] = useState(false);
   const connected = bootstrap?.mode === "CONNECTED";
@@ -218,32 +225,46 @@ export default function WhatsAppPage() {
 
   const loadList = useCallback(async () => {
     const request = ++listRequest.current;
-    const snapshot = await readResponse<{ tickets: Ticket[]; stats: Stats; hasMore: boolean }>(await fetch("/api/whatsapp?view=GENERAL&kind=ALL&status=ALL", { cache: "no-store" }));
+    if (!partialList.current) {
+    const snapshot = await readResponse<{ tickets: Ticket[]; stats: Stats; hasMore: boolean }>(await fetch("/api/whatsapp?view=GENERAL&kind=ALL&status=ALL&light=1", { cache: "no-store" }));
     if (request !== listRequest.current) return;
+    for (const ticket of snapshot.tickets) ticketVersions.current.set(ticket.id, (ticket as Ticket & {updatedAt?:string}).updatedAt || "");
     if (!snapshot.hasMore) {
       setInbox({ tickets: snapshot.tickets, complete: true, key: "" }); setStats(snapshot.stats); return;
     }
-    const params = new URLSearchParams({ view, kind: chatKind, status: chatStatus });
+    partialList.current = true;
+    }
+    const params = new URLSearchParams({ view, kind: chatKind, status: chatStatus, light: "1" });
     if (search.trim()) params.set("search", search.trim());
     const payload = await readResponse<{ tickets: Ticket[]; stats: Stats }>(
       await fetch(`/api/whatsapp?${params}`, { cache: "no-store" }),
     );
     if (request !== listRequest.current) return;
+    for (const ticket of payload.tickets) ticketVersions.current.set(ticket.id, (ticket as Ticket & {updatedAt?:string}).updatedAt || "");
     setInbox({ tickets: payload.tickets, complete: false, key: JSON.stringify([view, chatKind, chatStatus, search.trim()]) });
     setStats(payload.stats);
   }, [search, view, chatKind, chatStatus]);
 
   const loadDetail = useCallback(async (id: string, silent = false) => {
     const request = ++detailRequest.current;
+    detailController.current?.abort();
+    const controller = new AbortController(); detailController.current = controller;
     const cached = detailCache.current.get(id);
     if (cached && selectedRef.current === id) { setDetail(cached); setDetailLoading(false); }
     else if (!silent) setDetailLoading(true);
     try {
       const payload = await readResponse<{ ticket: TicketDetail }>(
-        await fetch(`/api/whatsapp/${id}`, { cache: "no-store" }),
+        await fetch(`/api/whatsapp/${id}`, { cache: "no-store", signal: controller.signal }),
       );
-      if (request === detailRequest.current && selectedRef.current === id) { detailCache.current.set(id, payload.ticket); setDetail(payload.ticket); }
+      if (request === detailRequest.current && selectedRef.current === id) {
+        const previous = detailCache.current.get(id);
+        const messages = mergeChatMessages(previous?.messages || [], payload.ticket.messages);
+        const next = {...payload.ticket, messages, hasOlderMessages: previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
+        detailCache.current.set(id, next); setDetail(next);
+        if (detailCache.current.size > 20) { const oldest = detailCache.current.keys().next().value; if (oldest && oldest !== id) detailCache.current.delete(oldest); }
+      }
     } catch (error) {
+      if (controller.signal.aborted) return;
       if (!silent) notifications.show({
         color: "red",
         title: "Central WhatsApp",
@@ -297,7 +318,9 @@ export default function WhatsAppPage() {
         setHistorySync(state.historySync || null);
         if (state.mode !== "CONNECTED") return;
         if (section === "INBOX" && lastRevision.current !== state.revision) {
-          await Promise.all([loadList(), selectedId ? loadDetail(selectedId, true) : Promise.resolve()]);
+          await loadList();
+          const currentId = selectedRef.current;
+          if (currentId && detailCache.current.get(currentId)?.updatedAt !== ticketVersions.current.get(currentId)) await loadDetail(currentId, true);
           if (!cancelled) lastRevision.current = state.revision;
         }
         if (!cancelled) setSyncError(false);
@@ -309,7 +332,7 @@ export default function WhatsAppPage() {
     const resume = () => { void sync(); };
     window.addEventListener("focus", resume); document.addEventListener("visibilitychange", resume);
     return () => { cancelled = true; controller.abort(); clearTimeout(start); clearInterval(timer); window.removeEventListener("focus", resume); document.removeEventListener("visibilitychange", resume); };
-  }, [connected, section, selectedId, saving, loadList, loadDetail, onConnectionStatus]);
+  }, [connected, section, saving, loadList, loadDetail, onConnectionStatus]);
 
   const clientOptions = useMemo(
     () =>
@@ -328,6 +351,19 @@ export default function WhatsAppPage() {
     [bootstrap],
   );
 
+  const loadOlderMessages = useCallback(async () => {
+    const id = selectedRef.current, previous = id ? detailCache.current.get(id) : null;
+    if (!id || !previous?.messages.length || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const payload = await readResponse<{ticket:TicketDetail}>(await fetch(`/api/whatsapp/${id}?before=${encodeURIComponent(previous.messages[0].id)}`,{cache:"no-store"}));
+      const current = detailCache.current.get(id) || previous;
+      const next = {...current, messages:mergeChatMessages(current.messages,payload.ticket.messages),hasOlderMessages:payload.ticket.hasOlderMessages};
+      detailCache.current.set(id,next);if(selectedRef.current===id)setDetail(next);
+    }catch(error){notifications.show({color:"red",title:"Mensagens anteriores",message:error instanceof Error?error.message:"Não foi possível carregar o histórico."});}
+    finally{setLoadingOlder(false);}
+  }, [loadingOlder]);
+
   async function mutate(action: Record<string, unknown>, success: string) {
     if (!selectedId) return false;
     const id = selectedId;
@@ -341,8 +377,10 @@ export default function WhatsAppPage() {
           body: JSON.stringify(action),
         }),
       );
-      detailCache.current.set(id, payload.ticket);
-      if (selectedRef.current === id) setDetail(payload.ticket);
+      const previous = detailCache.current.get(id);
+      const next = {...payload.ticket, messages:mergeChatMessages(previous?.messages || [],payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
+      detailCache.current.set(id, next);
+      if (selectedRef.current === id) setDetail(next);
       await loadList();
       notifications.show({ color: "green", title: "Tudo certo", message: success });
       return true;
@@ -504,7 +542,7 @@ export default function WhatsAppPage() {
                   type="button"
                   key={ticket.id}
                   className={`${styles.ticket} ${selectedId === ticket.id ? styles.ticketActive : ""}`}
-                  onClick={() => setSelectedId(ticket.id)}
+                  onClick={() => { selectedRef.current = ticket.id; const cached = detailCache.current.get(ticket.id); setDetail(cached || null); setDetailLoading(!cached); setSelectedId(ticket.id); }}
                 >
                   <Avatar color={ticket.channel.kind === "GROUP" ? "violet" : "green"} radius="xl">
                     {ticket.channel.kind === "GROUP" ? <IconUsers size={18} /> : (ticket.senderName || "?").slice(0, 1).toUpperCase()}
@@ -589,7 +627,7 @@ export default function WhatsAppPage() {
                 </div>
               </div>
 
-              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} />
+              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} />
 
               {detail.status !== "RESOLVED" ? (
                 <div className={styles.composer}>

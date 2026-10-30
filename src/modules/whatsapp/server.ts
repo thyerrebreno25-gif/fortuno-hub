@@ -111,7 +111,7 @@ export async function resolveWhatsappTicketId(id: string, organizationId: string
   }
   throw new Error("Referência circular de atendimento.");
 }
-export async function getWhatsappTicket(id: string, organizationId: string) {
+export async function getWhatsappTicket(id: string, organizationId: string, page?: { beforeId?: string }) {
   let current = id;
   for (let depth = 0; depth < 5; depth++) {
   const ticket = await prisma.serviceTicket.findFirst({
@@ -133,7 +133,7 @@ export async function getWhatsappTicket(id: string, organizationId: string) {
       },
       assignedTo: { select: { id: true, name: true, email: true } },
       messages: {
-        orderBy: { receivedAt: "asc" },
+        ...(page ? { take: 51, orderBy: [{ receivedAt: "desc" as const }, { id: "desc" as const }], ...(page.beforeId ? { cursor: { id: page.beforeId }, skip: 1 } : {}) } : { orderBy: { receivedAt: "asc" as const } }),
         include: { attachments: { orderBy: { createdAt: "asc" } } },
       },
       history: {
@@ -142,7 +142,7 @@ export async function getWhatsappTicket(id: string, organizationId: string) {
       },
     },
   });
-  if (!ticket?.mergedIntoId) return ticket;
+  if (!ticket?.mergedIntoId) return ticket && page ? { ...ticket, messages: ticket.messages.slice(0, 50).reverse(), hasOlderMessages: ticket.messages.length > 50 } : ticket;
   current = ticket.mergedIntoId;
   }
   return null;

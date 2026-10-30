@@ -64,6 +64,15 @@ export async function GET(request: Request) {
     ];
   }
 
+  if (url.searchParams.get("light") === "1") {
+    const [rows, metrics] = await Promise.all([
+      prisma.serviceTicket.findMany({where,orderBy:[{lastMessageAt:"desc"},{receivedAt:"desc"}],take:251,select:{id:true,subject:true,senderName:true,senderEmail:true,snippet:true,status:true,routingArea:true,routingReason:true,priority:true,assignedAt:true,receivedAt:true,resolvedAt:true,firstResponseAt:true,lastMessageAt:true,updatedAt:true,client:{select:{id:true,name:true}},assignedTo:{select:{id:true,name:true,email:true}}}}),
+      prisma.serviceTicket.findMany({where:baseWhere,take:2000,orderBy:{receivedAt:"desc"},select:{assignedToId:true,status:true,senderEmail:true}}),
+    ]);
+    const active=metrics.filter(ticket=>!["RESOLVED","SPAM"].includes(ticket.status));
+    return NextResponse.json({hasMore:rows.length>250,tickets:rows.slice(0,250).map(ticket=>({...ticket,channel:parseWhatsappChannelAddress(ticket.senderEmail)})),stats:{facets:inboxFacets(metrics,filters,member.userId),general:metrics.length,active:active.length,mine:active.filter(ticket=>ticket.assignedToId===member.userId).length,queue:active.filter(ticket=>!ticket.assignedToId).length}});
+  }
+
   const [tickets, metricTickets, satisfactionHistory] = await Promise.all([
     prisma.serviceTicket.findMany({
       where,
@@ -84,6 +93,7 @@ export async function GET(request: Request) {
         resolvedAt: true,
         firstResponseAt: true,
         lastMessageAt: true,
+        updatedAt: true,
         client: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         messages: {
