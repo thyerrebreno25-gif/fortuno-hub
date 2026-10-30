@@ -124,6 +124,6 @@ export async function drainUazapiInbox(connectionId?: string) {
     }
   }
   }
-  await Promise.all(Array.from({ length: Math.min(4, items.length) }, () => worker()));
+  await Promise.all(Array.from({ length: Math.min(2, items.length) }, () => worker()));
   return items.length;
 }

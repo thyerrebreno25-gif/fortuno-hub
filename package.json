@@ -29,6 +29,7 @@
     "@supabase/supabase-js": "2.110.7",
     "@tabler/icons-react": "^3.45.0",
     "@tanstack/react-query": "^5.101.4",
+    "@vercel/functions": "^3.10.5",
     "dayjs": "^1.11.21",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
