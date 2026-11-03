@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { actionEvent, actionInput, editableMeeting, meetingInput } from "./model";
@@ -100,8 +101,15 @@ export async function trashMeeting(member: MeetingMember, id: string, revision: 
 }
 
 export async function ensurePersonalMeetingEvents(organizationId:string,userId:string) {
- const meetings=await prisma.teamMeeting.findMany({where:{organizationId,deletedAt:null,status:{not:"CANCELLED"},OR:[{createdById:userId},{participants:{some:{userId}}}],events:{none:{userId,actionItemId:null,sourceKey:{startsWith:"meeting:"}}}},take:100,orderBy:{createdAt:"desc"},select:{id:true,title:true,agenda:true,startsAt:true,endsAt:true,location:true,meetLink:true,status:true}});
- if(!meetings.length) return 0;
- const result=await prisma.teamCalendarEvent.createMany({data:meetings.map(meeting=>({organizationId,userId,meetingId:meeting.id,sourceKey:`meeting:${meeting.id}`,title:meeting.title,description:meeting.agenda,startsAt:meeting.startsAt,endsAt:meeting.endsAt,location:[meeting.location,meeting.meetLink].filter(Boolean).join("\n"),status:meeting.status==="COMPLETED"?"COMPLETED":"ACTIVE",googleSyncStatus:"PENDING"})),skipDuplicates:true});
- return result.count;
+ return prisma.$transaction(async tx=>{
+  const where={organizationId,deletedAt:null,status:{not:"CANCELLED"},OR:[{createdById:userId},{participants:{some:{userId}}}],events:{none:{userId,actionItemId:null,sourceKey:{startsWith:"meeting:"}}}};
+  const candidates=await tx.teamMeeting.findMany({where,take:100,orderBy:{createdAt:"desc"},select:{id:true}});
+  if(!candidates.length) return 0;
+  // Serialize legacy-event repair with deletion and participant edits.
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "TeamMeeting" WHERE "id" IN (${Prisma.join(candidates.map(meeting=>meeting.id))}) ORDER BY "id" FOR UPDATE`);
+  const meetings=await tx.teamMeeting.findMany({where:{...where,id:{in:candidates.map(meeting=>meeting.id)}},select:{id:true,title:true,agenda:true,startsAt:true,endsAt:true,location:true,meetLink:true,status:true}});
+  if(!meetings.length) return 0;
+  const result=await tx.teamCalendarEvent.createMany({data:meetings.map(meeting=>({organizationId,userId,meetingId:meeting.id,sourceKey:`meeting:${meeting.id}`,title:meeting.title,description:meeting.agenda,startsAt:meeting.startsAt,endsAt:meeting.endsAt,location:[meeting.location,meeting.meetLink].filter(Boolean).join("\n"),status:meeting.status==="COMPLETED"?"COMPLETED":"ACTIVE",googleSyncStatus:"PENDING"})),skipDuplicates:true});
+  return result.count;
+ },{timeout:30000,maxWait:10000});
 }
