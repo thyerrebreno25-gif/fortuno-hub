@@ -34,7 +34,8 @@ export function AgendaPage() {
     const refresh = () => { if (document.visibilityState === "visible") void load(true); };
     const timer = window.setInterval(refresh, 60000);
     window.addEventListener("focus", refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    window.addEventListener("fortuno:calendar-changed",refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh);window.removeEventListener("fortuno:calendar-changed",refresh); };
   }, [load, modal, busy]);
   useEffect(() => {
     const url = new URL(window.location.href);

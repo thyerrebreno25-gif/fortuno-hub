@@ -1969,6 +1969,7 @@ model OperationalMapping {
 }
 
 model TeamMeeting {
+  deletedAt DateTime?
   id String @id @default(cuid())
   organizationId String
   createdById String

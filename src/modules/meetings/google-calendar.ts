@@ -65,7 +65,10 @@ export async function reconcileGoogleDeletions(organizationId: string, userId: s
 }
 export async function syncCalendarEvents(filter: { organizationId?: string; userId?: string; meetingId?: string } = {}) {
   if (!googleConfigured()) return { synced: 0, pending: true };
-  const events = await prisma.teamCalendarEvent.findMany({ where: { ...filter, googleSyncStatus: { in: ["PENDING", "ERROR"] } }, include: { meeting: true }, orderBy: { updatedAt: "asc" }, take: 40 });
+  const connected = await prisma.googleCalendarConnection.findMany({where:{status:"CONNECTED",...(filter.organizationId?{organizationId:filter.organizationId}:{}),...(filter.userId?{userId:filter.userId}:{})},select:{organizationId:true,userId:true}});
+  if(!connected.length) return {synced:0,pending:true};
+  const stale = new Date(Date.now()-5*60000);
+  const events = await prisma.teamCalendarEvent.findMany({ where: { ...filter, AND:[{OR:connected.map(connection=>({organizationId:connection.organizationId,userId:connection.userId}))},{OR:[{googleSyncStatus:{in:["PENDING","ERROR"]}},{googleSyncStatus:"PROCESSING",updatedAt:{lt:stale}}]}] }, include: { meeting: true }, orderBy: { updatedAt: "asc" }, take: 40 });
   // Generate the shared call before syncing other participants.
   events.sort((a, b) => Number(b.meeting?.createdById === b.userId) - Number(a.meeting?.createdById === a.userId));
   let synced = 0;
@@ -81,6 +84,8 @@ export async function syncCalendarEvents(filter: { organizationId?: string; user
       }
       const auth = connections.get(key);
       if (!auth) continue;
+      const claimed = await prisma.teamCalendarEvent.updateMany({where:{id:event.id,revision:event.revision,OR:[{googleSyncStatus:{in:["PENDING","ERROR"]}},{googleSyncStatus:"PROCESSING",updatedAt:{lt:stale}}]},data:{googleSyncStatus:"PROCESSING"}});
+      if(!claimed.count) continue;
       const id = event.googleEventId || googleEventId(event.id);
       const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(auth.connection.calendarId)}/events`;
       const headers = { Authorization: `Bearer ${auth.token}`, "Content-Type": "application/json" };

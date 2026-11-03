@@ -39,7 +39,7 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
     }
     // Supersede invitation emails still waiting for delivery; only the latest details matter.
     await tx.meetingDelivery.updateMany({ where: { meetingId: meeting.id, actionItemId: null, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } });
-    await tx.meetingDelivery.createMany({ data: participantIds.map((userId) => ({ organizationId: member.organizationId, userId, meetingId: meeting.id, dedupeKey: `meeting:${meeting.id}:${meeting.revision}:${userId}`, title: `${meeting.status === "CANCELLED" ? "Reunião cancelada" : id ? "Reunião atualizada" : "Convite de reunião"} · ${meeting.title}`, body: `${meeting.type} · ${meeting.startsAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}${meeting.location ? ` · ${meeting.location}` : ""}` })), skipDuplicates: true });
+    await tx.meetingDelivery.createMany({ data: participantIds.map((userId) => ({ organizationId: member.organizationId, userId, meetingId: meeting.id, dedupeKey: `${meeting.status === "CANCELLED" ? "meeting-cancelled" : "meeting"}:${meeting.id}:${meeting.revision}:${userId}`, title: `${meeting.status === "CANCELLED" ? "Reunião cancelada" : id ? "Reunião atualizada" : "Convite de reunião"} · ${meeting.title}`, body: `${meeting.type} · ${meeting.startsAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}${meeting.location ? ` · ${meeting.location}` : ""}` })), skipDuplicates: true });
     return meeting;
   }, { timeout: 30000, maxWait: 10000 });
 }
@@ -53,7 +53,7 @@ export async function saveAction(member: MeetingMember, meetingId: string, body:
     // Serialize changes to participants/cancellation with checklist edits.
     await tx.$queryRaw`SELECT "id" FROM "TeamMeeting" WHERE "id" = ${meetingId} FOR UPDATE`;
     const latest = await tx.teamMeeting.findUniqueOrThrow({ where: { id: meetingId }, include: { participants: { select: { userId: true } } } });
-    if (latest.status === "CANCELLED") throw new MeetingError("Esta reunião foi cancelada.");
+    if (latest.deletedAt || latest.status === "CANCELLED") throw new MeetingError("Esta reunião foi cancelada.");
     if (!manager && !latest.participants.some((item) => item.userId === member.userId)) throw new MeetingError("Você não participa mais desta reunião.", 403);
     const previous = id ? await tx.meetingActionItem.findFirst({ where: { id, meetingId } }) : null;
     if (id && !previous) throw new MeetingError("Entrega não encontrada.", 404);
@@ -82,4 +82,26 @@ export async function saveAction(member: MeetingMember, meetingId: string, body:
     if (!action.completedAt) await tx.meetingDelivery.create({ data: { organizationId: member.organizationId, userId: action.responsibleId, meetingId, actionItemId: action.id, dedupeKey: `assignment:${action.id}:${action.revision}`, title: `Entrega definida · ${action.title}`, body: `Prazo: ${action.dueAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · Reunião: ${meeting.title}` } });
     return action;
   }, { timeout: 30000, maxWait: 10000 });
+}
+
+export async function trashMeeting(member: MeetingMember, id: string, revision: number, restore = false) {
+  const current = await findMeeting(member, id, restore);
+  if (!editableMeeting(member, current)) throw new MeetingError("Somente o organizador ou um gestor pode excluir ou restaurar esta reunião.", 403);
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "id" FROM "TeamMeeting" WHERE "id" = ${id} FOR UPDATE`;
+    const changed = await tx.teamMeeting.updateMany({where:{id,organizationId:member.organizationId,revision,deletedAt:restore?{not:null}:null},data:{deletedAt:restore?null:new Date(),status:"CANCELLED",revision:{increment:1}}});
+    if(!changed.count) throw new MeetingError("A reunião foi alterada. Atualize a tela antes de continuar.",409);
+    await tx.teamCalendarEvent.updateMany({where:{organizationId:member.organizationId,meetingId:id},data:{status:"CANCELLED",googleSyncStatus:"PENDING",revision:{increment:1}}});
+    await tx.meetingDelivery.updateMany({where:{organizationId:member.organizationId,meetingId:id,emailStatus:"PENDING"},data:{emailStatus:"SKIPPED"}});
+    if(!restore) await tx.meetingDelivery.createMany({data:current.participants.map(person=>({organizationId:member.organizationId,userId:person.userId,meetingId:id,dedupeKey:`meeting-deleted:${id}:${revision+1}:${person.userId}`,title:`Reunião excluída · ${current.title}`,body:"A reunião foi retirada da agenda. Os compromissos vinculados serão cancelados.",emailStatus:"SKIPPED"})),skipDuplicates:true});
+    await tx.auditLog.create({data:{userId:member.userId,action:restore?"RESTORE_MEETING":"TRASH_MEETING",entity:"TeamMeeting",entityId:id,beforeData:{organizationId:member.organizationId,status:current.status,revision},afterData:{status:"CANCELLED",deleted:!restore,revision:revision+1}}});
+    return {ok:true,restored:restore};
+  },{timeout:30000,maxWait:10000});
+}
+
+export async function ensurePersonalMeetingEvents(organizationId:string,userId:string) {
+ const meetings=await prisma.teamMeeting.findMany({where:{organizationId,deletedAt:null,status:{not:"CANCELLED"},OR:[{createdById:userId},{participants:{some:{userId}}}],events:{none:{userId,actionItemId:null,sourceKey:{startsWith:"meeting:"}}}},take:100,orderBy:{createdAt:"desc"},select:{id:true,title:true,agenda:true,startsAt:true,endsAt:true,location:true,meetLink:true,status:true}});
+ if(!meetings.length) return 0;
+ const result=await prisma.teamCalendarEvent.createMany({data:meetings.map(meeting=>({organizationId,userId,meetingId:meeting.id,sourceKey:`meeting:${meeting.id}`,title:meeting.title,description:meeting.agenda,startsAt:meeting.startsAt,endsAt:meeting.endsAt,location:[meeting.location,meeting.meetLink].filter(Boolean).join("\n"),status:meeting.status==="COMPLETED"?"COMPLETED":"ACTIVE",googleSyncStatus:"PENDING"})),skipDuplicates:true});
+ return result.count;
 }

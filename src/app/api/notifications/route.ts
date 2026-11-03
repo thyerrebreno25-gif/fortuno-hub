@@ -1,3 +1,4 @@
+import { activityNotifications } from "@/modules/operations/notifications";
 import { meetingNotifications } from "@/modules/meetings/notifications";
 import { getRolePermissions } from "@/modules/permissions/permissions";
 import { NextResponse } from "next/server";
@@ -11,6 +12,8 @@ type NotificationItem = {
   description: string;
   href: string;
   createdAt: string;
+  popup?: boolean;
+  priority?: number;
 };
 
 export async function GET() {
@@ -93,7 +96,8 @@ export async function GET() {
     ]);
 
     const permissions = await getRolePermissions(member.organizationId, member.role);
-    const items: NotificationItem[] = permissions.MEETINGS.canView ? await meetingNotifications(member.organizationId, member.userId, now) : [];
+    const [meetingItems,activityItems]=await Promise.all([permissions.MEETINGS.canView ? meetingNotifications(member.organizationId,member.userId,now) : [],permissions.OPERATIONS.canView ? activityNotifications(member.organizationId,member.userId,now) : []]);
+    const items: NotificationItem[] = [...meetingItems,...activityItems];
 
     for (const item of imports) {
       const isFailed = item.status === "FAILED";
@@ -150,11 +154,12 @@ export async function GET() {
 
     items.sort(
       (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        (b.priority || 0) - (a.priority || 0) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
     return NextResponse.json({
-      items: items.slice(0, 20),
+      viewerKey: `${member.organizationId}:${member.userId}`,
+      items: items.slice(0, 60),
       total: items.length,
     });
   } catch (error) {

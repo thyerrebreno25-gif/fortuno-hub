@@ -13,11 +13,11 @@ export async function meetingAccess(module: "MEETINGS" | "CALENDAR" = "MEETINGS"
   return { member, permissions };
 }
 export type MeetingMember = Awaited<ReturnType<typeof meetingAccess>>["member"];
-export function meetingScope(member: MeetingMember) {
-  return { organizationId: member.organizationId, ...(["MASTER", "ADMIN", "MANAGER"].includes(member.role) ? {} : { OR: [{ createdById: member.userId }, { participants: { some: { userId: member.userId } } }] }) };
+export function meetingScope(member: MeetingMember, deleted = false) {
+  return { organizationId: member.organizationId, deletedAt: deleted ? { not: null } : null, ...(["MASTER", "ADMIN", "MANAGER"].includes(member.role) ? {} : { OR: [{ createdById: member.userId }, { participants: { some: { userId: member.userId } } }] }) };
 }
-export async function findMeeting(member: MeetingMember, id: string) {
-  const meeting = await prisma.teamMeeting.findFirst({ where: { id, ...meetingScope(member) }, include: { participants: { select: { userId: true } } } });
+export async function findMeeting(member: MeetingMember, id: string, deleted = false) {
+  const meeting = await prisma.teamMeeting.findFirst({ where: { id, ...meetingScope(member, deleted) }, include: { participants: { select: { userId: true } } } });
   if (!meeting) throw new MeetingError("Reunião não encontrada.", 404);
   return meeting;
 }

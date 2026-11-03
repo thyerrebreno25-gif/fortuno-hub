@@ -1,0 +1,10 @@
+import {prisma} from "@/lib/prisma";
+import {dayKey} from "@/modules/meetings/model";
+export async function activityNotifications(organizationId:string,userId:string,now=new Date()){
+ const scope={organizationId,responsibleId:userId,deletedAt:null,status:{notIn:["COMPLETED" as const,"DISREGARDED" as const]}};
+ const [assigned,due]=await Promise.all([
+  prisma.operationActivity.findMany({where:{...scope,events:{some:{type:{in:["ASSIGNED","CREATED"]},createdAt:{gte:new Date(+now-7*86400000)}}}},select:{id:true,title:true,client:{select:{name:true}},events:{where:{type:{in:["ASSIGNED","CREATED"]}},orderBy:{createdAt:"desc"},take:1,select:{id:true,createdAt:true}}},orderBy:{updatedAt:"desc"},take:20}),
+  prisma.operationActivity.findMany({where:{...scope,dueAt:{lte:new Date(+now+86400000)}},orderBy:{dueAt:"asc"},take:20,select:{id:true,title:true,dueAt:true,client:{select:{name:true}}}})
+ ]);
+ return [...assigned.filter(activity=>activity.events.length).map(activity=>({id:`operation-assigned:${activity.id}:${activity.events[0].id}`,type:"INFO" as const,title:"Atividade atribuída a você",description:`${activity.title} · ${activity.client.name}`,href:`/operacoes?activity=${encodeURIComponent(activity.id)}`,createdAt:activity.events[0].createdAt.toISOString(),popup:+now-+activity.events[0].createdAt<=86400000,priority:+now-+activity.events[0].createdAt<=86400000?25:15})),...due.map(activity=>({id:`operation-due:${activity.id}:${activity.dueAt!.toISOString()}:${+activity.dueAt!<+now?"overdue":"soon"}:${dayKey(now)}`,type:+activity.dueAt!<+now?"WARNING" as const:"INFO" as const,title:+activity.dueAt!<+now?"Atividade com prazo vencido":"Atividade próxima do prazo",description:`${activity.title} · ${activity.client.name} · ${activity.dueAt!.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}`,href:`/operacoes?activity=${encodeURIComponent(activity.id)}`,createdAt:now.toISOString(),popup:true,priority:20}))];
+}

@@ -10,8 +10,8 @@ import { GET as cron } from "@/app/api/cron/meeting-reminders/route";
 const member = { id: "m", userId: "a", organizationId: "org", role: "OPERATOR" as const, isTeamLeader: false, teamLeaderId: null, user: { id: "a", name: "A", email: "a@example.com" } };
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 it("restricts ordinary collaborators to meetings they created or participate in", () => {
-  expect(meetingScope(member)).toEqual({ organizationId: "org", OR: [{ createdById: "a" }, { participants: { some: { userId: "a" } } }] });
-  expect(meetingScope({ ...member, role: "ADMIN" })).toEqual({ organizationId: "org" });
+  expect(meetingScope(member)).toEqual({ organizationId: "org", deletedAt:null, OR: [{ createdById: "a" }, { participants: { some: { userId: "a" } } }] });
+  expect(meetingScope({ ...member, role: "ADMIN" })).toEqual({ organizationId: "org", deletedAt:null });
 });
 it("returns no meeting or audio for another organization or inaccessible meeting", async () => {
   mocks.member.mockResolvedValue(member); mocks.permissions.mockResolvedValue({ MEETINGS: { canView: true } }); mocks.meeting.mockResolvedValue(null);

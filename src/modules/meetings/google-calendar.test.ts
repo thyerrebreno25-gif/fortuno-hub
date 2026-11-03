@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const db = vi.hoisted(() => ({ teamMeeting: { updateMany: vi.fn() }, teamCalendarEvent: { findMany: vi.fn(), updateMany: vi.fn() }, googleCalendarConnection: { findUnique: vi.fn(), update: vi.fn() } }));
+const db = vi.hoisted(() => ({ teamMeeting: { updateMany: vi.fn() }, teamCalendarEvent: { findMany: vi.fn(), updateMany: vi.fn() }, googleCalendarConnection: { findMany:vi.fn(), findUnique: vi.fn(), update: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "token", encryptIntegrationSecret: (value: string) => value }));
 import { googleEventBody, googleEventId, reconcileGoogleDeletions, syncCalendarEvents } from "./google-calendar";
 const event = { id: "event", organizationId: "org", userId: "u", title: "Entrega", description: "", startsAt: new Date("2026-10-30T20:00:00Z"), endsAt: new Date("2026-10-30T20:30:00Z"), location: "", status: "ACTIVE", revision: 1, meetingId: "m", googleEventId: null };
-beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("GOOGLE_CALENDAR_CLIENT_ID", "id"); vi.stubEnv("GOOGLE_CALENDAR_CLIENT_SECRET", "secret"); vi.stubEnv("INTEGRATION_TOKEN_ENCRYPTION_KEY", "key"); db.teamCalendarEvent.findMany.mockResolvedValue([event]); db.teamCalendarEvent.updateMany.mockResolvedValue({ count: 1 }); db.googleCalendarConnection.findUnique.mockResolvedValue({ id: "connection", status: "CONNECTED", expiresAt: new Date(Date.now() + 3600000), encryptedAccessToken: "encrypted", calendarId: "primary" }); });
+beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("GOOGLE_CALENDAR_CLIENT_ID", "id"); vi.stubEnv("GOOGLE_CALENDAR_CLIENT_SECRET", "secret"); vi.stubEnv("INTEGRATION_TOKEN_ENCRYPTION_KEY", "key"); db.googleCalendarConnection.findMany.mockResolvedValue([{organizationId:"org",userId:"u"}]); db.teamCalendarEvent.findMany.mockResolvedValue([event]); db.teamCalendarEvent.updateMany.mockResolvedValue({ count: 1 }); db.googleCalendarConnection.findUnique.mockResolvedValue({ id: "connection", status: "CONNECTED", expiresAt: new Date(Date.now() + 3600000), encryptedAccessToken: "encrypted", calendarId: "primary" }); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 it("uses a deterministic Google-valid event ID and removes reminders after completion", () => {
   expect(googleEventId("event")).toMatch(/^[a-v0-9]{5,1024}$/);
@@ -22,7 +22,7 @@ it("keeps failed requests pending for retry instead of falsely marking success",
   expect(db.teamCalendarEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ googleSyncStatus: "ERROR" }) }));
 });
 it("requeues the latest revision when an edit raced the Google request", async () => {
-  db.teamCalendarEvent.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValue({ count: 1 }); vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
+  db.teamCalendarEvent.updateMany.mockResolvedValueOnce({count:1}).mockResolvedValueOnce({ count: 0 }).mockResolvedValue({ count: 1 }); vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
   await syncCalendarEvents();
   expect(db.teamCalendarEvent.updateMany).toHaveBeenLastCalledWith({ where: { id: "event", revision: { gt: 1 } }, data: { googleSyncStatus: "PENDING" } });
 });
@@ -68,3 +68,6 @@ it("leaves a pending conference queued instead of inventing a Meet link", async 
   expect(db.teamCalendarEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ googleSyncStatus: "PENDING" }) }));
   expect(db.teamMeeting.updateMany).not.toHaveBeenCalled();
 });
+
+it("does not let disconnected users occupy the batch ahead of connected calendars",async()=>{db.googleCalendarConnection.findMany.mockResolvedValue([{organizationId:"org",userId:"connected-user"}]);db.teamCalendarEvent.findMany.mockResolvedValue([]);await syncCalendarEvents({organizationId:"org"});expect(db.teamCalendarEvent.findMany.mock.calls[0][0].where.AND[0]).toEqual({OR:[{organizationId:"org",userId:"connected-user"}]});});
+it("does not call Google when another worker already claimed the same event",async()=>{db.teamCalendarEvent.updateMany.mockResolvedValue({count:0});const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);await syncCalendarEvents();expect(fetchMock).not.toHaveBeenCalled();});

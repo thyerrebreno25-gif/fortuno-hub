@@ -1,3 +1,4 @@
+import { ensurePersonalMeetingEvents } from "@/modules/meetings/service";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -12,10 +13,11 @@ export async function GET(request: Request) {
     const from = new Date(url.searchParams.get("from") || now.toISOString());
     const to = new Date(url.searchParams.get("to") || new Date(now.getTime() + 31 * 86400000).toISOString());
     if (!Number.isFinite(+from) || !Number.isFinite(+to) || from >= to || +to - +from > 93 * 86400000) throw new MeetingError("Selecione um intervalo válido de até 3 meses.");
+    await ensurePersonalMeetingEvents(member.organizationId,member.userId);
     const [initialEvents, connection, pending] = await Promise.all([
       prisma.teamCalendarEvent.findMany({ where: { organizationId: member.organizationId, userId: member.userId, status: { not: "CANCELLED" }, startsAt: { lt: to }, endsAt: { gte: from } }, orderBy: { startsAt: "asc" }, take: 1001 }),
       prisma.googleCalendarConnection.findUnique({ where: { organizationId_userId: { organizationId: member.organizationId, userId: member.userId } }, select: { status: true, lastError: true } }),
-      prisma.meetingActionItem.findMany({ where: { responsibleId: member.userId, completedAt: null, dueAt: { lte: new Date(Date.now() + 86400000) }, meeting: { organizationId: member.organizationId, status: { not: "CANCELLED" } } }, select: { id: true, title: true, dueAt: true, meetingId: true }, orderBy: { dueAt: "asc" }, take: 100 }),
+      prisma.meetingActionItem.findMany({ where: { responsibleId: member.userId, completedAt: null, dueAt: { lte: new Date(Date.now() + 86400000) }, meeting: { organizationId: member.organizationId, deletedAt: null, status: { not: "CANCELLED" } } }, select: { id: true, title: true, dueAt: true, meetingId: true }, orderBy: { dueAt: "asc" }, take: 100 }),
     ]);
     let external: Awaited<ReturnType<typeof listGoogleEvents>> = [];
     let googleError = "";
@@ -25,6 +27,7 @@ export async function GET(request: Request) {
       external = await listGoogleEvents(member.organizationId, member.userId, from, to);
       events = await prisma.teamCalendarEvent.findMany({ where: { organizationId: member.organizationId, userId: member.userId, status: { not: "CANCELLED" }, startsAt: { lt: to }, endsAt: { gte: from } }, orderBy: { startsAt: "asc" }, take: 1001 });
     } catch (error) { googleError = error instanceof Error ? error.message : "Falha na consulta Google."; }
+    if(connection?.status === "CONNECTED") after(async()=>{await syncCalendarEvents({organizationId:member.organizationId,userId:member.userId});});
     return NextResponse.json({ events: events.slice(0, 1000), truncated: events.length > 1000, external, pending, connection, googleConfigured: googleConfigured(), googleError, permissions });
   } catch (error) { return meetingFailure(error); }
 }

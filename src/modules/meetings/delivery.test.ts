@@ -23,3 +23,5 @@ it("only sends an email after claiming its queue row and uses a stable idempoten
   await deliverMeetingEmails();
   expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({ headers: expect.objectContaining({ "Idempotency-Key": "meeting:m:1:a" }) }));
 });
+
+it("never emails deleted meetings or collaborators removed from their participant list",async()=>{vi.stubEnv("RESEND_API_KEY","test");const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);db.meetingDelivery.findMany.mockResolvedValue([{id:"deleted",userId:"a",dedupeKey:"meeting:m:1:a",actionItem:null,meeting:{deletedAt:new Date(),status:"CANCELLED",participants:[{userId:"a"}]}},{id:"removed",userId:"a",dedupeKey:"meeting:m:1:a",actionItem:null,meeting:{deletedAt:null,status:"SCHEDULED",participants:[{userId:"b"}]}}]);await deliverMeetingEmails();expect(fetchMock).not.toHaveBeenCalled();expect(db.meetingDelivery.update).toHaveBeenCalledTimes(2);});

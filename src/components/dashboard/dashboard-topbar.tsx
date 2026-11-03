@@ -1,10 +1,12 @@
 "use client";
+import { notifications as toastNotifications } from "@mantine/notifications";
+import { notificationIds, popupBatch } from "@/modules/notifications/popup-state";
 
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMantineColorScheme } from "@mantine/core";
+import { Button, useMantineColorScheme } from "@mantine/core";
 import styles from "@/app/dashboard.module.css";
 
 type ProfileData = {
@@ -22,6 +24,7 @@ type NotificationItem = {
   description: string;
   href: string;
   createdAt: string;
+  popup?: boolean;
 };
 
 const roleLabels: Record<string, string> = {
@@ -54,30 +57,41 @@ export function DashboardTopbar() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [readIds, setReadIds] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    const stored = window.localStorage.getItem("fortuno-notifications-read");
-    if (!stored) return [];
-    try {
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [readIds,setReadIds]=useState<string[]>([]);
+  const viewerKey=useRef("");
+  const notificationBusy=useRef(false);
+  const activePopups=useRef<string[]>([]);
+  const shownMemory=useRef<string[]>([]), readMemory=useRef<string[]>([]);
   const darkMode = colorScheme === "dark";
 
   const loadNotifications = useCallback(async () => {
+    if(notificationBusy.current || document.visibilityState !== "visible") return;
+    notificationBusy.current=true;
     try {
       const response = await fetch("/api/notifications", { cache: "no-store" });
       const payload = await response.json();
       if (response.ok && Array.isArray(payload?.items)) {
+        const scope=typeof payload.viewerKey === "string" ? payload.viewerKey : "";
+        if(!scope) return;
+        const readKey="fortuno-notifications-read:"+scope,popupKey="fortuno-notifications-shown:"+scope;
+        let storedRead:string[]=[],storedShown:string[]=[];
+        try{storedRead=notificationIds(window.localStorage.getItem(readKey));storedShown=notificationIds(window.localStorage.getItem(popupKey));}catch{}
+        if(viewerKey.current !== scope){for(const id of activePopups.current)toastNotifications.hide(id);activePopups.current=[];viewerKey.current=scope;shownMemory.current=[];readMemory.current=[];}
+        storedRead=[...new Set([...storedRead,...readMemory.current])].slice(-1000);
+        storedShown=[...new Set([...storedShown,...shownMemory.current])].slice(-1000);
+        readMemory.current=storedRead;setReadIds(current=>current.length===storedRead.length&&current.every((id,index)=>id===storedRead[index])?current:storedRead);
+        const batch=popupBatch<NotificationItem>(payload.items,storedShown,storedRead);
+        shownMemory.current=batch.seen;
+        if(batch.show.some(item=>item.href.startsWith("/reunioes"))) window.dispatchEvent(new Event("fortuno:calendar-changed"));
+        try{window.localStorage.setItem(popupKey,JSON.stringify(batch.seen));}catch{}
+        for(const item of batch.show){const id="fortuno:"+scope+":"+item.id;activePopups.current.push(id);toastNotifications.show({id,title:item.title,color:item.type === "WARNING" ? "orange" : item.type === "ERROR" ? "red" : "blue",autoClose:12000,message:<div>{item.description}<br/><Button type="button" size="compact-xs" variant="light" mt="xs" onClick={()=>{setReadIds(current=>{const next=[...new Set([...current,item.id])].slice(-1000);try{window.localStorage.setItem(readKey,JSON.stringify(next));}catch{}readMemory.current=next;return next;});window.dispatchEvent(new CustomEvent("fortuno:notification-open",{detail:{href:item.href}}));router.push(item.href as Route);toastNotifications.hide(id);}}>Ver aviso</Button></div>});}
+        activePopups.current=activePopups.current.slice(-60);
         setNotifications(payload.items);
       }
     } catch {
       // Mantém a última lista disponível quando a conexão oscilar.
-    }
-  }, []);
+    } finally { notificationBusy.current=false; }
+  }, [router]);
 
   useEffect(() => {
     void fetch("/api/profile", { cache: "no-store" })
@@ -95,15 +109,17 @@ export function DashboardTopbar() {
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void loadNotifications(), 0);
-    const interval = window.setInterval(() => void loadNotifications(), 30000);
+    const interval = window.setInterval(() => void loadNotifications(), 15000);
     const handleVisibility = () => {
       if (document.visibilityState === "visible") void loadNotifications();
     };
     document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("fortuno:notifications-refresh",handleVisibility);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("fortuno:notifications-refresh",handleVisibility);
     };
   }, [loadNotifications]);
 
@@ -134,22 +150,12 @@ export function DashboardTopbar() {
   );
 
   function markAllRead() {
-    const ids = notifications.map((item) => item.id);
-    setReadIds(ids);
-    window.localStorage.setItem(
-      "fortuno-notifications-read",
-      JSON.stringify(ids),
-    );
+    setReadIds(current=>{const next=[...new Set([...current,...notifications.map(item=>item.id)])].slice(-1000);try{window.localStorage.setItem("fortuno-notifications-read:"+viewerKey.current,JSON.stringify(next));}catch{}return next;});
   }
-
-  function openNotification(item: NotificationItem) {
-    const next = Array.from(new Set([...readIds, item.id]));
-    setReadIds(next);
-    window.localStorage.setItem(
-      "fortuno-notifications-read",
-      JSON.stringify(next),
-    );
+  function openNotification(item:NotificationItem) {
+    setReadIds(current=>{const next=[...new Set([...current,item.id])].slice(-1000);try{window.localStorage.setItem("fortuno-notifications-read:"+viewerKey.current,JSON.stringify(next));}catch{}return next;});
     setNotificationsOpen(false);
+    window.dispatchEvent(new CustomEvent("fortuno:notification-open",{detail:{href:item.href}}));
     router.push(item.href as Route);
   }
 

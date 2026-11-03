@@ -1,0 +1,5 @@
+import {expect,it} from 'vitest';
+import {notificationIds,popupBatch} from './popup-state';
+it('shows only new popup alerts and never repeats read or previously displayed ones',()=>{const items=[{id:'new',popup:true},{id:'read',popup:true},{id:'seen',popup:true},{id:'quiet',popup:false}];const batch=popupBatch(items,['seen'],['read']);expect(batch.show.map(item=>item.id)).toEqual(['new']);expect(popupBatch(items,batch.seen,['read']).show).toEqual([]);});
+it('bounds the visible burst and remembers the rest instead of flooding every poll',()=>{const items=Array.from({length:8},(_,i)=>({id:String(i),popup:true}));const batch=popupBatch(items,[],[]);expect(batch.show).toHaveLength(3);expect(batch.seen).toHaveLength(8);expect(popupBatch(items,batch.seen,[]).show).toHaveLength(0);});
+it('handles corrupt local storage and bounds history',()=>{expect(notificationIds('bad')).toEqual([]);expect(notificationIds('[null,2,"a"]')).toEqual(['a']);expect(notificationIds(JSON.stringify(Array.from({length:1500},(_,i)=>String(i))))).toHaveLength(1000);});

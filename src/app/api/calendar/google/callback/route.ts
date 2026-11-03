@@ -1,3 +1,4 @@
+import { ensurePersonalMeetingEvents } from "@/modules/meetings/service";
 import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { after, NextResponse } from "next/server";
@@ -21,8 +22,9 @@ export async function GET(request: Request) {
     if (!response.ok || !token.access_token || !token.refresh_token || !String(token.scope || "").split(" ").includes(calendarScope)) throw new Error("O Google não liberou o acesso necessário. Autorize a agenda e tente novamente.");
     const data = { encryptedAccessToken: encryptIntegrationSecret(token.access_token), encryptedRefreshToken: encryptIntegrationSecret(token.refresh_token), expiresAt: new Date(Date.now() + (token.expires_in || 3600) * 1000), status: "CONNECTED", lastError: null };
     await prisma.googleCalendarConnection.upsert({ where: { organizationId_userId: { organizationId: member.organizationId, userId: member.userId } }, create: { ...data, organizationId: member.organizationId, userId: member.userId }, update: data });
+    await ensurePersonalMeetingEvents(member.organizationId,member.userId);
     // Reconcile all saved internal events, including events created before connecting.
-    await prisma.teamCalendarEvent.updateMany({ where: { organizationId: member.organizationId, userId: member.userId }, data: { googleSyncStatus: "PENDING" } });
+    await prisma.teamCalendarEvent.updateMany({ where: { organizationId: member.organizationId, userId: member.userId }, data: { googleSyncStatus: "PENDING", revision: {increment:1} } });
     after(async () => { await syncCalendarEvents({ organizationId: member.organizationId, userId: member.userId }); });
     target.searchParams.set("google", "connected");
   } catch (error) {
