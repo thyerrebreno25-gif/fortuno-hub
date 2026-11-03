@@ -1,3 +1,4 @@
+import { emailChannel } from "./email-channel";
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
@@ -11,6 +12,7 @@ export async function purgeExpiredServiceTickets(now = new Date()) {
 
   const retentionFilter = {
     ...activeMailbox,
+    ...emailChannel,
     OR: [
       {
         status: "SPAM" as const,
@@ -31,6 +33,7 @@ export async function purgeExpiredServiceTickets(now = new Date()) {
     prisma.serviceTicket.count({
       where: {
         ...activeMailbox,
+        ...emailChannel,
         OR: [{ status: "SPAM" }, { isSpam: true }],
         updatedAt: { lte: spamCutoff },
       },
@@ -38,6 +41,7 @@ export async function purgeExpiredServiceTickets(now = new Date()) {
     prisma.serviceTicket.count({
       where: {
         ...activeMailbox,
+        ...emailChannel,
         status: "RESOLVED",
         resolvedAt: { not: null, lte: resolvedCutoff },
       },

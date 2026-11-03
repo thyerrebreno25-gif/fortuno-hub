@@ -1,3 +1,5 @@
+import type { Prisma } from "@/generated/prisma/client";
+import { emailChannel } from "@/modules/atendimento/email-channel";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { activeMailbox, archivedMailbox } from "@/modules/atendimento/mailbox-archive";
@@ -126,7 +128,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const where: any = {
+  const where: Prisma.ServiceTicketWhereInput = {
+    ...emailChannel,
     organizationId: member.organizationId,
     ...(view === "ARCHIVED" ? archivedMailbox : activeMailbox),
   };
@@ -170,7 +173,7 @@ export async function GET(request: Request) {
     ];
   }
 
-  const common = { organizationId: member.organizationId, ...activeMailbox };
+  const common = { organizationId: member.organizationId, ...emailChannel, ...activeMailbox };
 
   const [tickets, general, mine, unassigned, waiting, resolved, spam, teamCounts, archived] =
     await Promise.all([
@@ -235,7 +238,7 @@ export async function GET(request: Request) {
             _count: { _all: true },
           })
         : Promise.resolve([]),
-      prisma.serviceTicket.count({ where: { organizationId: member.organizationId, ...archivedMailbox } }),
+      prisma.serviceTicket.count({ where: { organizationId: member.organizationId, ...emailChannel, ...archivedMailbox } }),
     ]);
 
   const byMember = Object.fromEntries(

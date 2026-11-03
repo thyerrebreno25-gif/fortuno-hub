@@ -1,3 +1,4 @@
+import { emailChannel } from "@/modules/atendimento/email-channel";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,7 +11,7 @@ type Context = { params: Promise<{ id: string }> };
 
 async function getTicket(id: string, organizationId: string) {
   return prisma.serviceTicket.findFirst({
-    where: { id, organizationId },
+    where: { id, organizationId, ...emailChannel },
     include: {
       client: { select: { id: true, name: true } },
       assignedTo: {
@@ -78,7 +79,7 @@ export async function PATCH(request: Request, context: Context) {
 
   const { id } = await context.params;
   const current = await prisma.serviceTicket.findFirst({
-    where: { id, organizationId: member.organizationId },
+    where: { id, organizationId: member.organizationId, ...emailChannel },
   });
 
   if (!current) {

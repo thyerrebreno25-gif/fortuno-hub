@@ -1,0 +1,9 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),find:vi.fn(),count:vi.fn(),group:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findMany:m.find,count:m.count,groupBy:m.group}}}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getServiceCenterPermission:m.permission,SERVICE_CENTER_MANAGER_ROLES:new Set(['MASTER','ADMIN','MANAGER'])}));
+import { GET } from "./route";
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:'org',userId:'user',role:'MASTER'});m.permission.mockResolvedValue({canView:true,canManage:true});m.find.mockResolvedValue([]);m.count.mockResolvedValue(0);m.group.mockResolvedValue([]);});
+it.each(['GENERAL','MINE','UNASSIGNED','WAITING','RESOLVED','SPAM','ARCHIVED'])('keeps the %s email view and every counter scoped to email channels',async view=>{expect((await GET(new Request('https://hub.test/api/atendimento?view='+view+'&search=cliente'))).status).toBe(200);for(const mock of [m.find,m.count,m.group])for(const [query] of mock.mock.calls)expect(query.where).toMatchObject({organizationId:'org',source:{in:['GMAIL','MANUAL']}});});
+it('keeps collaborator mailboxes scoped to emails too',async()=>{await GET(new Request('https://hub.test/api/atendimento?assignedToId=operator'));expect(m.find.mock.calls[0][0].where).toMatchObject({assignedToId:'operator',source:{in:['GMAIL','MANUAL']}});});
+it('checks permissions before loading emails',async()=>{m.permission.mockResolvedValue({canView:false});expect((await GET(new Request('https://hub.test/api/atendimento'))).status).toBe(403);expect(m.find).not.toHaveBeenCalled();});

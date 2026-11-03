@@ -1,3 +1,4 @@
+import { emailChannel } from "@/modules/atendimento/email-channel";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServiceCenterMember, getServiceCenterPermission } from "@/modules/atendimento/auth";
@@ -11,7 +12,7 @@ export async function DELETE(request: Request) {
   const body = await request.json().catch(() => null);
   if (body?.confirmation !== "EXCLUIR ARQUIVADOS") return NextResponse.json({ error: "Confirme a exclusão definitiva dos arquivados." }, { status: 400 });
   const count = await prisma.$transaction(async (tx) => {
-    const result = await tx.serviceTicket.deleteMany({ where: { organizationId: member.organizationId, ...archivedMailbox } });
+    const result = await tx.serviceTicket.deleteMany({ where: { organizationId: member.organizationId, ...emailChannel, ...archivedMailbox } });
     await tx.auditLog.create({ data: { userId: member.userId, action: "DELETE_ARCHIVED_MAILBOX", entity: "ServiceTicket", entityId: member.organizationId, afterData: { organizationId: member.organizationId, deleted: result.count } } });
     return result.count;
   });
@@ -27,10 +28,10 @@ export async function POST(request: Request) {
   if (!["archive", "restore"].includes(body?.action)) return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
   const count = await prisma.$transaction(async (tx) => {
     if (body.action === "restore") {
-      const result = await tx.serviceTicketHistory.updateMany({ where: { type: MAILBOX_ARCHIVE, ticket: { organizationId: member.organizationId } }, data: { type: "MAILBOX_RESTORED", message: "Atendimento restaurado na caixa de e-mails." } });
+      const result = await tx.serviceTicketHistory.updateMany({ where: { type: MAILBOX_ARCHIVE, ticket: { organizationId: member.organizationId, ...emailChannel } }, data: { type: "MAILBOX_RESTORED", message: "Atendimento restaurado na caixa de e-mails." } });
       return result.count;
     }
-    const tickets = await tx.serviceTicket.findMany({ where: { organizationId: member.organizationId, ...activeMailbox }, select: { id: true } });
+    const tickets = await tx.serviceTicket.findMany({ where: { organizationId: member.organizationId, ...emailChannel, ...activeMailbox }, select: { id: true } });
     if (!tickets.length) return 0;
     await tx.serviceTicketHistory.createMany({ data: tickets.map((ticket) => ({ ticketId: ticket.id, userId: member.userId, type: MAILBOX_ARCHIVE, message: "Atendimento arquivado na limpeza da caixa. O e-mail original foi preservado." })) });
     return tickets.length;

@@ -1,3 +1,4 @@
+import { emailChannel } from "@/modules/atendimento/email-channel";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -80,7 +81,7 @@ export async function GET(_request: Request, context: Context) {
         id: attachmentId,
         message: {
           ticketId: id,
-          ticket: { organizationId: member.organizationId },
+          ticket: { organizationId: member.organizationId, ...emailChannel },
         },
       },
       select: {

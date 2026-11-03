@@ -1,3 +1,4 @@
+import { emailChannel } from "@/modules/atendimento/email-channel";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -393,6 +394,7 @@ export async function POST(
   const ticket =
     await prisma.serviceTicket.findFirst({
       where: {
+        ...emailChannel,
         id,
         organizationId:
           member.organizationId,
