@@ -59,12 +59,31 @@
   border-top: 1px solid var(--mantine-color-gray-2);
 }
 
+.teamButton :global(.mantine-Button-inner) {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.teamButton :global(.mantine-Button-section) {
+  margin-inline: 0;
+  justify-content: center;
+}
+
 .teamButton :global(.mantine-Button-label) {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  text-align: left;
+}
+
+.teamName {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
+  line-height: 1.25;
 }
 
 .memberFilterBadge {

@@ -397,7 +397,7 @@ export default function AtendimentoPage() {
                  >
                    Equipe
                  </Text>
-                 <ScrollArea.Autosize mah={280} type="auto">
+                 <ScrollArea.Autosize mah={280} type="auto" offsetScrollbars scrollbarSize={8}>
                    <Stack gap={4}>
                      {(bootstrap.members || []).map((member: Any) => (
                        <Button
@@ -423,7 +423,7 @@ export default function AtendimentoPage() {
                            setSelectedId(null);
                          }}
                        >
-                         {member.name || member.email}
+                         <span className={styles.teamName}>{member.name || member.email}</span>
                        </Button>
                      ))}
                    </Stack>
