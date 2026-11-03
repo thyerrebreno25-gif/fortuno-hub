@@ -28,6 +28,7 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
   const sticky = useRef(true), previous = useRef({ conversationId: "", lastId: "" });
   const [hasNew, setHasNew] = useState(false);
   const last = messages.at(-1);
+  const lastConfirmed = messages.filter(message => !message.id.startsWith("pending:")).at(-1);
   useEffect(() => {
     const switched = previous.current.conversationId !== conversationId;
     const changed = previous.current.lastId !== (last?.id || "");
@@ -46,14 +47,14 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    const visibleRead = () => { const el = viewport.current; if (last?.id && el && document.visibilityState === "visible" && el.scrollHeight - el.scrollTop - el.clientHeight < 90) onRead?.(conversationId, last.id); };
+    const visibleRead = () => { const el = viewport.current; if (lastConfirmed?.id && el && document.visibilityState === "visible" && el.scrollHeight - el.scrollTop - el.clientHeight < 90) onRead?.(conversationId, lastConfirmed.id); };
     const timer = setTimeout(visibleRead, 700);
     const el = viewport.current;
     el?.addEventListener("scroll", visibleRead, { passive: true });
     document.addEventListener("visibilitychange", visibleRead);
     window.addEventListener("focus", visibleRead);
     return () => { clearTimeout(timer); el?.removeEventListener("scroll", visibleRead); document.removeEventListener("visibilitychange", visibleRead); window.removeEventListener("focus", visibleRead); };
-  }, [conversationId, last?.id, onRead]);
+  }, [conversationId, lastConfirmed?.id, onRead]);
   return <div className={styles.messagesFrame}>
     <div ref={viewport} className={styles.messages} role="log" aria-label="Mensagens da conversa" onScroll={() => { const el = viewport.current; if (!el) return; sticky.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90; if (sticky.current) setHasNew(false); }}>
       <div ref={content}>{hasOlder && <Group justify="center" py="sm"><Button variant="light" size="xs" loading={loadingOlder} onClick={() => { sticky.current = false; if (viewport.current) prepend.current = {id:conversationId,top:viewport.current.scrollTop,height:viewport.current.scrollHeight}; onLoadOlder?.(); }}>Carregar mensagens anteriores</Button></Group>}{messages.map((message) => <div key={message.id} className={`${styles.messageRow} ${message.direction === "OUTBOUND" ? styles.outbound : message.direction === "INTERNAL" ? styles.internal : ""}`}>
@@ -61,7 +62,7 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
           <Text size="xs" fw={800} mb={4}>{message.fromName || (message.direction === "OUTBOUND" ? "Fortuno" : senderName)}</Text>
           {message.textBody && !(message.attachments.length && /^\[(Image|Audio|Video|Sticker|Document)Message\]$/.test(message.textBody)) && <Text size="sm" className={styles.messageBody}>{message.textBody}</Text>}
           {message.attachments.map((attachment) => <AttachmentPreview key={attachment.id} conversationId={conversationId} attachment={attachment} message={message.textBody || ""} />)}
-          <Group justify="flex-end" gap={6} mt={5}>{message.direction === "OUTBOUND" && message.deliveryStatus && <Text size="xs" c={message.deliveryStatus === "failed" ? "red" : "dimmed"}>{delivery[message.deliveryStatus] || message.deliveryStatus}</Text>}<Text size="xs" c="dimmed">{new Date(message.receivedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</Text></Group>
+          <Group justify="flex-end" gap={6} mt={5}>{message.direction === "OUTBOUND" && message.deliveryStatus && <Text size="xs" c={["failed", "unconfirmed"].includes(message.deliveryStatus) ? "red" : "dimmed"}>{message.deliveryStatus === "unconfirmed" ? "Envio não confirmado · confira antes de reenviar" : delivery[message.deliveryStatus] || message.deliveryStatus}</Text>}<Text size="xs" c="dimmed">{new Date(message.receivedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</Text></Group>
         </div>
       </div>)}</div>
     </div>

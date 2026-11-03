@@ -1,4 +1,4 @@
-import { unreadCounts } from "@/modules/whatsapp/read-state";
+import { unreadCounts, latestConversationDirections } from "@/modules/whatsapp/read-state";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
@@ -73,8 +73,9 @@ export async function GET(request: Request) {
       prisma.serviceTicket.findMany({where:baseWhere,take:2000,orderBy:{receivedAt:"desc"},select:{assignedToId:true,status:true,senderEmail:true}}),
       filteredUnread || unreadCounts(member.organizationId, member.userId),
     ]);
+    const directions = await latestConversationDirections(member.organizationId, rows.slice(0,250).map(ticket => ticket.id));
     const active=metrics.filter(ticket=>!["RESOLVED","SPAM"].includes(ticket.status));
-    return NextResponse.json({hasMore:rows.length>250,tickets:rows.slice(0,250).map(ticket=>({...ticket,unreadCount:unread.get(ticket.id)||0,channel:parseWhatsappChannelAddress(ticket.senderEmail)})),stats:{facets:inboxFacets(metrics,filters,member.userId),general:metrics.length,active:active.length,mine:active.filter(ticket=>ticket.assignedToId===member.userId).length,queue:active.filter(ticket=>!ticket.assignedToId).length}});
+    return NextResponse.json({hasMore:rows.length>250,tickets:rows.slice(0,250).map(ticket=>({...ticket,lastDirection:directions.get(ticket.id)||null,unreadCount:unread.get(ticket.id)||0,channel:parseWhatsappChannelAddress(ticket.senderEmail)})),stats:{facets:inboxFacets(metrics,filters,member.userId),general:metrics.length,active:active.length,mine:active.filter(ticket=>ticket.assignedToId===member.userId).length,queue:active.filter(ticket=>!ticket.assignedToId).length}});
   }
 
   const [tickets, metricTickets, satisfactionHistory] = await Promise.all([

@@ -63,7 +63,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     const closed = event.historical ? await tx.serviceTicket.findFirst({ where: { ...scope, status: "RESOLVED", resolvedAt: { gte: timestamp } }, orderBy: { resolvedAt: "asc" } }) : null;
     const active = closed || await tx.serviceTicket.findFirst({ where: { ...scope, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } });
     if (event.fromMe && !active && !event.historical) return;
-    const name = event.chatName || (event.group ? active?.senderName : event.senderName) || identifier;
+    const name = event.chatName || (event.group || event.fromMe ? active?.senderName : event.senderName) || identifier;
     const ticket = active ? await tx.serviceTicket.update({ where: { id: active.id }, data: {
       updatedAt: new Date(),
       recipientEmail: recipient,

@@ -44,3 +44,10 @@ describe("Uazapi real status and webhook normalization", () => {
     expect(normalizeUazapiEvent({ EventType: "messages", message: { id: "a", chatid: "status@broadcast" } })).toBeNull();
   });
 });
+
+it.each([true, 1, "true", "1"])("recognizes outbound provider flag %s without marking it as an incoming message", (flag) => {
+ expect(normalizeUazapiEvent({EventType:"messages",message:{id:"own",chatid:"123@lid",fromMe:flag,wasSentByApi:flag,text:"Resposta"}})).toMatchObject({fromMe:true,wasSentByApi:true});
+});
+it.each([false, 0, "false", "0", undefined])("keeps incoming provider flag %s inbound", (flag) => {
+ expect(normalizeUazapiEvent({EventType:"messages",message:{id:"in",chatid:"123@lid",fromMe:flag,text:"Pergunta"}})).toMatchObject({fromMe:false});
+});

@@ -206,6 +206,7 @@ export default function WhatsAppPage() {
   const stats = useMemo(() => baseStats && inbox.complete ? { ...baseStats, facets: inboxFacets(inbox.tickets.map((ticket) => ({ ...ticket, assignedToId: ticket.assignedTo?.id || null })), filters, currentUserId) } : baseStats, [baseStats, inbox, filters, currentUserId]);
   const selectedId = managementSelection || (onlyUnread ? preferredId : tickets.some((ticket) => ticket.id === preferredId) ? preferredId : tickets[0]?.id || null);
   const selectedRef = useRef<string | null>(null);
+  const sendingReply = useRef(false);
   const detailCache = useRef(new Map<string, TicketDetail>());
   const lastRevision = useRef("");
   const partialList = useRef(false);
@@ -230,7 +231,7 @@ export default function WhatsAppPage() {
 
   const readMarkers = useRef(new Map<string, string>());
   const markRead = useCallback(async (id: string, messageId: string) => {
-    if (selectedRef.current !== id || document.visibilityState !== "visible" || readMarkers.current.get(id) === messageId) return;
+    if (messageId.startsWith("pending:") || selectedRef.current !== id || document.visibilityState !== "visible" || readMarkers.current.get(id) === messageId) return;
     readMarkers.current.set(id, messageId);
     try {
       const response = await fetch('/api/whatsapp/' + encodeURIComponent(id) + '/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId }) });
@@ -383,6 +384,21 @@ export default function WhatsAppPage() {
     finally{setLoadingOlder(false);}
   }, [loadingOlder]);
 
+  useEffect(() => {
+    const open = (href: string) => {
+      const url = new URL(href, window.location.origin);
+      const id = url.pathname === "/whatsapp" ? url.searchParams.get("ticket") : null;
+      if (!id) return;
+      setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch("");
+      setManagementSelection(id); selectedRef.current = id; setSelectedId(id);
+      setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX");
+    };
+    open(window.location.href);
+    const listener = (event: Event) => { const href = (event as CustomEvent<{href?: string}>).detail?.href; if (href) open(href); };
+    window.addEventListener("fortuno:notification-open", listener);
+    return () => window.removeEventListener("fortuno:notification-open", listener);
+  }, []);
+
   async function mutate(action: Record<string, unknown>, success: string) {
     if (!selectedId) return false;
     const id = selectedId;
@@ -397,11 +413,11 @@ export default function WhatsAppPage() {
         }),
       );
       const previous = detailCache.current.get(id);
-      const next = {...payload.ticket, messages:mergeChatMessages(previous?.messages || [],payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
+      const next = {...payload.ticket, messages:mergeChatMessages((previous?.messages || []).filter(message => !message.id.startsWith("pending:")),payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
       detailCache.current.set(id, next);
       if (selectedRef.current === id) setDetail(next);
-      await loadList();
-      notifications.show({ color: "green", title: "Tudo certo", message: success });
+      void loadList();
+      if (action.action !== "reply") notifications.show({ color: "green", title: "Tudo certo", message: success });
       return true;
     } catch (error) {
       notifications.show({
@@ -416,15 +432,28 @@ export default function WhatsAppPage() {
   }
 
   async function sendReply() {
-    const content = reply.trim();
-    if (!content) return;
-    const sent = await mutate(
-      { action: "reply", content },
-      detail?.source === "WHATSAPP_API"
-        ? "Resposta enviada pelo WhatsApp."
-        : "Resposta registrada no teste.",
-    );
-    if (sent) setReply((current) => current.trim() === content ? "" : current);
+    const content = reply.trim(), id = selectedId;
+    if (!content || !id || saving || sendingReply.current) return;
+    sendingReply.current = true;
+    setReply("");
+    const pendingId = "pending:" + crypto.randomUUID();
+    const previous = detailCache.current.get(id) || detail;
+    if (previous) {
+      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, direction: "OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: "accepted", attachments: []}]};
+      detailCache.current.set(id, optimistic);
+      setDetail(optimistic);
+    }
+    try {
+      const sent = await mutate({ action: "reply", content }, "Resposta enviada.");
+      if (!sent) {
+        const cached = detailCache.current.get(id);
+        if (cached) {
+          const failed = {...cached, messages: cached.messages.map(message => message.id === pendingId ? {...message, deliveryStatus: "unconfirmed"} : message)};
+          detailCache.current.set(id, failed);
+          if (selectedRef.current === id) setDetail(failed);
+        }
+      }
+    } finally { sendingReply.current = false; }
   }
 
   async function syncHistory() {
@@ -572,7 +601,7 @@ export default function WhatsAppPage() {
                       <Text fw={750} size="sm" truncate>{ticket.senderName || ticket.subject}</Text>
                       <Text size="xs" c="dimmed" className={styles.ticketDate}>{formatDate(ticket.lastMessageAt)}</Text>
                     </Group>
-                    <Group justify="space-between" gap="xs" wrap="nowrap"><Text size="xs" c="dimmed" lineClamp={1} style={{ flex: 1 }}>{ticket.snippet || "Sem mensagem"}</Text>{Boolean(ticket.unreadCount) && <Badge circle color="teal" size="lg" aria-label={`${ticket.unreadCount} mensagens não lidas`}>{ticket.unreadCount! > 99 ? "99+" : ticket.unreadCount}</Badge>}</Group>
+                    <Group justify="space-between" gap="xs" wrap="nowrap"><Text size="xs" c="dimmed" lineClamp={1} style={{ flex: 1 }}>{ticket.lastDirection === "OUTBOUND" ? "Você: " : ""}{ticket.snippet || "Sem mensagem"}</Text>{Boolean(ticket.unreadCount) && <Badge circle color="teal" size="lg" aria-label={`${ticket.unreadCount} mensagens não lidas`}>{ticket.unreadCount! > 99 ? "99+" : ticket.unreadCount}</Badge>}</Group>
                     <Group gap={6} mt={6} wrap="nowrap">
                       <Badge size="xs" variant="light" color={ticket.status === "RESOLVED" ? "gray" : ticket.assignedTo ? "blue" : "orange"}>
                         {statusLabels[ticket.status] || ticket.status}

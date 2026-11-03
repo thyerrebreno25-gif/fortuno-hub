@@ -25,3 +25,14 @@ export async function markConversationRead(organizationId: string, userId: strin
     WHERE ("WhatsAppReadState"."readAt", "WhatsAppReadState"."lastMessageId") < (EXCLUDED."readAt", EXCLUDED."lastMessageId")`;
   return (await unreadCounts(organizationId, userId, ticketId)).get(ticketId) || 0;
 }
+
+export async function latestConversationDirections(organizationId: string, ticketIds: string[]) {
+  if (!ticketIds.length) return new Map<string, string>();
+  const rows = await prisma.$queryRaw<Array<{ticketId: string; direction: string}>>(Prisma.sql`
+    SELECT t.id AS "ticketId", last.direction::text AS direction
+    FROM "ServiceTicket" t
+    CROSS JOIN LATERAL (SELECT m.direction FROM "ServiceMessage" m WHERE m."ticketId" = t.id AND m.direction::text <> 'INTERNAL' ORDER BY m."receivedAt" DESC, m.id DESC LIMIT 1) last
+    WHERE t."organizationId" = ${organizationId} AND t.id IN (${Prisma.join(ticketIds)})
+  `);
+  return new Map(rows.map(row => [row.ticketId, row.direction]));
+}

@@ -41,10 +41,11 @@ export function normalizeUazapiEvent(payload: unknown) {
   if (typeof message.content === "string") { try { content = object(JSON.parse(message.content)); } catch { /* Plain text content. */ } }
   const chatId = text(message.chatid || chat.wa_chatid, 150), id = text(message.messageid || text(message.id).split(":").at(-1), 200);
   if (!id || !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(chatId)) return null;
-  const fromMe = message.fromMe === true;
+  const flag = (value: unknown) => value === true || value === 1 || value === "true" || value === "1";
+  const fromMe = flag(message.fromMe ?? message.from_me ?? object(message.key).fromMe) || flag(message.wasSentByApi);
   const mediaType = text(message.messageType, 80);
   const media = /image|document|audio|video|sticker/i.test(mediaType);
-  const result = { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: message.wasSentByApi === true,
+  const result = { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: flag(message.wasSentByApi),
     senderName: text(message.senderName, 250), chatName: text(chat.name, 250), sender: text(message.sender, 150),
     body: text(message.text || content.caption || content.text || content.conversation || (!media && typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
     media: media ? { id: text(message.id || id, 250), name: text(content.fileName || content.filename, 250) || mediaType, mimeType: text(content.mimetype || content.mimeType, 150) || null } : null,

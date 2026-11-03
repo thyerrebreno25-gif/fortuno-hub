@@ -1,3 +1,5 @@
+import { whatsappNotifications } from "@/modules/whatsapp/notifications";
+import { SERVICE_CENTER_MANAGER_ROLES } from "@/modules/atendimento/auth";
 import { activityNotifications } from "@/modules/operations/notifications";
 import { meetingNotifications } from "@/modules/meetings/notifications";
 import { getRolePermissions } from "@/modules/permissions/permissions";
@@ -97,7 +99,8 @@ export async function GET() {
 
     const permissions = await getRolePermissions(member.organizationId, member.role);
     const [meetingItems,activityItems]=await Promise.all([permissions.MEETINGS.canView ? meetingNotifications(member.organizationId,member.userId,now) : [],permissions.OPERATIONS.canView ? activityNotifications(member.organizationId,member.userId,now) : []]);
-    const items: NotificationItem[] = [...meetingItems,...activityItems];
+    const whatsappItems = permissions.WHATSAPP.canView ? await whatsappNotifications(member.organizationId, member.userId, SERVICE_CENTER_MANAGER_ROLES.has(member.role), now) : [];
+    const items: NotificationItem[] = [...meetingItems,...activityItems,...whatsappItems];
 
     for (const item of imports) {
       const isFailed = item.status === "FAILED";
