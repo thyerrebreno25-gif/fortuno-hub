@@ -95,7 +95,14 @@ export async function PATCH(request: Request, context: Context) {
     permission.canManage ||
     SERVICE_CENTER_MANAGER_ROLES.has(member.role);
 
-  if (action === "assign") {
+  if (!canManage && current.assignedToId !== member.userId) return NextResponse.json({error:"Somente a gestão pode direcionar e-mails sem responsável ou de outro colaborador."},{status:403});
+
+  if (action === "rememberSender") {
+    if(!canManage || !current.clientId) return NextResponse.json({error:"Selecione o cliente e solicite à gestão o vínculo do remetente."},{status:403});
+    const email = current.senderEmail.trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({error:"Remetente inválido."},{status:400});
+    await prisma.$transaction([prisma.clientEmailIdentity.upsert({where:{clientId_normalizedEmail:{clientId:current.clientId,normalizedEmail:email}},create:{clientId:current.clientId,email,normalizedEmail:email,label:"Confirmado na Central de e-mails"},update:{active:true}}),prisma.serviceTicketHistory.create({data:{ticketId:id,userId:member.userId,type:"EMAIL_IDENTITY_CONFIRMED",message:"Remetente confirmado como referência para o cliente.",metadata:{clientId:current.clientId,email}}})]);
+  } else if (action === "assign") {
     let assignedToId =
       typeof body.assignedToId === "string" && body.assignedToId
         ? body.assignedToId
@@ -201,8 +208,10 @@ export async function PATCH(request: Request, context: Context) {
       }
     }
 
+    if (automaticAssigneeId && !await prisma.organizationMember.findFirst({where:{organizationId:member.organizationId,userId:automaticAssigneeId,role:{not:"CLIENT"}},select:{userId:true}})) automaticAssigneeId = null;
+
     const assignedToId =
-      current.assignedToId || automaticAssigneeId;
+      current.clientId === clientId ? current.assignedToId || automaticAssigneeId : automaticAssigneeId;
 
     await prisma.$transaction([
       prisma.serviceTicket.update({

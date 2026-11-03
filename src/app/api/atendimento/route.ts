@@ -1,4 +1,4 @@
-import type { Prisma } from "@/generated/prisma/client";
+import { mailboxScope, mailboxViews } from "@/modules/atendimento/mailbox-scope";
 import { emailChannel } from "@/modules/atendimento/email-channel";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -121,61 +121,22 @@ export async function GET(request: Request) {
   const canManageTeam =
     permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role);
 
-  if (assignedToId && !canManageTeam) {
+  if (assignedToId && assignedToId !== member.userId && !canManageTeam) {
     return NextResponse.json(
       { error: "Seu perfil não pode consultar a caixa de outro colaborador." },
       { status: 403 },
     );
   }
 
-  const where: Prisma.ServiceTicketWhereInput = {
-    ...emailChannel,
-    organizationId: member.organizationId,
-    ...(view === "ARCHIVED" ? archivedMailbox : activeMailbox),
-  };
+  const clientId = url.searchParams.get("clientId")?.trim() || "";
+  const page = Number(url.searchParams.get("page") || 1), pageSize = 100;
+  if(!mailboxViews.includes(view) || !Number.isSafeInteger(page) || page < 1 || page > 10000 || search.length > 200 || clientId.length > 200) return NextResponse.json({error:"Filtro inválido."},{status:400});
+  if(view === "UNASSIGNED" && !canManageTeam) return NextResponse.json({error:"A fila sem responsável é direcionada à gestão."},{status:403});
+  const scope = {organizationId:member.organizationId,userId:member.userId,canManage:canManageTeam,view,assignedToId,clientId,search};
+  const where = mailboxScope(scope);
+  const common = { organizationId: member.organizationId, ...emailChannel, ...activeMailbox, ...(assignedToId ? {assignedToId} : !canManageTeam ? {assignedToId:member.userId} : {}), ...(clientId ? {clientId:clientId === "UNIDENTIFIED" ? null : clientId} : {}) };
 
-  if (view === "ARCHIVED") {
-    // Archived items keep their original status and can be restored.
-  } else if (view === "MINE") {
-    where.assignedToId = member.userId;
-    where.status = { notIn: ["RESOLVED", "SPAM"] };
-  } else if (view === "UNASSIGNED") {
-    where.assignedToId = null;
-    where.status = { notIn: ["RESOLVED", "SPAM"] };
-  } else if (view === "WAITING") {
-    where.status = { in: [...WAITING] };
-  } else if (view === "RESOLVED") {
-    where.status = "RESOLVED";
-  } else if (view === "SPAM") {
-    where.status = "SPAM";
-  } else {
-    where.status = { not: "SPAM" };
-  }
-
-  if (assignedToId) {
-    where.assignedToId = assignedToId;
-    where.status = { not: "SPAM" };
-  }
-
-  if (search) {
-    where.OR = [
-      { subject: { contains: search, mode: "insensitive" } },
-      { senderEmail: { contains: search, mode: "insensitive" } },
-      { senderName: { contains: search, mode: "insensitive" } },
-      {
-        client: {
-          name: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-      },
-    ];
-  }
-
-  const common = { organizationId: member.organizationId, ...emailChannel, ...activeMailbox };
-
-  const [tickets, general, mine, unassigned, waiting, resolved, spam, teamCounts, archived] =
+  const [tickets, general, mine, unassigned, waiting, resolved, spam, teamCounts, archived, clientGroups, total] =
     await Promise.all([
       prisma.serviceTicket.findMany({
         where,
@@ -183,7 +144,8 @@ export async function GET(request: Request) {
           { lastMessageAt: "desc" },
           { receivedAt: "desc" },
         ],
-        take: 250,
+        take: pageSize,
+        skip: (page - 1) * pageSize,
         select: {
           id: true,
           subject: true,
@@ -202,7 +164,7 @@ export async function GET(request: Request) {
         },
       }),
       prisma.serviceTicket.count({
-        where: { ...common, status: { not: "SPAM" } },
+        where: { organizationId:member.organizationId,...emailChannel,...activeMailbox, ...(clientId ? {clientId:clientId === "UNIDENTIFIED" ? null : clientId} : {}), status: {not:"SPAM"} },
       }),
       prisma.serviceTicket.count({
         where: {
@@ -211,13 +173,13 @@ export async function GET(request: Request) {
           status: { notIn: ["RESOLVED", "SPAM"] },
         },
       }),
-      prisma.serviceTicket.count({
+      canManageTeam ? prisma.serviceTicket.count({
         where: {
           ...common,
           assignedToId: null,
           status: { notIn: ["RESOLVED", "SPAM"] },
         },
-      }),
+      }) : Promise.resolve(0),
       prisma.serviceTicket.count({
         where: { ...common, status: { in: [...WAITING] } },
       }),
@@ -238,7 +200,9 @@ export async function GET(request: Request) {
             _count: { _all: true },
           })
         : Promise.resolve([]),
-      prisma.serviceTicket.count({ where: { organizationId: member.organizationId, ...emailChannel, ...archivedMailbox } }),
+      prisma.serviceTicket.count({ where: { ...common, ...archivedMailbox } }),
+      prisma.serviceTicket.groupBy({by:["clientId"],where:mailboxScope({...scope,clientId:""}),_count:{_all:true}}),
+      prisma.serviceTicket.count({where}),
     ]);
 
   const byMember = Object.fromEntries(
@@ -248,7 +212,8 @@ export async function GET(request: Request) {
   );
 
   return NextResponse.json({
-    tickets,
+    tickets, page, pageSize, total,
+    clientCounts: Object.fromEntries(clientGroups.map(item=>[item.clientId || "UNIDENTIFIED",item._count._all])),
     stats: { general, mine, unassigned, waiting, resolved, spam, byMember, archived },
   });
 }

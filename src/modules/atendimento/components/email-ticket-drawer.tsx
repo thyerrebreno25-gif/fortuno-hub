@@ -41,7 +41,6 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -117,7 +116,8 @@ export function EmailTicketDrawer({
   onClose: () => void;
 }) {
   const canManage = bootstrap?.currentUser?.canManage;
-  const messages = ticket?.messages || [];
+  const canEditTicket = Boolean(bootstrap?.permission?.canEdit && (canManage || ticket?.assignedTo?.id === bootstrap?.currentUser?.id));
+  const messages = useMemo(()=>ticket?.messages || [],[ticket?.messages]);
 
   const editorRef = useRef<HTMLDivElement | null>(null);
 
@@ -128,21 +128,10 @@ export function EmailTicketDrawer({
   const [replyError, setReplyError] = useState("");
   const [replySuccess, setReplySuccess] = useState("");
 
-  useEffect(() => {
-    setReplyHtml("");
-    setAttachments([]);
-    setReplyError("");
-    setReplySuccess("");
-
-    if (editorRef.current) {
-      editorRef.current.innerHTML = "";
-    }
-  }, [ticket?.id]);
-
   const canReply = useMemo(
     () =>
       Boolean(
-        ticket?.source === "GMAIL" &&
+        canEditTicket && ticket?.source === "GMAIL" &&
           ticket?.externalThreadId &&
           messages.some(
             (message: Any) =>
@@ -150,7 +139,7 @@ export function EmailTicketDrawer({
               message.externalMessageId,
           ),
       ),
-    [ticket, messages],
+    [ticket, messages, canEditTicket],
   );
 
   const replyText = useMemo(
@@ -771,7 +760,7 @@ export function EmailTicketDrawer({
                       <Button
                         variant="subtle"
                         size="compact-sm"
-                        disabled={!note.trim()}
+                        disabled={!canEditTicket || !note.trim()}
                         loading={saving}
                         onClick={async () => {
                           const ok =
@@ -826,6 +815,8 @@ export function EmailTicketDrawer({
                       }
                     />
 
+                    {canManage && ticket.client?.id && <Button variant="light" size="xs" loading={saving} onClick={() => void updateTicket("rememberSender")}>Usar remetente como referência deste cliente</Button>}
+
                     <Select
                       label="Responsável"
                       size="sm"
@@ -843,6 +834,7 @@ export function EmailTicketDrawer({
 
                     <Select
                       label="Prioridade"
+                      disabled={!canEditTicket}
                       size="sm"
                       data={[
                         {
@@ -872,7 +864,7 @@ export function EmailTicketDrawer({
                     />
                   </Stack>
 
-                  {!ticket.assignedTo && (
+                  {canManage && !ticket.assignedTo && (
                     <Button
                       variant="light"
                       size="sm"
@@ -904,7 +896,7 @@ export function EmailTicketDrawer({
                     {ticket.status !== "IN_PROGRESS" &&
                       ticket.status !== "RESOLVED" &&
                       ticket.status !== "SPAM" && (
-                        <Button
+                        <Button disabled={!canEditTicket}
                           variant="light"
                           size="sm"
                           onClick={() =>
@@ -917,7 +909,7 @@ export function EmailTicketDrawer({
                         </Button>
                       )}
 
-                    <Button
+                    <Button disabled={!canEditTicket}
                       variant="light"
                       color="yellow"
                       size="sm"
@@ -930,7 +922,7 @@ export function EmailTicketDrawer({
                       Aguardando cliente
                     </Button>
 
-                    <Button
+                    <Button disabled={!canEditTicket}
                       variant="light"
                       color="orange"
                       size="sm"
@@ -944,7 +936,7 @@ export function EmailTicketDrawer({
                     </Button>
 
                     {ticket.status !== "RESOLVED" ? (
-                      <Button
+                      <Button disabled={!canEditTicket}
                         color="green"
                         variant="light"
                         size="sm"
@@ -960,7 +952,7 @@ export function EmailTicketDrawer({
                         Resolver
                       </Button>
                     ) : (
-                      <Button
+                      <Button disabled={!canEditTicket}
                         variant="light"
                         size="sm"
                         leftSection={
@@ -977,7 +969,7 @@ export function EmailTicketDrawer({
                     )}
 
                     {ticket.status !== "SPAM" ? (
-                      <Button
+                      <Button disabled={!canEditTicket}
                         color="gray"
                         variant="subtle"
                         size="sm"
@@ -993,7 +985,7 @@ export function EmailTicketDrawer({
                         Marcar como spam
                       </Button>
                     ) : (
-                      <Button
+                      <Button disabled={!canEditTicket}
                         variant="light"
                         size="sm"
                         onClick={() =>

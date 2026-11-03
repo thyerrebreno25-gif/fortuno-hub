@@ -2,6 +2,7 @@
   width: 100%;
   max-width: none;
   margin: 0 auto;
+  padding: 12px;
 }
 
 .pageHeader {
@@ -29,8 +30,8 @@
 
 .layout {
   display: grid;
-  grid-template-columns: 225px minmax(0, 1fr);
-  height: max(560px, calc(100dvh - 230px));
+  grid-template-columns: 245px minmax(0, 1fr);
+  height: max(560px, calc(100dvh - 190px));
   border: 1px solid #dfe6ee;
   border-radius: 12px;
   overflow: hidden;

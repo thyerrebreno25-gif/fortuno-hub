@@ -38,6 +38,9 @@ export async function GET() {
         operationalEmail: true,
         operationalEmailCc: true,
         operationLeaderId: true,
+        payableResponsibleId: true,
+        receivableResponsibleId: true,
+        generalResponsibleId: true,
       },
     }),
     prisma.organizationMember.findMany({

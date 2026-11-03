@@ -464,7 +464,6 @@ export async function POST(
   }
 
   if (
-    ticket.assignedToId &&
     ticket.assignedToId !==
       member.userId &&
     !permission.canManage &&

@@ -1,4 +1,5 @@
 "use client";
+import { EmailAnalyticsPanel } from "@/modules/atendimento/components/email-analytics-panel";
 
 import {
   Alert,
@@ -7,6 +8,7 @@ import {
   Group,
   Loader,
   Modal,
+  Pagination,
   ScrollArea,
   Select,
   Stack,
@@ -32,6 +34,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { GmailConnectionCard } from "@/modules/atendimento/components/gmail-connection-card";
 import { EmailTicketDrawer } from "@/modules/atendimento/components/email-ticket-drawer";
@@ -82,6 +85,13 @@ export default function AtendimentoPage() {
   const [tickets, setTickets] = useState<Any[]>([]);
   const [stats, setStats] = useState<Any>({});
   const [view, setView] = useState("GENERAL");
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [clientCounts, setClientCounts] = useState<Record<string, number>>({});
+  const [page, setPage] = useState(1), [total, setTotal] = useState(0);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false), [connectionOpen, setConnectionOpen] = useState(false);
+  const listSequence = useRef(0);
+  const invalidateList = useCallback(()=>{listSequence.current++;},[]);
+  const detailSequence = useRef(0);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Any | null>(null);
@@ -117,7 +127,9 @@ export default function AtendimentoPage() {
   }, []);
 
   const loadTickets = useCallback(async () => {
-    const query = new URLSearchParams({ view });
+    const request = ++listSequence.current;
+    const query = new URLSearchParams({ view, page: String(page) });
+    if(clientId) query.set("clientId", clientId);
     if (search.trim()) query.set("search", search.trim());
     if (selectedMemberId) query.set("assignedToId", selectedMemberId);
 
@@ -127,9 +139,12 @@ export default function AtendimentoPage() {
     );
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "Erro ao carregar chamados.");
+    if(request !== listSequence.current) return;
+    setTotal(body.total || 0); setClientCounts(body.clientCounts || {});
+    const lastPage = Math.max(1, Math.ceil((body.total || 0) / 100)); if(page > lastPage) setPage(lastPage);
     setTickets(body.tickets || []);
     setStats(body.stats || {});
-  }, [view, search, selectedMemberId]);
+  }, [view, search, selectedMemberId, clientId, page]);
 
   async function archiveMailbox(action: "archive" | "restore" | "delete") {
     setArchiveAction(null);
@@ -148,37 +163,16 @@ export default function AtendimentoPage() {
 
   useEffect(() => {
     let active = true;
-
-    void (async () => {
-      setLoading(true);
-      setError("");
-      try {
-        await Promise.all([loadBootstrap(), loadTickets()]);
-      } catch (cause) {
-        if (active) {
-          setError(
-            cause instanceof Error ? cause.message : "Erro ao carregar Central.",
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [loadBootstrap, loadTickets]);
-
-  useEffect(() => {
-    const refresh = () => { if (document.visibilityState === "visible") { void fetch("/api/atendimento/gmail/sync", { method: "POST" }).then(() => loadTickets()).catch(() => {}); } };
-    refresh();
-    const timer = window.setInterval(refresh, 60000);
-    document.addEventListener("visibilitychange", refresh);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
-  }, [loadTickets]);
+    const initial = setTimeout(()=>{void loadBootstrap().catch(cause => {if(active) setError(cause instanceof Error ? cause.message : "Erro ao carregar Central.");}).finally(()=>{if(active)setLoading(false);});},0);
+    return ()=>{active=false;clearTimeout(initial);};
+  },[loadBootstrap]);
+  useEffect(()=>{const timer=setTimeout(()=>{void loadTickets().catch(cause=>setError(cause instanceof Error?cause.message:"Erro ao carregar chamados."));},200);return()=>{clearTimeout(timer);invalidateList();};},[loadTickets,invalidateList]);
+  const listLoader = useRef(loadTickets);
+  useEffect(()=>{listLoader.current=loadTickets;},[loadTickets]);
+  useEffect(()=>{let busy=false;const refresh=async()=>{if(busy||document.visibilityState!=="visible")return;busy=true;try{await fetch("/api/atendimento/gmail/sync",{method:"POST"});await listLoader.current();}catch{}finally{busy=false;}};const timer=window.setInterval(()=>void refresh(),60000);document.addEventListener("visibilitychange",refresh);return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",refresh);};},[]);
 
   const openTicket = useCallback(async (id: string) => {
+    const request = ++detailSequence.current;
     setSelectedId(id);
     setDetailLoading(true);
 
@@ -188,13 +182,14 @@ export default function AtendimentoPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Erro ao abrir chamado.");
+      if(request !== detailSequence.current) return;
       setSelected(body.ticket);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Não foi possível abrir o chamado.",
       );
     } finally {
-      setDetailLoading(false);
+      if(request === detailSequence.current) setDetailLoading(false);
     }
   }, []);
 
@@ -285,6 +280,11 @@ export default function AtendimentoPage() {
     [bootstrap, selectedMemberId],
   );
 
+  const filterClients = useMemo(() => {
+    const owner = view === "MINE" ? bootstrap?.currentUser?.id : selectedMemberId || (!bootstrap?.currentUser?.canManage && view !== "GENERAL" ? bootstrap?.currentUser?.id : null);
+    return (bootstrap?.clients || []).filter((client: Any) => !owner || [client.operationLeaderId,client.generalResponsibleId,client.payableResponsibleId,client.receivableResponsibleId].includes(owner) || clientCounts[client.id] > 0).map((client:Any)=>({value:client.id,label:client.name + " (" + (clientCounts[client.id] || 0) + ")"}));
+  },[bootstrap,view,selectedMemberId,clientCounts]);
+
   if (loading) {
     return (
       <Group justify="center" py={80}>
@@ -322,13 +322,14 @@ export default function AtendimentoPage() {
         </Stack>
 
         <Group className={styles.headerActions}>
+          <Button variant="subtle" onClick={()=>setConnectionOpen(value=>!value)}>Conexão Gmail</Button>
           {bootstrap.permission?.canManage && view === "ARCHIVED" && <Button color="red" variant="light" loading={saving} onClick={() => { setDeleteConfirmation(""); setArchiveAction("delete"); }}>Excluir todos os arquivados</Button>}
           {bootstrap.permission?.canManage && <Button variant="default" loading={saving} onClick={() => setArchiveAction(view === "ARCHIVED" ? "restore" : "archive")}>{view === "ARCHIVED" ? "Restaurar arquivados" : "Limpar caixa"}</Button>}
           <Badge size="lg" variant="light" leftSection={<IconSparkles size={13} />}>
             Atendimento por e-mail
           </Badge>
 
-          {bootstrap.permission?.canCreate && (
+          {bootstrap.permission?.canCreate && bootstrap.currentUser?.canManage && (
             <Button
               leftSection={<IconMail size={17} />}
               onClick={() => setNewOpen(true)}
@@ -345,18 +346,17 @@ export default function AtendimentoPage() {
         </Alert>
       )}
 
-      <div className={styles.gmailCard}>
-        <GmailConnectionCard />
-      </div>
+      <Group gap="xs"><Button variant={!analyticsOpen?"light":"subtle"} onClick={()=>setAnalyticsOpen(false)}>Caixa de e-mails</Button>{bootstrap.currentUser?.canManage && <Button variant={analyticsOpen?"light":"subtle"} onClick={()=>setAnalyticsOpen(true)}>Análise e gestão</Button>}</Group>
+      {connectionOpen && <div className={styles.gmailCard}><GmailConnectionCard /></div>}
 
-      <div className={styles.layout}>
+      {analyticsOpen && bootstrap.currentUser?.canManage ? <EmailAnalyticsPanel clients={clientOptions} members={memberOptions}/> : <div className={styles.layout}>
         <aside className={styles.sidebar}>
           <Stack gap={6}>
             <Text size="xs" fw={800} c="dimmed" tt="uppercase" px={8} py={6}>
               Caixas
             </Text>
 
-            {views.map(([value, label, stat, Icon]) => (
+            {views.filter(([value])=>value!=="UNASSIGNED" || bootstrap.currentUser?.canManage).map(([value, label, stat, Icon]) => (
               <Button
                 key={value}
                 className={styles.viewButton}
@@ -372,7 +372,9 @@ export default function AtendimentoPage() {
                 }
                  onClick={() => {
                    setView(value);
-                   setSelectedMemberId(null);
+                   if(value === "GENERAL" || value === "UNASSIGNED") setSelectedMemberId(null);
+                   else if(value === "MINE") setSelectedMemberId(bootstrap.currentUser.id);
+                   setClientId(null); setPage(1);
                    setSelected(null);
                    setSelectedId(null);
                 }}
@@ -415,7 +417,7 @@ export default function AtendimentoPage() {
                          }
                          title={member.name || member.email}
                          onClick={() => {
-                           setView("TEAM");
+                           setView("TEAM"); setClientId(null); setPage(1);
                            setSelectedMemberId(member.id);
                            setSelected(null);
                            setSelectedId(null);
@@ -433,12 +435,13 @@ export default function AtendimentoPage() {
 
         <section className={styles.list}>
           <div className={styles.searchBar}>
-            <Group gap="sm" wrap="nowrap">
+            <Group gap="sm" wrap="wrap">
               {selectedTeamMember && (
                 <Badge size="lg" variant="light" className={styles.memberFilterBadge}>
                   {selectedTeamMember.name || selectedTeamMember.email}
                 </Badge>
               )}
+              <Select aria-label="Filtrar e-mails por cliente" placeholder="Todos os clientes" searchable clearable value={clientId} data={[{value:"UNIDENTIFIED",label:"Cliente não identificado (" + (clientCounts.UNIDENTIFIED || 0) + ")"},...filterClients]} onChange={value=>{setClientId(value);setPage(1);}} style={{minWidth:280,flex:1}}/>
               <TextInput
                 placeholder={
                   selectedTeamMember
@@ -447,7 +450,7 @@ export default function AtendimentoPage() {
                 }
                 leftSection={<IconSearch size={16} />}
                 value={search}
-                onChange={(event) => setSearch(event.currentTarget.value)}
+                onChange={(event) => {setSearch(event.currentTarget.value);setPage(1);}}
                 style={{ flex: 1 }}
               />
             </Group>
@@ -541,11 +544,13 @@ export default function AtendimentoPage() {
               ))
             )}
           </ScrollArea>
+          {total > 100 && <Group justify="center" py="xs"><Pagination total={Math.ceil(total/100)} value={page} onChange={setPage}/><Text size="xs" c="dimmed">{total} e-mails</Text></Group>}
         </section>
 
-      </div>
+      </div>}
 
       <EmailTicketDrawer
+        key={selectedId || "closed"}
         opened={Boolean(selectedId)}
         loading={detailLoading}
         ticket={selected}
@@ -557,6 +562,7 @@ export default function AtendimentoPage() {
         memberOptions={memberOptions}
         clientOptions={clientOptions}
         onClose={() => {
+          detailSequence.current++;
           setSelected(null);
           setSelectedId(null);
         }}

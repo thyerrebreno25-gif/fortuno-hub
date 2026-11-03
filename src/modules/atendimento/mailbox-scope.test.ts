@@ -1,0 +1,6 @@
+import {expect,it} from 'vitest';
+import {mailboxScope} from './mailbox-scope';
+const base={organizationId:'org',userId:'operator',canManage:false,view:'GENERAL'};
+it('lets operators see the general mailbox and scopes their own mailbox',()=>{expect(mailboxScope(base).assignedToId).toBeUndefined();expect(mailboxScope({...base,view:'MINE'}).assignedToId).toBe('operator');for(const view of ['WAITING','RESOLVED','SPAM','ARCHIVED'])expect(mailboxScope({...base,view}).assignedToId).toBe('operator');});
+it('keeps client, collaborator, status and archive filters independent',()=>{const where=mailboxScope({...base,canManage:true,view:'SPAM',assignedToId:'person',clientId:'client'});expect(where).toMatchObject({organizationId:'org',source:{in:['GMAIL','MANUAL']},assignedToId:'person',clientId:'client',status:'SPAM'});expect(mailboxScope({...base,canManage:true,view:'RESOLVED',assignedToId:'person'}).status).toBe('RESOLVED');expect(mailboxScope({...base,view:'ARCHIVED'}).history).toEqual({some:{type:'MAILBOX_ARCHIVED'}});});
+it('scopes unidentified clients and always keeps My Mailbox owned by the authenticated user',()=>{expect(mailboxScope({...base,view:'MINE',assignedToId:'other',clientId:'UNIDENTIFIED'})).toMatchObject({assignedToId:'operator',clientId:null});});

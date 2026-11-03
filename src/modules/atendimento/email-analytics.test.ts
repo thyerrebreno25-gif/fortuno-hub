@@ -1,0 +1,5 @@
+import {expect,it} from 'vitest';
+import {emailMetrics} from './email-analytics';
+const group=(clientId:string|null,assignedToId:string|null,status:string,count:number,isSpam=false)=>({clientId,assignedToId,status,isSpam,_count:{_all:count}});
+it('separates spam, open, resolved and answered conversations without double-counting responses',()=>{const data=emailMetrics([group('c','u','NEW',2),group('c','u','RESOLVED',3),group(null,null,'SPAM',4),group('c','u','WAITING_CUSTOMER',1)],[group('c','u','RESOLVED',2),group('c','u','WAITING_CUSTOMER',1)],[{id:'c',name:'Cliente'}],[{id:'u',name:'Operador',email:'u@test'}]);expect(data.summary).toMatchObject({received:10,spam:4,resolved:3,open:3,responded:3});expect(data.clients.find(c=>c.id==='c')).toMatchObject({received:6,responded:3,resolved:3});expect(data.operators.find(u=>u.id===null)).toMatchObject({name:'Sem responsável',spam:4});});
+it('honors spam flags even when the stored status has not been normalized',()=>{expect(emailMetrics([group('c','u','NEW',1,true)],[],[],[]).summary).toMatchObject({received:1,spam:1,open:0});});

@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),groups:vi.fn(),clients:vi.fn(),members:vi.fn(),users:vi.fn()}));
+vi.mock('@/lib/prisma',()=>({prisma:{serviceTicket:{groupBy:m.groups},client:{findMany:m.clients},organizationMember:{findMany:m.members},user:{findMany:m.users}}}));
+vi.mock('@/modules/atendimento/auth',()=>({getServiceCenterMember:m.member,getServiceCenterPermission:m.permission,SERVICE_CENTER_MANAGER_ROLES:new Set(['MASTER','ADMIN','MANAGER'])}));
+import {GET} from './route';const get=(q='')=>GET(new Request('https://hub.test/api/atendimento/analytics?from=2026-10-01&to=2026-10-31'+q));
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:'org',userId:'user',role:'MANAGER'});m.permission.mockResolvedValue({canView:true,canManage:false});m.groups.mockResolvedValue([]);m.clients.mockResolvedValue([]);m.members.mockResolvedValue([]);m.users.mockResolvedValue([]);});
+it('restricts team analytics to management',async()=>{m.member.mockResolvedValue({organizationId:'org',role:'OPERATOR'});expect((await get()).status).toBe(403);expect(m.groups).not.toHaveBeenCalled();});
+it('scopes analytics to email channels, organization and the selected client and operator',async()=>{expect((await get('&clientId=client&assignedToId=operator')).status).toBe(200);for(const [query] of m.groups.mock.calls)expect(query.where).toMatchObject({organizationId:'org',source:{in:['GMAIL','MANUAL']},clientId:'client',assignedToId:'operator',mergedIntoId:null});expect(m.groups.mock.calls[1][0].where.messages).toEqual({some:{direction:'OUTBOUND'}});expect(m.groups.mock.calls[0][0].where.receivedAt.gte.toISOString()).toBe('2026-10-01T03:00:00.000Z');});
+it('keeps archived emails in analysis without fetching their bodies and rejects reversed dates',async()=>{await get();expect(m.groups.mock.calls[0][0].where.history).toBeUndefined();m.groups.mockClear();expect((await GET(new Request('https://hub.test/api/atendimento/analytics?from=2026-11-03&to=2026-10-01'))).status).toBe(400);expect(m.groups).not.toHaveBeenCalled();});
+
+it('rejects calendar dates that would otherwise roll into another month',async()=>{expect((await GET(new Request('https://hub.test/api/atendimento/analytics?from=2026-02-30&to=2026-03-05'))).status).toBe(400);expect(m.groups).not.toHaveBeenCalled();});
