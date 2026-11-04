@@ -1,7 +1,12 @@
+import {parseNubank,parseMultinvest,parseXp} from "./investment-parsers";
 import { brDate, digits, moneyCents, normalize, type ContractReview, type InvestmentReview } from "./model";
 
 export type DocumentLine = { text: string; page: number };
 export function parseInvestment(lines: DocumentLine[]): InvestmentReview {
+  const all=normalize(lines.map(row=>row.text).join(" "));
+  if(all.includes("caixinhas pj"))return parseNubank(lines);
+  if(all.includes("xp investimentos")&&all.includes("data de referencia"))return parseXp(lines);
+  if(all.includes("saldo bruto r$")&&all.includes("sumario - distribuicao"))return parseMultinvest(lines);
   const result: InvestmentReview = { kind: "INVESTMENT", periodStart: "", periodEnd: "", bankAccount: "", rows: [], warnings: [] };
   let group = "";
   for (const line of lines) {

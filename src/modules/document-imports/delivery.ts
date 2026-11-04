@@ -1,3 +1,5 @@
+import {investmentBaselineBalances} from "./investment-calculation-server";
+import {baselineDifferenceIssues} from "./investment-calculation";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
@@ -121,6 +123,8 @@ export async function sendInvestmentReview(input: { organizationId: string; user
     if (deliveries.some((item) => item.saleId || item.saleNumber !== null || object(item.payload).flow !== "FINANCIAL")) throw new Error("Este arquivo possui um envio comercial anterior. Confira os lançamentos existentes antes de continuar pela receita financeira.");
     const options = await importOptions(draft.clientId, "INVESTMENT");
     for (const row of review.rows) if (!options.categories.some((item) => item.value === row.categoryId) || !options.financialAccounts.some((item) => item.value === row.accountId)) throw new Error("Categoria ou conta financeira não pertence à empresa selecionada.");
+
+    if(review.rows.some(row=>row.method==="CA_DELTA")){const errors=baselineDifferenceIssues(review,await investmentBaselineBalances(draft.clientId,review,deadline-30000));if(errors.length)throw new Error(errors.join(" "));}
 
     // Recover only by GET before computing remaining income. No uncertain POST is repeated.
     for (const delivery of deliveries.filter((item) => item.status !== "SENT" && item.status !== "PENDING" && item.status !== "FAILED")) {

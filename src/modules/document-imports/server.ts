@@ -1,3 +1,5 @@
+import {investmentBaselineBalances} from "./investment-calculation-server";
+import {baselineDifferenceIssues} from "./investment-calculation";
 import "server-only";
 import { getCurrentMember, getRolePermissions } from "@/modules/permissions/permissions";
 import { prisma } from "@/lib/prisma";
@@ -69,6 +71,9 @@ export async function simulateReview(clientId: string, review: Review) {
   const balances: AccountClosingBalance[] = [];
   if (review.kind === "INVESTMENT") {
     const deadline = Date.now() + 220000;
+    if(review.rows.some(row=>row.method==="CA_DELTA")){
+      try{errors.push(...baselineDifferenceIssues(review,await investmentBaselineBalances(clientId,review,deadline)));}catch{errors.push("Não foi possível validar o fechamento anterior da XP. Confira as contas e calcule novamente.");}
+    }
     for (const accountId of new Set(review.rows.map((row) => row.accountId).filter(Boolean))) {
       if (options.financialAccounts.some((item) => item.value === accountId)) balances.push(await closingAccountBalance(clientId, accountId, review.periodEnd, new Date(), deadline));
     }

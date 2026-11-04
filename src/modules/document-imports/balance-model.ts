@@ -4,6 +4,7 @@ export type AccountClosingBalance = { accountId: string; date: string; balanceCe
 export type BalanceComparison = { accountId: string; incomeCents: number; statementCents: number | null; caCents: number | null; projectedCents: number | null; differenceCents: number | null; status: "OK" | "DIVERGENT" | "ALREADY_MATCHES" | "UNAVAILABLE"; source: AccountClosingBalance | null };
 
 export function statementClosingCents(row: InvestmentReview["rows"][number]): number | null {
+  if (row.closingCents !== undefined) return row.closingCents;
   if (!row.evidence.length) return null;
   let total = 0;
   for (const item of row.evidence) {

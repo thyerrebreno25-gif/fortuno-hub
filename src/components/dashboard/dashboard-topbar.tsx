@@ -144,16 +144,17 @@ export function DashboardTopbar() {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, []);
 
-  const unread = useMemo(
-    () => notifications.filter((item) => !readIds.includes(item.id)).length,
+  const unreadItems = useMemo(
+    () => notifications.filter((item) => !readIds.includes(item.id)),
     [notifications, readIds],
   );
 
+  const unread=unreadItems.length;
   function markAllRead() {
-    setReadIds(current=>{const next=[...new Set([...current,...notifications.map(item=>item.id)])].slice(-1000);try{window.localStorage.setItem("fortuno-notifications-read:"+viewerKey.current,JSON.stringify(next));}catch{}return next;});
+    setReadIds(current=>{const next=[...new Set([...current,...notifications.map(item=>item.id)])].slice(-1000);try{window.localStorage.setItem("fortuno-notifications-read:"+viewerKey.current,JSON.stringify(next));}catch{}readMemory.current=next;return next;});
   }
   function openNotification(item:NotificationItem) {
-    setReadIds(current=>{const next=[...new Set([...current,item.id])].slice(-1000);try{window.localStorage.setItem("fortuno-notifications-read:"+viewerKey.current,JSON.stringify(next));}catch{}return next;});
+    setReadIds(current=>{const next=[...new Set([...current,item.id])].slice(-1000);try{window.localStorage.setItem("fortuno-notifications-read:"+viewerKey.current,JSON.stringify(next));}catch{}readMemory.current=next;return next;});
     setNotificationsOpen(false);
     window.dispatchEvent(new CustomEvent("fortuno:notification-open",{detail:{href:item.href}}));
     router.push(item.href as Route);
@@ -228,12 +229,12 @@ export function DashboardTopbar() {
               </div>
 
               <div className={styles.notificationsList}>
-                {notifications.length === 0 ? (
+                {unreadItems.length === 0 ? (
                   <div className={styles.emptyNotifications}>
-                    Nenhuma pendência operacional no momento.
+                    Nenhuma notificação não lida no momento.
                   </div>
                 ) : (
-                  notifications.map((item) => {
+                  unreadItems.map((item) => {
                     const read = readIds.includes(item.id);
 
                     return (

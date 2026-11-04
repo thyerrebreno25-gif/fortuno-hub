@@ -6,8 +6,8 @@ const text = z.string().max(500);
 const cents = z.number().int().min(0).max(100_000_000_000);
 const date = z.string().max(10).refine((s) => !s || validDate(s), "Data inválida");
 export const investmentSchema = z.object({
-  kind: z.literal("INVESTMENT"), periodStart: date, periodEnd: date, bankAccount: text,
-  rows: z.array(z.object({ key: text, description: text, date, amountCents: cents, categoryId: text, accountId: text,
+  kind: z.literal("INVESTMENT"), source:z.enum(["INTER","NUBANK","MULTINVEST","XP"]).optional(), periodStart: date, periodEnd: date, bankAccount: text,
+  rows: z.array(z.object({ key: text, description: text, date, amountCents: cents, categoryId: text, accountId: text, closingCents:cents.optional(), method:z.enum(["EXPLICIT","STATEMENT_DELTA","CA_DELTA"]).optional(), openingCents:cents.optional(), transferredRedemptionsCents:cents.optional(), baseline:z.object({accountId:text,date,balanceCents:z.number().int().min(-100_000_000_000).max(100_000_000_000),checkedAt:z.string().max(40)}).optional(),
     evidence: z.array(z.object({ page: z.number().int().positive(), text, amountCents: cents })).max(2000),
   })).max(100), warnings: z.array(text).max(50),
 });
@@ -58,7 +58,12 @@ export function reviewIssues(review: Review, requireLinks = false): string[] {
     if (!review.rows.length) errors.push("Nenhuma linha de rendimento foi identificada. O PDF precisa conter texto selecionável.");
     if (!validDate(review.periodStart) || !validDate(review.periodEnd)) errors.push("Confira o período do extrato.");
     if (review.periodStart > review.periodEnd) errors.push("O início do período deve anteceder o término.");
+    const xpRows=review.rows.filter(row=>row.method==="CA_DELTA");
+    if(xpRows.length&&new Set(xpRows.map(row=>row.accountId).filter(Boolean)).size!==xpRows.length)errors.push("Selecione contas distintas para cada posição da XP.");
     for (const row of review.rows) {
+      if(row.method==="CA_DELTA" && (!row.baseline || row.baseline.accountId!==row.accountId || row.baseline.date!==monthDate(review.periodStart,-1,"last") || row.closingCents===undefined || row.amountCents!==row.closingCents-row.baseline.balanceCents)) errors.push(`Consulte o saldo do CA no fechamento anterior para calcular ${row.description}.`);
+      if(row.method==="STATEMENT_DELTA" && (row.closingCents===undefined || row.openingCents===undefined || row.amountCents!==row.closingCents-row.openingCents+(row.transferredRedemptionsCents||0))) errors.push(`O cálculo de ${row.description} não confere com os saldos e resgates do extrato.`);
+
       if (!row.description.trim() || row.amountCents <= 0 || !validDate(row.date)) errors.push(`Confira descrição, valor e data de ${row.description || "rendimento"}.`);
       if (validDate(row.date) && (row.date < review.periodStart || row.date > review.periodEnd)) errors.push(`A data de ${row.description} está fora do período do extrato.`);
       if (requireLinks && (!row.categoryId || !row.accountId)) errors.push(`Selecione categoria e conta para ${row.description}.`);

@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({access:vi.fn(),company:vi.fn(),options:vi.fn(),balances:vi.fn()}));
+vi.mock("@/modules/document-imports/server",()=>({importAccess:m.access,authorizedCompany:m.company,importOptions:m.options}));
+vi.mock("@/modules/document-imports/investment-calculation-server",()=>({investmentBaselineBalances:m.balances}));
+import {POST} from "./route";
+const review={kind:"INVESTMENT",source:"XP",periodStart:"2026-09-01",periodEnd:"2026-09-30",bankAccount:"test",warnings:[],rows:[{key:"xp",description:"XP - Renda fixa",date:"2026-09-30",amountCents:0,closingCents:63845168,method:"CA_DELTA",accountId:"account",categoryId:"",evidence:[]}]};
+const post=()=>POST(new Request("https://hub.test/api/document-imports/calculate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId:"client",review})}));
+beforeEach(()=>{vi.clearAllMocks();m.access.mockResolvedValue({member:{organizationId:"org"},permission:{canEdit:true}});m.company.mockResolvedValue({id:"client"});m.options.mockResolvedValue({financialAccounts:[{value:"account",label:"Renda fixa"}]});m.balances.mockResolvedValue([{accountId:"account",date:"2026-08-31",balanceCents:63000000,method:"RECONSTRUCTED",checkedAt:"2026-11-04T12:00:00Z"}]);});
+it("requires edit permission and a company inside the current organization",async()=>{m.access.mockResolvedValueOnce(null);expect((await post()).status).toBe(401);m.access.mockResolvedValueOnce({permission:{canEdit:false}});expect((await post()).status).toBe(403);m.company.mockResolvedValueOnce(null);expect((await post()).status).toBe(404);expect(m.balances).not.toHaveBeenCalled();});
+it("rejects a financial account from another company before consulting balances",async()=>{m.options.mockResolvedValue({financialAccounts:[]});expect((await post()).status).toBe(400);expect(m.balances).not.toHaveBeenCalled();});
+it("returns a calculated review without saving or sending any financial entry",async()=>{const result=await post();expect(result.status).toBe(200);const body=await result.json();expect(body.review.rows[0].amountCents).toBe(845168);expect(body.review.rows[0].baseline.date).toBe("2026-08-31");expect(m.company).toHaveBeenCalledWith("org","client");});
