@@ -1,0 +1,4 @@
+import {expect,it} from "vitest";
+import {meetingAIError} from "./ai-error";
+it("distinguishes exhausted credits from temporary traffic without exposing unrelated controls",async()=>{const error=await meetingAIError(Response.json({error:{code:"credit_balance_exhausted",type:"insufficient_quota",message:"private provider body"}},{status:429}));expect(error.details.kind).toBe("credits");expect(error.message).toContain("créditos");expect(error.message).not.toContain("Aprender categorias");expect(error.message).not.toContain("private provider body");});
+it("retains retry timing only for a recognized temporary rate limit",async()=>{const error=await meetingAIError(Response.json({error:{code:"rate_limit_exceeded"}},{status:429,headers:{"retry-after":"120"}}));expect(error.details.kind).toBe("rate_limit");expect(error.details.retryAfterSeconds).toBe(120);});

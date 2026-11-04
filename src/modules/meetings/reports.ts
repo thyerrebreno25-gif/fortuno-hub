@@ -1,3 +1,4 @@
+import {OpenAIRequestError} from "@/modules/assistant/openai-errors";
 import "server-only";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
@@ -39,7 +40,7 @@ export async function requestMeetingReport(member:MeetingMember,body:unknown){
   return {report,completed:true};
  },{timeout:30000,maxWait:10000});
 }
-const workSchema=z.object({hash:z.string(),inputs:z.array(z.string()),outputs:z.array(reportSummarySchema),index:z.number().int().nonnegative(),level:z.number().int().nonnegative()});
+const workSchema=z.object({hash:z.string(),inputs:z.array(z.string()),outputs:z.array(reportSummarySchema),index:z.number().int().nonnegative(),level:z.number().int().nonnegative(),retryCount:z.number().int().nonnegative().default(0)});
 export async function processMeetingReport(meetingId:string){
  const report=await prisma.meetingReport.findUnique({where:{meetingId}});if(!report)return;
  const now=new Date(),stale=report.status==="PROCESSING"&&!!report.claimedAt&&report.claimedAt<new Date(Date.now()-15*60000);
@@ -54,8 +55,8 @@ export async function processMeetingReport(meetingId:string){
    if(pending){
     if(!process.env.OPENAI_API_KEY?.trim())throw new Error("A transcrição depende da configuração da IA.");
     await transcribeRecording(pending.id);
-    const updated=await prisma.meetingRecording.findUnique({where:{id:pending.id},select:{status:true,transcript:true}});
-    if(!updated||updated.status==="FAILED"||updated.status==="DONE"&&!updated.transcript.trim())throw new Error("Não foi possível transcrever uma gravação. Confira a aba Gravações e transcrições e tente novamente.");
+    const updated=await prisma.meetingRecording.findUnique({where:{id:pending.id},select:{status:true,transcript:true,error:true}});
+    if(!updated||updated.status==="FAILED"||updated.status==="DONE"&&!updated.transcript.trim())throw new Error(updated?.error || "Não foi possível transcrever uma gravação. Confira a aba Gravações e transcrições e tente novamente.");
     await prisma.meetingReport.updateMany({where:owned,data:{status:updated.status==="DONE"?"PENDING":"WAITING_AUDIO",claimedAt:null,nextRunAt:new Date(Date.now()+1000)}});return;
    }
   }
@@ -63,14 +64,28 @@ export async function processMeetingReport(meetingId:string){
   let summary:ReportSummary|null=null,mode="BASIC";
   if(process.env.OPENAI_API_KEY?.trim()){
    mode="AI";const saved=workSchema.safeParse(report.work);
-   let work=saved.success&&saved.data.hash===hash?saved.data:{hash,inputs:splitReportText(JSON.stringify(reportSource(meeting,report.includeRecordings),null,2),40000),outputs:[] as ReportSummary[],index:0,level:0};
+   let work=saved.success&&saved.data.hash===hash?saved.data:{hash,inputs:splitReportText(JSON.stringify(reportSource(meeting,report.includeRecordings),null,2),40000),outputs:[] as ReportSummary[],index:0,level:0,retryCount:0};
    for(let step=0;step<2;step++){
-    const output=await summarizeMeetingPart(work.inputs[work.index],work.level>0);
+    let output:ReportSummary;
+    try{output=await summarizeMeetingPart(work.inputs[work.index],work.level>0);}
+    catch(error){
+     if(error instanceof OpenAIRequestError&&error.details.kind==="rate_limit"&&work.retryCount<3){
+      await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",error:error.message,work:{...work,retryCount:work.retryCount+1} as Prisma.InputJsonValue,claimedAt:null,nextRunAt:new Date(Date.now()+Math.max(60,error.details.retryAfterSeconds||60)*1000)}});return;
+     }
+     if(!report.content){
+      const fresh=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+      if(!fresh)throw error;
+      if(reportFingerprint(fresh,report.includeRecordings)!==hash){await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",work:Prisma.DbNull,claimedAt:null,nextRunAt:new Date()}});return;}
+      const warning=error instanceof OpenAIRequestError?error.message:"Não foi possível concluir a síntese por IA. Os registros do Hub foram consolidados abaixo.";
+      await prisma.meetingReport.updateMany({where:{...owned,meeting:{deletedAt:null,status:"COMPLETED"}},data:{status:"READY",content:renderMeetingReport(meeting,null,report.includeRecordings),sourceHash:hash,mode:"BASIC",error:warning,generatedAt:new Date(),work:Prisma.DbNull,claimedAt:null}});return;
+     }
+     throw error;
+    }
     work={...work,outputs:[...work.outputs,output],index:work.index+1};
     if(work.index===work.inputs.length){
      if(work.inputs.length===1){summary=output;break;}
      if(work.level>=8)throw new Error("A síntese ficou extensa demais. Divida o conteúdo em reuniões menores antes de gerar novamente.");
-     work={hash,inputs:splitReportText(JSON.stringify(work.outputs),40000),outputs:[],index:0,level:work.level+1};
+     work={hash,inputs:splitReportText(JSON.stringify(work.outputs),40000),outputs:[],index:0,level:work.level+1,retryCount:0};
     }
     const saved=await prisma.meetingReport.updateMany({where:owned,data:{work:work as Prisma.InputJsonValue}});if(!saved.count)return;
    }
