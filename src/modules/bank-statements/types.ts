@@ -23,5 +23,6 @@ export type ParsedStatement = {
   periodEnd?: string;
   detectedOpeningBalance?: number;
   detectedClosingBalance?: number;
+  balanceWarnings?: string[];
   transactions: StatementTransaction[];
 };

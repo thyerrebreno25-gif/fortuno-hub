@@ -18,6 +18,7 @@ const institutionNames: Record<string, string> = {
   "323": "Mercado Pago",
   "336": "Banco C6 S.A.",
   "348": "Banco XP S.A.",
+  "422": "Banco Safra S.A.",
   "748": "Banco Cooperativo Sicredi S.A.",
 };
 

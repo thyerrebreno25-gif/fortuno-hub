@@ -1,0 +1,3347 @@
+[
+  {
+    "page": 1,
+    "y": 806,
+    "text": "Banco Safra S/A",
+    "parts": [
+      {
+        "x": 143,
+        "text": "Banco Safra S/A"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 802,
+    "text": "Página 1 de 4",
+    "parts": [
+      {
+        "x": 501.631348,
+        "text": "Página 1 de 4"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 794,
+    "text": "CNPJ: 58.160.789/0001-28",
+    "parts": [
+      {
+        "x": 143,
+        "text": "CNPJ: 58.160.789/0001-28"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 790,
+    "text": "15/10/2026 16:23",
+    "parts": [
+      {
+        "x": 502.027344,
+        "text": "15/10/2026 16:23"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 740,
+    "text": "EMPRESA EXEMPLO LTDA",
+    "parts": [
+      {
+        "x": 392.543916,
+        "text": "EMPRESA EXEMPLO LTDA"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 732,
+    "text": "Extrato de Conta Corrente",
+    "parts": [
+      {
+        "x": 25,
+        "text": "Extrato de Conta Corrente"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 728,
+    "text": "CNPJ: 000000000 | AG: 0001 | CONTA: 00000001-0",
+    "parts": [
+      {
+        "x": 358.028535,
+        "text": "CNPJ: 000000000 | AG: 0001 | CONTA: 00000001-0"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 716,
+    "text": "Período de 17/07/2026 a 15/10/2026",
+    "parts": [
+      {
+        "x": 25,
+        "text": "Período de 17/07/2026 a 15/10/2026"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 682,
+    "text": "Saldo + Limite Disponível Saldo Saldo Bloqueado Limite Cheque Empresarial Cobrança D0 Cobrança D1",
+    "parts": [
+      {
+        "x": 41.78125,
+        "text": "Saldo + Limite Disponível"
+      },
+      {
+        "x": 207.402344,
+        "text": "Saldo"
+      },
+      {
+        "x": 252.800781,
+        "text": "Saldo Bloqueado"
+      },
+      {
+        "x": 333.570313,
+        "text": "Limite Cheque Empresarial"
+      },
+      {
+        "x": 453.851563,
+        "text": "Cobrança D0"
+      },
+      {
+        "x": 521.851563,
+        "text": "Cobrança D1"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 666,
+    "text": "R$ 4.694,24 R$ 4.694,24 R$ 0,00 R$ 0,00 R$ 0,00 R$ 0,00",
+    "parts": [
+      {
+        "x": 86.475586,
+        "text": "R$ 4.694,24"
+      },
+      {
+        "x": 179.475586,
+        "text": "R$ 4.694,24"
+      },
+      {
+        "x": 285.308594,
+        "text": "R$ 0,00"
+      },
+      {
+        "x": 403.308594,
+        "text": "R$ 0,00"
+      },
+      {
+        "x": 471.308594,
+        "text": "R$ 0,00"
+      },
+      {
+        "x": 539.308594,
+        "text": "R$ 0,00"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 616,
+    "text": "LANÇAMENTOS REALIZADOS",
+    "parts": [
+      {
+        "x": 25,
+        "text": "LANÇAMENTOS REALIZADOS"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 586,
+    "text": "Data Lançamento COMPLEMENTO EXEMPLO Nº Documento Valor (R$)",
+    "parts": [
+      {
+        "x": 25,
+        "text": "Data"
+      },
+      {
+        "x": 63,
+        "text": "Lançamento"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "Nº Documento"
+      },
+      {
+        "x": 534.335938,
+        "text": "Valor (R$)"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 570,
+    "text": "17/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "17/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 554,
+    "text": "17/07 SALDO TOTAL 907,55",
+    "parts": [
+      {
+        "x": 25,
+        "text": "17/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,55"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 538,
+    "text": "20/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "20/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 522,
+    "text": "20/07 SALDO TOTAL 907,56",
+    "parts": [
+      {
+        "x": 25,
+        "text": "20/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,56"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 506,
+    "text": "21/07 SALDO TOTAL 907,56",
+    "parts": [
+      {
+        "x": 25,
+        "text": "21/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,56"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 490,
+    "text": "22/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "22/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 474,
+    "text": "22/07 SALDO TOTAL 907,57",
+    "parts": [
+      {
+        "x": 25,
+        "text": "22/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,57"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 458,
+    "text": "23/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "23/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 440,
+    "text": "23/07 SALDO TOTAL 907,58",
+    "parts": [
+      {
+        "x": 25,
+        "text": "23/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,58"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 424,
+    "text": "24/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "24/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 408,
+    "text": "24/07 SALDO TOTAL 907,59",
+    "parts": [
+      {
+        "x": 25,
+        "text": "24/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,59"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 392,
+    "text": "27/07 SALDO TOTAL 907,59",
+    "parts": [
+      {
+        "x": 25,
+        "text": "27/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,59"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 376,
+    "text": "28/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 360,
+    "text": "28/07 SALDO TOTAL 907,60",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,60"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 344,
+    "text": "29/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "29/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 328,
+    "text": "29/07 SALDO TOTAL 907,61",
+    "parts": [
+      {
+        "x": 25,
+        "text": "29/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,61"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 310,
+    "text": "30/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "30/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 294,
+    "text": "30/07 SALDO TOTAL 907,62",
+    "parts": [
+      {
+        "x": 25,
+        "text": "30/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,62"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 278,
+    "text": "31/07 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "31/07"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 262,
+    "text": "31/07 SALDO TOTAL 907,63",
+    "parts": [
+      {
+        "x": 25,
+        "text": "31/07"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,63"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 246,
+    "text": "03/08 SALDO TOTAL 907,63",
+    "parts": [
+      {
+        "x": 25,
+        "text": "03/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,63"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 230,
+    "text": "04/08 SALDO TOTAL 907,63",
+    "parts": [
+      {
+        "x": 25,
+        "text": "04/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,63"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 214,
+    "text": "05/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "05/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 196,
+    "text": "05/08 SALDO TOTAL 907,64",
+    "parts": [
+      {
+        "x": 25,
+        "text": "05/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,64"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 180,
+    "text": "06/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "06/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 164,
+    "text": "06/08 SALDO TOTAL 907,65",
+    "parts": [
+      {
+        "x": 25,
+        "text": "06/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,65"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 148,
+    "text": "07/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "07/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 132,
+    "text": "07/08 SALDO TOTAL 907,66",
+    "parts": [
+      {
+        "x": 25,
+        "text": "07/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,66"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 116,
+    "text": "10/08 SALDO TOTAL 907,66",
+    "parts": [
+      {
+        "x": 25,
+        "text": "10/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,66"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 100,
+    "text": "11/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "11/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 74,
+    "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA SAC E DEFICIENTES AUDITIVO / FALA OUVIDORIA",
+    "parts": [
+      {
+        "x": 25,
+        "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA"
+      },
+      {
+        "x": 266,
+        "text": "SAC E DEFICIENTES AUDITIVO / FALA"
+      },
+      {
+        "x": 422,
+        "text": "OUVIDORIA"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 54,
+    "text": "Atendimento 0800 772 5755 24h por dia, 7 dias 0800 770 1236 2ª a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "Atendimento"
+      },
+      {
+        "x": 266,
+        "text": "0800 772 5755"
+      },
+      {
+        "x": 334,
+        "text": "24h por dia, 7 dias"
+      },
+      {
+        "x": 422,
+        "text": "0800 770 1236"
+      },
+      {
+        "x": 490,
+        "text": "2ª a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 52,
+    "text": "(11) 3175 8248 Capital e Grande SP",
+    "parts": [
+      {
+        "x": 25,
+        "text": "(11) 3175 8248"
+      },
+      {
+        "x": 83,
+        "text": "Capital e Grande SP"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 44,
+    "text": "personalizado, de 2ª por semana. 18h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "personalizado, de 2ª"
+      },
+      {
+        "x": 334,
+        "text": "por semana."
+      },
+      {
+        "x": 490,
+        "text": "18h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 36,
+    "text": "0300 015 7575 Demais localidades",
+    "parts": [
+      {
+        "x": 25,
+        "text": "0300 015 7575"
+      },
+      {
+        "x": 83,
+        "text": "Demais localidades"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 34,
+    "text": "a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 24,
+    "text": "19h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "19h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 806,
+    "text": "Banco Safra S/A",
+    "parts": [
+      {
+        "x": 143,
+        "text": "Banco Safra S/A"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 802,
+    "text": "Página 2 de 4",
+    "parts": [
+      {
+        "x": 501.631348,
+        "text": "Página 2 de 4"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 794,
+    "text": "CNPJ: 58.160.789/0001-28",
+    "parts": [
+      {
+        "x": 143,
+        "text": "CNPJ: 58.160.789/0001-28"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 790,
+    "text": "15/10/2026 16:23",
+    "parts": [
+      {
+        "x": 502.027344,
+        "text": "15/10/2026 16:23"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 728,
+    "text": "LANÇAMENTOS REALIZADOS",
+    "parts": [
+      {
+        "x": 25,
+        "text": "LANÇAMENTOS REALIZADOS"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 696,
+    "text": "Data Lançamento COMPLEMENTO EXEMPLO Nº Documento Valor (R$)",
+    "parts": [
+      {
+        "x": 25,
+        "text": "Data"
+      },
+      {
+        "x": 63,
+        "text": "Lançamento"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "Nº Documento"
+      },
+      {
+        "x": 534.335938,
+        "text": "Valor (R$)"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 682,
+    "text": "11/08 SALDO TOTAL 907,67",
+    "parts": [
+      {
+        "x": 25,
+        "text": "11/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,67"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 664,
+    "text": "12/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "12/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 648,
+    "text": "12/08 SALDO TOTAL 907,68",
+    "parts": [
+      {
+        "x": 25,
+        "text": "12/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,68"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 632,
+    "text": "13/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "13/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 616,
+    "text": "13/08 SALDO TOTAL 907,69",
+    "parts": [
+      {
+        "x": 25,
+        "text": "13/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,69"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 600,
+    "text": "14/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "14/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 584,
+    "text": "14/08 SALDO TOTAL 907,70",
+    "parts": [
+      {
+        "x": 25,
+        "text": "14/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,70"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 568,
+    "text": "17/08 SALDO TOTAL 907,70",
+    "parts": [
+      {
+        "x": 25,
+        "text": "17/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,70"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 550,
+    "text": "18/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "18/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 534,
+    "text": "18/08 SALDO TOTAL 907,71",
+    "parts": [
+      {
+        "x": 25,
+        "text": "18/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,71"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 518,
+    "text": "19/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "19/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 502,
+    "text": "19/08 SALDO TOTAL 907,72",
+    "parts": [
+      {
+        "x": 25,
+        "text": "19/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,72"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 486,
+    "text": "20/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "20/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 470,
+    "text": "20/08 SALDO TOTAL 907,73",
+    "parts": [
+      {
+        "x": 25,
+        "text": "20/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,73"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 454,
+    "text": "21/08 SALDO TOTAL 907,73",
+    "parts": [
+      {
+        "x": 25,
+        "text": "21/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,73"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 438,
+    "text": "24/08 SALDO TOTAL 907,73",
+    "parts": [
+      {
+        "x": 25,
+        "text": "24/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,73"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 420,
+    "text": "25/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "25/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 404,
+    "text": "25/08 SALDO TOTAL 907,74",
+    "parts": [
+      {
+        "x": 25,
+        "text": "25/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,74"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 388,
+    "text": "26/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "26/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 372,
+    "text": "26/08 SALDO TOTAL 907,75",
+    "parts": [
+      {
+        "x": 25,
+        "text": "26/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,75"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 356,
+    "text": "27/08 RENDIMENTO CDB AUTOMATICO 900000001 0,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "27/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,01"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 340,
+    "text": "27/08 SALDO TOTAL 907,76",
+    "parts": [
+      {
+        "x": 25,
+        "text": "27/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "907,76"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 324,
+    "text": "28/08 PIX RECEBIDO COMPLEMENTO EXEMPLO 900000001 100.672,90",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/08"
+      },
+      {
+        "x": 63,
+        "text": "PIX RECEBIDO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 524.230957,
+        "text": "100.672,90"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 312,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 294,
+    "text": "28/08 PIX RECEBIDO COMPLEMENTO EXEMPLO 900000001 78.481,27",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/08"
+      },
+      {
+        "x": 63,
+        "text": "PIX RECEBIDO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 529.376953,
+        "text": "78.481,27"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 282,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 266,
+    "text": "28/08 RENDIMENTO CDB AUTOMATICO 900000001 2,52",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "2,52"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 250,
+    "text": "28/08 SALDO TOTAL 180.064,45",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 524.230957,
+        "text": "180.064,45"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 234,
+    "text": "31/08 RENDIMENTO CDB AUTOMATICO 900000001 0,18",
+    "parts": [
+      {
+        "x": 25,
+        "text": "31/08"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,18"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 218,
+    "text": "31/08 APLICACAO EM RENDA FIXA COMPLEMENTO EXEMPLO 900000001 -180.000,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "31/08"
+      },
+      {
+        "x": 63,
+        "text": "APLICACAO EM RENDA FIXA"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 521.334961,
+        "text": "-180.000,00"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 202,
+    "text": "31/08 SALDO TOTAL 64,63",
+    "parts": [
+      {
+        "x": 25,
+        "text": "31/08"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 547.209961,
+        "text": "64,63"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 186,
+    "text": "16/09 RESGATE DE RENDA FIXA COMPLEMENTO EXEMPLO 900000001 258.363,54",
+    "parts": [
+      {
+        "x": 25,
+        "text": "16/09"
+      },
+      {
+        "x": 63,
+        "text": "RESGATE DE RENDA FIXA"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 524.230957,
+        "text": "258.363,54"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 168,
+    "text": "16/09 RESGATE DE RENDA FIXA COMPLEMENTO EXEMPLO 900000001 180.416,28",
+    "parts": [
+      {
+        "x": 25,
+        "text": "16/09"
+      },
+      {
+        "x": 63,
+        "text": "RESGATE DE RENDA FIXA"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 524.230957,
+        "text": "180.416,28"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 152,
+    "text": "16/09 PIX ENVIADO TRANSF COMPLEMENTO EXEMPLO 900000001 -268.500,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "16/09"
+      },
+      {
+        "x": 63,
+        "text": "PIX ENVIADO TRANSF"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 521.334961,
+        "text": "-268.500,00"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 136,
+    "text": "16/09 PIX ENVIADO COMPLEMENTO EXEMPLO 900000001 -87.500,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "16/09"
+      },
+      {
+        "x": 63,
+        "text": "PIX ENVIADO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 526.480957,
+        "text": "-87.500,00"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 124,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 108,
+    "text": "16/09 SALDO TOTAL 82.844,45",
+    "parts": [
+      {
+        "x": 25,
+        "text": "16/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.844,45"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 74,
+    "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA SAC E DEFICIENTES AUDITIVO / FALA OUVIDORIA",
+    "parts": [
+      {
+        "x": 25,
+        "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA"
+      },
+      {
+        "x": 266,
+        "text": "SAC E DEFICIENTES AUDITIVO / FALA"
+      },
+      {
+        "x": 422,
+        "text": "OUVIDORIA"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 54,
+    "text": "Atendimento 0800 772 5755 24h por dia, 7 dias 0800 770 1236 2ª a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "Atendimento"
+      },
+      {
+        "x": 266,
+        "text": "0800 772 5755"
+      },
+      {
+        "x": 334,
+        "text": "24h por dia, 7 dias"
+      },
+      {
+        "x": 422,
+        "text": "0800 770 1236"
+      },
+      {
+        "x": 490,
+        "text": "2ª a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 52,
+    "text": "(11) 3175 8248 Capital e Grande SP",
+    "parts": [
+      {
+        "x": 25,
+        "text": "(11) 3175 8248"
+      },
+      {
+        "x": 83,
+        "text": "Capital e Grande SP"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 44,
+    "text": "personalizado, de 2ª por semana. 18h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "personalizado, de 2ª"
+      },
+      {
+        "x": 334,
+        "text": "por semana."
+      },
+      {
+        "x": 490,
+        "text": "18h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 36,
+    "text": "0300 015 7575 Demais localidades",
+    "parts": [
+      {
+        "x": 25,
+        "text": "0300 015 7575"
+      },
+      {
+        "x": 83,
+        "text": "Demais localidades"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 34,
+    "text": "a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 2,
+    "y": 24,
+    "text": "19h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "19h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 806,
+    "text": "Banco Safra S/A",
+    "parts": [
+      {
+        "x": 143,
+        "text": "Banco Safra S/A"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 802,
+    "text": "Página 3 de 4",
+    "parts": [
+      {
+        "x": 501.631348,
+        "text": "Página 3 de 4"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 794,
+    "text": "CNPJ: 58.160.789/0001-28",
+    "parts": [
+      {
+        "x": 143,
+        "text": "CNPJ: 58.160.789/0001-28"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 790,
+    "text": "15/10/2026 16:23",
+    "parts": [
+      {
+        "x": 502.027344,
+        "text": "15/10/2026 16:23"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 728,
+    "text": "LANÇAMENTOS REALIZADOS",
+    "parts": [
+      {
+        "x": 25,
+        "text": "LANÇAMENTOS REALIZADOS"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 696,
+    "text": "Data Lançamento COMPLEMENTO EXEMPLO Nº Documento Valor (R$)",
+    "parts": [
+      {
+        "x": 25,
+        "text": "Data"
+      },
+      {
+        "x": 63,
+        "text": "Lançamento"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "Nº Documento"
+      },
+      {
+        "x": 534.335938,
+        "text": "Valor (R$)"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 682,
+    "text": "17/09 RENDIMENTO CDB AUTOMATICO 900000001 0,04",
+    "parts": [
+      {
+        "x": 25,
+        "text": "17/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,04"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 664,
+    "text": "17/09 SALDO TOTAL 82.844,49",
+    "parts": [
+      {
+        "x": 25,
+        "text": "17/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.844,49"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 648,
+    "text": "18/09 RENDIMENTO CDB AUTOMATICO 900000001 0,06",
+    "parts": [
+      {
+        "x": 25,
+        "text": "18/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,06"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 632,
+    "text": "18/09 SALDO TOTAL 82.844,55",
+    "parts": [
+      {
+        "x": 25,
+        "text": "18/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.844,55"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 616,
+    "text": "21/09 RENDIMENTO CDB AUTOMATICO 900000001 0,25",
+    "parts": [
+      {
+        "x": 25,
+        "text": "21/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,25"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 600,
+    "text": "21/09 SALDO TOTAL 82.844,80",
+    "parts": [
+      {
+        "x": 25,
+        "text": "21/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.844,80"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 584,
+    "text": "22/09 RENDIMENTO CDB AUTOMATICO 900000001 0,18",
+    "parts": [
+      {
+        "x": 25,
+        "text": "22/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,18"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 568,
+    "text": "22/09 SALDO TOTAL 82.844,98",
+    "parts": [
+      {
+        "x": 25,
+        "text": "22/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.844,98"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 550,
+    "text": "23/09 RENDIMENTO CDB AUTOMATICO 900000001 0,27",
+    "parts": [
+      {
+        "x": 25,
+        "text": "23/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,27"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 534,
+    "text": "23/09 SALDO TOTAL 82.845,25",
+    "parts": [
+      {
+        "x": 25,
+        "text": "23/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.845,25"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 518,
+    "text": "24/09 RENDIMENTO CDB AUTOMATICO 900000001 0,27",
+    "parts": [
+      {
+        "x": 25,
+        "text": "24/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,27"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 502,
+    "text": "24/09 SALDO TOTAL 82.845,52",
+    "parts": [
+      {
+        "x": 25,
+        "text": "24/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.845,52"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 486,
+    "text": "25/09 RENDIMENTO CDB AUTOMATICO 900000001 0,32",
+    "parts": [
+      {
+        "x": 25,
+        "text": "25/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,32"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 470,
+    "text": "25/09 SALDO TOTAL 82.845,84",
+    "parts": [
+      {
+        "x": 25,
+        "text": "25/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.845,84"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 454,
+    "text": "28/09 RENDIMENTO CDB AUTOMATICO 900000001 0,70",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,70"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 438,
+    "text": "28/09 SALDO TOTAL 82.846,54",
+    "parts": [
+      {
+        "x": 25,
+        "text": "28/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.846,54"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 420,
+    "text": "29/09 RENDIMENTO CDB AUTOMATICO 900000001 0,51",
+    "parts": [
+      {
+        "x": 25,
+        "text": "29/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,51"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 404,
+    "text": "29/09 SALDO TOTAL 82.847,05",
+    "parts": [
+      {
+        "x": 25,
+        "text": "29/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.847,05"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 388,
+    "text": "30/09 RENDIMENTO CDB AUTOMATICO 900000001 0,48",
+    "parts": [
+      {
+        "x": 25,
+        "text": "30/09"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,48"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 372,
+    "text": "30/09 SALDO TOTAL 82.847,53",
+    "parts": [
+      {
+        "x": 25,
+        "text": "30/09"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.847,53"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 356,
+    "text": "01/10 RENDIMENTO CDB AUTOMATICO 900000001 0,52",
+    "parts": [
+      {
+        "x": 25,
+        "text": "01/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,52"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 340,
+    "text": "01/10 SALDO TOTAL 82.848,05",
+    "parts": [
+      {
+        "x": 25,
+        "text": "01/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.848,05"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 324,
+    "text": "02/10 RENDIMENTO CDB AUTOMATICO 900000001 0,63",
+    "parts": [
+      {
+        "x": 25,
+        "text": "02/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,63"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 308,
+    "text": "02/10 SALDO TOTAL 82.848,68",
+    "parts": [
+      {
+        "x": 25,
+        "text": "02/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "82.848,68"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 290,
+    "text": "05/10 RENDIMENTO CDB AUTOMATICO 900000001 1,20",
+    "parts": [
+      {
+        "x": 25,
+        "text": "05/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "1,20"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 274,
+    "text": "05/10 PIX ENVIADO COMPLEMENTO EXEMPLO 900000001 -80.000,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "05/10"
+      },
+      {
+        "x": 63,
+        "text": "PIX ENVIADO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 526.480957,
+        "text": "-80.000,00"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 262,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 246,
+    "text": "05/10 SALDO TOTAL 2.849,89",
+    "parts": [
+      {
+        "x": 25,
+        "text": "05/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 534.522949,
+        "text": "2.849,89"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 230,
+    "text": "06/10 RENDIMENTO CDB AUTOMATICO 900000001 0,02",
+    "parts": [
+      {
+        "x": 25,
+        "text": "06/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,02"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 214,
+    "text": "06/10 SALDO TOTAL 2.849,91",
+    "parts": [
+      {
+        "x": 25,
+        "text": "06/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 534.522949,
+        "text": "2.849,91"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 198,
+    "text": "07/10 RENDIMENTO CDB AUTOMATICO 900000001 0,03",
+    "parts": [
+      {
+        "x": 25,
+        "text": "07/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,03"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 182,
+    "text": "07/10 SALDO TOTAL 2.849,94",
+    "parts": [
+      {
+        "x": 25,
+        "text": "07/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 534.522949,
+        "text": "2.849,94"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 164,
+    "text": "08/10 RENDIMENTO CDB AUTOMATICO 900000001 0,02",
+    "parts": [
+      {
+        "x": 25,
+        "text": "08/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,02"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 148,
+    "text": "08/10 SALDO TOTAL 2.849,96",
+    "parts": [
+      {
+        "x": 25,
+        "text": "08/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 534.522949,
+        "text": "2.849,96"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 132,
+    "text": "09/10 PIX RECEBIDO COMPLEMENTO EXEMPLO 900000001 50.000,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "09/10"
+      },
+      {
+        "x": 63,
+        "text": "PIX RECEBIDO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 529.376953,
+        "text": "50.000,00"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 120,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 104,
+    "text": "09/10 RENDIMENTO CDB AUTOMATICO 900000001 0,03",
+    "parts": [
+      {
+        "x": 25,
+        "text": "09/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,03"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 74,
+    "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA SAC E DEFICIENTES AUDITIVO / FALA OUVIDORIA",
+    "parts": [
+      {
+        "x": 25,
+        "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA"
+      },
+      {
+        "x": 266,
+        "text": "SAC E DEFICIENTES AUDITIVO / FALA"
+      },
+      {
+        "x": 422,
+        "text": "OUVIDORIA"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 54,
+    "text": "Atendimento 0800 772 5755 24h por dia, 7 dias 0800 770 1236 2ª a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "Atendimento"
+      },
+      {
+        "x": 266,
+        "text": "0800 772 5755"
+      },
+      {
+        "x": 334,
+        "text": "24h por dia, 7 dias"
+      },
+      {
+        "x": 422,
+        "text": "0800 770 1236"
+      },
+      {
+        "x": 490,
+        "text": "2ª a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 52,
+    "text": "(11) 3175 8248 Capital e Grande SP",
+    "parts": [
+      {
+        "x": 25,
+        "text": "(11) 3175 8248"
+      },
+      {
+        "x": 83,
+        "text": "Capital e Grande SP"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 44,
+    "text": "personalizado, de 2ª por semana. 18h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "personalizado, de 2ª"
+      },
+      {
+        "x": 334,
+        "text": "por semana."
+      },
+      {
+        "x": 490,
+        "text": "18h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 36,
+    "text": "0300 015 7575 Demais localidades",
+    "parts": [
+      {
+        "x": 25,
+        "text": "0300 015 7575"
+      },
+      {
+        "x": 83,
+        "text": "Demais localidades"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 34,
+    "text": "a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 3,
+    "y": 24,
+    "text": "19h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "19h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 806,
+    "text": "Banco Safra S/A",
+    "parts": [
+      {
+        "x": 143,
+        "text": "Banco Safra S/A"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 802,
+    "text": "Página 4 de 4",
+    "parts": [
+      {
+        "x": 501.631348,
+        "text": "Página 4 de 4"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 794,
+    "text": "CNPJ: 58.160.789/0001-28",
+    "parts": [
+      {
+        "x": 143,
+        "text": "CNPJ: 58.160.789/0001-28"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 790,
+    "text": "15/10/2026 16:23",
+    "parts": [
+      {
+        "x": 502.027344,
+        "text": "15/10/2026 16:23"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 728,
+    "text": "LANÇAMENTOS REALIZADOS",
+    "parts": [
+      {
+        "x": 25,
+        "text": "LANÇAMENTOS REALIZADOS"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 696,
+    "text": "Data Lançamento COMPLEMENTO EXEMPLO Nº Documento Valor (R$)",
+    "parts": [
+      {
+        "x": 25,
+        "text": "Data"
+      },
+      {
+        "x": 63,
+        "text": "Lançamento"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "Nº Documento"
+      },
+      {
+        "x": 534.335938,
+        "text": "Valor (R$)"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 682,
+    "text": "09/10 SALDO TOTAL 52.849,99",
+    "parts": [
+      {
+        "x": 25,
+        "text": "09/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 529.376953,
+        "text": "52.849,99"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 664,
+    "text": "13/10 PIX RECEBIDO COMPLEMENTO EXEMPLO 900000001 50.000,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "13/10"
+      },
+      {
+        "x": 63,
+        "text": "PIX RECEBIDO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 529.376953,
+        "text": "50.000,00"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 652,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 636,
+    "text": "13/10 RENDIMENTO CDB AUTOMATICO 900000001 0,13",
+    "parts": [
+      {
+        "x": 25,
+        "text": "13/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,13"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 620,
+    "text": "13/10 SALDO TOTAL 102.850,12",
+    "parts": [
+      {
+        "x": 25,
+        "text": "13/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 524.230957,
+        "text": "102.850,12"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 604,
+    "text": "14/10 APLICACAO FUNDO INVEST COMPLEMENTO EXEMPLO 900000001 -102.000,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "14/10"
+      },
+      {
+        "x": 63,
+        "text": "APLICACAO FUNDO INVEST"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 521.334961,
+        "text": "-102.000,00"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 588,
+    "text": "14/10 RENDIMENTO CDB AUTOMATICO 900000001 0,11",
+    "parts": [
+      {
+        "x": 25,
+        "text": "14/10"
+      },
+      {
+        "x": 63,
+        "text": "RENDIMENTO CDB AUTOMATICO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 552.355957,
+        "text": "0,11"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 572,
+    "text": "14/10 SALDO TOTAL 850,23",
+    "parts": [
+      {
+        "x": 25,
+        "text": "14/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "850,23"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 554,
+    "text": "15/10 SALDO INICIAL 850,23",
+    "parts": [
+      {
+        "x": 25,
+        "text": "15/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO INICIAL"
+      },
+      {
+        "x": 542.063965,
+        "text": "850,23"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 538,
+    "text": "15/10 RESGATE FUNDO INVEST COMPLEMENTO EXEMPLO 900000001 10.000,01",
+    "parts": [
+      {
+        "x": 25,
+        "text": "15/10"
+      },
+      {
+        "x": 63,
+        "text": "RESGATE FUNDO INVEST"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 529.376953,
+        "text": "10.000,01"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 522,
+    "text": "15/10 PIX ENVIADO COMPLEMENTO EXEMPLO 900000001 -6.156,00",
+    "parts": [
+      {
+        "x": 25,
+        "text": "15/10"
+      },
+      {
+        "x": 63,
+        "text": "PIX ENVIADO"
+      },
+      {
+        "x": 244,
+        "text": "COMPLEMENTO EXEMPLO"
+      },
+      {
+        "x": 412,
+        "text": "900000001"
+      },
+      {
+        "x": 531.626953,
+        "text": "-6.156,00"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 510,
+    "text": "00000000000000",
+    "parts": [
+      {
+        "x": 244,
+        "text": "00000000000000"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 494,
+    "text": "15/10 SALDO TOTAL 4.694,24",
+    "parts": [
+      {
+        "x": 25,
+        "text": "15/10"
+      },
+      {
+        "x": 63,
+        "text": "SALDO TOTAL"
+      },
+      {
+        "x": 534.522949,
+        "text": "4.694,24"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 74,
+    "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA SAC E DEFICIENTES AUDITIVO / FALA OUVIDORIA",
+    "parts": [
+      {
+        "x": 25,
+        "text": "CENTRAL DE SUPORTE A PESSOA JURÍDICA"
+      },
+      {
+        "x": 266,
+        "text": "SAC E DEFICIENTES AUDITIVO / FALA"
+      },
+      {
+        "x": 422,
+        "text": "OUVIDORIA"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 54,
+    "text": "Atendimento 0800 772 5755 24h por dia, 7 dias 0800 770 1236 2ª a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "Atendimento"
+      },
+      {
+        "x": 266,
+        "text": "0800 772 5755"
+      },
+      {
+        "x": 334,
+        "text": "24h por dia, 7 dias"
+      },
+      {
+        "x": 422,
+        "text": "0800 770 1236"
+      },
+      {
+        "x": 490,
+        "text": "2ª a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 52,
+    "text": "(11) 3175 8248 Capital e Grande SP",
+    "parts": [
+      {
+        "x": 25,
+        "text": "(11) 3175 8248"
+      },
+      {
+        "x": 83,
+        "text": "Capital e Grande SP"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 44,
+    "text": "personalizado, de 2ª por semana. 18h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "personalizado, de 2ª"
+      },
+      {
+        "x": 334,
+        "text": "por semana."
+      },
+      {
+        "x": 490,
+        "text": "18h, exceto feriados."
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 36,
+    "text": "0300 015 7575 Demais localidades",
+    "parts": [
+      {
+        "x": 25,
+        "text": "0300 015 7575"
+      },
+      {
+        "x": 83,
+        "text": "Demais localidades"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 34,
+    "text": "a 6ª feira, das 9h às",
+    "parts": [
+      {
+        "x": 167,
+        "text": "a 6ª feira, das 9h às"
+      }
+    ]
+  },
+  {
+    "page": 4,
+    "y": 24,
+    "text": "19h, exceto feriados.",
+    "parts": [
+      {
+        "x": 167,
+        "text": "19h, exceto feriados."
+      }
+    ]
+  }
+]
