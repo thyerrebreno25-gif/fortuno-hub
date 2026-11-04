@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {directoryPage} from "./directory-core";
+import {CURRENT_DIRECTORY_PREFIX,currentDirectoryVisibility,directoryPage} from "./directory-core";
 describe("WhatsApp directory independent from messages",()=>{
  it("imports contacts without messages and preserves names",()=>{
   const page=directoryPage({contacts:[{jid:"5511999999999@s.whatsapp.net",contact_name:"Cliente A"},{jid:"123@lid",contact_FirstName:"Cliente B"}],pagination:{hasMore:false}},"CONTACT",0);
@@ -21,3 +21,5 @@ describe("WhatsApp directory independent from messages",()=>{
   expect(directoryPage([{jid:"5511999999999@s.whatsapp.net",contact_name:"Nome"}],"CONTACT",0,true)).toMatchObject({hasMore:false});
  });
 });
+
+it("hides contact snapshots created with the previous broad scope while retaining groups",()=>{expect(currentDirectoryVisibility()).toEqual({OR:[{kind:"GROUP"},{kind:"CONTACT",generation:{startsWith:CURRENT_DIRECTORY_PREFIX}}]});});

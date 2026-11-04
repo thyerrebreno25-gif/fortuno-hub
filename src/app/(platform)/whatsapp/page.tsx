@@ -15,6 +15,7 @@ import {
   Textarea,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -31,6 +32,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChatInfoDrawer } from "@/modules/whatsapp/chat-info-drawer";
 import { WhatsAppDirectory } from "@/modules/whatsapp/directory-panel";
 import { WhatsAppManagement } from "./management";
 import { WhatsAppMonitoring } from "./monitoring";
@@ -175,6 +177,7 @@ async function readResponse<T>(response: Response) {
 
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
+  const [contactInfoId, setContactInfoId] = useState<string|null>(null);
   const [section, setSection] = useState<Section>("INBOX");
   const [view, setView] = useState<View>("GENERAL");
   const [onlyUnread, setOnlyUnread] = useState(false);
@@ -629,7 +632,7 @@ export default function WhatsAppPage() {
           ) : selectedId && detail?.id === selectedId ? (
             <>
               <div className={styles.detailHeader}>
-                <Group gap="sm" wrap="nowrap">
+                <UnstyledButton onClick={() => setContactInfoId(detail.id)} aria-label="Ver informações da conversa"><Group gap="sm" wrap="nowrap">
                 <ChatAvatar id={detail.id} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} />
                 <div>
                   <Group gap="xs">
@@ -640,7 +643,7 @@ export default function WhatsAppPage() {
                   </Group>
                   <Text size="xs" c="dimmed">{detail.senderEmail.replace("wa-contact:", "+").replace("wa-group:", "Grupo: ")}</Text>
                 </div>
-                </Group>
+                </Group></UnstyledButton>
                 <Group gap="xs">
                   {detail.status !== "RESOLVED" && bootstrap?.canEdit && <Button size="xs" color="teal" variant="light" leftSection={<IconArrowRight size={15} />} disabled={saving || Boolean(detail.assignedTo && detail.assignedTo.id !== bootstrap.currentUser.id && !bootstrap.canManage)} onClick={() => setTransferOpened(true)}>Transferir</Button>}
                   {!detail.assignedTo && detail.status !== "RESOLVED" && (
@@ -741,6 +744,7 @@ export default function WhatsAppPage() {
         />
       )}
 
+      {contactInfoId && detail?.id === contactInfoId && selectedId === contactInfoId && <ChatInfoDrawer key={contactInfoId} id={contactInfoId} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} onClose={() => setContactInfoId(null)}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} clients={bootstrap.clients} operators={bootstrap.members} clientId={detail.client?.id || null} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
       <Modal opened={connectionSettingsOpened && connected} onClose={() => setConnectionSettingsOpened(false)} title="Configuração do WhatsApp" size="xl" centered><UazapiConnection onStatus={onConnectionStatus} /></Modal>

@@ -19,3 +19,8 @@ export function directoryPage(body: unknown, kind: DirectoryKind, offset: number
   if (hasMore && (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || !raw.length)) throw new Error("A paginação da agenda não avançou.");
   return {entries:[...entries.values()],hasMore,nextOffset};
 }
+
+export const CURRENT_DIRECTORY_PREFIX = "address-book-v1:";
+export function currentDirectoryVisibility() {
+ return {OR:[{kind:"GROUP"},{kind:"CONTACT",generation:{startsWith:CURRENT_DIRECTORY_PREFIX}}]};
+}

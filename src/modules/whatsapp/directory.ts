@@ -4,7 +4,7 @@ import {prisma} from "@/lib/prisma";
 import {Prisma} from "@/generated/prisma/client";
 import {decryptIntegrationSecret} from "@/modules/purchase-invoices/server/crypto";
 import {object,uazapiRequest} from "./uazapi";
-import {directoryPage} from "./directory-core";
+import {CURRENT_DIRECTORY_PREFIX,directoryPage} from "./directory-core";
 import type {whatsappConnection} from "./uazapi-server";
 type Connection=NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>;
 export async function scheduleDirectorySync(connection:Connection, force=false) {
@@ -13,11 +13,11 @@ export async function scheduleDirectorySync(connection:Connection, force=false) 
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"directory:"+connection.id}))`;
   const where={connectionId_accountPhone:{connectionId:connection.id,accountPhone:connection.phone!}};
   const existing=await tx.whatsAppDirectorySync.findUnique({where});
-  if(existing && existing.instanceId===connection.instanceId) {
+  if(existing && existing.instanceId===connection.instanceId && existing.generation.startsWith(CURRENT_DIRECTORY_PREFIX)) {
    if(["PENDING","RUNNING"].includes(existing.status) || existing.status === "FAILED" && existing.attempts < 5) return existing;
    if(!force && existing.nextRunAt > new Date()) return existing;
   }
-  const data={organizationId:connection.organizationId,connectionId:connection.id,accountPhone:connection.phone!,instanceId:connection.instanceId,status:"PENDING",phase:"CONTACTS",offset:0,generation:randomUUID(),attempts:0,lastError:null,claimedAt:null,nextRunAt:new Date(),completedAt:null};
+  const data={organizationId:connection.organizationId,connectionId:connection.id,accountPhone:connection.phone!,instanceId:connection.instanceId,status:"PENDING",phase:"CONTACTS",offset:0,generation:CURRENT_DIRECTORY_PREFIX+randomUUID(),attempts:0,lastError:null,claimedAt:null,nextRunAt:new Date(),completedAt:null};
   return tx.whatsAppDirectorySync.upsert({where,create:data,update:data});
  });
 }
@@ -34,12 +34,12 @@ async function directoryBatch(connectionId?:string) {
    const token=decryptIntegrationSecret(connection.tokenEncrypted), kind=job.phase==="GROUPS"?"GROUP":"CONTACT";
    let page;
    try{
-    const body=await uazapiRequest(connection.serverUrl,token,kind==="GROUP"?"/group/list":"/contacts/list",{limit:200,offset:job.offset,...(kind==="GROUP"?{noParticipants:true}:{contactScope:"all"})});
+    const body=await uazapiRequest(connection.serverUrl,token,kind==="GROUP"?"/group/list":"/contacts/list",{limit:200,offset:job.offset,...(kind==="GROUP"?{noParticipants:true,force:job.offset===0}:{contactScope:"address_book"})});
     page=directoryPage(body,kind,job.offset);
    }catch(error){
     // Older paid servers may expose only the official legacy GET collection routes.
     if(job.offset!==0 || ![404,405].includes(Number(object(error).status)))throw error;
-    const body=await uazapiRequest(connection.serverUrl,token,kind==="GROUP"?"/group/list?noParticipants=true":"/contacts?contactScope=all");
+    const body=await uazapiRequest(connection.serverUrl,token,kind==="GROUP"?"/group/list?noParticipants=true":"/contacts?contactScope=address_book");
     page=directoryPage(body,kind,0,true);
    }
    await prisma.$transaction(async tx=>{

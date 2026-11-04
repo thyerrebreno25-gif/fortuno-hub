@@ -1,3 +1,4 @@
+import {currentDirectoryVisibility} from "@/modules/whatsapp/directory-core";
 import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +16,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const connection = await whatsappConnection(member.organizationId);
   if (!connection || connection.status !== "CONNECTED" || connection.expiresAt && connection.expiresAt < new Date()) return NextResponse.json({ url: null });
-  const entry = await prisma.whatsAppDirectoryEntry.findFirst({where:{id,organizationId:member.organizationId,connectionId:connection.id,accountPhone:connection.phone || "",active:true},select:{externalId:true}});
+  const entry = await prisma.whatsAppDirectoryEntry.findFirst({where:{id,organizationId:member.organizationId,connectionId:connection.id,accountPhone:connection.phone || "",active:true,AND:[currentDirectoryVisibility()]},select:{externalId:true}});
   if (!entry) return NextResponse.json({error:"Contato não encontrado."},{status:404});
   const chat = entry.externalId;
   try {

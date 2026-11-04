@@ -1,3 +1,4 @@
+import {currentDirectoryVisibility} from "@/modules/whatsapp/directory-core";
 import {NextResponse} from "next/server";
 import {prisma} from "@/lib/prisma";
 import {getServiceCenterMember,getWhatsAppPermission} from "@/modules/atendimento/auth";
@@ -11,7 +12,7 @@ export async function POST(_request:Request,context:{params:Promise<{id:string}>
  const connection=await whatsappConnection(member.organizationId);
  if(!connection?.phone||connection.status!=="CONNECTED"||connection.expiresAt&&connection.expiresAt<new Date())return NextResponse.json({error:"Conecte o WhatsApp antes de abrir a conversa."},{status:409});
  const {id}=await context.params;
- const entry=await prisma.whatsAppDirectoryEntry.findFirst({where:{id,organizationId:member.organizationId,connectionId:connection.id,accountPhone:connection.phone,active:true}});
+ const entry=await prisma.whatsAppDirectoryEntry.findFirst({where:{id,organizationId:member.organizationId,connectionId:connection.id,accountPhone:connection.phone,active:true,AND:[currentDirectoryVisibility()]}});
  if(!entry)return NextResponse.json({error:"Contato ou grupo não encontrado na conta conectada."},{status:404});
  const kind=entry.kind==="GROUP"?"GROUP":"CONTACT",identifier=normalizeWhatsappIdentity(kind,entry.externalId),senderEmail=whatsappChannelAddress(kind,identifier),recipientEmail=`wa-account:${connection.id}:${connection.phone}`;
  const routing=await resolveWhatsappRouting({organizationId:member.organizationId,kind,identifier,routingArea:"GENERAL"});
