@@ -45,3 +45,14 @@ it("does not leak database errors and reports empty periods explicitly", async (
   expect(payload.summary).toMatchObject({ seconds: 0, worked: 0, planned: 0, coverage: null });
   expect(payload.daily).toHaveLength(27);
 });
+
+it.each(["MASTER", "MANAGER", "ADMIN"])("allows %s to consult every collaborator in the organization", async role => {
+  mocks.member.mockResolvedValue({userId:"u",organizationId:"org",role});
+  const response=await GET(request());
+  expect(response.status).toBe(200);
+  expect((await response.json()).ownOnly).toBe(false);
+  expect(mocks.activities.mock.calls[0][0].where).toMatchObject({organizationId:"org",deletedAt:null});
+  expect(mocks.activities.mock.calls[0][0].where.responsibleId).toBeUndefined();
+  expect(mocks.entries.mock.calls[0][0].where.userId).toBeUndefined();
+  expect(mocks.members.mock.calls[0][0].where.userId).toBeUndefined();
+});
