@@ -20,6 +20,10 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   IconBrandWhatsapp,
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronUp,
+  IconChevronDown,
   IconArrowRight,
   IconRefresh,
   IconChartBar,
@@ -177,6 +181,9 @@ async function readResponse<T>(response: Response) {
 
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
+  const [boxesMinimized,setBoxesMinimized] = useState(false);
+  const [listMinimized,setListMinimized] = useState(false);
+  const [contextMinimized,setContextMinimized] = useState(false);
   const [contactInfoId, setContactInfoId] = useState<string|null>(null);
   const [section, setSection] = useState<Section>("INBOX");
   const [view, setView] = useState<View>("GENERAL");
@@ -557,10 +564,12 @@ export default function WhatsAppPage() {
       </header>
 
       {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
-        <section className={styles.workspace}>
-        <aside className={styles.views}>
+        <section className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
+        <aside className={styles.views} aria-label="Caixas e filtros">
+          <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">CAIXAS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
+          {boxesMinimized&&<span className={styles.railLabel}>Caixas</span>}
+          <div id="whatsapp-boxes-content" className={styles.boxesContent}>
           <div className={styles.filterSection}>
-            <Text fw={800} size="xs" c="dimmed" mb="xs">CAIXAS</Text>
             <ViewButton active={view === "GENERAL"} icon={<IconUsers size={18} />} label="Caixa geral" count={stats?.facets?.view.GENERAL ?? stats?.general ?? 0} onClick={() => setView("GENERAL")} />
             <ViewButton active={view === "MINE"} icon={<IconMessageCircle size={18} />} label="Minha caixa" count={stats?.facets?.view.MINE ?? stats?.mine ?? 0} onClick={() => setView("MINE")} />
             <ViewButton active={view === "QUEUE"} icon={<IconInbox size={18} />} label="Fila de atendimento" count={stats?.facets?.view.QUEUE ?? stats?.queue ?? 0} onClick={() => setView("QUEUE")} />
@@ -576,12 +585,14 @@ export default function WhatsAppPage() {
             <ViewButton active={chatStatus === "ALL"} icon={<IconMessageCircle size={18} />} label="Todas as situações" count={stats?.facets?.status.ALL || 0} onClick={() => setChatStatus("ALL")} />
             <ViewButton active={chatStatus === "OPEN"} icon={<IconInbox size={18} />} label="Em aberto" count={stats?.facets?.status.OPEN || 0} onClick={() => setChatStatus("OPEN")} />
             <ViewButton active={chatStatus === "RESOLVED"} icon={<IconCheck size={18} />} label="Finalizadas" count={stats?.facets?.status.RESOLVED || 0} onClick={() => setChatStatus("RESOLVED")} />
-          </div>
+          </div></div>
         </aside>
 
-        <div className={styles.listPanel}>
+        <div className={styles.listPanel} aria-label="Lista de conversas">
+          <Group justify="space-between" wrap="nowrap" className={styles.listHeading}>{!listMinimized&&<Text fw={850} size="md">Conversas</Text>}<Tooltip label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"}><ActionIcon variant="subtle" color="gray" aria-label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"} aria-expanded={!listMinimized} aria-controls="whatsapp-list-content" onClick={()=>setListMinimized(value=>!value)}>{listMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
+          {listMinimized&&<span className={styles.railLabel}>Conversas</span>}
+          <div id="whatsapp-list-content" className={styles.listContent}>
           <div className={styles.listHeader}>
-            <Text fw={850} size="lg" mb="sm">Conversas</Text>
             <TextInput
               leftSection={<IconSearch size={16} />}
               placeholder="Buscar contato, cliente ou mensagem"
@@ -623,7 +634,7 @@ export default function WhatsAppPage() {
                 <Text size="sm" c="dimmed">As mensagens recebidas pelo WhatsApp aparecerão aqui.</Text>
               </div>
             )}
-          </div>
+          </div></div>
         </div>
 
         <div className={styles.detailPanel}>
@@ -644,7 +655,7 @@ export default function WhatsAppPage() {
                   <Text size="xs" c="dimmed">{detail.senderEmail.replace("wa-contact:", "+").replace("wa-group:", "Grupo: ")}</Text>
                 </div>
                 </Group></UnstyledButton>
-                <Group gap="xs">
+                <Group gap="xs"><Tooltip label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"}><ActionIcon variant="subtle" color="gray" aria-label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"} aria-expanded={!contextMinimized} aria-controls="whatsapp-context" onClick={()=>setContextMinimized(value=>!value)}>{contextMinimized?<IconChevronDown size={17}/>:<IconChevronUp size={17}/>}</ActionIcon></Tooltip>
                   {detail.status !== "RESOLVED" && bootstrap?.canEdit && <Button size="xs" color="teal" variant="light" leftSection={<IconArrowRight size={15} />} disabled={saving || Boolean(detail.assignedTo && detail.assignedTo.id !== bootstrap.currentUser.id && !bootstrap.canManage)} onClick={() => setTransferOpened(true)}>Transferir</Button>}
                   {!detail.assignedTo && detail.status !== "RESOLVED" && (
                     <Button size="xs" variant="light" loading={saving} onClick={() => mutate({ action: "assign" }, "Atendimento assumido.")}>Assumir</Button>
@@ -655,7 +666,7 @@ export default function WhatsAppPage() {
                 </Group>
               </div>
 
-              <div className={styles.contextBar}>
+              <div id="whatsapp-context" className={styles.contextBar} hidden={contextMinimized}>
                 <Select
                   label="Cliente vinculado"
                   placeholder="Selecione o cliente"
@@ -776,7 +787,7 @@ export default function WhatsAppPage() {
 function ViewButton({ active, icon, label, count, onClick }: { active: boolean; icon: React.ReactNode; label: string; count: number; onClick: () => void }) {
   return (
     <button type="button" aria-pressed={active} className={`${styles.viewButton} ${active ? styles.viewActive : ""}`} onClick={onClick}>
-      <span>{icon}{label}</span><Badge size="sm" variant={active ? "filled" : "light"}>{count}</Badge>
+      <span>{icon}{label}</span><Badge size="sm" title={String(count)} variant={active ? "filled" : "light"}>{count > 999 ? new Intl.NumberFormat("pt-BR",{notation:"compact",maximumFractionDigits:1}).format(count) : count}</Badge>
     </button>
   );
 }
