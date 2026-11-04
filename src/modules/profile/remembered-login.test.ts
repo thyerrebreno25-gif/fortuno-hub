@@ -1,0 +1,5 @@
+import {expect,it} from "vitest";
+import {loginDay,parseLoginHint} from "./remembered-login";
+const hint={name:"Pessoa Exemplo",email:"pessoa@example.test",avatar:null,day:"2026-11-04",password:"never-return-this",token:"never-return-this"};
+it("shows only same-day identity hints and never returns credentials",()=>{expect(parseLoginHint(JSON.stringify(hint),new Date("2026-11-04T18:00:00Z"))).toEqual({name:hint.name,email:hint.email,avatar:null,day:hint.day});expect(parseLoginHint(JSON.stringify(hint),new Date("2026-11-05T03:00:00Z"))).toBeNull();});
+it("uses the São Paulo date across UTC midnight and rejects malformed hints",()=>{expect(loginDay(new Date("2026-11-05T02:59:00Z"))).toBe("2026-11-04");expect(parseLoginHint("not json")).toBeNull();expect(parseLoginHint(JSON.stringify({...hint,email:"invalid"}),new Date("2026-11-04T18:00:00Z"))).toBeNull();expect(parseLoginHint(JSON.stringify({...hint,avatar:"https://external.test/tracker"}),new Date("2026-11-04T18:00:00Z"))?.avatar).toBeNull();});

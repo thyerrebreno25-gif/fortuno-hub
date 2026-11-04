@@ -370,6 +370,7 @@ model NotionConnection {
 }
 
 model User {
+  avatar String?
   fathomConnections FathomConnection[]
   whatsappReadStates WhatsAppReadState[]
   createdMeetings TeamMeeting[] @relation("MeetingCreator")

@@ -2,15 +2,17 @@
 import { notifications as toastNotifications } from "@mantine/notifications";
 import { notificationIds, popupBatch } from "@/modules/notifications/popup-state";
 
+import {rememberLoginProfile} from "@/modules/profile/remembered-login";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, useMantineColorScheme } from "@mantine/core";
+import { Avatar, Button, useMantineColorScheme } from "@mantine/core";
 import styles from "@/app/dashboard.module.css";
 
 type ProfileData = {
   user: {
+    avatar?:string|null;
     name: string;
     email: string;
     role: string;
@@ -94,13 +96,13 @@ export function DashboardTopbar() {
   }, [router]);
 
   useEffect(() => {
-    void fetch("/api/profile", { cache: "no-store" })
+    const loadProfile=()=>{void fetch("/api/profile", { cache: "no-store" })
       .then((response) => response.json())
       .then((payload) => {
-        if (payload?.user) setProfile(payload);
+        if (payload?.user) {setProfile(payload);rememberLoginProfile(payload.user,payload.loginDay);}
       })
-      .catch(() => undefined);
-
+      .catch(() => undefined);};
+    loadProfile();window.addEventListener("fortuno:profile-updated",loadProfile);return()=>window.removeEventListener("fortuno:profile-updated",loadProfile);
   }, []);
 
   useEffect(() => {
@@ -299,7 +301,7 @@ export function DashboardTopbar() {
             aria-expanded={profileOpen}
             aria-haspopup="menu"
           >
-            <span className={styles.profileAvatar}>{initials || "U"}</span>
+            <Avatar size={36} radius="xl" src={profile?.user.avatar}>{initials || "U"}</Avatar>
             <span className={styles.profileText}>
               <strong>{profileName}</strong>
               <small>{profileRole}</small>

@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),target:vi.fn(),update:vi.fn(),audit:vi.fn(),transaction:vi.fn()}));
+vi.mock("@/modules/settings/server/settings-auth",()=>({getSettingsMember:m.member,SETTINGS_ADMIN_ROLES:new Set(["MASTER","ADMIN"])}));
+vi.mock("@/lib/prisma",()=>({prisma:{organizationMember:{findFirst:m.target},$transaction:m.transaction}}));
+import {POST} from "./route";
+const jpeg="data:image/jpeg;base64,"+Buffer.concat([Buffer.from([255,216,255]),Buffer.alloc(120),Buffer.from([255,217])]).toString("base64");
+const post=(body:unknown)=>POST(new Request("https://hub.test/api/profile/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}));
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({id:"own",userId:"user",organizationId:"org",role:"OPERATOR"});m.target.mockResolvedValue({userId:"user"});m.transaction.mockImplementation(fn=>fn({user:{update:m.update},auditLog:{create:m.audit}}));});
+it("requires authentication and rejects non-JPEG or oversized content",async()=>{m.member.mockResolvedValueOnce(null);expect((await post({avatar:jpeg})).status).toBe(401);for(const avatar of ["data:image/svg+xml;base64,AAA",jpeg+"x".repeat(180000),"data:image/jpeg;base64,AAAA"])expect((await post({avatar})).status).toBe(400);expect(m.update).not.toHaveBeenCalled();});
+it("blocks an operator from editing another profile",async()=>{expect((await post({memberId:"other",avatar:jpeg})).status).toBe(403);expect(m.target).not.toHaveBeenCalled();});
+it("lets a user edit their photo without changing roles, password or MFA",async()=>{expect((await post({avatar:jpeg})).status).toBe(200);expect(m.target.mock.calls[0][0].where).toEqual({id:"own",organizationId:"org"});expect(Object.keys(m.update.mock.calls[0][0].data)).toEqual(["avatar"]);expect(JSON.stringify(m.audit.mock.calls)).not.toContain(jpeg);});
+it("scopes administrator changes to members of their own organization",async()=>{m.member.mockResolvedValue({id:"own",userId:"user",organizationId:"org",role:"MASTER"});m.target.mockResolvedValue(null);expect((await post({memberId:"foreign",avatar:jpeg})).status).toBe(404);expect(m.target.mock.calls[0][0].where).toEqual({id:"foreign",organizationId:"org"});expect(m.update).not.toHaveBeenCalled();});

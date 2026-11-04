@@ -53,7 +53,7 @@ export function SessionTimeout() {
     try {
       await supabase.auth.signOut();
     } finally {
-      window.location.href = "/login";
+      window.location.href = "/login?expired=1";
     }
   }, [supabase]);
 

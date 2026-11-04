@@ -578,3 +578,5 @@
 .privacyLink:focus-visible { outline: 2px solid #118c8b; outline-offset: 3px; }
 
 .footer { flex-wrap: wrap; }
+
+.returningProfile{display:grid;justify-items:center;gap:12px;margin:22px 0}.profileChoice{display:flex;flex-direction:column;align-items:center;gap:10px;background:#f4f8fd;border:1px solid #dce6f2;border-radius:18px;padding:22px;width:100%;cursor:pointer;color:#102b49}.profileChoice img{border-radius:50%;object-fit:cover}.profileChoice strong{font-size:20px}.profileChoice span{font-size:14px;color:#587088}.otherAccount{background:none;border:0;color:#2864ab;cursor:pointer;font-weight:600}.field[hidden]{display:none}

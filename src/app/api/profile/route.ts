@@ -1,3 +1,4 @@
+import {loginDay} from "@/modules/profile/remembered-login";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountMember } from "@/modules/account/server/account-auth";
@@ -14,8 +15,10 @@ export async function GET() {
     }
 
     return NextResponse.json({
+      loginDay:loginDay(),
       user: {
         id: member.user.id,
+        avatar:member.user.avatar,
         name: member.user.name || member.user.email,
         email: member.user.email,
         role: member.role,

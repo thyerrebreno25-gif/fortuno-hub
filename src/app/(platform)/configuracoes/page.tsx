@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
+import {ProfilePhotoEditor} from "@/modules/profile/photo-editor";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
@@ -76,6 +77,7 @@ type SettingsData = {
       name: string;
       email: string;
       updatedAt: string;
+      avatar?:string|null;
     };
   }>;
   summary: {
@@ -706,7 +708,7 @@ export default function ConfiguracoesPage() {
                     <Table.Tr key={member.id}>
                       <Table.Td>
                         <Group gap="sm">
-                          <Avatar color={roleColors[member.role]}>
+                          <Avatar src={member.user.avatar} color={roleColors[member.role]}>
                             {member.user.name.slice(0, 1).toUpperCase()}
                           </Avatar>
                           <Stack gap={0}>
@@ -781,6 +783,7 @@ export default function ConfiguracoesPage() {
                        <Table.Td>{formatDate(member.createdAt)}</Table.Td>
                       <Table.Td>
                         <Group justify="flex-end" gap={4}>
+                          {(data.currentUser.canAdminister||member.user.id===data.currentUser.id)&&<ProfilePhotoEditor memberId={member.id} name={member.user.name} avatar={member.user.avatar} onSaved={load}/>}
                           <ActionIcon
                             variant="subtle"
                             color="blue"
@@ -829,6 +832,7 @@ export default function ConfiguracoesPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="permissions" pt="lg">
+          <Paper withBorder p="lg" radius="lg" mb="lg"><Stack><Title order={4}>Fotos dos perfis</Title><SimpleGrid cols={{base:1,sm:2,lg:3}}>{data.members.map(member=><Group key={member.id}><Avatar src={member.user.avatar} size={52} radius="xl">{member.user.name.slice(0,1)}</Avatar><Stack gap={3}><Text size="sm" fw={600}>{member.user.name}</Text>{(data.currentUser.canAdminister||member.user.id===data.currentUser.id)&&<ProfilePhotoEditor memberId={member.id} name={member.user.name} avatar={member.user.avatar} onSaved={load}/>}</Stack></Group>)}</SimpleGrid></Stack></Paper>
           <PermissionsManager />
         </Tabs.Panel>
 

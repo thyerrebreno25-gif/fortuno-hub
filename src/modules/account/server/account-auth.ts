@@ -27,6 +27,7 @@ export async function getAccountMember() {
       },
       user: {
         select: {
+          avatar:true,
           id: true,
           name: true,
           email: true,

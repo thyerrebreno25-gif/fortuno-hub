@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+import {PROFILE_HINT_KEY,REMEMBER_HINT_KEY,parseLoginHint,type LoginProfileHint} from "@/modules/profile/remembered-login";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./login.module.css";
@@ -18,11 +20,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const [hint,setHint]=useState<LoginProfileHint|null>(null),[hintSelected,setHintSelected]=useState(false);
+  useEffect(()=>{try{setRemember(localStorage.getItem(REMEMBER_HINT_KEY)!=="false");if(new URLSearchParams(window.location.search).get("expired")==="1"){const parsed=parseLoginHint(localStorage.getItem(PROFILE_HINT_KEY));setHint(parsed);if(!parsed)localStorage.removeItem(PROFILE_HINT_KEY);}}catch{}},[]);
+  function otherAccount(){setHint(null);setHintSelected(false);setEmail("");setPassword("");try{localStorage.removeItem(PROFILE_HINT_KEY);}catch{}}
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setErrorMessage("");
     setLoading(true);
+    try{localStorage.setItem(REMEMBER_HINT_KEY,String(remember));if(!remember)localStorage.removeItem(PROFILE_HINT_KEY);}catch{}
 
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -167,8 +173,9 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form className={styles.form} onSubmit={handleLogin}>
-            <div className={styles.field}>
+          {hint&&<div className={styles.returningProfile}><button type="button" className={styles.profileChoice} onClick={()=>{setEmail(hint.email);setHintSelected(true);}}><Image src={hint.avatar||"/fortuno-logo-v2.png"} width={96} height={96} alt={"Foto de "+hint.name} unoptimized/><strong>{hint.name}</strong><span>{hintSelected?"Confirme sua senha para continuar":"Clique para entrar novamente"}</span></button><button type="button" className={styles.otherAccount} onClick={otherAccount}>Usar outra conta</button></div>}
+          {(!hint||hintSelected)&&<form className={styles.form} onSubmit={handleLogin}>
+            <div className={styles.field} hidden={Boolean(hint&&hintSelected)}>
               <label htmlFor="email">E-mail</label>
 
               <div className={styles.inputContainer}>
@@ -275,7 +282,7 @@ export default function LoginPage() {
                   {remember && "✓"}
                 </span>
 
-                <span>Permanecer conectado</span>
+                <span>Lembrar meu perfil neste navegador</span>
               </label>
 
               <button
@@ -311,7 +318,7 @@ export default function LoginPage() {
                 </>
               )}
             </button>
-          </form>
+          </form>}
 
           <footer className={styles.footer}>
             <span>© 2026 Fortuno Gestão Financeira</span>

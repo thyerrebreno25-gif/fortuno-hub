@@ -1,5 +1,6 @@
 "use client";
 
+import {ProfilePhotoEditor} from "@/modules/profile/photo-editor";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -20,6 +21,7 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 type ProfileData = {
   user: {
+    avatar?:string|null;
     id: string;
     name: string;
     email: string;
@@ -85,7 +87,7 @@ export default function PerfilPage() {
   }
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
   }, []);
 
   async function saveProfile() {
@@ -188,7 +190,7 @@ export default function PerfilPage() {
       <Paper withBorder radius="lg" p="lg">
         <Group justify="space-between">
           <Group>
-            <Avatar size={64} radius="xl" color="blue">
+            <Avatar src={data.user.avatar} size={64} radius="xl" color="blue">
               {data.user.name.slice(0, 1).toUpperCase()}
             </Avatar>
             <Stack gap={2}>
@@ -202,6 +204,7 @@ export default function PerfilPage() {
         </Group>
       </Paper>
 
+      <ProfilePhotoEditor name={data.user.name} avatar={data.user.avatar} onSaved={load}/>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Paper withBorder radius="lg" p="lg">
           <Stack gap="lg">
