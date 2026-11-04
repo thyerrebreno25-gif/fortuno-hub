@@ -5,7 +5,7 @@
 .sectionTabs button:hover { color: var(--fortuno-ink); background: var(--fortuno-surface-soft); }
 .sectionTabs .sectionTabActive { color: #1971c2; background: color-mix(in srgb, var(--mantine-color-blue-6) 11%, var(--fortuno-surface)); box-shadow: 0 3px 9px rgba(34, 139, 230, .1); }
 .loading { min-height: 55vh; display: flex; align-items: center; justify-content: center; gap: 10px; }
-.workspace { min-height: 480px; height: calc(100dvh - 137px); display: grid; grid-template-columns: var(--boxes-column, 160px) var(--list-column, minmax(240px, 285px)) minmax(320px, 1fr); overflow: hidden; border: 1px solid var(--fortuno-line); border-radius: 12px; background: var(--fortuno-surface); box-shadow: var(--fortuno-shadow); }
+.workspace { min-height: 320px; height: var(--whatsapp-workspace-height, calc(100dvh - 137px)); display: grid; grid-template-columns: var(--boxes-column, 160px) var(--list-column, minmax(240px, 285px)) minmax(320px, 1fr); overflow: hidden; border: 1px solid var(--fortuno-line); border-radius: 12px; background: var(--fortuno-surface); box-shadow: var(--fortuno-shadow); }
 .views { min-height: 0; overflow-y: auto; padding: 8px; overflow-x: hidden; border-right: 1px solid var(--fortuno-line); background: var(--fortuno-surface-soft); }
 .filterSection + .filterSection { margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--fortuno-line); }
 .filterSection > p { padding-left: 10px; }

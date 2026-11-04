@@ -181,6 +181,8 @@ async function readResponse<T>(response: Response) {
 
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
+  const workspaceRef = useRef<HTMLElement|null>(null);
+  const workspaceHeaderRef = useRef<HTMLElement|null>(null);
   const [boxesMinimized,setBoxesMinimized] = useState(false);
   const [listMinimized,setListMinimized] = useState(false);
   const [contextMinimized,setContextMinimized] = useState(false);
@@ -231,6 +233,21 @@ export default function WhatsAppPage() {
     if (status !== "CONNECTED") { setSection("INBOX"); setTransferOpened(false); setSimulatorOpen(false); setConnectionSettingsOpened(false); }
   }, []);
   useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
+  useEffect(() => {
+    if (!connected || section !== "INBOX") return;
+    const measure = () => {
+      const node = workspaceRef.current;
+      if (!node) return;
+      if (window.innerWidth <= 820) { node.style.removeProperty("--whatsapp-workspace-height"); return; }
+      node.style.setProperty("--whatsapp-workspace-height", Math.max(320, window.innerHeight - node.getBoundingClientRect().top - 12) + "px");
+    };
+    const frame = requestAnimationFrame(measure);
+    const observer = new ResizeObserver(measure);
+    if (workspaceHeaderRef.current) observer.observe(workspaceHeaderRef.current);
+    window.addEventListener("resize", measure);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [connected, section]);
+
   const [simulation, setSimulation] = useState({
     kind: "CONTACT",
     displayName: "",
@@ -523,7 +540,7 @@ export default function WhatsAppPage() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
+      <header ref={workspaceHeaderRef} className={styles.header}>
         <div>
           <Group gap="sm" mb={7} align="center">
             <div className={styles.sectionTabs}>
@@ -564,7 +581,7 @@ export default function WhatsAppPage() {
       </header>
 
       {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
-        <section className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
+        <section ref={workspaceRef} className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
         <aside className={styles.views} aria-label="Caixas e filtros">
           <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">CAIXAS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
           {boxesMinimized&&<span className={styles.railLabel}>Caixas</span>}
