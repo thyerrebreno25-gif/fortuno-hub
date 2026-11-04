@@ -14,6 +14,7 @@ export async function checkConnection(connection: NonNullable<Awaited<ReturnType
   if (state.instanceId && state.instanceId !== connection.instanceId) throw new Error("A credencial passou a apontar para outra instância. Confira a configuração.");
   const updated = await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { status: state.status, phone: state.phone || connection.phone, profileName: state.profileName || connection.profileName, lastCheckedAt: new Date(), lastError: null, ...(state.status !== "CONNECTED" && !connection.lastDisconnectedAt ? { lastDisconnectedAt: connection.lastWebhookAt || new Date() } : {}) } });
   if (state.status === "CONNECTED") {
+    try { const {scheduleDirectorySync} = await import("./directory"); await scheduleDirectorySync(updated); } catch { /* Retry via the regular scheduler. */ }
     try { const { scheduleHistorySync } = await import("./history-sync"); await scheduleHistorySync(updated, { reconnected: connection.status !== "CONNECTED" }); } catch { /* Keep connection status independent from history scheduling. */ }
   }
   return state;

@@ -15,7 +15,7 @@ function load(id: string): Promise<string | null> {
   if (existing) return existing;
   const result = new Promise<string | null>(resolve => {
     queue.push(() => {
-      fetch("/api/whatsapp/" + encodeURIComponent(id) + "/avatar", { signal: AbortSignal.timeout(15000) })
+      fetch(id.startsWith("directory:") ? "/api/whatsapp/directory/" + encodeURIComponent(id.slice(10)) + "/avatar" : "/api/whatsapp/" + encodeURIComponent(id) + "/avatar", { signal: AbortSignal.timeout(15000) })
         .then(async response => { if (!response.ok) throw new Error(); return response.json(); })
         .then(body => { const url = typeof body.url === "string" ? body.url : null; cache.set(id, { url, until: Date.now() + 600000 }); resolve(url); })
         .catch(() => { cache.set(id, { url: null, until: Date.now() + 60000 }); resolve(null); })

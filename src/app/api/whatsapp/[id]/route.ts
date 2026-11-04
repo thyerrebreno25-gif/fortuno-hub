@@ -1,3 +1,4 @@
+import {outgoingContext} from "@/modules/whatsapp/outgoing-context";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,7 +11,7 @@ import {
   responsibleForRoutingArea,
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
-import { sendUazapiText } from "@/modules/whatsapp/uazapi-server";
+import { whatsappConnection, sendUazapiText } from "@/modules/whatsapp/uazapi-server";
 import { object, text } from "@/modules/whatsapp/uazapi";
 import { getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
 import { chatLock } from "@/modules/whatsapp/merge";
@@ -269,20 +270,14 @@ export async function PATCH(request: Request, context: Context) {
     let externalMessageId: string | null = null;
     let providerMetadata: { provider: string; instanceId: string; connectionId: string } | undefined;
     if (current.source === "WHATSAPP_API") {
-      const channel = parseWhatsappChannelAddress(current.senderEmail);
       const latestInbound = [...current.messages]
         .reverse()
         .find((message) => message.direction === "INBOUND");
       try {
         const metadata = object(latestInbound?.providerMetadata);
-        if (metadata.provider !== "UAZAPI" || !text(metadata.instanceId)) throw new Error("A conversa pertence à integração anterior. Aguarde uma mensagem pela conexão Uazapi atual.");
-        const sent = await sendUazapiText({
-          organizationId: member.organizationId,
-          instanceId: text(metadata.instanceId),
-          to: text(metadata.chatId) || channel.externalId,
-          body: content,
-          replyToMessageId: text(metadata.messageId),
-        });
+        const connection = await whatsappConnection(member.organizationId);
+        const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
+        const sent = await sendUazapiText({organizationId:member.organizationId,body:content,...destination});
         externalMessageId = sent.messageId;
         providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId };
       } catch (error) {

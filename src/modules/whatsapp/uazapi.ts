@@ -22,7 +22,7 @@ export function instanceState(body: unknown) {
 }
 export async function uazapiRequest(base: string, token: string, path: string, body?: unknown) {
   const response = await fetch(serverUrl(base) + path, { method: body === undefined ? "GET" : "POST", headers: { token, "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: "error", signal: AbortSignal.timeout(20000), cache: "no-store" });
-  if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "A Uazapi recusou o token desta instância." : response.status === 404 ? "Instância não encontrada. No servidor gratuito, ela expira após uma hora." : "A Uazapi não concluiu a operação (HTTP " + response.status + ").");
+  if (!response.ok) throw Object.assign(new Error(response.status === 401 || response.status === 403 ? "A Uazapi recusou o token desta instância." : response.status === 404 ? "Instância não encontrada. No servidor gratuito, ela expira após uma hora." : "A Uazapi não concluiu a operação (HTTP " + response.status + ")."), { status: response.status });
   const result: unknown = await response.json();
   return result;
 }

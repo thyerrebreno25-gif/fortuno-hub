@@ -31,6 +31,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WhatsAppDirectory } from "@/modules/whatsapp/directory-panel";
 import { WhatsAppManagement } from "./management";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
@@ -42,7 +43,7 @@ import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, typ
 import styles from "./whatsapp.module.css";
 
 type View = InboxView;
-type Section = "INBOX" | "MONITORING" | "MANAGEMENT";
+type Section = "INBOX" | "MONITORING" | "MANAGEMENT" | "DIRECTORY";
 
 type Bootstrap = {
   mode: string;
@@ -531,6 +532,7 @@ export default function WhatsAppPage() {
               >
                 <IconChartBar size={18} /> Central de monitoramento
               </button>
+              <button type="button" className={section === "DIRECTORY" ? styles.sectionTabActive : ""} disabled={!connected} onClick={() => setSection("DIRECTORY")}><IconUsers size={18}/> Contatos e grupos</button>
               {bootstrap?.canViewManagement && <button type="button" className={section === "MANAGEMENT" ? styles.sectionTabActive : ""} onClick={() => setSection("MANAGEMENT")}><IconUsers size={18}/> Gestão</button>}
             </div>
             <Badge color={bootstrap?.mode === "CONNECTED" ? "green" : "yellow"} variant="light">
@@ -551,7 +553,7 @@ export default function WhatsAppPage() {
         </Group>}
       </header>
 
-      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "INBOX" ? (
+      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
         <section className={styles.workspace}>
         <aside className={styles.views}>
           <div className={styles.filterSection}>

@@ -1,3 +1,4 @@
+vi.mock("@/modules/whatsapp/directory",()=>({scheduleConnectedDirectories:vi.fn().mockResolvedValue(undefined),processDirectorySync:vi.fn().mockResolvedValue(undefined)}));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ after: vi.fn(), sync: vi.fn(), calendar: vi.fn() }));
 vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: mocks.after }));

@@ -2183,3 +2183,38 @@ model WhatsAppReadState {
   ticket ServiceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   @@id([organizationId, userId, ticketId])
 }
+
+model WhatsAppDirectoryEntry {
+  id String @id @default(cuid())
+  organizationId String
+  connectionId String
+  accountPhone String
+  externalId String
+  kind String
+  displayName String
+  generation String
+  active Boolean @default(true)
+  updatedAt DateTime @updatedAt
+  @@unique([connectionId, accountPhone, externalId])
+  @@index([organizationId, connectionId, accountPhone, active, kind])
+}
+
+model WhatsAppDirectorySync {
+  id String @id @default(cuid())
+  organizationId String
+  connectionId String
+  accountPhone String
+  instanceId String
+  status String @default("PENDING")
+  phase String @default("CONTACTS")
+  offset Int @default(0)
+  generation String
+  attempts Int @default(0)
+  lastError String?
+  claimedAt DateTime?
+  nextRunAt DateTime @default(now())
+  completedAt DateTime?
+  updatedAt DateTime @updatedAt
+  @@unique([connectionId, accountPhone])
+  @@index([status, nextRunAt])
+}
