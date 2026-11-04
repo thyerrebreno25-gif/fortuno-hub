@@ -1,0 +1,12 @@
+import {afterEach,beforeEach,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({find:vi.fn(),upsert:vi.fn(),lock:vi.fn(),transaction:vi.fn(),fetch:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{fathomConnection:{findUnique:m.find},$transaction:m.transaction}}));
+vi.mock("@/modules/purchase-invoices/server/crypto",()=>({encryptIntegrationSecret:(value:string)=>"encrypted:"+value,decryptIntegrationSecret:(value:string)=>value.replace("encrypted:","")}));
+import {connectFathom} from "./fathom";
+import type {MeetingMember} from "./auth";
+const member={userId:"owner",organizationId:"org"} as MeetingMember;
+beforeEach(()=>{vi.clearAllMocks();vi.stubGlobal("fetch",m.fetch);vi.stubEnv("NEXT_PUBLIC_APP_URL","https://hub.test");m.find.mockResolvedValue(null);m.transaction.mockImplementation(fn=>fn({$executeRaw:m.lock,fathomConnection:{findUnique:m.find,upsert:m.upsert}}));m.fetch.mockResolvedValueOnce(Response.json({items:[],next_cursor:null})).mockResolvedValueOnce(Response.json({id:"hook",secret:"whsec_test-secret"}));});
+afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
+it("validates the key, creates a signed callback and stores encrypted credentials under a lock",async()=>{await connectFathom(member,{apiKey:"test-only-api-key"});expect(m.lock).toHaveBeenCalledOnce();const data=m.upsert.mock.calls[0][0].create;expect(data.encryptedApiKey).toBe("encrypted:test-only-api-key");expect(data.encryptedWebhookSecret).toBe("encrypted:whsec_test-secret");const request=m.fetch.mock.calls[1];expect(request[0]).toBe("https://api.fathom.ai/external/v1/webhooks");const hook=JSON.parse(request[1].body);expect(hook.destination_url).toMatch(/^https:\/\/hub.test\/api\/meetings\/fathom\/webhook\//);expect(hook.include_transcript).toBe(true);expect(hook.include_summary).toBe(true);expect(hook.triggered_for).toEqual(["my_recordings"]);});
+it("does not persist a connection if the provider fails to confirm its webhook secret",async()=>{m.fetch.mockReset().mockResolvedValueOnce(Response.json({items:[]})).mockResolvedValueOnce(Response.json({id:"hook"}));await expect(connectFathom(member,{apiKey:"test-only-api-key"})).rejects.toThrow("não confirmou");expect(m.upsert).not.toHaveBeenCalled();});

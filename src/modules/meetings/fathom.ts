@@ -29,7 +29,7 @@ export async function connectFathom(member:MeetingMember,body:unknown){
  try{
   await prisma.$transaction(async tx=>{
    // Serialize replacement and avoid two concurrent active subscriptions.
-   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${member.organizationId+":"+member.userId+":fathom"}))`;
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${member.organizationId+":"+member.userId+":fathom"}))`;
    const current=await tx.fathomConnection.findUnique({where:{organizationId_userId:{organizationId:member.organizationId,userId:member.userId}}});
    if((current?.callbackId||null)!==(previous?.callbackId||null))throw new MeetingError("A conexão foi alterada em outra tela. Atualize antes de tentar novamente.",409);
    // Keep the connection row and existing recordings; only the callback generation changes.
