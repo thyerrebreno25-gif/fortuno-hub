@@ -9,6 +9,7 @@ export const meetingInput = z.object({
   participantIds: z.array(z.string().min(1).max(100)).min(1).max(100).transform((ids) => [...new Set(ids)]),
   externalEmails: z.array(z.string().trim().toLowerCase().email().max(254)).max(100).default([]).transform((emails) => [...new Set(emails)]),
   generateMeet: z.boolean().default(false),
+  fathomEnabled: z.boolean().default(false),
   status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]).default("SCHEDULED"),
 }).refine((value) => value.endsAt > value.startsAt, { message: "O término deve ser depois do início.", path: ["endsAt"] });
 export const actionInput = z.object({ title: z.string().trim().min(2).max(300), description: z.string().max(5000).default(""), responsibleId: z.string().min(1).max(100), dueAt: date });

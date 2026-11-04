@@ -3,12 +3,12 @@ import {z} from "zod";
 export const reportSummarySchema=z.object({summary:z.string().max(12000),topics:z.array(z.object({title:z.string().max(300),points:z.array(z.string().max(2500)).max(30)})).max(40),decisions:z.array(z.string().max(2500)).max(50),pending:z.array(z.string().max(2500)).max(50),nextSteps:z.array(z.string().max(2500)).max(50)});
 export type ReportSummary=z.infer<typeof reportSummarySchema>;
 type Person={name:string|null;email:string};
-export type ReportMeeting={id:string;title:string;type:string;startsAt:Date|string;endsAt:Date|string;agenda:string;notes:string;status:string;participants:Array<{userId:string;user:Person}>;actions:Array<{id:string;title:string;description:string;dueAt:Date|string;completedAt:Date|string|null;responsible:Person}>;contributions:Array<{id:string;body:string;createdAt:Date|string;author:Person}>;recordings:Array<{id:string;name:string;status:string;transcript:string}>};
+export type ReportMeeting={fathomEnabled?:boolean;fathomRecordings?:Array<{id:string;title:string;transcript:string;summary:string;actionItems:string}>;id:string;title:string;type:string;startsAt:Date|string;endsAt:Date|string;agenda:string;notes:string;status:string;participants:Array<{userId:string;user:Person}>;actions:Array<{id:string;title:string;description:string;dueAt:Date|string;completedAt:Date|string|null;responsible:Person}>;contributions:Array<{id:string;body:string;createdAt:Date|string;author:Person}>;recordings:Array<{id:string;name:string;status:string;transcript:string}>};
 const iso=(value:Date|string)=>new Date(value).toISOString();
 const person=(value:Person)=>value.name||value.email;
 const date=(value:Date|string)=>new Date(value).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"});
 export function reportSource(meeting:ReportMeeting,includeRecordings:boolean){
- return {title:meeting.title,type:meeting.type,startsAt:iso(meeting.startsAt),endsAt:iso(meeting.endsAt),agenda:meeting.agenda,notes:meeting.notes,
+ return {fathomEnabled:includeRecordings&&Boolean(meeting.fathomEnabled),fathom:includeRecordings&&meeting.fathomEnabled?(meeting.fathomRecordings||[]).map(row=>({id:row.id,title:row.title,transcript:row.transcript,summary:row.summary,actionItems:row.actionItems})).sort((a,b)=>a.id.localeCompare(b.id)):[],title:meeting.title,type:meeting.type,startsAt:iso(meeting.startsAt),endsAt:iso(meeting.endsAt),agenda:meeting.agenda,notes:meeting.notes,
  participants:meeting.participants.map(row=>({id:row.userId,name:person(row.user)})).sort((a,b)=>a.id.localeCompare(b.id)),
  actions:meeting.actions.map(row=>({id:row.id,title:row.title,description:row.description,responsible:person(row.responsible),dueAt:iso(row.dueAt),completedAt:row.completedAt?iso(row.completedAt):null})).sort((a,b)=>a.id.localeCompare(b.id)),
  contributions:meeting.contributions.map(row=>({id:row.id,author:person(row.author),createdAt:iso(row.createdAt),body:row.body})).sort((a,b)=>a.id.localeCompare(b.id)),

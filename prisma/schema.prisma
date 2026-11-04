@@ -312,6 +312,7 @@ enum AssistantMessageRole {
 }
 
 model Organization {
+  fathomConnections FathomConnection[]
   whatsappReadStates WhatsAppReadState[]
   notionConnection NotionConnection?
   meetings TeamMeeting[]
@@ -369,6 +370,7 @@ model NotionConnection {
 }
 
 model User {
+  fathomConnections FathomConnection[]
   whatsappReadStates WhatsAppReadState[]
   createdMeetings TeamMeeting[] @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
@@ -1969,6 +1971,8 @@ model OperationalMapping {
 }
 
 model TeamMeeting {
+  fathomEnabled Boolean @default(false)
+  fathomRecordings FathomRecording[]
   report MeetingReport?
   deletedAt DateTime?
   id String @id @default(cuid())
@@ -2239,4 +2243,46 @@ model MeetingReport {
  updatedAt DateTime @updatedAt
  meeting TeamMeeting @relation(fields:[meetingId],references:[id],onDelete:Cascade)
  @@index([status,nextRunAt])
+}
+
+model FathomConnection {
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  id String @id @default(cuid())
+  organizationId String
+  userId String
+  callbackId String @unique
+  encryptedApiKey String
+  encryptedWebhookSecret String
+  webhookId String
+  enabled Boolean @default(true)
+  syncCursor String?
+  syncFrom DateTime
+  lastSyncAt DateTime?
+  syncClaimedAt DateTime?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  recordings FathomRecording[]
+  @@unique([organizationId,userId])
+  @@index([enabled,lastSyncAt])
+}
+model FathomRecording {
+  id String @id @default(cuid())
+  meetingId String
+  connectionId String
+  recordingId Int
+  title String
+  playbackUrl String
+  startsAt DateTime
+  transcript String @default("")
+  summary String @default("")
+  actionItems String @default("")
+  downloadId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meeting TeamMeeting @relation(fields:[meetingId],references:[id],onDelete:Cascade)
+  connection FathomConnection @relation(fields:[connectionId],references:[id],onDelete:Cascade)
+  @@unique([connectionId,recordingId])
+  @@index([meetingId])
 }

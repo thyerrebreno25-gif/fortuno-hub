@@ -10,9 +10,9 @@ import {transcribeRecording} from "./recordings";
 import {reportFingerprint,reportSource,renderMeetingReport,splitReportText,reportSummarySchema,type ReportSummary} from "./report-model";
 import {summarizeMeetingPart} from "./report-ai";
 export const publicReportSelect={id:true,status:true,includeRecordings:true,content:true,mode:true,error:true,generatedAt:true,sourceHash:true} satisfies Prisma.MeetingReportSelect;
-const include={participants:{include:{user:{select:{name:true,email:true}}}},actions:{include:{responsible:{select:{name:true,email:true}}},orderBy:{dueAt:"asc" as const}},contributions:{include:{author:{select:{name:true,email:true}}},orderBy:{createdAt:"asc" as const}},recordings:{orderBy:{createdAt:"asc" as const}}} satisfies Prisma.TeamMeetingInclude;
+const include={fathomRecordings:{orderBy:{startsAt:"asc" as const}},participants:{include:{user:{select:{name:true,email:true}}}},actions:{include:{responsible:{select:{name:true,email:true}}},orderBy:{dueAt:"asc" as const}},contributions:{include:{author:{select:{name:true,email:true}}},orderBy:{createdAt:"asc" as const}},recordings:{orderBy:{createdAt:"asc" as const}}} satisfies Prisma.TeamMeetingInclude;
 const active=["PENDING","PROCESSING","WAITING_AUDIO"];
-const inputSchema=z.object({meetingId:z.string().min(1).max(100),revision:z.number().int().positive(),finish:z.boolean().default(false),generate:z.boolean().default(true),includeRecordings:z.boolean().default(true),force:z.boolean().default(false)});
+const inputSchema=z.object({meetingId:z.string().min(1).max(100),revision:z.number().int().positive(),finish:z.boolean().default(false),generate:z.boolean().default(true),includeRecordings:z.boolean().default(false),force:z.boolean().default(false)});
 export async function requestMeetingReport(member:MeetingMember,body:unknown){
  const input=inputSchema.parse(body),meeting=await findMeeting(member,input.meetingId);
  if(!editableMeeting(member,meeting))throw new MeetingError("Somente o organizador ou um gestor pode finalizar a reunião e gerar o relatório.",403);
@@ -21,7 +21,7 @@ export async function requestMeetingReport(member:MeetingMember,body:unknown){
   await tx.$queryRaw`SELECT id FROM "TeamMeeting" WHERE id=${meeting.id} FOR UPDATE`;
   const current=await tx.teamMeeting.findFirst({where:{id:meeting.id,organizationId:member.organizationId,deletedAt:null}});
   if(!current||current.status==="CANCELLED")throw new MeetingError("A reunião não está disponível.",409);
-  if(input.generate&&input.includeRecordings){
+  if(input.generate&&input.includeRecordings&&!current.fathomEnabled){
    const recordings=await tx.meetingRecording.findMany({where:{meetingId:meeting.id},select:{status:true}});
    if(recordings.some(row=>row.status!=="UPLOADING")&&!process.env.OPENAI_API_KEY?.trim())throw new MeetingError("A transcrição depende da configuração da IA. Você pode gerar o relatório somente com notas e atividades.",503);
   }
@@ -33,7 +33,7 @@ export async function requestMeetingReport(member:MeetingMember,body:unknown){
   }else if(current.status!=="COMPLETED")throw new MeetingError("Finalize a reunião antes de gerar o relatório.",409);
   if(!input.generate)return {report:null,completed:true};
   const existing=await tx.meetingReport.findUnique({where:{meetingId:meeting.id}});
-  if(existing&&(active.includes(existing.status)||existing.status==="READY"&&!input.force))return {report:{id:existing.id,status:existing.status},completed:true};
+  if(existing&&((active.includes(existing.status)&&!(input.force&&existing.includeRecordings!==input.includeRecordings))||existing.status==="READY"&&!input.force))return {report:{id:existing.id,status:existing.status},completed:true};
   const data={requestedById:member.userId,includeRecordings:input.includeRecordings,generation:randomUUID(),status:"PENDING",error:null,work:existing?.status==="FAILED"&&existing.includeRecordings===input.includeRecordings?(existing.work??Prisma.DbNull):Prisma.DbNull,claimedAt:null,nextRunAt:new Date()};
   const report=await tx.meetingReport.upsert({where:{meetingId:meeting.id},create:{meetingId:meeting.id,...data},update:data,select:{id:true,status:true}});
   await tx.auditLog.create({data:{userId:member.userId,action:"GENERATE_MEETING_REPORT",entity:"TeamMeeting",entityId:meeting.id,afterData:{includeRecordings:input.includeRecordings,generation:data.generation}}});
@@ -50,6 +50,17 @@ export async function processMeetingReport(meetingId:string){
  try{
   const meeting=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
   if(!meeting)throw new Error("A reunião não está mais finalizada ou foi excluída. Nenhum novo relatório foi publicado.");
+  if(report.includeRecordings&&meeting.fathomEnabled){
+   const records=meeting.fathomRecordings;
+   const pending=!records.length||records.some(row=>!row.transcript.trim()||!row.summary.trim());
+   const hash=reportFingerprint(meeting,true);
+   let content=renderMeetingReport(meeting,null,false).split("\n## Gravações e transcrição")[0];
+   for(const recording of records)content+="\n\n## Conteúdo recebido do Fathom · "+recording.title+"\n"+recording.summary+"\n\n### Atividades sugeridas pelo Fathom (não distribuídas no Hub)\n"+(recording.actionItems||"Nenhuma atividade sugerida.");
+   content+="\n\nA gravação e a transcrição integral estão na aba Gravações e transcrições. As tarefas oficiais e seus prazos são as registradas no checklist do Hub.";
+   const fresh=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+   if(!fresh||reportFingerprint(fresh,true)!==hash){await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",claimedAt:null,nextRunAt:new Date()}});return;}
+   await prisma.meetingReport.updateMany({where:{...owned,meeting:{deletedAt:null,status:"COMPLETED"}},data:{status:pending?"WAITING_AUDIO":"READY",content,sourceHash:hash,mode:"FATHOM",error:pending?"Relatório dos registros do Hub disponível. Aguardando o Fathom disponibilizar resumo e transcrição. Confira a conexão e a captura da reunião no Fathom.":null,generatedAt:new Date(),work:Prisma.DbNull,claimedAt:null,nextRunAt:new Date(Date.now()+60000)}});return;
+  }
   if(report.includeRecordings){
    const pending=meeting.recordings.find(row=>row.status!=="UPLOADING"&&(row.status!=="DONE"||!row.transcript.trim()));
    if(pending){
@@ -62,7 +73,7 @@ export async function processMeetingReport(meetingId:string){
   }
   const hash=reportFingerprint(meeting,report.includeRecordings);
   let summary:ReportSummary|null=null,mode="BASIC";
-  if(process.env.OPENAI_API_KEY?.trim()){
+  if(report.includeRecordings&&process.env.OPENAI_API_KEY?.trim()){
    mode="AI";const saved=workSchema.safeParse(report.work);
    let work=saved.success&&saved.data.hash===hash?saved.data:{hash,inputs:splitReportText(JSON.stringify(reportSource(meeting,report.includeRecordings),null,2),40000),outputs:[] as ReportSummary[],index:0,level:0,retryCount:0};
    for(let step=0;step<2;step++){

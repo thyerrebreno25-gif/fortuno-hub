@@ -1,0 +1,15 @@
+import {beforeEach,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({access:vi.fn(),meeting:vi.fn(),connection:vi.fn(),recording:vi.fn(),connect:vi.fn(),sync:vi.fn(),download:vi.fn(),after:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{fathomConnection:{findUnique:m.connection},fathomRecording:{findUnique:m.recording}}}));
+vi.mock("next/server",async original=>({...await original<typeof import("next/server")>(),after:m.after}));
+vi.mock("@/modules/meetings/auth",async original=>({...await original<typeof import("@/modules/meetings/auth")>(),meetingAccess:m.access,findMeeting:m.meeting}));
+vi.mock("@/modules/meetings/fathom",()=>({publicFathomConnection:{id:true,enabled:true,lastSyncAt:true,error:true,createdAt:true},connectFathom:m.connect,syncFathomConnection:m.sync,fathomDownload:m.download}));
+import {MeetingError} from "@/modules/meetings/auth";
+import {GET,POST} from "./route";
+const post=(body:unknown)=>POST(new Request("https://hub.test/api/meetings/fathom",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}));
+beforeEach(()=>{vi.clearAllMocks();m.access.mockResolvedValue({member:{organizationId:"org",userId:"user"},permissions:{canEdit:true}});m.connection.mockResolvedValue({id:"connection",enabled:true});m.recording.mockResolvedValue({meetingId:"meeting"});m.meeting.mockResolvedValue({fathomEnabled:true});m.download.mockResolvedValue({status:"processing"});});
+it("returns only the signed-in user connection and never selects credentials",async()=>{expect((await GET()).status).toBe(200);const query=m.connection.mock.calls[0][0];expect(query.where.organizationId_userId).toEqual({organizationId:"org",userId:"user"});expect(query.select.encryptedApiKey).toBeUndefined();expect(query.select.encryptedWebhookSecret).toBeUndefined();});
+it("validates the meeting scope before requesting any recording download",async()=>{m.meeting.mockRejectedValue(new MeetingError("Reunião não encontrada.",404));expect((await post({action:"download",id:"foreign"})).status).toBe(404);expect(m.download).not.toHaveBeenCalled();});
+it("allows participants with view permission to request their meeting recording",async()=>{m.access.mockResolvedValue({member:{organizationId:"org",userId:"user"},permissions:{canEdit:false}});expect((await post({action:"download",id:"recording"})).status).toBe(200);expect(m.download).toHaveBeenCalledWith("recording");expect((await post({action:"connect",apiKey:"secret"})).status).toBe(403);expect(m.connect).not.toHaveBeenCalled();});
+it("queues an own-account sync after connecting and returns no submitted key",async()=>{const result=await post({action:"connect",apiKey:"test-secret-key"});expect(result.status).toBe(202);expect(await result.text()).not.toContain("test-secret-key");expect(m.sync).not.toHaveBeenCalled();await m.after.mock.calls[0][0]();expect(m.sync).toHaveBeenCalledWith("connection");});

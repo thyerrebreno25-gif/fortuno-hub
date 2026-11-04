@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -27,6 +28,7 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
     } else {
       meeting = await tx.teamMeeting.create({ data: { ...data, organizationId: member.organizationId, createdById: member.userId } });
     }
+    if (current?.fathomEnabled && !meeting.fathomEnabled) await tx.meetingReport.updateMany({where:{meetingId:meeting.id,includeRecordings:true,status:{in:["PENDING","PROCESSING","WAITING_AUDIO"]}},data:{includeRecordings:false,generation:randomUUID(),status:"PENDING",claimedAt:null,nextRunAt:new Date()}});
     await tx.meetingParticipant.createMany({ data: participantIds.map((userId) => ({ meetingId: meeting.id, userId })), skipDuplicates: true });
     await tx.teamCalendarEvent.updateMany({ where: { meetingId: meeting.id, actionItemId: null, userId: { notIn: participantIds } }, data: { status: "CANCELLED", googleSyncStatus: "PENDING", revision: { increment: 1 } } });
     for (const userId of participantIds) {

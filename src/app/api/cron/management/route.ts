@@ -1,3 +1,4 @@
+import {syncConnectedFathom} from "@/modules/meetings/fathom";
 import {processQueuedMeetingReports} from "@/modules/meetings/reports";
 import {processDirectorySync,scheduleConnectedDirectories} from "@/modules/whatsapp/directory";
 import { syncCalendarEvents } from "@/modules/meetings/google-calendar";
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   if (!secret || expected.length !== provided.length || !timingSafeEqual(expected, provided)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   after(async () => { await Promise.allSettled([
     processQueuedMeetingReports(),
+    syncConnectedFathom(),
     (async () => { await runNotionClientSync().catch(() => undefined); await scheduleConnectedHistory().catch(() => undefined); await scheduleConnectedDirectories().catch(() => undefined); await Promise.allSettled([runScheduledManagementSync(), pollGmailConnections(), processWhatsAppHistory(), processDirectorySync(), syncCalendarEvents()]); })(),
   ]); });
   return NextResponse.json({ accepted: true }, { status: 202 });
