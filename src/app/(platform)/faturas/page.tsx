@@ -105,6 +105,7 @@ const ACTIVE_INVOICE_BANKS = [
   "Caixa",
   "BTG",
   "Sicredi",
+  "Unicred",
   "Sicoob",
   "Cora",
   "Nubank",

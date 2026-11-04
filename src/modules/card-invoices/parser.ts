@@ -14,6 +14,7 @@ import { parseSantanderInvoice } from "./parsers/santander-parser";
 import { parseCaixaInvoice } from "./parsers/caixa-parser";
 import { parseBtgInvoice } from "./parsers/btg-parser";
 import { parseSicrediInvoice } from "./parsers/sicredi-parser";
+import { parseUnicredInvoice } from "./parsers/unicred-parser";
 import { parseNubankInvoice } from "./parsers/nubank-parser";
 import type { ParsedInvoice } from "./types";
 
@@ -183,6 +184,8 @@ export async function parseCardInvoice(
   if (normalized.includes("BTG")) {
     return parseBtgInvoice(lines);
   }
+
+  if (normalized.includes("UNICRED")) return parseUnicredInvoice(lines);
 
   if (normalized.includes("SICREDI")) {
     return parseSicrediInvoice(lines);
