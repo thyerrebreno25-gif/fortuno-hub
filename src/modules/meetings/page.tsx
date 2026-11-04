@@ -4,6 +4,7 @@ import { Alert, Autocomplete, Badge, Button, Checkbox, Group, Loader, Modal, Mul
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { MeetingChecklist } from "./checklist";
+import { MeetingReportPanel } from "./report-panel";
 import { RecordingCapture } from "./recording-capture";
 import { meetingTypes } from "./model";
 import { formatMeetingDate, inputToIso, jsonRequest, localDateInput, meetingRequest, meetingStatus, type Meeting, type MeetingAction, type MeetingOptions } from "./client";
@@ -43,7 +44,7 @@ export function MeetingsPage() {
   }, [openMeeting]);
   useEffect(() => { void Promise.resolve().then(loadList).catch((error) => setError(error.message)); }, [loadList]);
   useEffect(() => {
-    if (trash || !meeting || (!(meeting.generateMeet && !meeting.meetLink) && !meeting.calendarSync?.some(state=>state.connected && ["PENDING","PROCESSING"].includes(state.googleSyncStatus)) && !meeting.recordings.some((item) => item.status === "TRANSCRIBING" || item.status === "READY" && options?.transcriptionConfigured))) return;
+    if (trash || !meeting || (!(meeting.generateMeet && !meeting.meetLink) && !meeting.calendarSync?.some(state=>state.connected && ["PENDING","PROCESSING"].includes(state.googleSyncStatus)) && !["PENDING","PROCESSING","WAITING_AUDIO"].includes(meeting.report?.status||"") && !meeting.recordings.some((item) => item.status === "TRANSCRIBING" || item.status === "READY" && options?.transcriptionConfigured))) return;
     const timer = setInterval(() => { if(document.visibilityState === "visible") void openMeeting(meeting.id).catch(() => {}); }, 10000);
     return () => clearInterval(timer);
   }, [meeting, openMeeting, options?.transcriptionConfigured, trash]);
@@ -90,6 +91,7 @@ export function MeetingsPage() {
           {!options.remindersConfigured && <Alert color="orange">O resumo diário por e-mail aguarda configuração do agendador. Os avisos de pendências já aparecem na agenda e nas notificações do Hub.</Alert>}
           <Text size="xs" c="dimmed">Os convites aparecem no Fortuno Hub{options.emailConfigured ? " e são enviados por e-mail." : ". O envio por e-mail aguarda configuração."} Entregas pendentes continuam sendo lembradas, mesmo depois de realizar a reunião.</Text>
         </Stack></Paper>
+        <MeetingReportPanel key={meeting.id} meeting={meeting} canManage={canManage} editable={editable} busy={busy} configured={options.transcriptionConfigured} pendingNote={Boolean(note.trim())} onChanged={async()=>{await openMeeting(meeting.id);await loadList();}}/>
         <MeetingChecklist key={meeting.id} meeting={meeting} userId={options.userId} canManage={canManage && !trash} editable={editable} busy={busy} onAdd={responsibleId => showTask(undefined, responsibleId)} onEdit={showTask} onToggle={(item, completed) => void run(async () => { await meetingRequest("/api/meetings/actions", jsonRequest("PATCH", { id: item.id, meetingId: meeting.id, revision: item.revision, completed })); await openMeeting(meeting.id); await loadList(); })} onDelete={item => { if (window.confirm("Excluir esta tarefa e cancelar o compromisso vinculado?")) void run(async () => { await meetingRequest("/api/meetings/actions", jsonRequest("DELETE", { id: item.id, meetingId: meeting.id, revision: item.revision })); await openMeeting(meeting.id); await loadList(); }); }} />
         <Tabs defaultValue="notes"><Tabs.List><Tabs.Tab value="notes">Notas da equipe</Tabs.Tab><Tabs.Tab value="recordings">Gravações e transcrições</Tabs.Tab></Tabs.List><Tabs.Panel value="notes" pt="md"><Paper withBorder radius="lg" p="lg"><Stack><Title order={4}>Notas da equipe</Title>{meeting.contributions.map((item) => <div key={item.id}><Text size="xs" fw={700}>{item.author.name || item.author.email} · {formatMeetingDate(item.createdAt)}</Text><Text size="sm" className={styles.prose}>{item.body}</Text></div>)}{editable && <><Textarea label="Adicionar uma nota" value={note} maxLength={10000} autosize minRows={2} onChange={(event) => setNote(event.currentTarget.value)} /><Button size="xs" w="fit-content" disabled={busy || !note.trim()} onClick={() => void run(async () => { await meetingRequest("/api/meetings/notes", jsonRequest("POST", { meetingId: meeting.id, body: note })); setNote(""); await openMeeting(meeting.id); })}>Registrar nota</Button></>}</Stack></Paper>
         </Tabs.Panel><Tabs.Panel value="recordings" pt="md">

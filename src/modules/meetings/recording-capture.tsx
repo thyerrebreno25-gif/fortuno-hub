@@ -68,13 +68,13 @@ export function RecordingCapture({ meetingId, configured, onSaved }: { meetingId
     finally { setBusy(false); }
   }
   return <Paper withBorder radius="lg" p="md"><Stack gap="sm">
-    <Title order={4}>Gravar ou anexar áudio</Title>
-    <Text size="sm" c="dimmed">A gravação captura o microfone deste computador. Não captura automaticamente as vozes de uma chamada no Meet. Limite: 60 minutos por gravação e 24 MB por arquivo.</Text>
+    <Title order={4}>Gravar ou anexar gravação</Title>
+    <Text size="sm" c="dimmed">A gravação captura o microfone deste computador. Não captura automaticamente as vozes de uma chamada no Meet. Limite: 60 minutos por gravação e 24 MB por arquivo. Também aceita gravações MP4 e WebM que contenham áudio.</Text>
     <Checkbox label="Os participantes estão cientes e autorizaram a gravação e a transcrição." checked={consent} disabled={recording || busy} onChange={(event) => setConsent(event.currentTarget.checked)} />
     {!configured && <Alert color="orange">O armazenamento de gravações ainda precisa ser configurado.</Alert>}
     {error && <Alert color="red">{error}</Alert>}
     <Group><Button color={recording ? "red" : "blue"} disabled={!consent || busy || !configured} onClick={() => recording ? recorder.current?.stop() : void start()}>{recording ? "Parar gravação" : "Gravar microfone"}</Button>{recording && <Text c="red" size="sm">● Gravando — mantenha esta tela aberta</Text>}</Group>
-    <FileInput label="Ou anexe um áudio" accept="audio/*,.webm,.m4a,.flac" value={file} clearable disabled={recording || busy || !configured} onChange={chooseFile} />
+    <FileInput label="Ou anexe uma gravação" accept="audio/*,video/mp4,video/webm,.webm,.m4a,.flac,.mp4" value={file} clearable disabled={recording || busy || !configured} onChange={chooseFile} />
     {file && <><Text size="xs">{(file.size / 1024 / 1024).toFixed(1)} MB · Ainda não enviado</Text><audio controls src={downloadUrl} /><Group><Button loading={busy} disabled={!consent || recording} onClick={() => void upload()}>Salvar áudio e transcrever</Button><a href={downloadUrl} download={file.name}>Baixar cópia local</a></Group></>}
   </Stack></Paper>;
 }

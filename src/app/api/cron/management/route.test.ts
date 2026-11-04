@@ -1,3 +1,4 @@
+vi.mock("@/modules/meetings/reports",()=>({processQueuedMeetingReports:vi.fn().mockResolvedValue(undefined)}));
 vi.mock("@/modules/whatsapp/directory",()=>({scheduleConnectedDirectories:vi.fn().mockResolvedValue(undefined),processDirectorySync:vi.fn().mockResolvedValue(undefined)}));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ after: vi.fn(), sync: vi.fn(), calendar: vi.fn() }));

@@ -1,3 +1,4 @@
+import {processQueuedMeetingReports} from "@/modules/meetings/reports";
 import {processDirectorySync,scheduleConnectedDirectories} from "@/modules/whatsapp/directory";
 import { syncCalendarEvents } from "@/modules/meetings/google-calendar";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -13,6 +14,9 @@ export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET || (integrationKey ? createHmac("sha256", integrationKey).update("fortuno-management-sync-v1").digest("hex") : "");
   const expected = Buffer.from(`Bearer ${secret || ""}`), provided = Buffer.from(request.headers.get("authorization") || "");
   if (!secret || expected.length !== provided.length || !timingSafeEqual(expected, provided)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  after(async () => { await runNotionClientSync().catch(() => undefined); await scheduleConnectedHistory().catch(() => undefined); await scheduleConnectedDirectories().catch(() => undefined); await Promise.allSettled([runScheduledManagementSync(), pollGmailConnections(), processWhatsAppHistory(), processDirectorySync(), syncCalendarEvents()]); });
+  after(async () => { await Promise.allSettled([
+    processQueuedMeetingReports(),
+    (async () => { await runNotionClientSync().catch(() => undefined); await scheduleConnectedHistory().catch(() => undefined); await scheduleConnectedDirectories().catch(() => undefined); await Promise.allSettled([runScheduledManagementSync(), pollGmailConnections(), processWhatsAppHistory(), processDirectorySync(), syncCalendarEvents()]); })(),
+  ]); });
   return NextResponse.json({ accepted: true }, { status: 202 });
 }

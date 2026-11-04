@@ -1,0 +1,15 @@
+vi.mock("@/lib/prisma",()=>({prisma:{}}));
+import {beforeEach,it,expect,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({access:vi.fn(),request:vi.fn(),process:vi.fn(),calendar:vi.fn(),after:vi.fn()}));
+vi.mock("next/server",async original=>({...await original<typeof import("next/server")>(),after:m.after}));
+vi.mock("@/modules/meetings/auth",async original=>({...await original<typeof import("@/modules/meetings/auth")>(),meetingAccess:m.access}));
+vi.mock("@/modules/meetings/reports",()=>({requestMeetingReport:m.request,processMeetingReport:m.process}));
+vi.mock("@/modules/meetings/delivery",()=>({processMeetingBackground:m.calendar}));
+import {POST} from "./route";
+import {MeetingError} from "@/modules/meetings/auth";
+beforeEach(()=>{vi.clearAllMocks();m.access.mockResolvedValue({member:{userId:"owner",organizationId:"org"}});m.request.mockResolvedValue({report:{id:"report",status:"PENDING"},completed:true});});
+const post=()=>POST(new Request("https://hub.test/api/meetings/report",{method:"POST",body:JSON.stringify({meetingId:"meeting",revision:1,finish:true})}));
+it("requires meeting-edit permission and does not start work before authentication",async()=>{m.access.mockRejectedValue(new MeetingError("Sem acesso",403));expect((await post()).status).toBe(403);expect(m.request).not.toHaveBeenCalled();expect(m.after).not.toHaveBeenCalled();});
+it("returns a queued result and defers long transcription and synthesis until after the response",async()=>{expect((await post()).status).toBe(202);expect(m.access).toHaveBeenCalledWith("MEETINGS","canEdit");expect(m.process).not.toHaveBeenCalled();await m.after.mock.calls[0][0]();expect(m.process).toHaveBeenCalledWith("meeting");});
+it("finishes without starting report work when the operator opts out",async()=>{m.request.mockResolvedValue({report:null,completed:true});expect((await post()).status).toBe(200);await m.after.mock.calls[0][0]();expect(m.process).not.toHaveBeenCalled();});

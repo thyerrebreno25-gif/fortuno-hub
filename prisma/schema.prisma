@@ -1969,6 +1969,7 @@ model OperationalMapping {
 }
 
 model TeamMeeting {
+  report MeetingReport?
   deletedAt DateTime?
   id String @id @default(cuid())
   organizationId String
@@ -2217,4 +2218,25 @@ model WhatsAppDirectorySync {
   updatedAt DateTime @updatedAt
   @@unique([connectionId, accountPhone])
   @@index([status, nextRunAt])
+}
+
+model MeetingReport {
+ id String @id @default(cuid())
+ meetingId String @unique
+ requestedById String
+ includeRecordings Boolean @default(true)
+ generation String
+ status String @default("PENDING")
+ content String @default("")
+ sourceHash String @default("")
+ mode String?
+ work Json?
+ error String?
+ claimedAt DateTime?
+ nextRunAt DateTime @default(now())
+ generatedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ meeting TeamMeeting @relation(fields:[meetingId],references:[id],onDelete:Cascade)
+ @@index([status,nextRunAt])
 }

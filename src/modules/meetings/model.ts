@@ -26,4 +26,4 @@ export function editableMeeting(member: { userId: string; role: string; isTeamLe
   return meeting.createdById === member.userId || ["MASTER", "ADMIN", "MANAGER"].includes(member.role);
 }
 export const recordingLimit = 24_000_000;
-export const audioTypes: Record<string, string> = { "audio/webm": "webm", "video/webm": "webm", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg", "audio/flac": "flac" };
+export const audioTypes: Record<string, string> = { "audio/webm": "webm", "video/webm": "webm", "video/mp4": "mp4", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg", "audio/flac": "flac" };

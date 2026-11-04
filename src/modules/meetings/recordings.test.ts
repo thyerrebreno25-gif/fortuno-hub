@@ -1,0 +1,10 @@
+import {beforeEach,afterEach,it,expect,vi} from "vitest";
+const m=vi.hoisted(()=>({claim:vi.fn(),recording:vi.fn(),update:vi.fn(),download:vi.fn(),storage:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{meetingRecording:{updateMany:m.claim,findUniqueOrThrow:m.recording,update:m.update}}}));
+vi.mock("@/lib/supabase/admin",()=>({createAdminClient:m.storage}));
+import {transcribeRecording} from "./recordings";
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("OPENAI_API_KEY","test");m.claim.mockResolvedValue({count:1});m.recording.mockResolvedValue({id:"audio",name:"Reunião.mp4",storagePath:"org/meeting/audio.mp4"});m.download.mockResolvedValue({data:new Blob(["synthetic-audio"],{type:"video/mp4"}),error:null});m.storage.mockReturnValue({storage:{from:()=>({download:m.download})}});});
+afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
+it("transcribes the privately stored recording and persists its full text",async()=>{const fetch=vi.fn().mockResolvedValue(Response.json({text:"Texto integral da reunião."}));vi.stubGlobal("fetch",fetch);await transcribeRecording("audio");expect(m.download).toHaveBeenCalledWith("org/meeting/audio.mp4");expect(m.update).toHaveBeenCalledWith({where:{id:"audio"},data:{status:"DONE",transcript:"Texto integral da reunião.",error:null}});expect(fetch.mock.calls[0][1].body.get("model")).toBe("gpt-transcribe");});
+it("does not send duplicate requests for audio already being transcribed",async()=>{const fetch=vi.fn();vi.stubGlobal("fetch",fetch);m.claim.mockResolvedValue({count:0});await transcribeRecording("audio");expect(fetch).not.toHaveBeenCalled();expect(m.download).not.toHaveBeenCalled();});
+it("preserves the recording on provider failure instead of claiming successful transcription",async()=>{vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response("provider error",{status:503})));await transcribeRecording("audio");expect(m.update.mock.calls.at(-1)?.[0].data.status).toBe("FAILED");expect(m.update.mock.calls.at(-1)?.[0].data.transcript).toBeUndefined();});
