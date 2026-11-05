@@ -21,6 +21,7 @@ export function SessionTimeout() {
   const lastWriteRef = useRef(0);
   const signingOutRef = useRef(false);
   const keepAliveCountRef = useRef(0);
+  const tvModeRef=useRef(false);
 
   const persistActivity = useCallback((timestamp: number) => {
     lastActivityRef.current = timestamp;
@@ -125,9 +126,11 @@ export function SessionTimeout() {
 
     window.addEventListener(SESSION_KEEP_ALIVE_EVENT, onKeepAlive);
 
+    const onTvMode=(event:Event)=>{tvModeRef.current=Boolean((event as CustomEvent<{active:boolean}>).detail?.active)&&window.location.pathname==="/painel-gerencial";if(tvModeRef.current)markActivity();};
+    window.addEventListener("fortuno:tv-mode",onTvMode);
     const interval = window.setInterval(() => {
       const now = Date.now();
-      if (keepAliveCountRef.current > 0) {
+      if (keepAliveCountRef.current > 0 || (tvModeRef.current && document.visibilityState==="visible" && window.location.pathname==="/painel-gerencial")) {
         persistActivity(now);
         setWarningOpen(false);
         setRemainingSeconds(Math.floor(WARNING_BEFORE_MS / 1000));
@@ -172,6 +175,7 @@ export function SessionTimeout() {
         onKeepAlive,
       );
 
+      window.removeEventListener("fortuno:tv-mode",onTvMode);
       window.clearInterval(interval);
     };
   }, [markActivity, persistActivity, signOut]);

@@ -170,6 +170,7 @@ const icons = {
 };
 
 const menuItems: MenuItem[] = [
+  { label: "Painel gerencial", href: "/painel-gerencial", moduleCode: "MANAGEMENT", icon: icons.report, group: "Visão geral" },
   { label: "Gestão", href: "/gestao", moduleCode: "MANAGEMENT", icon: icons.dashboard, group: "Visão geral" },
   { label: "Gestão de tarefas", href: "/operacoes", moduleCode: "OPERATIONS", icon: icons.operations, group: "Operações" },
   { label: "Notion", href: "/integracoes/notion", moduleCode: "NOTION", icon: icons.document, group: "Operações" },
@@ -330,6 +331,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [permissions, setPermissions] = useState<Record<string, { canView: boolean }> | null>(null);
+  const [viewerRole,setViewerRole]=useState("");
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 
   useEffect(() => {
@@ -338,7 +340,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
       .then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Permissões indisponíveis.");
-        if (active) setPermissions(payload.permissions ?? {});
+        if (active) {setPermissions(payload.permissions ?? {});setViewerRole(payload.role||"");}
       })
       .catch(() => {
         if (active) setPermissions({});
@@ -352,11 +354,9 @@ export function PlatformShell({ children }: { children: ReactNode }) {
   const visibleItems = useMemo(
     () =>
       menuItems.filter(
-        (item) =>
-          item.moduleCode === "__HOME__" ||
-          permissions?.[item.moduleCode]?.canView !== false,
+        (item) => (item.href!=="/painel-gerencial"||["MASTER","ADMIN","MANAGER"].includes(viewerRole)) && (item.moduleCode === "__HOME__" || permissions?.[item.moduleCode]?.canView !== false),
       ),
-    [permissions],
+    [permissions,viewerRole],
   );
 
   const currentItem = menuItems.find((item) => isRouteActive(pathname, item.href));
