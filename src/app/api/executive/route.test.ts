@@ -63,16 +63,16 @@ it("marks Conta Azul unavailable when every export module is denied", async () =
 it("partitions the server cache by organization, period, São Paulo date and effective permissions", async () => {
   await GET(request("week"));
   const first = mocks.cache.mock.calls[0];
-  expect(first[1]).toEqual(["executive-v1", "org-a", "week", "2026-11-05", expect.any(String)]);
-  expect(first[2]).toEqual({ revalidate: 60 });
-  expect(JSON.parse(first[1][4]).contract).toBe(true);
+  expect(first[1]).toEqual(["executive-v2", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
+  expect(first[2]).toEqual({ revalidate: 300 });
+  expect(JSON.parse(first[1][5]).contract).toBe(true);
 
   mocks.member.mockResolvedValue({ organizationId: "org-b", userId: "manager-b", role: "MANAGER" });
   mocks.permissions.mockResolvedValue(permissions(["CONTRACT_IMPORTS", "INVESTMENT_INCOME"]));
   await GET(request("week"));
   const second = mocks.cache.mock.calls[1][1];
   expect(second[1]).toBe("org-b");
-  expect(JSON.parse(second[4])).toMatchObject({ contract: false, investment: false });
+  expect(JSON.parse(second[5])).toMatchObject({ contract: false, investment: false });
   expect(second).not.toEqual(first[1]);
 
   mocks.permissions.mockResolvedValue(permissions());
@@ -91,3 +91,5 @@ it("returns a generic unavailable response when snapshot queries fail", async ()
   expect(response.status).toBe(503);
   expect(await response.text()).toBe(JSON.stringify({ error: "Não foi possível atualizar o painel gerencial." }));
 });
+
+it("starts a fresh shared snapshot after five minutes",async()=>{await GET(request());const key=mocks.cache.mock.calls[0][1];vi.advanceTimersByTime(300000);await GET(request());expect(mocks.cache.mock.calls[1][1][4]).not.toBe(key[4]);});

@@ -11,3 +11,65 @@
 @media(max-width:800px){.root{padding:18px;border-radius:16px}.header{align-items:flex-start}.headerActions{gap:5px}.localClock{margin-right:4px}.localClock strong{font-size:20px}.localClock span{font-size:8px}.brandOverline{max-width:170px;line-height:1.5}.brandMark{display:none}.brand h1{font-size:22px}.headerActions .iconButton{width:30px;height:30px}.toolbar{align-items:flex-start;flex-direction:column;margin-bottom:20px;gap:12px}.tabs{width:100%;gap:3px}.tabs button{font-size:10px;padding:7px}.toolbarControls{align-self:flex-end}.slideTitle{align-items:flex-start}.slideTitle h2{font-size:25px}.eyebrow{font-size:8px;letter-spacing:.6px}.live{font-size:8px;white-space:normal;max-width:130px;padding-top:4px;line-height:1.5}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.metricValue,.tv .metricValue{font-size:35px}.overviewGrid,.detailGrid,.agendaGrid{grid-template-columns:1fr}.panel{min-height:220px}.summaryStrip{grid-template-columns:repeat(2,1fr);gap:15px}.footer{gap:12px}.dataStamp{font-size:8px}.playback{margin-left:auto}.tv{overflow:auto;display:block}.tv .panel{min-height:250px}.tv .content{display:flex}.chart,.tv .chart{max-height:230px}.peopleHeader,.personRow{gap:9px}.person strong,.tv .person strong{font-size:12px}.metricLabel,.tv .metricLabel{font-size:11px}.metricDetail,.tv .metricDetail{font-size:9px}.notes{font-size:8px}.rotationTrack{left:18px;right:18px}.agendaGrid .panel{min-height:220px}}
 @media(prefers-reduced-motion:reduce){.content{animation:none}.rotationTrack>div,.barTrack div{transition:none}}
 .titleSignals{display:flex;align-items:center;gap:16px}.healthIndicator{display:flex;align-items:center;gap:7px;border:1px solid currentColor;background:#112a3980;color:var(--bi-teal);font:inherit;font-size:10px;border-radius:20px;padding:7px 10px;cursor:pointer;white-space:nowrap}.healthIndicator i{height:5px;width:5px;border-radius:100%;background:currentColor;box-shadow:0 0 8px currentColor}.healthGood{color:var(--bi-teal)}.healthAmber{color:var(--bi-amber)}.healthCritical{color:var(--bi-rose)}.healthBuckets{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:6px}.healthBuckets>div{display:flex;flex-direction:column;align-items:flex-start;gap:7px;background:#172b3c;border:1px solid #294256;border-radius:10px;padding:12px}.healthBuckets i{display:block;width:20px;height:3px;border-radius:3px}.healthBuckets strong{font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums;font-weight:650}.healthBuckets span{font-size:9px;color:#9db6ca;white-space:nowrap}.tv .healthBuckets strong{font-size:clamp(30px,2.5vw,43px)}@media(max-width:1150px){.titleSignals{align-items:flex-end;gap:9px;flex-direction:column}.healthBuckets{gap:6px}.healthBuckets>div{padding:9px}.healthBuckets strong{font-size:26px}.healthBuckets span{font-size:8px}}@media(max-height:800px) and (min-width:1000px){.tv .healthBuckets strong{font-size:27px}.tv .healthBuckets>div{padding:9px}.tv .healthBuckets{gap:7px}.tv .healthIndicator{font-size:9px;padding:6px 9px}}
+/* The TV surface has its own palette even when the surrounding Hub uses light mode. */
+.root{--mantine-color-text:var(--bi-text);--fortuno-text:var(--bi-text);--text:var(--bi-text);--ink:var(--bi-text);color-scheme:dark}
+.root.root :is(h1,h2,h3,h4,h5,h6){color:var(--bi-text)!important}
+.root a.metric,.root a.meeting{color:var(--bi-text);text-decoration:none}
+.root .localClock strong,.root .person strong,.root .meetingBody>strong{color:var(--bi-text)}
+/* Short TV viewports keep all six rows visible instead of cropping the panel. */
+@media(max-height:850px) and (min-width:1000px){
+ .tv{padding:12px 24px 9px}
+ .tv .header{padding-bottom:9px;flex-shrink:0}
+ .tv .brandMark{height:35px;width:35px;border-radius:10px}
+ .tv .brand h1{font-size:21px}
+ .tv .brandOverline{font-size:8px}
+ .tv .localClock strong{font-size:23px}
+ .tv .localClock span{font-size:9px}
+ .tv .toolbar{margin:8px 0 10px;flex-shrink:0}
+ .tv .tabs button{padding:6px 10px;font-size:11px}
+ .tv .toolbar .iconButton{height:30px;width:30px}
+ .tv .slideTitle{margin-bottom:10px;flex-shrink:0}
+ .tv .slideTitle h2{font-size:24px}
+ .tv .slideTitle .eyebrow{font-size:8px}
+ .tv .content{gap:10px;min-height:0}
+ .tv .metrics{gap:10px;flex-shrink:0}
+ .tv .metric{padding:11px 15px 10px;gap:4px;border-radius:11px}
+ .tv .metricLabel{font-size:11px}
+ .tv .metricValue{font-size:36px}
+ .tv .metricDetail{font-size:8px;min-height:12px;line-height:1.4}
+ .tv .overviewGrid,.tv .detailGrid,.tv .agendaGrid{gap:13px;min-height:0}
+ .tv .panel{padding:11px 15px;overflow:auto;scrollbar-width:thin;scrollbar-color:#34556d transparent}
+ .tv .panelHead{margin-bottom:8px;flex-shrink:0}
+ .tv .panelHead h3{font-size:15px}
+ .tv .panelHead .eyebrow{font-size:8px}
+ .tv .peopleTable{min-height:0;flex:1}
+ .tv .peopleHeader{font-size:8px;padding-bottom:7px;line-height:1.25;flex-shrink:0}
+ .tv .personRow{padding:5px 0;min-height:31px;flex:0 0 auto}
+ .tv .person strong{font-size:11px}
+ .tv .avatar{height:22px;width:22px;border-radius:7px;font-size:8px}
+ .tv .number{font-size:18px}
+ .tv .channel{padding:5px 0;flex-shrink:0}
+ .tv .channel span{font-size:10px}
+ .tv .channel strong{font-size:17px}
+ .tv .context{font-size:8px;line-height:1.4;margin-top:7px;flex-shrink:0}
+ .tv .healthBuckets{margin-top:2px;gap:7px;flex-shrink:0}
+ .tv .healthBuckets>div{padding:8px;gap:5px}
+ .tv .healthBuckets strong{font-size:25px}
+ .tv .healthBuckets span{font-size:8px}
+ .tv .bars{gap:12px}
+ .tv .barMeta{font-size:10px;margin-bottom:6px}
+ .tv .barMeta strong{font-size:13px}
+ .tv .barDetail{font-size:8px;margin-top:4px}
+ .tv .summaryStrip{padding:10px 13px;flex-shrink:0}
+ .tv .summaryStrip span{font-size:9px}
+ .tv .summaryStrip strong{font-size:16px}
+ .tv .legend{font-size:8px;margin-bottom:8px;gap:11px}
+ .tv .chart{min-height:95px;max-height:23vh}
+ .tv .meeting{padding:7px 9px;margin-bottom:5px;min-height:36px;flex:0 0 auto}
+ .tv .meetingBody>strong{font-size:11px}
+ .tv .meetingBody>span{font-size:8px}
+ .tv .meetingTime strong{font-size:14px}
+ .tv .meetingTime span{font-size:8px}
+ .tv .footer{margin-top:10px;padding-top:8px;flex-shrink:0}
+ .tv .notes{font-size:8px;margin-top:5px;flex-shrink:0;max-height:10vh}
+}

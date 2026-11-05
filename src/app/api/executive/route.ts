@@ -13,7 +13,10 @@ export async function GET(request:Request){
   const period=executivePeriod(value);
   const scope:ExecutiveScope={clients:permissions.CLIENTS.canView,whatsapp:permissions.WHATSAPP.canView,email:permissions.SERVICE_CENTER.canView,support:permissions.SUPPORT.canView,operations:permissions.OPERATIONS.canView,meetings:permissions.MEETINGS.canView,calendar:permissions.CALENDAR.canView,finance:permissions.IMPORTS.canView,purchase:permissions.PURCHASE_INVOICES.canView,investment:permissions.INVESTMENT_INCOME.canView,contract:permissions.CONTRACT_IMPORTS.canView,ca:false};
   scope.ca=scope.finance||scope.purchase||scope.investment||scope.contract;
-  const data=await unstable_cache(()=>executiveSnapshot(member.organizationId,period.key,scope),["executive-v1",member.organizationId,period.key,period.to,JSON.stringify(scope)],{revalidate:60})();
+  // A new time bucket gives each five-minute refresh fresh data instead of
+  // returning the previous snapshot while a stale cache revalidates.
+  const refreshBucket=String(Math.floor(Date.now()/300000));
+  const data=await unstable_cache(()=>executiveSnapshot(member.organizationId,period.key,scope),["executive-v2",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify(scope)],{revalidate:300})();
   return NextResponse.json(data,{headers:{"Cache-Control":"private, no-store"}});
  }catch(error){console.error("Erro no painel gerencial:",error);return NextResponse.json({error:"Não foi possível atualizar o painel gerencial."},{status:503});}
 }
