@@ -1,16 +1,16 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const session = vi.hoisted(() => ({ user: null as { id: string } | null }));
-beforeEach(() => { session.user = null; });
-vi.mock("@/lib/auth/daily-mfa", () => ({ DAILY_MFA_COOKIE_NAME: "daily", verifyDailyMfaToken: async () => true }));
+const session = vi.hoisted(() => ({ user: null as { id: string } | null, totp: true, aal: "aal2", daily: true }));
+beforeEach(() => { session.user = null; session.totp = true; session.aal = "aal2"; session.daily = true; });
+vi.mock("@/lib/auth/daily-mfa", () => ({ DAILY_MFA_COOKIE_NAME: "daily", verifyDailyMfaToken: async () => session.daily }));
 vi.mock("@supabase/ssr", () => ({
   createServerClient: () => ({
     auth: {
       getUser: async () => ({ data: { user: session.user } }),
       mfa: {
-        listFactors: async () => ({ data: { totp: [{ id: "factor" }] } }),
-        getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: "aal2" } }),
+        listFactors: async () => ({ data: { totp: session.totp ? [{ id: "factor" }] : [] } }),
+        getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: session.aal } }),
       },
     },
   }),
@@ -71,5 +71,35 @@ it("serves the terms of service without authentication", async () => {
   const response = await proxy(new NextRequest("https://example.test/termos-de-servico"));
   expect(response.status).toBe(200);
   expect(response.headers.get("location")).toBeNull();
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+});
+
+
+it("does not let API resource names bypass authentication by ending in an image extension", async () => {
+  const { unstable_doesMiddlewareMatch } = await import("next/experimental/testing/server");
+  const { config } = await import("./proxy");
+  for (const suffix of ["png", "svg", "jpg", "webp"]) {
+    expect(unstable_doesMiddlewareMatch({ config, url: "/api/onboarding/projects/resource." + suffix })).toBe(true);
+  }
+  expect(unstable_doesMiddlewareMatch({ config, url: "/fortuno-logo.png" })).toBe(false);
+  expect(unstable_doesMiddlewareMatch({ config, url: "/_next/static/file.js" })).toBe(false);
+});
+
+
+it("blocks protected APIs until the second factor has been enrolled", async () => {
+  session.user = { id: "user" }; session.totp = false;
+  const response = await proxy(new NextRequest("https://example.test/api/onboarding/projects"));
+  expect(response.status).toBe(403);
+  expect((await response.json()).code).toBe("MFA_ENROLLMENT_REQUIRED");
+});
+it("blocks APIs after daily verification expires until a new MFA challenge succeeds", async () => {
+  session.user = { id: "user" }; session.aal = "aal1"; session.daily = false;
+  const response = await proxy(new NextRequest("https://example.test/api/onboarding/projects/file.png"));
+  expect(response.status).toBe(403);
+  expect((await response.json()).code).toBe("MFA_CHALLENGE_REQUIRED");
+});
+it("honors the signed daily verification for a member with an enrolled factor", async () => {
+  session.user = { id: "user" }; session.aal = "aal1";
+  const response = await proxy(new NextRequest("https://example.test/api/onboarding/projects"));
   expect(response.headers.get("x-middleware-next")).toBe("1");
 });

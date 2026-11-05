@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canManageOnboarding, getOnboardingMember } from "@/modules/onboarding/auth/onboarding-auth";
+import { canManageOnboarding, getOnboardingMember, onboardingAccessDenied } from "@/modules/onboarding/auth/onboarding-auth";
 
 const structure = [
   ["Formalização e handover", [
@@ -81,6 +81,8 @@ const structure = [
 export async function POST() {
   const member = await getOnboardingMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  const accessDenied = await onboardingAccessDenied(member, "canManage");
+  if (accessDenied) return accessDenied;
   if (!canManageOnboarding(member.role)) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
 
   const existing = await prisma.onboardingTemplate.findFirst({ where: { organizationId: member.organizationId, name: "BPO Financeiro — Jornada de 30 dias" } });

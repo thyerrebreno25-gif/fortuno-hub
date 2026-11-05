@@ -1,5 +1,7 @@
 "use client";
 
+import { EmailMessageHtml } from "./email-message-html";
+
 import {
   ActionIcon,
   Avatar,
@@ -441,19 +443,11 @@ export function EmailTicketDrawer({
                                   {message.textBody ||
                                     "Observação sem conteúdo."}
                                 </Text>
-                              ) : message.htmlBody && !outbound ? (
-                                <iframe
+                              ) : message.htmlBody ? (
+                                <EmailMessageHtml
                                   title={`Mensagem ${index + 1}`}
-                                  sandbox=""
-                                  srcDoc={message.htmlBody}
+                                  html={message.htmlBody}
                                   className={styles.emailIframe}
-                                />
-                              ) : message.htmlBody && outbound ? (
-                                <div
-                                  className={styles.sentHtml}
-                                  dangerouslySetInnerHTML={{
-                                    __html: message.htmlBody,
-                                  }}
                                 />
                               ) : (
                                 <Text

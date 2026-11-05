@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOnboardingMember } from "@/modules/onboarding/auth/onboarding-auth";
+import { getOnboardingMember, onboardingAccessDenied } from "@/modules/onboarding/auth/onboarding-auth";
 
 type Context = { params: Promise<{ taskId: string }> };
 
 export async function POST(request: Request, context: Context) {
   const member = await getOnboardingMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  const accessDenied = await onboardingAccessDenied(member, "canEdit");
+  if (accessDenied) return accessDenied;
   const { taskId } = await context.params;
   const body = await request.json();
   const content = typeof body.content === "string" ? body.content.trim() : "";

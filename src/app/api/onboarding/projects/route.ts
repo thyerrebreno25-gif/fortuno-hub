@@ -1,7 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canManageOnboarding, getOnboardingMember } from "@/modules/onboarding/auth/onboarding-auth";
+import { canManageOnboarding, getOnboardingMember, onboardingAccessDenied } from "@/modules/onboarding/auth/onboarding-auth";
 
 const asDateOnly = (value: unknown) => {
   const text = typeof value === "string" ? value : "";
@@ -37,6 +37,8 @@ export async function GET() {
   try {
     const member = await getOnboardingMember();
     if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+    const accessDenied = await onboardingAccessDenied(member, "canView");
+    if (accessDenied) return accessDenied;
 
     const rows = await prisma.onboarding.findMany({
   where: {
@@ -64,6 +66,8 @@ export async function POST(request: Request) {
   try {
     const member = await getOnboardingMember();
     if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+    const accessDenied = await onboardingAccessDenied(member, "canCreate");
+    if (accessDenied) return accessDenied;
     if (!canManageOnboarding(member.role)) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
 
     const body = await request.json();

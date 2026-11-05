@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   canManageOnboarding,
-  getOnboardingMember,
+  getOnboardingMember, onboardingAccessDenied,
 } from "@/modules/onboarding/auth/onboarding-auth";
 
 type Context = { params: Promise<{ id: string }> };
@@ -41,6 +41,8 @@ export async function PUT(request: Request, context: Context) {
   try {
     const member = await getOnboardingMember();
     if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+    const accessDenied = await onboardingAccessDenied(member, "canEdit");
+    if (accessDenied) return accessDenied;
     const { id } = await context.params;
     const body = await request.json();
 
@@ -103,6 +105,8 @@ export async function DELETE(_request: Request, context: Context) {
     if (!member) {
       return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
     }
+    const accessDenied = await onboardingAccessDenied(member, "canDelete");
+    if (accessDenied) return accessDenied;
     if (!canManageOnboarding(member.role)) {
       return NextResponse.json(
         { error: "Seu perfil não possui permissão para excluir onboardings." },

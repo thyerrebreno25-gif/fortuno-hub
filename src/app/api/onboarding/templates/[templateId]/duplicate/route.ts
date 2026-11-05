@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canManageOnboarding, getOnboardingMember } from "@/modules/onboarding/auth/onboarding-auth";
+import { canManageOnboarding, getOnboardingMember, onboardingAccessDenied } from "@/modules/onboarding/auth/onboarding-auth";
 
 type Context = { params: Promise<{ templateId: string }> };
 
 export async function POST(_: Request, context: Context) {
   const member = await getOnboardingMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  const accessDenied = await onboardingAccessDenied(member, "canCreate");
+  if (accessDenied) return accessDenied;
   if (!canManageOnboarding(member.role)) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   const { templateId } = await context.params;
 

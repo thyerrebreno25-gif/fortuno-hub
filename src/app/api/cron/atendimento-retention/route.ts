@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
+import { isAuthorizedCron } from "@/lib/auth/cron";
 import { purgeExpiredServiceTickets } from "@/modules/atendimento/retention";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  const authorization = request.headers.get("authorization");
-  const isVercelCron = request.headers.get("user-agent") === "vercel-cron/1.0";
-
-  if (
-    (secret && authorization !== `Bearer ${secret}`) ||
-    (!secret && !isVercelCron)
-  ) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 

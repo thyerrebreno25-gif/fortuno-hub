@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { getOnboardingMember } from "@/modules/onboarding/auth/onboarding-auth";
+import { getOnboardingMember, onboardingAccessDenied } from "@/modules/onboarding/auth/onboarding-auth";
 import { onboardingService } from "@/modules/onboarding/services/onboarding.service";
 
 export async function GET() {
   try {
     const member = await getOnboardingMember();
     if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+    const accessDenied = await onboardingAccessDenied(member, "canView");
+    if (accessDenied) return accessDenied;
     return NextResponse.json(await onboardingService.dashboard(member.organizationId));
   } catch (error) {
     console.error(error);
