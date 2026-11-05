@@ -1,3 +1,4 @@
+import { onboardingSummary } from "./onboarding";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { ExecutiveData, ExecutivePeriod } from "./types";
@@ -10,7 +11,7 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
  const today=executivePeriod("today",now),horizon=new Date(now.getTime()+7*86400000);
  const sources=[...(scope.whatsapp?["WHATSAPP_API"]:[]),...(scope.email?["GMAIL","MANUAL"]:[])];
  const org=organizationId;
- const [clients,tickets,health,people,activityGroups,overdueGroups,completedGroups,scheduled,running,operationDaily,support,meetings,meetingCounts,personal,personalGroups,meetingGroups,personalToday,ca]=await Promise.all([
+ const [clients,tickets,health,people,activityGroups,overdueGroups,completedGroups,scheduled,running,operationDaily,support,meetings,meetingCounts,personal,personalGroups,meetingGroups,personalToday,ca,onboardings]=await Promise.all([
   scope.clients?prisma.client.groupBy({by:["active"],where:{organizationId:org},_count:{_all:true}}):[],
   sources.length?prisma.$queryRaw<Row[]>(Prisma.sql`
    SELECT CASE WHEN "source"='WHATSAPP_API' THEN 'whatsapp' ELSE 'email' END AS channel,"assignedToId" AS person,
@@ -50,8 +51,10 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
   scope.meetings?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT p."userId" AS person,COUNT(*) AS count FROM "MeetingParticipant" p JOIN "TeamMeeting" m ON m.id=p."meetingId" WHERE m."organizationId"=${org} AND m."deletedAt" IS NULL AND m.status<>'CANCELLED' AND m."endsAt">=${now} AND m."startsAt"<=${horizon} GROUP BY p."userId"`):[],
   scope.calendar?prisma.teamCalendarEvent.count({where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,startsAt:{gte:today.start,lt:today.end}}}):0,
   scope.ca?caMetrics(org,start,end,scope):[],
+  scope.onboarding?prisma.onboarding.findMany({where:{organizationId:org,status:{not:"CANCELLED"}},select:{id:true,status:true,risk:true,expectedEndDate:true,completedAt:true,companyName:true,responsibleName:true,client:{select:{name:true}},responsible:{select:{name:true}},projectData:true,tasks:{select:{status:true}}}}):[],
  ]);
  const result:ExecutiveData={generatedAt:now.toISOString(),period:{key,label:period.label,from:period.from,to:period.to},available:{...scope,meetings:scope.meetings||scope.calendar},
+ onboarding:onboardingSummary(onboardings,start,end,now),
  clients:{active:clients.filter(row=>row.active).reduce((s,r)=>s+r._count._all,0),total:clients.reduce((s,r)=>s+r._count._all,0)},
  whatsapp:{open:0,unassigned:0,inProgress:0,resolvedPeriod:0,receivedPeriod:0,averageResolutionMinutes:null,resolutionSample:0,health:{targetMinutes:15,waiting:n(health[0]?.waiting),onTime:n(health[0]?.ontime),delayed:n(health[0]?.delayed),critical:n(health[0]?.critical),oldestWaitingMinutes:health[0]?.oldest==null?null:n(health[0].oldest),averageFirstResponseMinutes:null,firstResponseSample:0}},
  email:{open:0,unassigned:0,resolvedPeriod:0,spamPeriod:0,receivedPeriod:0},support:{open:n(support[0]?.open),inProgress:n(support[0]?.progress),resolvedPeriod:n(support[0]?.resolved),receivedPeriod:n(support[0]?.received)},
@@ -59,6 +62,7 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
  meetings:{today:n(meetingCounts[0]?.today)+personalToday,upcoming:n(meetingCounts[0]?.upcoming)+personalGroups.reduce((s,r)=>s+r._count._all,0),completedPeriod:n(meetingCounts[0]?.completed),agenda:[...meetings.map(m=>({id:m.id,title:m.title,startsAt:m.startsAt.toISOString(),endsAt:m.endsAt.toISOString(),status:m.status,participants:m.participants.map(p=>p.user.name||"Colaborador")})),...personal.map(m=>({id:"calendar:"+m.id,title:m.title,startsAt:m.startsAt.toISOString(),endsAt:m.endsAt.toISOString(),status:"AGENDA",participants:[m.user.name||"Colaborador"]}))].sort((a,b)=>a.startsAt.localeCompare(b.startsAt))},
  ca:{confirmedLines:0,failedLines:0,pendingLines:0,confirmedBatches:0,breakdown:[]},
  operators:people.map(p=>({id:p.user.id,name:p.user.name||"Colaborador",whatsappOpen:0,emailOpen:0,activitiesOpen:0,activitiesOverdue:0,completedPeriod:0,meetingsUpcoming:0})),daily:period.days.map(day=>({date:day.date,whatsappReceived:0,emailReceived:0,activitiesCompleted:0,caConfirmed:0})),notes:["Contatos do WhatsApp sem mensagens não são contados como atendimentos.","Fila e pendências mostram a situação atual; recebidos e concluídos respeitam o período selecionado.","Agendas incluem reuniões e compromissos registrados no Hub; não representam todos os eventos externos do Google.","Tempos do WhatsApp usam entradas operacionais identificadas, em tempo corrido. Histórico recuperado não entra no SLA. A espera começa na primeira mensagem ainda sem resposta após a última saída; mensagens adicionais não reiniciam o prazo.","Envios ao CA são registros confirmados, não chamadas da API. Criação e baixa do mesmo lançamento contam uma única vez."]};
+ if(scope.onboarding)result.notes.push("Onboarding: pendências e riscos são das implantações abertas; conclusões usam completedAt no período. Atraso: entrega anterior ao dia atual. Atenção: bloqueio, espera pelo cliente, risco registrado ou entrega em até 3 dias. Progresso usa os pesos das etapas atuais; tarefas do formato anterior são contadas apenas sem etapas no projeto.");
  const operators=new Map(result.operators.map(row=>[row.id,row]));let duration=0,response=0;
  for(const row of tickets){if(row.channel==="whatsapp"){const w=result.whatsapp;w.open+=n(row.open);w.inProgress+=n(row.progress);w.resolvedPeriod+=n(row.resolved);w.receivedPeriod+=n(row.received);w.resolutionSample+=n(row.sample);w.health.firstResponseSample+=n(row.response_sample);duration+=n(row.duration);response+=n(row.response);if(!row.person)w.unassigned+=n(row.open);if(row.person&&operators.has(String(row.person)))operators.get(String(row.person))!.whatsappOpen+=n(row.open);}else{const e=result.email;e.open+=n(row.open);e.resolvedPeriod+=n(row.resolved);e.receivedPeriod+=n(row.received);e.spamPeriod+=n(row.spam);if(!row.person)e.unassigned+=n(row.open);if(row.person&&operators.has(String(row.person)))operators.get(String(row.person))!.emailOpen+=n(row.open);}}
  if(result.whatsapp.resolutionSample)result.whatsapp.averageResolutionMinutes=duration/result.whatsapp.resolutionSample;

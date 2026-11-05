@@ -6,7 +6,7 @@ vi.mock("@/modules/executive/server", () => ({ executiveSnapshot: mocks.snapshot
 vi.mock("next/cache", () => ({ unstable_cache: mocks.cache }));
 import { GET } from "./route";
 
-const moduleCodes = ["MANAGEMENT", "CLIENTS", "WHATSAPP", "SERVICE_CENTER", "SUPPORT", "OPERATIONS", "MEETINGS", "CALENDAR", "IMPORTS", "PURCHASE_INVOICES", "INVESTMENT_INCOME", "CONTRACT_IMPORTS"];
+const moduleCodes = ["ONBOARDING", "MANAGEMENT", "CLIENTS", "WHATSAPP", "SERVICE_CENTER", "SUPPORT", "OPERATIONS", "MEETINGS", "CALENDAR", "IMPORTS", "PURCHASE_INVOICES", "INVESTMENT_INCOME", "CONTRACT_IMPORTS"];
 const permissions = (disabled: string[] = []) => Object.fromEntries(moduleCodes.map(code => [code, { canView: !disabled.includes(code) }]));
 const request = (period = "today") => new Request("https://hub.test/api/executive?period=" + period);
 
@@ -50,7 +50,7 @@ it("passes organization and each effective module permission to the snapshot", a
   expect(response.status).toBe(200);
   expect(mocks.permissions).toHaveBeenCalledWith("org-a", "MANAGER");
   expect(mocks.snapshot).toHaveBeenCalledWith("org-a", "month", {
-    clients: true, whatsapp: false, email: true, support: true, operations: true, meetings: true, calendar: true,
+    onboarding: true, clients: true, whatsapp: false, email: true, support: true, operations: true, meetings: true, calendar: true,
     finance: true, purchase: true, investment: false, contract: false, ca: true,
   });
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -63,7 +63,7 @@ it("marks Conta Azul unavailable when every export module is denied", async () =
 it("partitions the server cache by organization, period, São Paulo date and effective permissions", async () => {
   await GET(request("week"));
   const first = mocks.cache.mock.calls[0];
-  expect(first[1]).toEqual(["executive-v2", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
+  expect(first[1]).toEqual(["executive-v3", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
   expect(first[2]).toEqual({ revalidate: 300 });
   expect(JSON.parse(first[1][5]).contract).toBe(true);
 
@@ -93,3 +93,5 @@ it("returns a generic unavailable response when snapshot queries fail", async ()
 });
 
 it("starts a fresh shared snapshot after five minutes",async()=>{await GET(request());const key=mocks.cache.mock.calls[0][1];vi.advanceTimersByTime(300000);await GET(request());expect(mocks.cache.mock.calls[1][1][4]).not.toBe(key[4]);});
+
+it("respects denied onboarding permission",async()=>{mocks.permissions.mockResolvedValue(permissions(["ONBOARDING"]));expect((await GET(request())).status).toBe(200);expect(mocks.snapshot.mock.calls[0][2].onboarding).toBe(false);});

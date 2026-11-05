@@ -1,7 +1,9 @@
+import type { onboardingSummary } from "./onboarding";
 export type ExecutivePeriod = "today" | "week" | "month";
 export type ExecutiveData = {
  generatedAt:string; period:{key:ExecutivePeriod;label:string;from:string;to:string};
- available:{clients:boolean;whatsapp:boolean;email:boolean;support:boolean;operations:boolean;meetings:boolean;ca:boolean};
+ available:{onboarding:boolean;clients:boolean;whatsapp:boolean;email:boolean;support:boolean;operations:boolean;meetings:boolean;ca:boolean};
+ onboarding:ReturnType<typeof onboardingSummary>;
  clients:{active:number;total:number};
  whatsapp:{open:number;unassigned:number;inProgress:number;resolvedPeriod:number;receivedPeriod:number;averageResolutionMinutes:number|null;resolutionSample:number;health:{targetMinutes:number;waiting:number;onTime:number;delayed:number;critical:number;oldestWaitingMinutes:number|null;averageFirstResponseMinutes:number|null;firstResponseSample:number}};
  email:{open:number;unassigned:number;resolvedPeriod:number;spamPeriod:number;receivedPeriod:number};
