@@ -1,4 +1,4 @@
-vi.mock("@/modules/whatsapp/read-state",()=>({unreadCounts:vi.fn(async()=>new Map([["ticket",3]]))}));
+vi.mock("@/modules/whatsapp/read-state",()=>({latestConversationDirections:vi.fn(async()=>new Map()),unreadCounts:vi.fn(async()=>new Map([["ticket",3]]))}));
 import {beforeEach,expect,it,vi} from "vitest";
 const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),find:vi.fn(),history:vi.fn()}));
 vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findMany:m.find},serviceTicketHistory:{findMany:m.history}}}));

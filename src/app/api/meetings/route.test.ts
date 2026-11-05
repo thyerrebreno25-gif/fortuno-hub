@@ -1,3 +1,4 @@
+vi.mock("@/modules/meetings/reports",()=>({publicReportSelect:{},processMeetingReport:vi.fn()}));
 import {beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({access:vi.fn(),trash:vi.fn(),save:vi.fn(),after:vi.fn()}));
 vi.mock('next/server',async()=>{const actual=await vi.importActual<typeof import('next/server')>('next/server');return {...actual,after:m.after};});
