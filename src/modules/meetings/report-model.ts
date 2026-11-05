@@ -1,3 +1,4 @@
+import {groupMeetingAssignments} from "./meeting-text";
 import {createHash} from "node:crypto";
 import {z} from "zod";
 export const reportSummarySchema=z.object({summary:z.string().max(12000),topics:z.array(z.object({title:z.string().max(300),points:z.array(z.string().max(2500)).max(30)})).max(40),decisions:z.array(z.string().max(2500)).max(50),pending:z.array(z.string().max(2500)).max(50),nextSteps:z.array(z.string().max(2500)).max(50)});
@@ -34,5 +35,5 @@ export function renderMeetingReport(meeting:ReportMeeting,summary:ReportSummary|
  if(!meeting.recordings.length)lines.push("Nenhuma gravação anexada.");
  else if(!includeRecordings)lines.push("As gravações não foram incluídas nesta versão do relatório.");
  else lines.push(...meeting.recordings.map(row=>"• "+row.name+" — "+(row.status==="DONE"?"transcrição utilizada na síntese":row.status==="UPLOADING"?"envio pendente, não incluído nesta versão":"transcrição não disponível")),"O texto integral permanece na aba Gravações e transcrições. A síntese acima organiza as falas por assunto; não atribui interlocutores sem identificação na fonte.");
- return lines.join("\n");
+ return groupMeetingAssignments(lines.join("\n"));
 }

@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useState} from "react";
 import {Alert,Badge,Button,Group,Modal,Paper,PasswordInput,Stack,Text,Textarea,Title} from "@mantine/core";
 import {jsonRequest,meetingRequest,type Meeting} from "./client";
+import {FormattedMeetingText} from "./formatted-text";
 type Connection={id:string;enabled:boolean;lastSyncAt:string|null;error:string|null};
 export function FathomSettings({canEdit}:{canEdit:boolean}){
  const [opened,setOpened]=useState(false),[connection,setConnection]=useState<Connection|null>(null),[key,setKey]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
@@ -27,8 +28,8 @@ function FathomRecordingCard({recording}:{recording:NonNullable<Meeting["fathomR
  <Group><Button component="a" href={recording.playbackUrl} target="_blank" rel="noopener noreferrer" variant="light">Assistir gravação no Fathom</Button>{url?<Button component="a" href={url} target="_blank" rel="noopener noreferrer" variant="light">Abrir arquivo da gravação</Button>:<Button loading={busy||attempt>0&&attempt<12} variant="default" onClick={()=>void prepare()}>Preparar download da gravação</Button>}</Group>
  {attempt>=12&&<Text size="sm">O Fathom ainda está preparando o arquivo. Tente novamente em instantes.</Text>}{error&&<Alert color="orange">{error}</Alert>}
  <Text size="xs" c="dimmed">O vídeo permanece armazenado no Fathom. O Hub guarda a transcrição e o resumo; o link de download é temporário.</Text>
- <Title order={5}>Resumo organizado pelo Fathom</Title><Text size="sm" style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{recording.summary||"O Fathom ainda não disponibilizou o resumo."}</Text>
- {recording.actionItems&&<><Title order={5}>Atividades sugeridas pelo Fathom</Title><Text size="sm" style={{whiteSpace:"pre-wrap"}}>{recording.actionItems}</Text><Text size="xs" c="dimmed">Revise e distribua as tarefas no checklist para definir responsáveis e prazos no Hub.</Text></>}
+ <Title order={5}>Resumo organizado pelo Fathom</Title><FormattedMeetingText text={recording.summary||"O Fathom ainda não disponibilizou o resumo."}/>
+ {recording.actionItems&&<><Title order={5}>Atividades sugeridas pelo Fathom</Title><FormattedMeetingText text={recording.actionItems}/><Text size="xs" c="dimmed">Revise e distribua as tarefas no checklist para definir responsáveis e prazos no Hub.</Text></>}
  <Textarea label="Transcrição com participantes e horários" value={recording.transcript||"Transcrição ainda não disponibilizada pelo Fathom."} readOnly autosize minRows={4} maxRows={16}/>
  </Stack></Paper>;
 }
