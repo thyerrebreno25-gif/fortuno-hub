@@ -30,7 +30,8 @@ export function BalanceCheck({ review, clientId, accounts, connected }: { review
   }, [key, connected, refresh]);
   const comparisons = compareBalances(review, connected && !loading && !error && result?.key === key ? result.balances : []);
   return <Stack gap="xs">
-    <Group justify="space-between"><Text size="sm" fw={600}>Validação de saldo</Text>{loading && <Loader size="xs" />}</Group>
+    <Group justify="space-between"><Text size="sm" fw={600}>Conferência de saldo</Text>{loading && <Loader size="xs" />}</Group>
+    <Text size="xs" c="dimmed">Conferência informativa. Divergência ou saldo indisponível não bloqueiam o envio ao CA.</Text>
     {!accountIds.length && <Text size="xs" c="dimmed">Selecione as contas de aplicação abaixo para conferir o saldo no fim do período.</Text>}
     {accountIds.length > 0 && review.rows.some((row) => !row.accountId) && <Text size="xs" c="orange">Há tipos de aplicação ainda sem conta selecionada.</Text>}
     {comparisons.map((comparison) => <Stack gap={3} key={comparison.accountId}>

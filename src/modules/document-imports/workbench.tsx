@@ -12,7 +12,7 @@ import { BalanceCheck } from "./balance-check";
 import { DeliveryControls, type DeliveryState } from "./delivery-controls";
 type Company = { id: string; name: string; document: string | null; contaAzulConnection: null | { active: boolean; status: string } };
 type Sale = { number: number; saleDate: string; dueDate: string; amountCents: number; description?: string };
-type Simulation = { validatedAt: string; errors: string[]; sales: Sale[]; totalCents: number; endDate: string | null };
+type Simulation = { validatedAt: string; errors: string[]; warnings?: string[]; sales: Sale[]; totalCents: number; endDate: string | null };
 type Draft = { id: string; fileName: string; version: number; data: Review; status: string; simulation: Simulation | null; deliveries?: DeliveryState[] };
 type Options = { categories: Option[]; financialAccounts: Option[]; customers: Option[]; services: Option[] };
 const emptyOptions: Options = { categories: [], financialAccounts: [], customers: [], services: [] };
@@ -175,7 +175,9 @@ export function ImportWorkbench({ kind }: { kind: ImportKind }) {
     <Modal opened={deleteOpened} onClose={()=>!busy&&setDeleteOpened(false)} title="Excluir contrato do Hub"><Stack><Text>Remover {selected?.fileName} da lista do Hub? O contrato e as vendas no Conta Azul serão preservados.</Text><Text size="sm" c="dimmed">O histórico de envio será mantido. Você pode restaurar a revisão importando o mesmo PDF novamente.</Text><Group justify="flex-end"><Button variant="default" disabled={busy} onClick={()=>setDeleteOpened(false)}>Cancelar</Button><Button color="red" loading={busy} onClick={()=>void removeContract()}>Excluir do Hub</Button></Group></Stack></Modal>
     <Modal opened={preview} onClose={() => setPreview(false)} title={kind === "INVESTMENT" ? "Resultado da conferência" : "Validação do contrato"} size="xl"><Stack>{selected?.simulation && <>
       <Alert color={selected.simulation.errors.length ? "orange" : "teal"}>{selected.simulation.errors.length ? "Há pendências para corrigir." : "Dados conferidos com os cadastros do CA."} Nenhuma venda, contrato ou baixa foi criada.</Alert>
-      {selected.simulation.errors.map((issue) => <Text key={issue} size="sm" c="red">{issue}</Text>)}<ScheduleTable sales={selected.simulation.sales} /><Text fw={700}>Total: {money(selected.simulation.totalCents)}</Text>
+      {selected.simulation.errors.map((issue) => <Text key={issue} size="sm" c="red">{issue}</Text>)}
+      {!!selected.simulation.warnings?.length && <Alert color="orange" title="Observações de saldo · não bloqueiam o envio">{selected.simulation.warnings.map((warning) => <Text key={warning} size="sm">{warning}</Text>)}</Alert>}
+      <ScheduleTable sales={selected.simulation.sales} /><Text fw={700}>Total: {money(selected.simulation.totalCents)}</Text>
       {selected.simulation.endDate && <Text>Término da recorrência: {displayDate(selected.simulation.endDate)}</Text>}
       <Text size="sm" c="dimmed">{kind === "INVESTMENT" ? "Conferência de leitura, cálculos e vínculos. Para criar as vendas e baixas, use Enviar ao CA e confirme os dados." : "Dados conferidos. Para criar o contrato recorrente, use Enviar contrato ao CA e confirme os dados."}</Text>
     </>}</Stack></Modal>

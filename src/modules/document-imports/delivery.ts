@@ -8,8 +8,6 @@ import { contaAzulRequest, ContaAzulApiError } from "@/modules/purchase-invoices
 import { buildDirectFinancialEventPayload, automaticFinancialContactName, contaAzulOptions, normalizeContaAzulLabel, apiItems } from "@/modules/conta-azul/financial-export";
 import { investmentSchema, normalize, reviewIssues, type InvestmentReview } from "./model";
 import { importOptions } from "./server";
-import { closingAccountBalance } from "./account-balance";
-import { compareBalances, type AccountClosingBalance } from "./balance-model";
 
 type Delivery = Awaited<ReturnType<typeof prisma.documentImportDelivery.findMany>>[number];
 type Row = InvestmentReview["rows"][number];
@@ -142,10 +140,8 @@ export async function sendInvestmentReview(input: { organizationId: string; user
       else await prisma.documentImportDelivery.update({ where: { id: delivery.id }, data: { installmentId, status: "RECEIVABLE_CREATED" } });
     }
     deliveries = await prisma.documentImportDelivery.findMany({ where: { reviewId: draft.id, organizationId: input.organizationId } });
-    const remaining = { ...review, rows: review.rows.map((row) => ({ ...row, amountCents: deliveries.some((item) => item.rowKey === row.key && item.status === "SENT") ? 0 : row.amountCents })) };
-    const balances: AccountClosingBalance[] = [];
-    for (const accountId of new Set(review.rows.map((row) => row.accountId))) balances.push(await closingAccountBalance(draft.clientId, accountId, review.periodEnd, new Date(), deadline - 30000));
-    if (compareBalances(remaining, balances).some((item) => item.status !== "OK")) throw new Error("O saldo do CA mais os rendimentos ainda pendentes não confere com o extrato. Atualize a conferência antes de enviar.");
+    // Closing balances remain visible in the workbench as an advisory check.
+    // Dispatch depends on the approved amounts and references, not balance equality.
     await assertLease();
     // Freeze review and reserve semantic monthly keys atomically across repeated PDFs.
     await prisma.$transaction(async (tx) => {

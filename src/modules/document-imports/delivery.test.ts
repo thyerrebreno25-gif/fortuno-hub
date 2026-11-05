@@ -73,11 +73,17 @@ it("recovers an uncertain settlement and validates only the remaining income", a
   expect((await send()).completed).toBe(false); expect(deliveries[0].status).toBe("UNCERTAIN_SETTLEMENT");
   expect((await send()).completed).toBe(true); expect(sales).toHaveLength(2); expect(writes("/baixa")).toHaveLength(2);
 });
-it("blocks a mismatching balance and an active company lease before creating anything", async () => {
-  mocks.closing.mockResolvedValue({ accountId: id(4), date: "2026-10-28", balanceCents: 30001, method: "CURRENT" });
-  await expect(send()).rejects.toThrow("saldo"); expect(deliveries).toHaveLength(0); expect(writes("/contas-a-receber")).toHaveLength(0);
-  mocks.leaseUpdate.mockResolvedValueOnce({ count: 0 }); await expect(send()).rejects.toThrow("andamento");
+it.each([30001,33000,null])("allows dispatch independently of closing balance %s", async (balanceCents) => {
+  mocks.closing.mockResolvedValue({ accountId: id(4), date: "2026-10-28", balanceCents, method: balanceCents === null ? "UNAVAILABLE" : "CURRENT" });
+  expect((await send()).completed).toBe(true);
+  expect(writes("/contas-a-receber")).toHaveLength(2); expect(settlements).toHaveLength(2);
+  expect(mocks.closing).not.toHaveBeenCalled();
 });
+it("still blocks an active company lease before creating anything", async () => {
+  mocks.leaseUpdate.mockResolvedValueOnce({ count: 0 }); await expect(send()).rejects.toThrow("andamento");
+  expect(deliveries).toHaveLength(0); expect(writes("/contas-a-receber")).toHaveLength(0);
+});
+
 it("uses the same monthly business key even when filenames, values or CA accounts change", () => {
   const review = draft.data;
   expect(incomeBusinessKey("org", "company", review, review.rows[0])).toBe(incomeBusinessKey("org", "company", { ...review, periodEnd: "2026-10-31" }, { ...review.rows[0], amountCents: 999, accountId: id(9) }));

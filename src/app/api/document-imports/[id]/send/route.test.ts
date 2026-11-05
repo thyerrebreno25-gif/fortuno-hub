@@ -17,16 +17,16 @@ it("requires session, send permission, explicit confirmation and an authorized c
 });
 it("passes the stored review identity and version rather than accepting a financial payload", async () => {
   expect((await POST(request(), context)).status).toBe(200);
-  expect(mocks.send).toHaveBeenCalledWith({ organizationId: "org", userId: "master", reviewId: "draft", version: 1 });
-  expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", kind: "INVESTMENT" } }));
+  expect(mocks.send).toHaveBeenCalledWith({ organizationId: "org", userId: "master", reviewId: "draft", version: 1, verifyOnly: false });
+  expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", kind: "INVESTMENT", status: { not: "DELETED" } } }));
 });
 it("uses contract permissions and the contract sender for real recurring contracts", async () => {
   mocks.contractSend.mockResolvedValueOnce({ completed: true });
   const response = await POST(new Request("https://example.test/api/document-imports/draft/send", { method: "POST", body: JSON.stringify({ kind: "CONTRACT", version: 1, confirmation: "ENVIAR AO CA" }) }), context);
   expect(response.status).toBe(200);
   expect(mocks.access).toHaveBeenCalledWith("CONTRACT");
-  expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", kind: "CONTRACT" } }));
-  expect(mocks.contractSend).toHaveBeenCalledWith({ organizationId: "org", userId: "master", reviewId: "draft", version: 1 });
+  expect(mocks.find).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "draft", organizationId: "org", kind: "CONTRACT", status: { not: "DELETED" } } }));
+  expect(mocks.contractSend).toHaveBeenCalledWith({ organizationId: "org", userId: "master", reviewId: "draft", version: 1, verifyOnly: false });
   expect(mocks.send).not.toHaveBeenCalled();
 });
 it("requires create permission before automatically registering a missing buyer",async()=>{

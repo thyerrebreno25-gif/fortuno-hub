@@ -52,6 +52,7 @@ export async function importOptions(clientId: string, kind: ImportKind, term = "
 export async function simulateReview(clientId: string, review: Review) {
   const options = await importOptions(clientId, review.kind, review.kind === "CONTRACT" ? review.buyerDocument : "");
   const errors = reviewIssues(review, true);
+  const warnings: string[] = [];
   const rows = review.kind === "INVESTMENT" ? review.rows : [review];
   for (const row of rows) {
     if (!options.categories.some((item) => item.value === row.categoryId)) errors.push("Categoria não encontrada entre as receitas da empresa selecionada.");
@@ -79,9 +80,9 @@ export async function simulateReview(clientId: string, review: Review) {
     }
     for (const comparison of compareBalances(review, balances)) {
       const label = options.financialAccounts.find((item) => item.value === comparison.accountId)?.label || "Conta";
-      if (comparison.status === "DIVERGENT") errors.push(`${label}: o saldo após o rendimento diverge do saldo bruto do extrato.`);
-      if (comparison.status === "ALREADY_MATCHES") errors.push(`${label}: o saldo já confere sem novo lançamento; verifique possível rendimento já registrado.`);
-      if (comparison.status === "UNAVAILABLE") errors.push(`${label}: não foi possível validar o fechamento. Confira a data de apuração e a disponibilidade dos movimentos.`);
+      if (comparison.status === "DIVERGENT") warnings.push(`${label}: o saldo após o rendimento diverge do saldo bruto do extrato. O envio está liberado.`);
+      if (comparison.status === "ALREADY_MATCHES") warnings.push(`${label}: o saldo já confere sem novo lançamento; verifique possível rendimento já registrado. O envio está liberado.`);
+      if (comparison.status === "UNAVAILABLE") warnings.push(`${label}: não foi possível validar o fechamento. A conferência é informativa e não bloqueia o envio.`);
     }
   }
   const sales = review.kind === "CONTRACT" ? schedule(review) : review.rows.map((row, i) => ({ number: i + 1, description: row.description, saleDate: row.date, dueDate: row.date, amountCents: row.amountCents }));
@@ -89,5 +90,6 @@ export async function simulateReview(clientId: string, review: Review) {
     endDate: review.kind === "CONTRACT" && sales.length ? monthDate(sales[sales.length - 1].saleDate, 0, "last") : null,
     writesToContaAzul: 0,
     balances,
+    warnings,
   };
 }
