@@ -1,0 +1,23 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({ identities: new Map<string, unknown>(), current: {} as Record<string, unknown>, sent: vi.fn(), created: vi.fn(), updated: vi.fn(), history: vi.fn(), assignee: vi.fn() }));
+vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: async () => ({ organizationId: "org", role: "MASTER", userId: "operator", user: { id: "operator", name: "Isabella Lago", email: "operator@test" } }), getWhatsAppPermission: async () => ({ canView: true, canEdit: true, canManage: true }), SERVICE_CENTER_MANAGER_ROLES: new Set(["MASTER"]) }));
+vi.mock("@/modules/whatsapp/server", () => ({ getWhatsappTicket: async () => m.current, resolveWhatsappTicketId: async (id: string) => id, eligibleWhatsappResponsible: m.assignee }));
+vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: async () => ({ id: "c", phone: "5511", instanceId: "instance" }), sendUazapiText: m.sent }));
+vi.mock("@/modules/whatsapp/transfer", () => ({ transferWhatsappTicket: vi.fn(), WhatsAppTransferError: Error }));
+vi.mock("@/modules/whatsapp/merge", () => ({ chatLock: () => "lock" }));
+vi.mock("@/lib/prisma", () => {
+  const db = { client: { findFirst: async () => ({ id: "client", serviceSquad: null }) }, clientWhatsAppIdentity: { upsert: async (args: { where: { organizationId_clientId_kind_externalId: Record<string, string> }; create: unknown }) => { m.identities.set(JSON.stringify(args.where.organizationId_clientId_kind_externalId), args.create); } }, serviceTicket: { update: m.updated, findFirst: async () => m.current }, serviceTicketHistory: { create: m.history }, serviceMessage: { create: m.created }, $executeRaw: vi.fn() };
+  return { prisma: { ...db, $transaction: async (value: ((tx: typeof db) => unknown) | unknown[]) => typeof value === "function" ? value(db) : Promise.all(value) } };
+});
+import { PATCH } from "./route";
+beforeEach(() => { vi.clearAllMocks(); m.identities.clear(); m.current = { id: "ticket", organizationId: "org", source: "WHATSAPP_API", status: "NEW", senderEmail: "wa-group:group@g.us", senderName: "Grupo", recipientEmail: "wa-account:c:5511", assignedToId: null, messages: [], routingArea: "GENERAL" }; m.assignee.mockResolvedValue(null); m.sent.mockResolvedValue({ messageId: "uazapi:5511:m", connectionId: "c", accountPhone: "5511", instanceId: "instance" }); });
+const patch = (body: unknown) => PATCH(new Request("https://hub.test/api/whatsapp/ticket", { method: "PATCH", body: JSON.stringify(body) }), { params: Promise.resolve({ id: "ticket" }) });
+it("preserves multiple group and contact identities when linking the same client", async () => {
+  for (const address of ["wa-group:one@g.us", "wa-group:two@g.us", "wa-contact:551100000001", "wa-contact:551100000002"]) { m.current.senderEmail = address; expect((await patch({ action: "client", clientId: "client" })).status).toBe(200); }
+  expect(m.identities.size).toBe(4);
+});
+it("sends the logged-in operator's signature while retaining the operator as the message author", async () => {
+  expect((await patch({ action: "reply", content: "Essa não foi efetuada." })).status).toBe(200);
+  expect(m.sent.mock.calls[0][0].body).toBe("*Isabella Lago*\nEssa não foi efetuada.");
+  expect(m.created.mock.calls[0][0].data).toMatchObject({ fromName: "Isabella Lago", textBody: "Essa não foi efetuada." });
+});

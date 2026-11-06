@@ -1,0 +1,10 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), account: vi.fn(), clients: vi.fn(), directory: vi.fn(), tickets: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { client: { findMany: m.clients }, whatsAppDirectoryEntry: { findMany: m.directory }, serviceTicket: { findMany: m.tickets } } }));
+vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));
+vi.mock("@/modules/whatsapp/account-scope", () => ({ currentWhatsAppAccount: m.account }));
+import { GET } from "./route";
+beforeEach(() => { vi.clearAllMocks(); m.member.mockResolvedValue({ organizationId: "org", role: "MANAGER" }); m.permission.mockResolvedValue({ canView: true, canManage: true }); m.account.mockResolvedValue({ recipient: "wa-account:c:5511", connection: { id: "c", phone: "5511" }, where: { organizationId: "org", source: "WHATSAPP_API", recipientEmail: "wa-account:c:5511" } }); for (const query of [m.clients, m.directory, m.tickets]) query.mockResolvedValue([]); });
+it.each(["OPERATOR", "CLIENT"])("blocks %s even with a configured management module permission", async role => { m.member.mockResolvedValue({ role, organizationId: "org" }); expect((await GET()).status).toBe(403); expect(m.clients).not.toHaveBeenCalled(); });
+it.each(["MASTER", "ADMIN", "MANAGER"])("allows %s and scopes the active base and account", async role => { m.member.mockResolvedValue({ role, organizationId: "org" }); expect((await GET()).status).toBe(200); expect(m.clients.mock.calls[0][0].where).toEqual({ organizationId: "org", active: true }); expect(m.directory.mock.calls[0][0].where).toMatchObject({ organizationId: "org", accountPhone: "5511", active: true }); expect(m.tickets.mock.calls[0][0].where.recipientEmail).toBe("wa-account:c:5511"); });
+it("rejects disconnected accounts instead of showing misleading zero coverage", async () => { m.account.mockResolvedValue({ recipient: null }); expect((await GET()).status).toBe(409); expect(m.clients).not.toHaveBeenCalled(); });

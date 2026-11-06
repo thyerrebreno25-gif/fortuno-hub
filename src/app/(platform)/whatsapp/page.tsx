@@ -19,6 +19,8 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
+  IconMaximize,
+  IconMinimize,
   IconBrandWhatsapp,
   IconChevronLeft,
   IconChevronRight,
@@ -182,11 +184,10 @@ async function readResponse<T>(response: Response) {
 
 export default function WhatsAppPage() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
-  const workspaceRef = useRef<HTMLElement|null>(null);
-  const workspaceHeaderRef = useRef<HTMLElement|null>(null);
   const [boxesMinimized,setBoxesMinimized] = useState(false);
   const [listMinimized,setListMinimized] = useState(false);
-  const [contextMinimized,setContextMinimized] = useState(false);
+  const [contextMinimized,setContextMinimized] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
   const [contactInfoId, setContactInfoId] = useState<string|null>(null);
   const [section, setSection] = useState<Section>("INBOX");
   const [view, setView] = useState<View>("GENERAL");
@@ -236,19 +237,11 @@ export default function WhatsAppPage() {
   }, []);
   useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
   useEffect(() => {
-    if (!connected || section !== "INBOX") return;
-    const measure = () => {
-      const node = workspaceRef.current;
-      if (!node) return;
-      if (window.innerWidth <= 820) { node.style.removeProperty("--whatsapp-workspace-height"); return; }
-      node.style.setProperty("--whatsapp-workspace-height", Math.max(320, window.innerHeight - node.getBoundingClientRect().top - 12) + "px");
-    };
-    const frame = requestAnimationFrame(measure);
-    const observer = new ResizeObserver(measure);
-    if (workspaceHeaderRef.current) observer.observe(workspaceHeaderRef.current);
-    window.addEventListener("resize", measure);
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", measure); };
-  }, [connected, section]);
+    if (!focusMode) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setFocusMode(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [focusMode]);
 
   const [simulation, setSimulation] = useState({
     kind: "CONTACT",
@@ -369,7 +362,7 @@ export default function WhatsAppPage() {
           detailCache.current.clear(); ticketVersions.current.clear(); readMarkers.current.clear();
           partialList.current = false; lastRevision.current = ""; selectedRef.current = null;
           setInbox({ tickets: [], complete: false, key: "" }); setStats(null); setDetail(null);
-          setSelectedId(null); setManagementSelection(null); setReply(""); setTransferOpened(false); setContactInfoId(null);
+          setSelectedId(null); setManagementSelection(null); setSection("INBOX"); setReply(""); setTransferOpened(false); setContactInfoId(null);
         }
         accountKeyRef.current = state.accountKey;
         onConnectionStatus(state.mode);
@@ -549,10 +542,10 @@ export default function WhatsAppPage() {
   }
 
   return (
-    <main className={styles.page}>
-      <header ref={workspaceHeaderRef} className={styles.header}>
+    <main className={`${styles.page} ${connected && section === "INBOX" ? styles.inboxPage : ""} ${focusMode && connected && section === "INBOX" ? styles.focusMode : ""}`}>
+      <header className={styles.header}>
         <div>
-          <Group gap="sm" mb={7} align="center">
+          <Group gap="sm" align="center">
             <div className={styles.sectionTabs}>
               <button
                 type="button"
@@ -580,18 +573,11 @@ export default function WhatsAppPage() {
             {connected && historySync?.status === "FAILED" && <Text size="xs" c="orange">Histórico pendente de atualização</Text>}
           </Group>
         </div>
-        {connected && <Group gap="xs">
-          {bootstrap?.canEdit && <Button variant="light" color="teal" leftSection={<IconRefresh size={17} />} loading={historyBusy || Boolean(historySync && ["PENDING", "RUNNING", "IMPORTING"].includes(historySync.status))} onClick={syncHistory}>Atualizar conversas</Button>}
-        {bootstrap?.canConfigureConnection && (
-          <Button variant="subtle" leftSection={<IconBrandWhatsapp size={17} />} onClick={() => setConnectionSettingsOpened(true)}>
-            Configurar WhatsApp
-          </Button>
-        )}
-        </Group>}
+        {connected && section === "INBOX" && <Tooltip label={focusMode ? "Restaurar visualização" : "Ampliar central"}><ActionIcon className={styles.focusToggle} size="lg" variant="subtle" aria-label={focusMode ? "Restaurar visualização" : "Ampliar central"} aria-pressed={focusMode} onClick={() => setFocusMode(value => !value)}>{focusMode ? <IconMinimize size={19}/> : <IconMaximize size={19}/>}</ActionIcon></Tooltip>}
       </header>
 
-      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
-        <section data-whatsapp-workspace ref={workspaceRef} className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
+      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement actions={<Group gap="xs">{connected && bootstrap.canEdit && <Button variant="light" color="teal" leftSection={<IconRefresh size={17}/>} loading={historyBusy} onClick={syncHistory}>Atualizar conversas</Button>}{bootstrap.canConfigureConnection && <Button variant="subtle" leftSection={<IconBrandWhatsapp size={17}/>} onClick={() => setConnectionSettingsOpened(true)}>Configurar WhatsApp</Button>}</Group>} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
+        <section data-whatsapp-workspace className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
         <aside className={styles.views} aria-label="Caixas e filtros">
           <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">CAIXAS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
           {boxesMinimized&&<span className={styles.railLabel}>Caixas</span>}
@@ -682,7 +668,7 @@ export default function WhatsAppPage() {
                       {statusLabels[detail.status] || detail.status}
                     </Badge>
                   </Group>
-                  <Text size="xs" c="dimmed">{detail.senderEmail.replace("wa-contact:", "+").replace("wa-group:", "Grupo: ")}</Text>
+                  <Text size="xs" c="dimmed" title={detail.senderEmail.replace("wa-contact:", "+").replace("wa-group:", "Grupo: ")}>{areaOptions.find(area => area.value === detail.routingArea)?.label || "Triagem"} · {detail.assignedTo?.name || "Na fila"}</Text>
                 </div>
                 </Group></UnstyledButton>
                 <Group gap="xs"><Tooltip label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"}><ActionIcon variant="subtle" color="gray" aria-label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"} aria-expanded={!contextMinimized} aria-controls="whatsapp-context" onClick={()=>setContextMinimized(value=>!value)}>{contextMinimized?<IconChevronDown size={17}/>:<IconChevronUp size={17}/>}</ActionIcon></Tooltip>
@@ -731,7 +717,7 @@ export default function WhatsAppPage() {
                 <div className={styles.composer}>
                   <Textarea
                     autosize
-                    minRows={2}
+                    minRows={1}
                     maxRows={5}
                     placeholder={bootstrap?.mode === "TEST" ? "Escreva uma resposta para registrar no teste..." : "Escreva uma resposta..."}
                     value={reply}

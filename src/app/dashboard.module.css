@@ -1532,3 +1532,10 @@
 :global(html[data-mantine-color-scheme="dark"]) .notificationItem:hover {
   background: #172842;
 }
+
+@media (min-width: 821px) {
+ .whatsappShell { height: 100dvh; min-height: 0; overflow: hidden; }
+ .whatsappShell .main { display: flex; flex-direction: column; min-height: 0; }
+ .whatsappShell .topbar { flex: 0 0 48px; min-height: 48px; padding: 0 16px; }
+ .content.whatsappContent { padding: 0; flex: 1; min-height: 0; display: flex; overflow: hidden; }
+}

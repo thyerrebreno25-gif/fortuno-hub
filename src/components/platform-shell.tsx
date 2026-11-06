@@ -367,7 +367,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className={`${styles.app} ${
+      className={`${styles.app} ${pathname === "/whatsapp" ? styles.whatsappShell : ""} ${
         sidebarCollapsed ? styles.sidebarCollapsed : ""
       }`}
     >
@@ -484,7 +484,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
       <main className={styles.main}>
         <DashboardTopbar />
 
-        <section className={`${styles.content} ${pathname === "/atendimento" ? styles.mailContent : ""}`}>
+        <section className={`${styles.content} ${pathname === "/atendimento" ? styles.mailContent : pathname === "/whatsapp" ? styles.whatsappContent : ""}`}>
           {!permissionsLoaded ? (
             <div style={{ padding: 32 }}>Carregando permissões...</div>
           ) : currentAllowed ? (

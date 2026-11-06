@@ -1,4 +1,5 @@
 import {outgoingContext} from "@/modules/whatsapp/outgoing-context";
+import { signedWhatsappText } from "@/modules/whatsapp/operator-signature";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -279,7 +280,7 @@ export async function PATCH(request: Request, context: Context) {
         const metadata = object(latestInbound?.providerMetadata);
         const connection = await whatsappConnection(member.organizationId);
         const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
-        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:content,...destination});
+        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, content),...destination});
         externalMessageId = sent.messageId;
         providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone };
       } catch (error) {
