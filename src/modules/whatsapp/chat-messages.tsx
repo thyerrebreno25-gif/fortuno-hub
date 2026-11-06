@@ -35,7 +35,7 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
     previous.current = { conversationId, lastId: last?.id || "" };
     if (!switched && !changed) return;
     const frame = requestAnimationFrame(() => {
-      if (switched || sticky.current || last?.direction === "OUTBOUND") {
+      if (switched || sticky.current || last?.direction === "OUTBOUND" && last.id.startsWith("pending:")) {
         sticky.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setHasNew(false);
       } else setHasNew(true);
     });
