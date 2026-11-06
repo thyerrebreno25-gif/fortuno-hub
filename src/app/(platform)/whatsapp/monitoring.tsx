@@ -1,10 +1,6 @@
 "use client";
 
 import {
-  Alert,
-  Modal,
-  Stack,
-  Switch,
   Badge,
   Button,
   Group,
@@ -30,7 +26,6 @@ import {
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Breakdown, MonitoringData } from "@/modules/whatsapp/monitoring-types";
-import { buildMonitoringDemo, demoClients, demoAgents, type DemoConversation } from "@/modules/whatsapp/monitoring-demo";
 import styles from "./monitoring.module.css";
 
 type Option = { value: string; label: string };
@@ -95,17 +90,12 @@ export function WhatsAppMonitoring({
   const [to, setTo] = useState(initialRange.to);
   const [clientId, setClientId] = useState<string | null>(null);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
-  const [demo, setDemo] = useState(true);
-  const [preview, setPreview] = useState<DemoConversation | null>(null);
-  const demoResult = useMemo(() => buildMonitoringDemo({ from, to, clientId, assigneeId }), [from, to, clientId, assigneeId]);
-  const [realData, setData] = useState<MonitoringData | null>(null);
+  const [data, setData] = useState<MonitoringData | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodPreset, setPeriodPreset] = useState(30);
 
-  const data = demo ? demoResult.data : realData;
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    if (demo) { setLoading(false); return; }
     setLoading(true);
     try {
       const params = new URLSearchParams({ from, to });
@@ -127,14 +117,15 @@ export function WhatsAppMonitoring({
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [demo, assigneeId, clientId, from, to]);
+  }, [assigneeId, clientId, from, to]);
 
   useEffect(() => {
     const controller = new AbortController();
     // Sincroniza os indicadores sempre que algum filtro muda.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load(controller.signal);
-    return () => controller.abort();
+    const timer=setInterval(()=>{if(document.visibilityState==="visible")void load(controller.signal);},60000);
+    return () => {controller.abort();clearInterval(timer);};
   }, [load]);
 
   function selectPeriod(days: number) {
@@ -146,24 +137,6 @@ export function WhatsAppMonitoring({
 
   return (
     <section className={styles.monitoring}>
-      <Paper withBorder radius="lg" p="md">
-        <Group justify="space-between">
-          <div><Text fw={800}>{demo ? "Demonstração do painel" : "Indicadores reais"}</Text>
-            <Text size="sm" c="dimmed">{demo ? "Explore os indicadores com conversas, clientes e equipe fictícios." : "Informações dos atendimentos registrados no WhatsApp."}</Text></div>
-          <Switch label="Dados fictícios" checked={demo} onChange={(event) => { setDemo(event.currentTarget.checked); setClientId(null); setAssigneeId(null); setData(null); setPreview(null); }} />
-        </Group>
-      </Paper>
-      {demo && <Alert color="blue" title="Modo demonstração — dados fictícios">Os exemplos servem apenas para visualizar o painel. Nenhuma mensagem é enviada e nenhum atendimento é gravado. Experimente os filtros ou abra uma conversa abaixo.</Alert>}
-      {demo && demoResult.error && <Alert color="orange">{demoResult.error}</Alert>}
-      <Modal opened={!!preview} onClose={() => setPreview(null)} title="Conversa fictícia" size="lg" centered>
-        {preview && <Stack>
-          <div><Text fw={800}>{preview.contact} · {preview.clientName}</Text><Text size="sm" c="dimmed">{preview.area} · {preview.subject} · {preview.agentName}</Text><Badge mt="xs">{statusLabels[preview.status] || "Finalizada"}</Badge></div>
-          {preview.messages.map((message, index) => <Paper key={index} withBorder p="sm" radius="md" bg={message.incoming ? undefined : "var(--mantine-color-blue-light)"}>
-            <Text size="xs" fw={700} c="dimmed">{message.incoming ? preview.contact : preview.agentName}</Text><Text size="sm">{message.text}</Text>
-          </Paper>)}
-          <Text size="xs" c="dimmed">Exemplo ilustrativo, sem envio de mensagens.</Text>
-        </Stack>}
-      </Modal>
       <Paper withBorder radius="lg" p="md" className={styles.filters}>
         <Group justify="space-between" align="end" gap="md">
           <div>
@@ -187,17 +160,17 @@ export function WhatsAppMonitoring({
           </Group>
           <TextInput label="De" type="date" value={from} onChange={(event) => { setPeriodPreset(0); setFrom(event.currentTarget.value); }} />
           <TextInput label="Até" type="date" value={to} onChange={(event) => { setPeriodPreset(0); setTo(event.currentTarget.value); }} />
-          <Select label="Cliente" placeholder="Todos os clientes" searchable clearable data={demo ? demoClients : clients} value={clientId} onChange={setClientId} />
-          <Select label="Colaborador" placeholder="Toda a equipe" searchable clearable data={demo ? demoAgents : members} value={assigneeId} onChange={setAssigneeId} />
+          <Select label="Cliente" placeholder="Todos os clientes" searchable clearable data={clients} value={clientId} onChange={setClientId} />
+          <Select label="Colaborador" placeholder="Toda a equipe" searchable clearable data={members} value={assigneeId} onChange={setAssigneeId} />
           <Tooltip label="Atualizar indicadores">
-            <Button variant="light" px="sm" onClick={() => void load()} loading={!demo && loading}>
+            <Button variant="light" px="sm" onClick={() => void load()} loading={loading}>
               <IconRefresh size={17} />
             </Button>
           </Tooltip>
         </Group>
       </Paper>
 
-      {!demo && loading && !data ? (
+      {loading && !data ? (
         <div className={styles.loading}><Loader size="sm" /><Text>Calculando indicadores...</Text></div>
       ) : data ? (
         <>
@@ -270,16 +243,6 @@ export function WhatsAppMonitoring({
             </Paper>
           </div>
 
-          {demo && <Paper withBorder radius="lg" p="md">
-            <Text fw={800} mb="sm">Conversas fictícias do período</Text>
-            <SimpleGrid cols={{ base: 1, md: 3 }}>{demoResult.conversations.slice(-6).reverse().map((conversation) => <Paper key={conversation.id} withBorder radius="md" p="sm">
-              <Stack gap="xs"><Group justify="space-between"><Text fw={700}>{conversation.contact}</Text><Badge size="xs">{statusLabels[conversation.status] || "Finalizada"}</Badge></Group>
-                <Text size="sm">{conversation.clientName} · {conversation.area} · {conversation.subject}</Text><Text size="xs" c="dimmed">{conversation.agentName}</Text>
-                <Button variant="light" size="xs" onClick={() => setPreview(conversation)}>Ver conversa</Button></Stack>
-            </Paper>)}</SimpleGrid>
-            {!demoResult.conversations.length && <Text size="sm" c="dimmed">Nenhum exemplo corresponde aos filtros selecionados.</Text>}
-          </Paper>}
-
           <Paper withBorder radius="lg" className={styles.attentionCard}>
             <div className={styles.cardHeading}>
               <div><Text fw={850}>Atendimentos que precisam de atenção</Text><Text size="xs" c="dimmed">Conversas cuja última mensagem ainda é do cliente</Text></div>
@@ -291,7 +254,7 @@ export function WhatsAppMonitoring({
                 <tbody>
                   {data.attention.map((item) => (
                     <tr key={item.id}>
-                      <td><strong>{item.contact}</strong></td><td>{item.client}</td><td>{item.assignee}</td><td><Badge size="sm" variant="light" color={item.status === "NEW" ? "orange" : "blue"}>{statusLabels[item.status] || item.status}</Badge></td><td>{dateTime(item.lastMessageAt)}</td><td><span className={item.waitingMinutes > 60 ? styles.dangerTime : styles.waitTime}>{duration(item.waitingMinutes)}</span></td><td><Button size="compact-xs" variant="subtle" onClick={() => demo ? setPreview(demoResult.conversations.find((conversation) => conversation.id === item.id) || null) : onOpenTicket(item.id)}>Abrir</Button></td>
+                      <td><strong>{item.contact}</strong></td><td>{item.client}</td><td>{item.assignee}</td><td><Badge size="sm" variant="light" color={item.status === "NEW" ? "orange" : "blue"}>{statusLabels[item.status] || item.status}</Badge></td><td>{dateTime(item.lastMessageAt)}</td><td><span className={item.waitingMinutes > 60 ? styles.dangerTime : styles.waitTime}>{duration(item.waitingMinutes)}</span></td><td><Button size="compact-xs" variant="subtle" onClick={() => onOpenTicket(item.id)}>Abrir</Button></td>
                     </tr>
                   ))}
                   {!data.attention.length && <tr><td colSpan={7} className={styles.emptyCell}>Nenhuma conversa aguardando resposta.</td></tr>}

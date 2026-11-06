@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ActionIcon, Button, Group, Loader, Text } from "@mantine/core";
+import { ActionIcon, Group, Loader, Text, Tooltip } from "@mantine/core";
 import { IconArrowsMaximize, IconMessageCircle, IconX } from "@tabler/icons-react";
 import styles from "./floating.module.css";
 const AssistantChat = dynamic(() => import("./chat"), { ssr: false, loading: () => <Group justify="center" p="xl"><Loader /></Group> });
@@ -22,6 +22,6 @@ export function FloatingAssistant() {
       <Group justify="space-between" className={styles.header}><div><Text fw={800} size="sm">Assistente Fortuno</Text><Text size="xs" c="dimmed">Consulte clientes, Conta Azul e Notion</Text></div><Group gap={4}><ActionIcon component={Link} href="/assistente" variant="subtle" aria-label="Abrir assistente em tela completa" onClick={close}><IconArrowsMaximize size={17} /></ActionIcon><ActionIcon variant="subtle" aria-label="Fechar assistente" onClick={close}><IconX size={19} /></ActionIcon></Group></Group>
       <div className={styles.content}><AssistantChat embedded /></div>
     </div>}
-    <Button ref={trigger} className={styles.trigger} radius="xl" size="md" leftSection={<IconMessageCircle size={22} />} aria-expanded={opened} aria-controls={initialized ? "floating-assistant" : undefined} onClick={() => { if (opened) close(); else { setInitialized(true); setOpened(true); } }}>Assistente</Button>
+    <Tooltip label="Assistente" position="left"><ActionIcon ref={trigger} className={styles.trigger} radius="xl" size={48} aria-label="Assistente" aria-expanded={opened} aria-controls={initialized ? "floating-assistant" : undefined} onClick={() => { if (opened) close(); else { setInitialized(true); setOpened(true); } }}><IconMessageCircle size={23}/></ActionIcon></Tooltip>
   </>;
 }

@@ -9,7 +9,7 @@ import { sendUazapiText, whatsappConnection } from "./uazapi-server";
 import { signedWhatsappText } from "./operator-signature";
 import { chatLock } from "./merge";
 type Actor={organizationId:string;userId:string;user:{name:string|null;email:string}};
-export async function deliverBatchMessage(deliveryId:string,actor:Actor,canManage:boolean) {
+export async function deliverBatchMessage(deliveryId:string,actor:Actor) {
   const where={id:deliveryId,organizationId:actor.organizationId,userId:actor.userId};
   const delivery=await prisma.whatsAppBatchDelivery.findFirst({where});
   if(!delivery)return NextResponse.json({error:"Envio não encontrado."},{status:404});
@@ -18,7 +18,7 @@ export async function deliverBatchMessage(deliveryId:string,actor:Actor,canManag
   // A claim is permanent: lost responses or timeouts must never trigger an automatic second send.
   if(delivery.status!=="PENDING")return NextResponse.json({id:delivery.id,status:delivery.status,error:delivery.error});
   const ticket=await getWhatsappTicket(delivery.ticketId,actor.organizationId,{});
-  if(!ticket||["RESOLVED","SPAM"].includes(ticket.status)||ticket.assignedToId&&ticket.assignedToId!==actor.userId&&!canManage) {
+  if(!ticket||["RESOLVED","SPAM"].includes(ticket.status)||ticket.assignedToId!==actor.userId) {
     await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Conversa indisponível ou atribuída a outro colaborador."}});
     return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Conversa indisponível ou atribuída a outro colaborador."});
   }

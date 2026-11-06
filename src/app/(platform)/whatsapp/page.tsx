@@ -7,10 +7,7 @@ import {
   Group,
   Loader,
   Modal,
-  Paper,
   Select,
-  SimpleGrid,
-  Stack,
   Text,
   Textarea,
   TextInput,
@@ -210,7 +207,6 @@ export default function WhatsAppPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [connectionSettingsOpened, setConnectionSettingsOpened] = useState(false);
   const [reply, setReply] = useState("");
   const [commentMode,setCommentMode]=useState(false),[comment,setComment]=useState(""),[quickRepliesOpened,setQuickRepliesOpened]=useState(false);
@@ -242,7 +238,7 @@ export default function WhatsAppPage() {
   const connected = bootstrap?.mode === "CONNECTED";
   const onConnectionStatus = useCallback((status: string) => {
     setBootstrap((value) => value && value.mode !== status ? { ...value, mode: status } : value);
-    if (status !== "CONNECTED") { setSection("INBOX"); setTransferOpened(false); setSimulatorOpen(false); setConnectionSettingsOpened(false); }
+    if (status !== "CONNECTED") { setSection("INBOX"); setTransferOpened(false); setConnectionSettingsOpened(false); }
   }, []);
   useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
   useEffect(() => {
@@ -252,14 +248,6 @@ export default function WhatsAppPage() {
     return () => window.removeEventListener("keydown", close);
   }, [focusMode]);
 
-  const [simulation, setSimulation] = useState({
-    kind: "CONTACT",
-    displayName: "",
-    identifier: "",
-    message: "",
-    routingArea: "UNKNOWN",
-    clientId: "",
-  });
 
   const readMarkers = useRef(new Map<string, string>());
   const markRead = useCallback(async (id: string, messageId: string) => {
@@ -474,6 +462,7 @@ export default function WhatsAppPage() {
   async function sendReply() {
     const content = (commentMode?comment:reply).trim(), id = selectedId;
     if (!content || !id || saving || sendingReply.current) return;
+    if(!commentMode&&detail?.assignedTo?.id!==bootstrap?.currentUser.id)return;
     sendingReply.current = true;
     if(commentMode)setComment("");else setReply("");
     const pendingId = "pending:" + crypto.randomUUID();
@@ -504,43 +493,6 @@ export default function WhatsAppPage() {
       setHistorySync(result.sync);
     } catch (error) { notifications.show({ color: "red", title: "Histórico do WhatsApp", message: error instanceof Error ? error.message : "Não foi possível atualizar o histórico." }); }
     finally { setHistoryBusy(false); }
-  }
-
-  async function simulateMessage() {
-    setSaving(true);
-    try {
-      const payload = await readResponse<{ ticket: { id: string } }>(
-        await fetch("/api/whatsapp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(simulation),
-        }),
-      );
-      setSimulatorOpen(false);
-      setSimulation({
-        kind: "CONTACT",
-        displayName: "",
-        identifier: "",
-        message: "",
-        routingArea: "UNKNOWN",
-        clientId: "",
-      });
-      await loadList();
-      setSelectedId(payload.ticket.id);
-      notifications.show({
-        color: "green",
-        title: "Mensagem recebida",
-        message: "O fluxo de distribuição foi executado.",
-      });
-    } catch (error) {
-      notifications.show({
-        color: "red",
-        title: "Simulação não concluída",
-        message: error instanceof Error ? error.message : "Tente novamente.",
-      });
-    } finally {
-      setSaving(false);
-    }
   }
 
   if (loading) {
@@ -671,7 +623,6 @@ export default function WhatsAppPage() {
           ) : selectedId && detail?.id === selectedId ? (
             <>
               <div className={styles.detailHeader}>
-                {bootstrap?.canEdit&&/^wa-contact:\d+$/.test(detail.senderEmail)&&<SaveWhatsAppContact key={detail.id} compact initialName={detail.senderName||""} initialNumber={detail.senderEmail.slice(11)} onSaved={()=>{void loadList();}}/>}
                 <UnstyledButton onClick={() => setContactInfoId(detail.id)} aria-label="Ver informações da conversa"><Group gap="sm" wrap="nowrap">
                 <ChatAvatar id={detail.id} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} />
                 <div>
@@ -685,8 +636,9 @@ export default function WhatsAppPage() {
                 </div>
                 </Group></UnstyledButton>
                 <Group gap="xs"><Tooltip label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"}><ActionIcon variant="subtle" color="gray" aria-label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"} aria-expanded={!contextMinimized} aria-controls="whatsapp-context" onClick={()=>setContextMinimized(value=>!value)}>{contextMinimized?<IconChevronDown size={17}/>:<IconChevronUp size={17}/>}</ActionIcon></Tooltip>
+                {bootstrap?.canEdit&&/^wa-contact:\d+$/.test(detail.senderEmail)&&<SaveWhatsAppContact key={detail.id} compact ticketId={detail.id} initialName={detail.senderName||""} initialNumber={detail.senderEmail.slice(11)} onSaved={()=>{void loadList();}}/>}
                   {detail.status !== "RESOLVED" && bootstrap?.canEdit && <Button size="xs" color="teal" variant="light" leftSection={<IconArrowRight size={15} />} disabled={saving || Boolean(detail.assignedTo && detail.assignedTo.id !== bootstrap.currentUser.id && !bootstrap.canManage)} onClick={() => setTransferOpened(true)}>Transferir</Button>}
-                  {!detail.assignedTo && detail.status !== "RESOLVED" && (
+                  {bootstrap?.canEdit && detail.status !== "RESOLVED" && detail.assignedTo?.id!==bootstrap.currentUser.id && (!detail.assignedTo||bootstrap.canManage) && (
                     <Button size="xs" variant="light" loading={saving} onClick={() => mutate({ action: "assign" }, "Atendimento assumido.")}>Assumir</Button>
                   )}
                   {detail.status !== "RESOLVED" && (
@@ -734,11 +686,11 @@ export default function WhatsAppPage() {
                     minRows={1}
                     maxRows={5}
                     aria-label={commentMode?"Comentário interno":"Mensagem para o cliente"}
-                    description={commentMode?"Comentário interno · somente a equipe vê · não enviado ao cliente":undefined}
-                    placeholder={commentMode?"Escreva um comentário para a equipe...":"Escreva uma resposta..."}
+                    description={commentMode?"Comentário interno · somente a equipe vê · não enviado ao cliente":detail.assignedTo?.id!==bootstrap?.currentUser.id?"Somente leitura · use o cadeado para adicionar um comentário interno":undefined}
+                    placeholder={commentMode?"Escreva um comentário para a equipe...":detail.assignedTo?.id===bootstrap?.currentUser.id?"Escreva uma resposta...":"Assuma o chamado para responder ao cliente"}
                     value={commentMode?comment:reply}
                     maxLength={5000}
-                    disabled={!bootstrap?.canEdit||Boolean(detail.assignedTo&&detail.assignedTo.id!==bootstrap.currentUser.id&&!bootstrap.canManage)}
+                    disabled={!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)}
                     onChange={(event) => commentMode?setComment(event.currentTarget.value):setReply(event.currentTarget.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
@@ -748,7 +700,7 @@ export default function WhatsAppPage() {
                     }}
                   />
                   <Tooltip label={commentMode?"Salvar comentário interno":"Enviar resposta"}>
-                    <ActionIcon aria-label={commentMode?"Salvar comentário interno":"Enviar resposta"} size={44} radius="xl" color={commentMode?"yellow":"green"} loading={saving} disabled={!(commentMode?comment:reply).trim()||!bootstrap?.canEdit||Boolean(detail.assignedTo&&detail.assignedTo.id!==bootstrap.currentUser.id&&!bootstrap.canManage)} onClick={sendReply}>
+                    <ActionIcon aria-label={commentMode?"Salvar comentário interno":"Enviar resposta"} size={44} radius="xl" color={commentMode?"yellow":"green"} loading={saving} disabled={!(commentMode?comment:reply).trim()||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)} onClick={sendReply}>
                       <IconSend size={19} />
                     </ActionIcon>
                   </Tooltip>
@@ -791,31 +743,11 @@ export default function WhatsAppPage() {
       )}
 
       {contactInfoId && detail?.id === contactInfoId && selectedId === contactInfoId && <ChatInfoDrawer key={contactInfoId} id={contactInfoId} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} onClose={() => setContactInfoId(null)}/>}
-      {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit}/>}
+      {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} clients={bootstrap.clients} operators={bootstrap.members} clientId={detail.client?.id || null} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
       <Modal opened={connectionSettingsOpened && connected} onClose={() => setConnectionSettingsOpened(false)} title="Configuração do WhatsApp" size="xl" centered><UazapiConnection onStatus={onConnectionStatus} /></Modal>
 
-      <Modal opened={simulatorOpen && connected} onClose={() => setSimulatorOpen(false)} title="Simular mensagem recebida" centered size="lg">
-        <Stack>
-          <Paper p="md" radius="md" withBorder className={styles.testNotice}>
-            <Text size="sm" fw={750}>Teste sem conectar o WhatsApp real</Text>
-            <Text size="xs" c="dimmed">A mensagem passa pela mesma regra de vínculo, distribuição e reabertura que será usada na integração oficial.</Text>
-          </Paper>
-          <Select label="Origem da conversa" data={[{ value: "CONTACT", label: "Contato individual" }, { value: "GROUP", label: "Grupo" }]} value={simulation.kind} onChange={(kind) => setSimulation((current) => ({ ...current, kind: kind || "CONTACT" }))} />
-          <SimpleGrid cols={{ base: 1, sm: 2 }}>
-            <TextInput label={simulation.kind === "GROUP" ? "Nome do grupo" : "Nome do contato"} placeholder="Ex.: Cliente XP" value={simulation.displayName} onChange={(event) => setSimulation((current) => ({ ...current, displayName: event.currentTarget.value }))} />
-            <TextInput label={simulation.kind === "GROUP" ? "Identificador do grupo" : "Telefone com DDD"} placeholder={simulation.kind === "GROUP" ? "grupo-cliente-xp" : "+55 62 99999-0000"} value={simulation.identifier} onChange={(event) => setSimulation((current) => ({ ...current, identifier: event.currentTarget.value }))} />
-          </SimpleGrid>
-          <Select label="Cliente (opcional)" description="Use no primeiro teste para ensinar o vínculo. Depois, deixe vazio e confira o reconhecimento automático." placeholder="Deixar na fila para vincular depois" clearable searchable data={clientOptions} value={simulation.clientId || null} onChange={(clientId) => setSimulation((current) => ({ ...current, clientId: clientId || "" }))} />
-          <Select label="Assunto percebido" data={areaOptions} value={simulation.routingArea} onChange={(routingArea) => setSimulation((current) => ({ ...current, routingArea: routingArea || "UNKNOWN" }))} />
-          <Textarea label="Mensagem do cliente" minRows={4} placeholder="Ex.: Preciso conferir um pagamento que vence hoje." value={simulation.message} onChange={(event) => setSimulation((current) => ({ ...current, message: event.currentTarget.value }))} />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setSimulatorOpen(false)}>Cancelar</Button>
-            <Button color="green" leftSection={<IconBrandWhatsapp size={17} />} loading={saving} onClick={simulateMessage}>Receber mensagem</Button>
-          </Group>
-        </Stack>
-      </Modal>
     </main>
   );
 }

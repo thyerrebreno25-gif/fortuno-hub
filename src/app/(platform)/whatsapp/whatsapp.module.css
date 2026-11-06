@@ -54,6 +54,7 @@
 .composer { border-top: 1px solid var(--fortuno-line); padding: 12px 15px; display: grid; grid-template-columns: auto 1fr auto; align-items: end; gap: 10px; }
 .composerTools { display: flex; gap: 3px; align-items: center; padding-bottom: 4px; }
 .commentComposer { background: var(--mantine-color-yellow-light); border-top-color: var(--mantine-color-yellow-5); }
+:global(body:has([data-whatsapp-workspace])) .composer { padding-right: 78px; }
 .resolvedBar { min-height: 67px; border-top: 1px solid var(--fortuno-line); padding: 12px 16px; background: var(--fortuno-surface-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .testNotice { background: var(--fortuno-surface-soft); border-color: var(--fortuno-line); }
 @media (max-width: 1180px) {

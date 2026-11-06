@@ -1,4 +1,4 @@
-import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
+import { accountMessageWhere, currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -107,8 +107,9 @@ export async function GET(request: Request) {
     ? organizationMembers.find((item) => item.user.id === assigneeId)?.user
     : null;
 
+  const account=await currentWhatsAppAccount(member.organizationId);
   const where = {
-    ...(await currentWhatsAppAccount(member.organizationId)).where,
+    ...account.where,
     isSpam: false,
     mergedIntoId: null,
     receivedAt: { gte: start, lte: end },
@@ -152,6 +153,7 @@ export async function GET(request: Request) {
         client: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         messages: {
+          where: {...accountMessageWhere(account.connection),direction:{not:"INTERNAL"}},
           orderBy: { receivedAt: "asc" },
           select: {
             direction: true,
@@ -197,16 +199,15 @@ export async function GET(request: Request) {
   const responseWaits: number[] = [];
 
   for (const ticket of tickets) {
-    ticket.messages.forEach((message, index) => {
-      if (message.direction !== "INBOUND") return;
-      const response = ticket.messages
-        .slice(index + 1)
-        .find((next) => next.direction === "OUTBOUND");
-      if (response) {
-        const wait = minutesBetween(message.receivedAt, response.receivedAt);
+    let nextResponseAt:Date|null=null;
+    for(let index=ticket.messages.length-1;index>=0;index--){
+      const message=ticket.messages[index];
+      if(message.direction==="OUTBOUND")nextResponseAt=message.receivedAt;
+      if(message.direction==="INBOUND"&&nextResponseAt){
+        const wait = minutesBetween(message.receivedAt, nextResponseAt);
         if (wait !== null) responseWaits.push(wait);
       }
-    });
+    }
   }
 
   const currentWaits = active

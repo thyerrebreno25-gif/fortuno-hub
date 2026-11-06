@@ -7,6 +7,23 @@ import { decryptIntegrationSecret } from "@/modules/purchase-invoices/server/cry
 import { object, uazapiRequest } from "@/modules/whatsapp/uazapi";
 import { CURRENT_DIRECTORY_PREFIX } from "@/modules/whatsapp/directory-core";
 import { contactInput } from "@/modules/whatsapp/contact-input";
+import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
+export async function GET(request:Request) {
+  const member=await getServiceCenterMember();
+  if(!member||member.role==="CLIENT"||!(await getWhatsAppPermission(member.organizationId,member.role)).canView)return NextResponse.json({error:"Sem permissão."},{status:403});
+  const ticketId=new URL(request.url).searchParams.get("ticketId");
+  if(!ticketId||ticketId.length>100)return NextResponse.json({error:"Conversa inválida."},{status:400});
+  const account=await currentWhatsAppAccount(member.organizationId);
+  if(!account.recipient||!account.connection?.phone)return NextResponse.json({canSave:false});
+  const ticket=await prisma.serviceTicket.findFirst({where:{...account.where,id:ticketId,mergedIntoId:null},select:{senderEmail:true}});
+  const number=ticket?.senderEmail.match(/^wa-contact:(\d{8,15})$/)?.[1];
+  if(!number||!account.recipient||!account.connection?.phone)return NextResponse.json({canSave:false});
+  const key={organizationId:member.organizationId,connectionId:account.connection.id,accountPhone:account.connection.phone};
+  const saved=await prisma.whatsAppDirectoryEntry.findFirst({where:{...key,kind:"CONTACT",externalId:number+"@s.whatsapp.net",active:true,generation:{startsWith:CURRENT_DIRECTORY_PREFIX}},select:{id:true}});
+  if(saved)return NextResponse.json({canSave:false},{headers:{"Cache-Control":"private, no-store"}});
+  const sync=await prisma.whatsAppDirectorySync.findUnique({where:{connectionId_accountPhone:{connectionId:key.connectionId,accountPhone:key.accountPhone}},select:{status:true,generation:true}});
+  return NextResponse.json({canSave:sync?.status==="COMPLETED"&&sync.generation.startsWith(CURRENT_DIRECTORY_PREFIX)},{headers:{"Cache-Control":"private, no-store"}});
+}
 export async function POST(request: Request) {
   const member = await getServiceCenterMember();
   if (!member || member.role === "CLIENT" || !(await getWhatsAppPermission(member.organizationId, member.role)).canEdit) return NextResponse.json({ error: "Sem permissão para salvar contatos." }, { status: 403 });

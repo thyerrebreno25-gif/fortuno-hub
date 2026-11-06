@@ -253,7 +253,6 @@ export async function PATCH(request: Request, context: Context) {
       }),
     ]);
   } else if (action === "comment") {
-    if (occupiedByAnother && !canManage) return NextResponse.json({ error: "Este atendimento está com outro colaborador." }, { status: 403 });
     const content = typeof body.content === "string" ? body.content.trim() : "";
     if (!content || content.length > 5000) return NextResponse.json({ error: "Escreva um comentário de até 5.000 caracteres." }, { status: 400 });
     // INTERNAL messages never pass through the external provider or count as a customer reply.
@@ -265,9 +264,9 @@ export async function PATCH(request: Request, context: Context) {
       await tx.serviceTicketHistory.create({ data: { ticketId: currentId, userId: member.userId, type: "WHATSAPP_COMMENTED", message: "Comentário interno adicionado à conversa." } });
     });
   } else if (action === "reply") {
-    if (occupiedByAnother && !canManage) {
+    if (current.assignedToId !== member.userId) {
       return NextResponse.json(
-        { error: "Este atendimento está com outro colaborador." },
+        { error: "Assuma este chamado antes de enviar mensagens ao cliente. Comentários internos continuam disponíveis." },
         { status: 403 },
       );
     }

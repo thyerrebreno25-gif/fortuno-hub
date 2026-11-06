@@ -1,0 +1,10 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),tickets:vi.fn(),history:vi.fn()}));
+vi.mock('@/modules/atendimento/auth',()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock('@/lib/prisma',()=>({prisma:{whatsAppConnection:{findUnique:async()=>({id:'c',organizationId:'org',phone:'5511',status:'CONNECTED',expiresAt:null})},organizationMember:{findMany:async()=>[]},serviceTicket:{findMany:m.tickets},serviceTicketHistory:{findMany:m.history}}}));
+import {GET} from './route';
+const get=()=>GET(new Request('https://hub.test/api/whatsapp/monitoring?from=2026-11-01&to=2026-11-06'));
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:'org',role:'MASTER'});m.permission.mockResolvedValue({canView:true});m.tickets.mockResolvedValue([]);m.history.mockResolvedValue([]);});
+it('returns zero real activity instead of sample customers when the database is empty',async()=>{const r=await get();expect(r.status).toBe(200);const data=await r.json();expect(data.summary.conversations).toBe(0);expect(data.clients).toEqual([]);expect(data.attention).toEqual([]);});
+it('scopes all metrics to real messages on the connected phone and excludes internal comments',async()=>{await get();const query=m.tickets.mock.calls[0][0];expect(query.where).toMatchObject({organizationId:'org',source:'WHATSAPP_API',recipientEmail:'wa-account:c:5511',mergedIntoId:null});expect(query.select.messages.where).toMatchObject({direction:{not:'INTERNAL'}});expect(m.history.mock.calls[0][0].where.ticket).toMatchObject({source:'WHATSAPP_API',recipientEmail:'wa-account:c:5511'});});
+it('requires authenticated WhatsApp viewing permission',async()=>{m.member.mockResolvedValueOnce(null);expect((await get()).status).toBe(401);m.permission.mockResolvedValue({canView:false});expect((await get()).status).toBe(403);expect(m.tickets).not.toHaveBeenCalled();});
