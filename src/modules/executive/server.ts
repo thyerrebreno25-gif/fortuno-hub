@@ -6,7 +6,7 @@ import { executivePeriod } from "./model";
 export type ExecutiveScope=ExecutiveData["available"] & {finance:boolean;purchase:boolean;investment:boolean;contract:boolean;calendar:boolean};
 type Row=Record<string,string|number|bigint|null>;
 const n=(value:unknown)=>Number(value||0);
-export async function executiveSnapshot(organizationId:string,key:ExecutivePeriod,scope:ExecutiveScope):Promise<ExecutiveData>{
+export async function executiveSnapshot(organizationId:string,key:ExecutivePeriod,scope:ExecutiveScope,whatsappRecipient:string|null=null):Promise<ExecutiveData>{
  const now=new Date(),period=executivePeriod(key,now),{start,end}=period;
  const today=executivePeriod("today",now),horizon=new Date(now.getTime()+7*86400000);
  const sources=[...(scope.whatsapp?["WHATSAPP_API"]:[]),...(scope.email?["GMAIL","MANUAL"]:[])];
@@ -27,14 +27,14 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
    FROM "ServiceTicket"
    LEFT JOIN LATERAL (SELECT MIN(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"="ServiceTicket".id AND m.direction='INBOUND' AND m."providerMetadata"->>'historical'='false') operational_in ON source='WHATSAPP_API'
    LEFT JOIN LATERAL (SELECT MIN(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"="ServiceTicket".id AND m.direction='OUTBOUND' AND COALESCE(m."providerMetadata"->>'historical','false')<>'true' AND m."receivedAt">=operational_in.at) operational_out ON source='WHATSAPP_API'
-   WHERE "organizationId"=${org} AND "mergedIntoId" IS NULL AND "source" IN (${Prisma.join(sources)}) AND (source<>'WHATSAPP_API' OR EXISTS(SELECT 1 FROM "ServiceMessage" seen WHERE seen."ticketId"="ServiceTicket".id)) GROUP BY channel,"assignedToId"`):[],
+   WHERE "organizationId"=${org} AND "mergedIntoId" IS NULL AND "source" IN (${Prisma.join(sources)}) AND (source<>'WHATSAPP_API' OR "recipientEmail"=${whatsappRecipient}) AND (source<>'WHATSAPP_API' OR EXISTS(SELECT 1 FROM "ServiceMessage" seen WHERE seen."ticketId"="ServiceTicket".id)) GROUP BY channel,"assignedToId"`):[],
   scope.whatsapp?prisma.$queryRaw<Row[]>(Prisma.sql`
    SELECT COUNT(*) AS waiting,COUNT(*) FILTER(WHERE age<=15) AS ontime,COUNT(*) FILTER(WHERE age>15 AND age<=30) AS delayed,COUNT(*) FILTER(WHERE age>30) AS critical,MAX(age) AS oldest FROM (
     SELECT EXTRACT(EPOCH FROM (${now}::timestamptz-last_in.at))/60 AS age
     FROM "ServiceTicket" t
     LEFT JOIN LATERAL (SELECT MAX(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"=t.id AND m.direction='OUTBOUND') last_out ON TRUE
     JOIN LATERAL (SELECT MIN(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"=t.id AND m.direction='INBOUND' AND m."providerMetadata"->>'historical'='false' AND (last_out.at IS NULL OR m."receivedAt">last_out.at)) last_in ON last_in.at IS NOT NULL
-    WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."mergedIntoId" IS NULL AND NOT t."isSpam" AND t.status NOT IN ('SPAM','RESOLVED') AND (last_out.at IS NULL OR last_in.at>last_out.at) AND last_in.at<=${now}
+    WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${whatsappRecipient} AND t."mergedIntoId" IS NULL AND NOT t."isSpam" AND t.status NOT IN ('SPAM','RESOLVED') AND (last_out.at IS NULL OR last_in.at>last_out.at) AND last_in.at<=${now}
    ) waiting_messages`):[],
   prisma.organizationMember.findMany({where:{organizationId:org,role:{not:"CLIENT"}},select:{user:{select:{id:true,name:true}}},orderBy:{createdAt:"asc"}}),
   scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]}},_count:{_all:true}}):[],

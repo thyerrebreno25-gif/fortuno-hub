@@ -1,3 +1,4 @@
+import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -7,7 +8,6 @@ import {
 import {
   average,
   minutesBetween,
-  WHATSAPP_SOURCES,
 } from "@/modules/whatsapp/core";
 
 const TIME_ZONE = "America/Sao_Paulo";
@@ -108,8 +108,7 @@ export async function GET(request: Request) {
     : null;
 
   const where = {
-    organizationId: member.organizationId,
-    source: { in: [...WHATSAPP_SOURCES] },
+    ...(await currentWhatsAppAccount(member.organizationId)).where,
     isSpam: false,
     mergedIntoId: null,
     receivedAt: { gte: start, lte: end },

@@ -18,6 +18,6 @@ describe("WhatsApp history recovery access", () => {
     const response = await POST(); expect(response.status).toBe(202); expect(m.connection).toHaveBeenCalledWith("org"); expect(m.after).toHaveBeenCalledOnce(); expect(await response.text()).not.toContain("secret");
   });
   it("retries only history failures from the current instance", async () => {
-    await POST(); expect(m.reset.mock.calls[0][0].where).toMatchObject({ connectionId: "connection", status: "FAILED", AND: [{ payload: { path: ["instanceId"], equals: "instance" } }, { payload: { path: ["event", "historical"], equals: true } }] });
+    await POST(); expect(m.reset.mock.calls[0][0].where).toMatchObject({ connectionId: "connection", status: "FAILED", AND: [{ payload: { path: ["accountPhone"], equals: "5511" } }, { payload: { path: ["instanceId"], equals: "instance" } }, { payload: { path: ["event", "historical"], equals: true } }] });
   });
 });

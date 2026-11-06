@@ -1,10 +1,10 @@
+import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { getServiceCenterMember, getWhatsAppPermission } from "@/modules/atendimento/auth";
 import { canViewWhatsAppManagement } from "@/modules/whatsapp/management-access";
 import { summarizeAssignments } from "@/modules/whatsapp/management-types";
-import { WHATSAPP_SOURCES } from "@/modules/whatsapp/core";
 export async function GET(request: Request) {
   const member = await getServiceCenterMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const page = Number(params.get("page") || "1");
   const search = (params.get("search") || "").trim();
   if (!["OPEN", "RESOLVED", "ALL"].includes(status) || !Number.isSafeInteger(page) || page < 1 || page > 10000 || assignee.length > 200 || search.length > 200) return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
-  const base: Prisma.ServiceTicketWhereInput = { organizationId: member.organizationId, source: { in: [...WHATSAPP_SOURCES] }, mergedIntoId: null, isSpam: false, status: { not: "SPAM" } };
+  const base: Prisma.ServiceTicketWhereInput = { ...(await currentWhatsAppAccount(member.organizationId)).where, mergedIntoId: null, isSpam: false, status: { not: "SPAM" } };
   const where: Prisma.ServiceTicketWhereInput = { ...base, ...(status === "OPEN" ? { status: { notIn: ["SPAM", "RESOLVED"] } } : status === "RESOLVED" ? { status: "RESOLVED" } : {}), ...(assignee !== "ALL" ? { assignedToId: assignee === "QUEUE" ? null : assignee } : {}) };
   if (search) where.OR = [{ senderName: { contains: search, mode: "insensitive" } }, { subject: { contains: search, mode: "insensitive" } }, { client: { name: { contains: search, mode: "insensitive" } } }, { senderEmail: { contains: search, mode: "insensitive" } }];
   const pageSize = 50;

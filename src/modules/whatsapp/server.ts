@@ -1,7 +1,10 @@
+import { getWhatsAppPermission } from "@/modules/atendimento/auth";
+import { matchWhatsappGroup } from "./automatic-routing";
+import { currentWhatsAppAccount, accountMessageWhere } from "./account-scope";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeWhatsappIdentity,
-  responsibleForRoutingArea,
+  responsibleForTransfer,
   whatsappChannelAddress,
   type WhatsAppIdentityKind,
   type WhatsAppRoutingArea,
@@ -13,6 +16,7 @@ export async function resolveWhatsappRouting(input: {
   identifier: string;
   routingArea: WhatsAppRoutingArea;
   requestedClientId?: string | null;
+  displayName?: string;
 }) {
   const externalId = normalizeWhatsappIdentity(input.kind, input.identifier);
 
@@ -38,9 +42,9 @@ export async function resolveWhatsappRouting(input: {
       clientId: client?.id ?? null,
       routingSquad: client?.serviceSquad ?? null,
       assignedToId: client
-        ? responsibleForRoutingArea(client, input.routingArea)
+        ? await eligibleWhatsappResponsible(input.organizationId, client, input.routingArea)
         : null,
-      reason: client ? "Cliente informado na simulação." : "Cliente inválido.",
+      reason: client ? "Cliente vinculado ao atendimento." : "Cliente inválido.",
       ambiguous: false,
     };
   }
@@ -70,16 +74,15 @@ export async function resolveWhatsappRouting(input: {
   const unique = [...new Map(identities.map((item) => [item.clientId, item])).values()];
 
   if (unique.length !== 1) {
-    return {
-      externalId,
-      clientId: null,
-      routingSquad: null,
-      assignedToId: null,
-      reason:
-        unique.length > 1
-          ? "Contato vinculado a mais de um cliente; aguardando seleção."
-          : "Contato ainda não vinculado a um cliente.",
-      ambiguous: unique.length > 1,
+    const matched = unique.length === 0 && input.kind === "GROUP" && input.displayName ? matchWhatsappGroup(input.displayName, await prisma.client.findMany({
+      where: { organizationId: input.organizationId, active: true },
+      select: { id: true, name: true, document: true, serviceAliases: true, serviceSquad: true, operationLeaderId: true, payableResponsibleId: true, receivableResponsibleId: true, generalResponsibleId: true },
+    })) : null;
+    const client = matched?.client;
+    return { externalId, clientId: client?.id || null, routingSquad: client?.serviceSquad || null,
+      assignedToId: client ? await eligibleWhatsappResponsible(input.organizationId, client, input.routingArea) : null,
+      reason: unique.length > 1 ? "Contato vinculado a mais de um cliente; aguardando seleção." : matched?.reason || "Contato ainda não vinculado a um cliente.",
+      ambiguous: unique.length > 1 || Boolean(matched?.ambiguous),
     };
   }
 
@@ -88,7 +91,7 @@ export async function resolveWhatsappRouting(input: {
     externalId,
     clientId: match.clientId,
     routingSquad: match.client.serviceSquad,
-    assignedToId: responsibleForRoutingArea(match.client, input.routingArea),
+    assignedToId: await eligibleWhatsappResponsible(input.organizationId, match.client, input.routingArea),
     reason: "Cliente reconhecido pelo contato do WhatsApp.",
     ambiguous: false,
   };
@@ -102,23 +105,24 @@ export function whatsappTicketAddress(
   return whatsappChannelAddress(kind, externalId);
 }
 
-export async function resolveWhatsappTicketId(id: string, organizationId: string, database: Pick<typeof prisma, "serviceTicket"> = prisma) {
+export async function resolveWhatsappTicketId(id: string, organizationId: string, database: Pick<typeof prisma, "serviceTicket" | "whatsAppConnection"> = prisma) {
+  const account = await currentWhatsAppAccount(organizationId, database);
   let current = id;
   for (let depth = 0; depth < 5; depth++) {
-    const row = await database.serviceTicket.findFirst({ where: { id: current, organizationId, source: { in: ["WHATSAPP_SIMULATOR", "WHATSAPP_API"] } }, select: { mergedIntoId: true } });
+    const row = await database.serviceTicket.findFirst({ where: { id: current, ...account.where }, select: { mergedIntoId: true } });
     if (!row?.mergedIntoId) return current;
     current = row.mergedIntoId;
   }
   throw new Error("Referência circular de atendimento.");
 }
 export async function getWhatsappTicket(id: string, organizationId: string, page?: { beforeId?: string }) {
+  const account = await currentWhatsAppAccount(organizationId);
   let current = id;
   for (let depth = 0; depth < 5; depth++) {
   const ticket = await prisma.serviceTicket.findFirst({
     where: {
       id: current,
-      organizationId,
-      source: { in: ["WHATSAPP_SIMULATOR", "WHATSAPP_API"] },
+      ...account.where,
     },
     include: {
       client: {
@@ -133,6 +137,7 @@ export async function getWhatsappTicket(id: string, organizationId: string, page
       },
       assignedTo: { select: { id: true, name: true, email: true } },
       messages: {
+        where: accountMessageWhere(account.connection),
         ...(page ? { take: 51, orderBy: [{ receivedAt: "desc" as const }, { id: "desc" as const }], ...(page.beforeId ? { cursor: { id: page.beforeId }, skip: 1 } : {}) } : { orderBy: { receivedAt: "asc" as const } }),
         include: { attachments: { orderBy: { createdAt: "asc" } } },
       },
@@ -146,4 +151,14 @@ export async function getWhatsappTicket(id: string, organizationId: string, page
   current = ticket.mergedIntoId;
   }
   return null;
+}
+
+export async function eligibleWhatsappResponsible(organizationId: string, client: Parameters<typeof responsibleForTransfer>[0], area: WhatsAppRoutingArea) {
+  if (area === "UNKNOWN") return null;
+  const id = responsibleForTransfer(client, area);
+  if (!id) return null;
+  const member = await prisma.organizationMember.findFirst({ where: { organizationId, userId: id, role: { not: "CLIENT" } }, select: { role: true } });
+  if (!member) return null;
+  const permission = await getWhatsAppPermission(organizationId, member.role);
+  return permission.canView && permission.canEdit ? id : null;
 }

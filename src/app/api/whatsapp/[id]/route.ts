@@ -8,12 +8,11 @@ import {
 } from "@/modules/atendimento/auth";
 import {
   parseWhatsappChannelAddress,
-  responsibleForRoutingArea,
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
 import { whatsappConnection, sendUazapiText } from "@/modules/whatsapp/uazapi-server";
 import { object, text } from "@/modules/whatsapp/uazapi";
-import { getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
+import { eligibleWhatsappResponsible, getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
 import { chatLock } from "@/modules/whatsapp/merge";
 import { transferWhatsappTicket, WhatsAppTransferError } from "@/modules/whatsapp/transfer";
 
@@ -119,6 +118,7 @@ export async function PATCH(request: Request, context: Context) {
         data: {
           assignedToId,
           assignedAt: new Date(),
+          routingReason: "Atendimento assumido ou atribuído manualmente.",
           status: current.status === "NEW" ? "IN_PROGRESS" : current.status,
         },
       }),
@@ -160,7 +160,8 @@ export async function PATCH(request: Request, context: Context) {
     }
 
     const channel = parseWhatsappChannelAddress(current.senderEmail);
-    const automaticAssignee = responsibleForRoutingArea(
+    const automaticAssignee = await eligibleWhatsappResponsible(
+      member.organizationId,
       client,
       current.routingArea,
     );
@@ -225,7 +226,7 @@ export async function PATCH(request: Request, context: Context) {
           generalResponsibleId: true,
         },
       });
-      if (client) automaticAssignee = responsibleForRoutingArea(client, routingArea);
+      if (client) automaticAssignee = await eligibleWhatsappResponsible(member.organizationId, client, routingArea);
     }
 
     const assignedToId = current.assignedToId || automaticAssignee;
@@ -234,6 +235,7 @@ export async function PATCH(request: Request, context: Context) {
         where: { id, mergedIntoId: null },
         data: {
           routingArea,
+          routingReason: "Área do atendimento selecionada manualmente.",
           assignedToId,
           assignedAt: assignedToId ? current.assignedAt || new Date() : null,
           status: assignedToId && current.status === "NEW" ? "IN_PROGRESS" : current.status,
@@ -268,7 +270,7 @@ export async function PATCH(request: Request, context: Context) {
     }
 
     let externalMessageId: string | null = null;
-    let providerMetadata: { provider: string; instanceId: string; connectionId: string } | undefined;
+    let providerMetadata: { provider: string; instanceId: string; connectionId: string; accountPhone: string | null } | undefined;
     if (current.source === "WHATSAPP_API") {
       const latestInbound = [...current.messages]
         .reverse()
@@ -277,9 +279,9 @@ export async function PATCH(request: Request, context: Context) {
         const metadata = object(latestInbound?.providerMetadata);
         const connection = await whatsappConnection(member.organizationId);
         const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
-        const sent = await sendUazapiText({organizationId:member.organizationId,body:content,...destination});
+        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:content,...destination});
         externalMessageId = sent.messageId;
-        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId };
+        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone };
       } catch (error) {
         console.error("Falha ao enviar resposta pelo WhatsApp:", error);
         return NextResponse.json(

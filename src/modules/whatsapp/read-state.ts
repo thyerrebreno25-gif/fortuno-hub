@@ -1,14 +1,18 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import { WHATSAPP_SOURCES } from "./core";
+import { accountMessageWhere, currentWhatsAppAccount } from "./account-scope";
 export async function unreadCounts(organizationId: string, userId: string, ticketId?: string) {
+  const account = await currentWhatsAppAccount(organizationId);
+  const recipient = account.recipient;
+  if (!recipient || account.connection?.status !== "CONNECTED" || account.connection.expiresAt && account.connection.expiresAt <= new Date()) return new Map<string, number>();
   const rows = await prisma.$queryRaw<Array<{ ticketId: string; count: number }>>(Prisma.sql`
     SELECT m."ticketId", COUNT(*)::int AS count FROM "ServiceMessage" m
     JOIN "ServiceTicket" t ON t.id = m."ticketId"
     LEFT JOIN "WhatsAppReadState" r ON r."ticketId" = t.id AND r."organizationId" = ${organizationId} AND r."userId" = ${userId}
-    WHERE t."organizationId" = ${organizationId} AND t.source::text IN (${Prisma.join([...WHATSAPP_SOURCES])})
+    WHERE t."organizationId" = ${organizationId} AND t.source::text = 'WHATSAPP_API' AND t."recipientEmail" = ${recipient}
       AND t."mergedIntoId" IS NULL AND t."isSpam" = false AND m.direction::text = 'INBOUND'
+      AND (m."providerMetadata"->>'accountPhone' = ${account.connection?.phone} OR m."externalMessageId" LIKE ${`uazapi:${account.connection?.phone}:%`})
       ${ticketId ? Prisma.sql`AND t.id = ${ticketId}` : Prisma.empty}
       AND (r."ticketId" IS NULL OR (m."receivedAt", m.id) > (r."readAt", r."lastMessageId"))
     GROUP BY m."ticketId"
@@ -16,7 +20,8 @@ export async function unreadCounts(organizationId: string, userId: string, ticke
   return new Map(rows.map(row => [row.ticketId, Number(row.count)]));
 }
 export async function markConversationRead(organizationId: string, userId: string, ticketId: string, messageId: string) {
-  const message = await prisma.serviceMessage.findFirst({ where: { id: messageId, ticketId, ticket: { organizationId, source: { in: [...WHATSAPP_SOURCES] } } }, select: { id: true, receivedAt: true } });
+  const account = await currentWhatsAppAccount(organizationId);
+  const message = await prisma.serviceMessage.findFirst({ where: { id: messageId, ticketId, ticket: account.where, ...accountMessageWhere(account.connection) }, select: { id: true, receivedAt: true } });
   if (!message) return null;
   // Only advance to the last message actually rendered. A later arrival remains unread.
   await prisma.$executeRaw`INSERT INTO "WhatsAppReadState" ("organizationId", "userId", "ticketId", "readAt", "lastMessageId")

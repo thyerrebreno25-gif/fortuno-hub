@@ -1,7 +1,7 @@
 vi.mock("server-only", () => ({}));
 import { beforeEach, expect, it, vi } from "vitest";
 const query = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/prisma", () => ({prisma: {$queryRaw: query}}));
+vi.mock("@/lib/prisma", () => ({prisma: { whatsAppConnection: { findUnique: vi.fn(async (query: { where: { organizationId: string } }) => ({ id: "conn", organizationId: query.where.organizationId, phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },$queryRaw: query}}));
 import { whatsappNotifications } from "./notifications";
 beforeEach(() => {vi.clearAllMocks();query.mockResolvedValue([]);});
 it("restricts live unread messages to the organization, operator and optional manager queue", async () => {

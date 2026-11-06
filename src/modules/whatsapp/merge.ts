@@ -1,3 +1,4 @@
+import { accountTicketWhere } from "./account-scope";
 import "server-only";
 import { createHash } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
@@ -10,9 +11,7 @@ const include = { messages: { select: { id: true, externalMessageId: true, provi
 type Candidate = Prisma.ServiceTicketGetPayload<{ include: typeof include }>;
 export class MergeConflict extends Error {}
 function scope(connection: Connection): Prisma.ServiceTicketWhereInput {
-  return { organizationId: connection.organizationId, source: "WHATSAPP_API", mergedIntoId: null, isSpam: false, status: { notIn: ["RESOLVED", "SPAM"] }, OR: [
-    { recipientEmail: `wa-account:${connection.id}:${connection.phone}` }, { recipientEmail: { startsWith: `wa-uazapi:${connection.id}:` } },
-  ] };
+  return { ...accountTicketWhere(connection.organizationId, connection), mergedIntoId: null, isSpam: false, status: { notIn: ["RESOLVED", "SPAM"] } };
 }
 export function chooseMerge(tickets: Candidate[], phone: string) {
   const owners = new Set(tickets.map((ticket) => ticket.assignedToId).filter(Boolean));

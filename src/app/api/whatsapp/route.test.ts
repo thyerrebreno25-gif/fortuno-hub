@@ -1,7 +1,7 @@
 vi.mock("@/modules/whatsapp/read-state",()=>({latestConversationDirections:vi.fn(async()=>new Map()),unreadCounts:vi.fn(async()=>new Map([["ticket",3]]))}));
 import {beforeEach,expect,it,vi} from "vitest";
 const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),find:vi.fn(),history:vi.fn()}));
-vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findMany:m.find},serviceTicketHistory:{findMany:m.history}}}));
+vi.mock("@/lib/prisma",()=>({prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },serviceTicket:{findMany:m.find},serviceTicketHistory:{findMany:m.history}}}));
 vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
 vi.mock("@/modules/whatsapp/server",()=>({resolveWhatsappRouting:vi.fn()}));
 import {GET} from "./route";
@@ -16,3 +16,8 @@ it("enforces permissions before loading the inbox",async()=>{m.permission.mockRe
 it("includes per-operator unread counts without loading message histories",async()=>{m.find.mockResolvedValueOnce([{id:"ticket",senderEmail:"wa-contact:5511999999999"}]).mockResolvedValueOnce([]);const body=await(await GET(new Request("https://example.test/api/whatsapp?light=1"))).json();expect(body.tickets[0].unreadCount).toBe(3);});
 
 it("filters unread conversations before applying the list limit",async()=>{await GET(new Request("https://example.test/api/whatsapp?light=1&unread=1"));expect(m.find.mock.calls[0][0].where.AND).toEqual([{id:{in:["ticket"]}}]);});
+
+it("filters conversations and all counters by the currently connected physical phone",async()=>{
+ await GET(new Request("https://hub.test/api/whatsapp?light=1"));
+ for(const [query] of m.find.mock.calls) expect(query.where).toMatchObject({source:"WHATSAPP_API",recipientEmail:"wa-account:conn:5511888888888"});
+});

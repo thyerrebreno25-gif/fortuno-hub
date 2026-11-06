@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ find: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { serviceTicket: { findFirst: m.find } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) }, serviceTicket: { findFirst: m.find } } }));
 import { getWhatsappTicket, resolveWhatsappTicketId } from "./server";
 beforeEach(() => vi.resetAllMocks());
 describe("Merged ticket aliases", () => {
@@ -8,8 +8,8 @@ describe("Merged ticket aliases", () => {
     m.find.mockResolvedValueOnce({ mergedIntoId: "canonical" }).mockResolvedValueOnce({ mergedIntoId: null });
     expect(await resolveWhatsappTicketId("old", "org")).toBe("canonical");
     expect(m.find.mock.calls.map(call => call[0].where)).toEqual([
-      { id: "old", organizationId: "org", source: { in: ["WHATSAPP_SIMULATOR", "WHATSAPP_API"] } },
-      { id: "canonical", organizationId: "org", source: { in: ["WHATSAPP_SIMULATOR", "WHATSAPP_API"] } },
+      { id: "old", organizationId: "org", source: "WHATSAPP_API", recipientEmail: "wa-account:conn:5511888888888" },
+      { id: "canonical", organizationId: "org", source: "WHATSAPP_API", recipientEmail: "wa-account:conn:5511888888888" },
     ]);
   });
   it("returns the complete canonical payload and avoids an extra query for regular links", async () => {

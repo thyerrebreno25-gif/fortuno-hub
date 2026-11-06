@@ -32,3 +32,11 @@ describe("Durable Uazapi inbox", () => {
     expect(advancesDelivery("read", "delivered")).toBe(false); expect(advancesDelivery("delivered", "failed")).toBe(false); expect(advancesDelivery("accepted", "read")).toBe(true); expect(advancesDelivery("failed", "delivered")).toBe(true);
   });
 });
+
+it("discards queued messages from a different physical phone even if the instance id is reused",async()=>{
+ m.findMany.mockResolvedValue([{id:"old",connection:{...connection,phone:"new-number"},payload:{instanceId:"i",accountPhone:"old-number",event:{kind:"messages"}},eventType:"messages",status:"PENDING",attempts:0}]);
+ await drainUazapiInbox();expect(m.update.mock.calls[0][0].data.status).toBe("COMPLETED");expect(m.check).not.toHaveBeenCalled();
+});
+it("uses different delivery keys when the same instance connects another number",async()=>{
+ const event={kind:"connection" as const,eventId:"same",status:"connected"};await enqueueUazapiEvent({...connection,phone:"old"},event);await enqueueUazapiEvent({...connection,phone:"new"},event);expect(m.upsert.mock.calls[0][0].where.id).not.toBe(m.upsert.mock.calls[1][0].where.id);
+});

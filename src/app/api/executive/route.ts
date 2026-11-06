@@ -1,3 +1,4 @@
+import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {NextResponse} from "next/server";
 import {unstable_cache} from "next/cache";
 import {getCurrentMember,getRolePermissions} from "@/modules/permissions/permissions";
@@ -16,7 +17,8 @@ export async function GET(request:Request){
   // A new time bucket gives each five-minute refresh fresh data instead of
   // returning the previous snapshot while a stale cache revalidates.
   const refreshBucket=String(Math.floor(Date.now()/300000));
-  const data=await unstable_cache(()=>executiveSnapshot(member.organizationId,period.key,scope),["executive-v3",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify(scope)],{revalidate:300})();
+  const account=scope.whatsapp?await currentWhatsAppAccount(member.organizationId):null;
+  const data=await unstable_cache(()=>executiveSnapshot(member.organizationId,period.key,scope,account?.recipient||null),["executive-v4",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify(scope)],{revalidate:300})();
   return NextResponse.json(data,{headers:{"Cache-Control":"private, no-store"}});
  }catch(error){console.error("Erro no painel gerencial:",error);return NextResponse.json({error:"Não foi possível atualizar o painel gerencial."},{status:503});}
 }

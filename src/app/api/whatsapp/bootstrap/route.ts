@@ -1,3 +1,4 @@
+import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { canViewWhatsAppManagement } from "@/modules/whatsapp/management-access";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -63,6 +64,7 @@ export async function GET() {
   const rolePermissions = new Map(await Promise.all([...new Set(members.map((item) => item.role))].map(async (role) => [role, await getWhatsAppPermission(member.organizationId, role)] as const)));
   return NextResponse.json({
     mode: connection.status === "CONNECTED" && "webhookReady" in connection && connection.webhookReady ? "CONNECTED" : "DISCONNECTED",
+    accountKey: (await currentWhatsAppAccount(member.organizationId)).accountKey,
     currentUser: member.user,
     canEdit: permission.canEdit,
     canViewManagement: canViewWhatsAppManagement(member.role, permission.canView),

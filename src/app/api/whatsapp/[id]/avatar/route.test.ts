@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), ticket: vi.fn(), connection: vi.fn(), request: vi.fn() }));
 vi.mock("next/cache", () => ({ unstable_cache: (fn: () => unknown) => fn }));
-vi.mock("@/lib/prisma", () => ({ prisma: { serviceTicket: { findFirst: m.ticket } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) }, serviceTicket: { findFirst: m.ticket } } }));
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));
 vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: m.connection }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "secret" }));

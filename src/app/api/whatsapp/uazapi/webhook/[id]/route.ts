@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeUazapiEvent, normalizeUazapiHistory, object, text, tokenMatches } from "@/modules/whatsapp/uazapi";
+import { checkConnection, whatsappConnection } from "@/modules/whatsapp/uazapi-server";
 import { enqueueUazapiEvent, enqueueUazapiHistory, drainUazapiInbox } from "@/modules/whatsapp/uazapi-events";
 export const maxDuration = 120;
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -10,8 +11,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   let payload;
   try { payload = object(JSON.parse(raw)); } catch { return new NextResponse(null, { status: 400 }); }
   const { id } = await context.params;
-  const connection = await prisma.whatsAppConnection.findUnique({ where: { id } });
+  let connection = await prisma.whatsAppConnection.findUnique({ where: { id } });
   if (!connection || !tokenMatches(text(payload.token, 1000), connection.tokenHash)) return new NextResponse(null, { status: 401 });
+  const owner = text(payload.owner || object(payload.instance).owner, 80).split("@")[0].replace(/\D/g, "");
+  if (owner && owner !== connection.phone) {
+    await checkConnection(connection);
+    connection = await whatsappConnection(connection.organizationId);
+    if (!connection || connection.phone !== owner) return NextResponse.json({ ok: true, ignored: true });
+  }
   const event = normalizeUazapiEvent(payload);
   if (event) await enqueueUazapiEvent(connection, event);
   const history = normalizeUazapiHistory(payload);

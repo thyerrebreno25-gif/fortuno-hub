@@ -1,3 +1,4 @@
+vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:vi.fn(async()=>({accountKey:"wa-account:conn:5511888888888",recipient:"wa-account:conn:5511888888888"}))}));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ member: vi.fn(), permissions: vi.fn(), snapshot: vi.fn(), cache: vi.fn() }));
@@ -52,7 +53,7 @@ it("passes organization and each effective module permission to the snapshot", a
   expect(mocks.snapshot).toHaveBeenCalledWith("org-a", "month", {
     onboarding: true, clients: true, whatsapp: false, email: true, support: true, operations: true, meetings: true, calendar: true,
     finance: true, purchase: true, investment: false, contract: false, ca: true,
-  });
+  }, null);
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
 });
 it("marks Conta Azul unavailable when every export module is denied", async () => {
@@ -63,16 +64,16 @@ it("marks Conta Azul unavailable when every export module is denied", async () =
 it("partitions the server cache by organization, period, São Paulo date and effective permissions", async () => {
   await GET(request("week"));
   const first = mocks.cache.mock.calls[0];
-  expect(first[1]).toEqual(["executive-v3", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
+  expect(first[1]).toEqual(["executive-v4", "wa-account:conn:5511888888888", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
   expect(first[2]).toEqual({ revalidate: 300 });
-  expect(JSON.parse(first[1][5]).contract).toBe(true);
+  expect(JSON.parse(first[1][6]).contract).toBe(true);
 
   mocks.member.mockResolvedValue({ organizationId: "org-b", userId: "manager-b", role: "MANAGER" });
   mocks.permissions.mockResolvedValue(permissions(["CONTRACT_IMPORTS", "INVESTMENT_INCOME"]));
   await GET(request("week"));
   const second = mocks.cache.mock.calls[1][1];
-  expect(second[1]).toBe("org-b");
-  expect(JSON.parse(second[5])).toMatchObject({ contract: false, investment: false });
+  expect(second[2]).toBe("org-b");
+  expect(JSON.parse(second[6])).toMatchObject({ contract: false, investment: false });
   expect(second).not.toEqual(first[1]);
 
   mocks.permissions.mockResolvedValue(permissions());
@@ -82,7 +83,7 @@ it("partitions the server cache by organization, period, São Paulo date and eff
 it("uses the São Paulo calendar date in cache keys across a UTC day boundary", async () => {
   vi.setSystemTime(new Date("2026-11-05T02:59:59Z"));
   await GET(request());
-  expect(mocks.cache.mock.calls[0][1][3]).toBe("2026-11-04");
+  expect(mocks.cache.mock.calls[0][1][4]).toBe("2026-11-04");
 });
 it("returns a generic unavailable response when snapshot queries fail", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -92,6 +93,6 @@ it("returns a generic unavailable response when snapshot queries fail", async ()
   expect(await response.text()).toBe(JSON.stringify({ error: "Não foi possível atualizar o painel gerencial." }));
 });
 
-it("starts a fresh shared snapshot after five minutes",async()=>{await GET(request());const key=mocks.cache.mock.calls[0][1];vi.advanceTimersByTime(300000);await GET(request());expect(mocks.cache.mock.calls[1][1][4]).not.toBe(key[4]);});
+it("starts a fresh shared snapshot after five minutes",async()=>{await GET(request());const key=mocks.cache.mock.calls[0][1];vi.advanceTimersByTime(300000);await GET(request());expect(mocks.cache.mock.calls[1][1][5]).not.toBe(key[5]);});
 
 it("respects denied onboarding permission",async()=>{mocks.permissions.mockResolvedValue(permissions(["ONBOARDING"]));expect((await GET(request())).status).toBe(200);expect(mocks.snapshot.mock.calls[0][2].onboarding).toBe(false);});

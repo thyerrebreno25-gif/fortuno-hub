@@ -15,7 +15,7 @@ export async function POST(_request:Request,context:{params:Promise<{id:string}>
  const entry=await prisma.whatsAppDirectoryEntry.findFirst({where:{id,organizationId:member.organizationId,connectionId:connection.id,accountPhone:connection.phone,active:true,AND:[currentDirectoryVisibility()]}});
  if(!entry)return NextResponse.json({error:"Contato ou grupo não encontrado na conta conectada."},{status:404});
  const kind=entry.kind==="GROUP"?"GROUP":"CONTACT",identifier=normalizeWhatsappIdentity(kind,entry.externalId),senderEmail=whatsappChannelAddress(kind,identifier),recipientEmail=`wa-account:${connection.id}:${connection.phone}`;
- const routing=await resolveWhatsappRouting({organizationId:member.organizationId,kind,identifier,routingArea:"GENERAL"});
+ const routing=await resolveWhatsappRouting({organizationId:member.organizationId,kind,identifier,displayName:entry.displayName,routingArea:"GENERAL"});
  const ticket=await prisma.$transaction(async tx=>{
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chatLock(connection.id,senderEmail)}))`;
   const current=await tx.whatsAppConnection.findFirst({where:{id:connection.id,organizationId:member.organizationId,instanceId:connection.instanceId,phone:connection.phone,status:"CONNECTED"},select:{id:true}});

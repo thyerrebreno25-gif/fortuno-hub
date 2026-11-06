@@ -94,3 +94,9 @@
  .railLabel { writing-mode: horizontal-tb; margin: 0 8px 8px; }
  .boxesMinimized .views, .listMinimized .listPanel { min-height: 44px; }
 }
+
+.conversationFilters { display: flex; flex-wrap: nowrap; gap: 5px; margin-top: 10px; padding: 2px 0 4px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+.conversationFilters button { flex: 0 0 auto; border: 1px solid var(--fortuno-line); border-radius: 999px; padding: 6px 9px; min-height: 30px; background: var(--fortuno-surface); color: var(--fortuno-muted); white-space: nowrap; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.conversationFilters button:hover { color: var(--fortuno-ink); background: var(--fortuno-surface-soft); }
+.conversationFilters button:focus-visible { outline: 2px solid var(--mantine-color-blue-6); outline-offset: 2px; }
+.conversationFilters .conversationFilterActive { border-color: color-mix(in srgb, var(--mantine-color-blue-6) 35%, var(--fortuno-line)); color: var(--mantine-color-blue-7); background: color-mix(in srgb, var(--mantine-color-blue-6) 12%, var(--fortuno-surface)); }

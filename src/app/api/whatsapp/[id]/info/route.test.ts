@@ -7,7 +7,7 @@ vi.mock("@/modules/whatsapp/server",()=>({resolveWhatsappTicketId:vi.fn().mockRe
 vi.mock("@/modules/whatsapp/uazapi-server",()=>({whatsappConnection:m.connection}));
 vi.mock("@/modules/purchase-invoices/server/crypto",()=>({decryptIntegrationSecret:()=>"test-token"}));
 vi.mock("@/modules/whatsapp/uazapi",async original=>({...await original<typeof import("@/modules/whatsapp/uazapi")>(),uazapiRequest:m.request}));
-vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findFirst:m.ticket},serviceAttachment:{findMany:m.files,count:m.count}}}));
+vi.mock("@/lib/prisma",()=>({prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },serviceTicket:{findFirst:m.ticket},serviceAttachment:{findMany:m.files,count:m.count}}}));
 import {GET} from "./route";
 const get=(query="")=>GET(new Request("https://hub.test/api/whatsapp/ticket/info"+query),{params:Promise.resolve({id:"ticket"})});
 beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",userId:"operator",role:"OPERATOR"});m.permission.mockResolvedValue({canView:true});m.ticket.mockResolvedValue({id:"ticket",senderName:"Cliente",subject:"Grupo",senderEmail:"wa-group:120363000@g.us",recipientEmail:"wa-account:conn:5511888888888",client:null,assignedTo:null});m.connection.mockResolvedValue({id:"conn",instanceId:"instance",phone:"5511888888888",status:"CONNECTED",expiresAt:null,serverUrl:"https://fortunohub.uazapi.com",tokenEncrypted:"encrypted"});m.request.mockResolvedValue({Name:"Grupo",Topic:"Descrição",ParticipantCount:10});m.files.mockResolvedValue([]);m.count.mockResolvedValue(0);});

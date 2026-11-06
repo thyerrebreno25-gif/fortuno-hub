@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m = vi.hoisted(() => ({ update: vi.fn(), request: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { update: m.update } } }));
+const m = vi.hoisted(() => ({ update: vi.fn(), request: vi.fn(), find: vi.fn(), directory: vi.fn(), directorySync: vi.fn(), historySync: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { update: m.update, findUnique: m.find }, whatsAppDirectoryEntry: { updateMany: m.directory }, whatsAppDirectorySync: { updateMany: m.directorySync }, whatsAppHistorySync: { updateMany: m.historySync } } }));
+vi.mock("./directory", () => ({ scheduleDirectorySync: vi.fn() }));
+vi.mock("./history-sync", () => ({ scheduleHistorySync: vi.fn() }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "private-token" }));
 vi.mock("./uazapi", async (original) => ({ ...await original<typeof import("./uazapi")>(), uazapiRequest: m.request }));
-import { checkConnection, configureWebhook, connectionView, type whatsappConnection } from "./uazapi-server";
+import { checkConnection, configureWebhook, connectionView, sendUazapiText, type whatsappConnection } from "./uazapi-server";
 const connection = { id: "connection", instanceId: "instance", organizationId: "org", serverUrl: "https://free.uazapi.com", tokenEncrypted: "encrypted-secret", tokenHash: "private-hash", status: "DISCONNECTED", expiresAt: null } as NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>;
 beforeEach(() => { vi.clearAllMocks(); m.update.mockResolvedValue({}); });
 describe("Uazapi server-side connection", () => {
@@ -24,5 +26,17 @@ describe("Uazapi server-side connection", () => {
   });
   it("refuses credentials that resolve to another instance", async () => {
     m.request.mockResolvedValueOnce({ instance: { id: "another", status: "connected" } }); await expect(checkConnection(connection)).rejects.toThrow("outra instância"); expect(m.update).not.toHaveBeenCalled();
+  });
+  it("retires the previous physical account's contacts and pending syncs when the number changes", async () => {
+    m.request.mockResolvedValueOnce({ instance: { id: "instance", status: "connected", owner: "5522999999999" } });
+    await checkConnection({ ...connection, phone: "5511888888888" });
+    expect(m.update.mock.calls[0][0].data.phone).toBe("5522999999999");
+    expect(m.directory).toHaveBeenCalledWith({ where: { connectionId: "connection", accountPhone: { not: "5522999999999" } }, data: { active: false } });
+    for (const cancel of [m.directorySync, m.historySync]) expect(cancel.mock.calls[0][0]).toMatchObject({ where: { connectionId: "connection", accountPhone: { not: "5522999999999" } }, data: { status: "CANCELLED" } });
+  });
+  it("rejects a reply from an old account even when the provider instance was reused", async () => {
+    m.find.mockResolvedValue({ ...connection, status: "CONNECTED", webhookConfiguredAt: new Date(), phone: "5522999999999" });
+    await expect(sendUazapiText({ organizationId: "org", to: "5511000000000", body: "test", instanceId: "instance", accountRecipient: "wa-account:connection:5511888888888" })).rejects.toThrow("número conectado mudou");
+    expect(m.request).not.toHaveBeenCalled();
   });
 });

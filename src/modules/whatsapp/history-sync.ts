@@ -30,7 +30,7 @@ export async function scheduleHistorySync(connection: Connection, options: { for
     if (!options.force && recent && (Date.now() - recent.createdAt.getTime() < (options.reconnected ? 30000 : 300000))) return recent;
     const completed = await tx.whatsAppHistorySync.findFirst({ where: { ...scope, status: "COMPLETED" }, orderBy: { until: "desc" } });
     const legacy = !completed && !connection.lastDisconnectedAt ? await tx.serviceMessage.findFirst({ where: {
-      ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API" },
+      ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", recipientEmail: `wa-account:${connection.id}:${connection.phone}` },
       AND: [{ providerMetadata: { path: ["connectionId"], equals: connection.id } }, { NOT: { providerMetadata: { path: ["instanceId"], equals: connection.instanceId } } }],
     }, orderBy: { receivedAt: "desc" }, select: { receivedAt: true } }) : null;
     const anchor = completed?.until || connection.lastDisconnectedAt || legacy?.receivedAt || new Date(Date.now() - 86400000);
@@ -38,8 +38,8 @@ export async function scheduleHistorySync(connection: Connection, options: { for
     return tx.whatsAppHistorySync.create({ data: { ...scope, instanceId: connection.instanceId, since } });
   });
 }
-export async function latestHistorySync(connectionId: string) {
-  return prisma.whatsAppHistorySync.findFirst({ where: { connectionId }, orderBy: { createdAt: "desc" }, select: { status: true, queued: true, lastError: true, completedAt: true, since: true } });
+export async function latestHistorySync(connectionId: string, accountPhone?: string | null) {
+  return prisma.whatsAppHistorySync.findFirst({ where: { connectionId, ...(accountPhone ? { accountPhone } : {}) }, orderBy: { createdAt: "desc" }, select: { status: true, queued: true, lastError: true, completedAt: true, since: true } });
 }
 async function scanHistory(connectionId?: string) {
   const now = new Date();
@@ -79,7 +79,7 @@ async function scanHistory(connectionId?: string) {
 async function finishHistory(connectionId?: string) {
   const jobs = await prisma.whatsAppHistorySync.findMany({ where: { connectionId, status: "IMPORTING" }, take: 10 });
   for (const job of jobs) {
-    const scope = { connectionId: job.connectionId, eventType: "messages", AND: [{ payload: { path: ["instanceId"], equals: job.instanceId } }, { payload: { path: ["event", "historical"], equals: true } }] };
+    const scope = { connectionId: job.connectionId, eventType: "messages", AND: [{ payload: { path: ["instanceId"], equals: job.instanceId } }, { payload: { path: ["accountPhone"], equals: job.accountPhone } }, { payload: { path: ["event", "historical"], equals: true } }] };
     const pending = await prisma.whatsAppWebhookInbox.count({ where: { ...scope, status: { not: "COMPLETED" } } });
     const dead = pending ? await prisma.whatsAppWebhookInbox.count({ where: { ...scope, status: "FAILED", attempts: { gte: 5 } } }) : 0;
     if (dead) {

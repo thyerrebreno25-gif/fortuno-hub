@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       if (input.data.action === "CONNECT") {
         if (!connection.webhookConfiguredAt) await configureWebhook(connection);
         state = instanceState(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/instance/connect", { ...(input.data.phone ? { phone: input.data.phone } : {}), history_days: 1 }));
+        if (state.status === "CONNECTED") await checkConnection(connection);
         await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { status: state.status === "DISCONNECTED" ? "CONNECTING" : state.status, lastCheckedAt: new Date(), lastError: null } });
       }
       if (input.data.action === "DISCONNECT") {

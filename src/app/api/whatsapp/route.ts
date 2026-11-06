@@ -1,3 +1,4 @@
+import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { unreadCounts, latestConversationDirections } from "@/modules/whatsapp/read-state";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -47,8 +48,7 @@ export async function GET(request: Request) {
   if (!["GENERAL", "MINE", "QUEUE"].includes(view) || !["ALL", "GROUP", "CONTACT"].includes(kind) || !["ALL", "OPEN", "RESOLVED"].includes(status)) return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
   const filters = { view, kind, status } as InboxFilters;
   const baseWhere: Prisma.ServiceTicketWhereInput = {
-    organizationId: member.organizationId,
-    source: { in: [...WHATSAPP_SOURCES] },
+    ...(await currentWhatsAppAccount(member.organizationId)).where,
     isSpam: false,
     mergedIntoId: null,
     status: { notIn: ["SPAM"] },
@@ -239,6 +239,7 @@ export async function POST(request: Request) {
     identifier,
     routingArea,
     requestedClientId,
+    displayName,
   });
 
   if (!routing.externalId) {

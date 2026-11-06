@@ -52,6 +52,7 @@ type View = InboxView;
 type Section = "INBOX" | "MONITORING" | "MANAGEMENT" | "DIRECTORY";
 
 type Bootstrap = {
+  accountKey: string | null;
   mode: string;
   currentUser: { id: string; name: string | null; email: string };
   canManage: boolean;
@@ -222,6 +223,7 @@ export default function WhatsAppPage() {
   const sendingReply = useRef(false);
   const detailCache = useRef(new Map<string, TicketDetail>());
   const lastRevision = useRef("");
+  const accountKeyRef = useRef<string | null | undefined>(undefined);
   const partialList = useRef(false);
   const ticketVersions = useRef(new Map<string,string>());
   const detailController = useRef<AbortController | null>(null);
@@ -327,7 +329,7 @@ export default function WhatsAppPage() {
   useEffect(() => {
     fetch("/api/whatsapp/bootstrap", { cache: "no-store" })
       .then((response) => readResponse<Bootstrap>(response))
-      .then(setBootstrap)
+      .then(value => { accountKeyRef.current = value.accountKey; setBootstrap(value); })
       .catch((error) =>
         notifications.show({
           color: "red",
@@ -360,8 +362,16 @@ export default function WhatsAppPage() {
       if (cancelled || busy || document.hidden) return;
       busy = true;
       try {
-        const state = await readResponse<{ revision: string; mode: string; historySync: HistorySync | null }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
+        const state = await readResponse<{ revision: string; mode: string; accountKey: string | null; historySync: HistorySync | null }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
         if (cancelled) return;
+        if (accountKeyRef.current !== undefined && accountKeyRef.current !== state.accountKey || state.mode !== "CONNECTED") {
+          listRequest.current++; detailRequest.current++; detailController.current?.abort();
+          detailCache.current.clear(); ticketVersions.current.clear(); readMarkers.current.clear();
+          partialList.current = false; lastRevision.current = ""; selectedRef.current = null;
+          setInbox({ tickets: [], complete: false, key: "" }); setStats(null); setDetail(null);
+          setSelectedId(null); setManagementSelection(null); setReply(""); setTransferOpened(false); setContactInfoId(null);
+        }
+        accountKeyRef.current = state.accountKey;
         onConnectionStatus(state.mode);
         setHistorySync(state.historySync || null);
         if (state.mode !== "CONNECTED") return;
@@ -617,7 +627,10 @@ export default function WhatsAppPage() {
               onChange={(event) => setSearch(event.currentTarget.value)}
               className={styles.search}
             />
-            <Group gap={6} mt="sm"><Button size="compact-xs" radius="xl" variant={onlyUnread ? "light" : "subtle"} onClick={() => { setSelectedId(null); setOnlyUnread(value => !value); }}>Não lidas</Button>{([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <Button key={item.value} size="compact-xs" radius="xl" variant={chatKind === item.value ? "light" : "subtle"} onClick={() => setChatKind(item.value)}>{item.label}</Button>)}</Group>
+            <div className={styles.conversationFilters} aria-label="Filtrar conversas">
+              <button type="button" aria-pressed={onlyUnread} className={onlyUnread ? styles.conversationFilterActive : undefined} onClick={() => { setSelectedId(null); setOnlyUnread(value => !value); }}>Não lidas</button>
+              {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
+            </div>
           </div>
           <div className={styles.ticketList}>
             {tickets.length ? (

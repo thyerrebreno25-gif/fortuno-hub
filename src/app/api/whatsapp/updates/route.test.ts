@@ -1,10 +1,11 @@
+vi.mock("@/modules/whatsapp/automatic-routing-server",()=>({reserveRoutingBatch:()=>false,reconcileQueuedWhatsapp:vi.fn()}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/modules/whatsapp/history-sync", () => ({ latestHistorySync: async () => null, processWhatsAppHistory: vi.fn() }));
 const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), tickets: vi.fn(), connection: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { serviceTicket: { aggregate: m.tickets }, whatsAppConnection: { findUnique: m.connection } } }));
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));
 import { GET } from "./route";
-beforeEach(() => { vi.clearAllMocks(); m.member.mockResolvedValue({ organizationId: "org", role: "MASTER" }); m.permission.mockResolvedValue({ canView: true }); m.tickets.mockResolvedValue({ _count: 3, _max: { updatedAt: new Date("2026-10-29T12:00:00Z") } }); m.connection.mockResolvedValue({ status: "CONNECTED", webhookConfiguredAt: new Date(), expiresAt: null }); });
+beforeEach(() => { vi.clearAllMocks(); m.member.mockResolvedValue({ organizationId: "org", role: "MASTER" }); m.permission.mockResolvedValue({ canView: true }); m.tickets.mockResolvedValue({ _count: 3, _max: { updatedAt: new Date("2026-10-29T12:00:00Z") } }); m.connection.mockResolvedValue({ id: "conn", organizationId: "org", instanceId: "instance", phone: "5511888888888", status: "CONNECTED", webhookConfiguredAt: new Date(), expiresAt: null }); });
 describe("WhatsApp live revisions", () => {
   it("enforces authentication and permission before querying conversations", async () => {
     m.member.mockResolvedValueOnce(null); expect((await GET()).status).toBe(401);

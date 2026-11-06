@@ -11,8 +11,8 @@ export async function POST() {
   if (!permission.canEdit) return NextResponse.json({ error: "Sem permissão para sincronizar o histórico." }, { status: 403 });
   const connection = await whatsappConnection(member.organizationId);
   if (!connection || connection.status !== "CONNECTED" || !connection.phone || connection.expiresAt && connection.expiresAt < new Date()) return NextResponse.json({ error: "Conecte o WhatsApp antes de atualizar o histórico." }, { status: 409 });
-  await prisma.whatsAppWebhookInbox.updateMany({ where: { connectionId: connection.id, status: "FAILED", AND: [{ payload: { path: ["instanceId"], equals: connection.instanceId } }, { payload: { path: ["event", "historical"], equals: true } }] }, data: { status: "PENDING", attempts: 0 } });
+  await prisma.whatsAppWebhookInbox.updateMany({ where: { connectionId: connection.id, status: "FAILED", AND: [{ payload: { path: ["accountPhone"], equals: connection.phone } }, { payload: { path: ["instanceId"], equals: connection.instanceId } }, { payload: { path: ["event", "historical"], equals: true } }] }, data: { status: "PENDING", attempts: 0 } });
   await scheduleHistorySync(connection, { force: true });
   after(async () => { await processWhatsAppHistory(connection.id); });
-  return NextResponse.json({ sync: await latestHistorySync(connection.id) }, { status: 202 });
+  return NextResponse.json({ sync: await latestHistorySync(connection.id, connection.phone) }, { status: 202 });
 }

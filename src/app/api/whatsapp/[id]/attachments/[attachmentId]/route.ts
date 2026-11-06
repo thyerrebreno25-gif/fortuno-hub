@@ -1,3 +1,4 @@
+import { currentWhatsAppAccount, accountMessageWhere } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -35,9 +36,9 @@ export async function GET(request: Request, context: Context) {
       id: attachmentId,
       message: {
         ticketId,
+        ...accountMessageWhere((await currentWhatsAppAccount(member.organizationId)).connection),
         ticket: {
-          organizationId: member.organizationId,
-          source: "WHATSAPP_API",
+          ...(await currentWhatsAppAccount(member.organizationId)).where,
         },
       },
     },

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/modules/whatsapp/server", () => ({ resolveWhatsappTicketId: async (id: string) => id }));
 const m = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), find: vi.fn(), download: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { serviceAttachment: { findFirst: m.find } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) }, serviceAttachment: { findFirst: m.find } } }));
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: m.member, getWhatsAppPermission: m.permission }));
 vi.mock("@/modules/whatsapp/uazapi-server", () => ({ downloadUazapiMedia: m.download }));
 import { GET } from "./route";

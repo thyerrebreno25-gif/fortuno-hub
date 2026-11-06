@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const m = vi.hoisted(() => ({ existing: vi.fn(), rebind: vi.fn(), media: vi.fn(), touch: vi.fn(), transaction: vi.fn(), lock: vi.fn(), duplicate: vi.fn(), findTicket: vi.fn(), updateTicket: vi.fn(), createTicket: vi.fn(), createMessage: vi.fn(), createMedia: vi.fn(), history: vi.fn(), classify: vi.fn(), route: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { serviceMessage: { findFirst: m.existing, update: m.rebind }, serviceAttachment: { updateMany: m.media }, serviceTicket: { update: m.touch }, $transaction: m.transaction } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppDirectoryEntry: { findUnique: vi.fn(async () => null) }, serviceMessage: { findFirst: m.existing, update: m.rebind }, serviceAttachment: { updateMany: m.media }, serviceTicket: { update: m.touch }, $transaction: m.transaction } }));
 vi.mock("./uazapi-server", () => ({ checkConnection: vi.fn() }));
 vi.mock("@/modules/atendimento/routing/classifier", () => ({ classifyAndRouteEmail: m.classify }));
 vi.mock("./server", () => ({ resolveWhatsappRouting: m.route }));
@@ -14,9 +14,20 @@ const active = { id: "t", senderName: "Grupo do cliente", assignedToId: "respons
 beforeEach(() => {
   vi.clearAllMocks(); m.existing.mockResolvedValue(null); m.duplicate.mockResolvedValue(null); m.findTicket.mockImplementation(async (args) => args.where.status === "RESOLVED" ? null : active); m.updateTicket.mockResolvedValue(active); m.createMessage.mockResolvedValue({ id: "message" }); m.createTicket.mockResolvedValue(active);
   m.classify.mockResolvedValue({ area: "GENERAL", reason: "Conteúdo" }); m.route.mockResolvedValue({ clientId: "client", assignedToId: "general", routingSquad: null, ambiguous: false, reason: "Vínculo" });
-  m.transaction.mockImplementation(async (fn) => fn({ $executeRaw: m.lock, serviceMessage: { findFirst: m.duplicate, create: m.createMessage }, serviceTicket: { findFirst: m.findTicket, update: m.updateTicket, create: m.createTicket }, serviceAttachment: { create: m.createMedia }, serviceTicketHistory: { create: m.history } }));
+  m.transaction.mockImplementation(async (fn) => fn({ $queryRaw: vi.fn(async () => [{ id: "c" }]), $executeRaw: m.lock, serviceMessage: { findFirst: m.duplicate, create: m.createMessage }, serviceTicket: { findFirst: m.findTicket, update: m.updateTicket, create: m.createTicket }, serviceAttachment: { create: m.createMedia }, serviceTicketHistory: { create: m.history } }));
 });
 describe("Importing missed WhatsApp messages safely", () => {
+  it.each([["Pagar boleto do fornecedor", "ACCOUNTS_PAYABLE", "payable"], ["Emitir boleto para o cliente", "ACCOUNTS_RECEIVABLE", "receivable"]])("routes live financial messages using their specific area: %s", async (body, area, owner) => {
+    m.findTicket.mockResolvedValue({ ...active, assignedToId: null });
+    m.route.mockImplementation(async input => ({ clientId: "client", assignedToId: input.routingArea === "ACCOUNTS_PAYABLE" ? "payable" : "receivable", reason: "Cliente", ambiguous: false }));
+    await receiveMessage(connection, { ...event, historical: false, fromMe: false, body });
+    expect(m.route.mock.calls[0][0].routingArea).toBe(area);
+    expect(m.updateTicket.mock.calls[0][0].data).toMatchObject({ assignedToId: owner, routingArea: area });
+  });
+  it("preserves a manual assignee on a new inbound financial message", async () => {
+    await receiveMessage(connection, { ...event, historical: false, fromMe: false, body: "Emitir boleto para o cliente" });
+    expect(m.updateTicket.mock.calls[0][0].data).not.toHaveProperty("assignedToId");
+  });
   it("keeps the existing conversation, client and assigned operator after replacing the instance", async () => {
     await receiveMessage(connection, event); expect(m.createTicket).not.toHaveBeenCalled(); const update = m.updateTicket.mock.calls[0][0].data;
     expect(update.recipientEmail).toBe("wa-account:c:5511999999999"); expect(update).not.toHaveProperty("assignedToId"); expect(update).not.toHaveProperty("clientId"); expect(m.createMessage.mock.calls[0][0].data.externalMessageId).toBe("uazapi:5511999999999:msg");

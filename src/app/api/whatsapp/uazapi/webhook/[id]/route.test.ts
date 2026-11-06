@@ -1,7 +1,8 @@
+vi.mock("@/modules/whatsapp/uazapi-server",()=>({checkConnection:vi.fn(),whatsappConnection:vi.fn()}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ find: vi.fn(), update: vi.fn(), enqueue: vi.fn(), drain: vi.fn(), after: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppConnection: { findUnique: mocks.find, update: mocks.update } } }));
-vi.mock("@/modules/whatsapp/uazapi-events", () => ({ enqueueUazapiEvent: mocks.enqueue, drainUazapiInbox: mocks.drain }));
+vi.mock("@/modules/whatsapp/uazapi-events", () => ({ enqueueUazapiHistory: vi.fn(async()=>0), enqueueUazapiEvent: mocks.enqueue, drainUazapiInbox: mocks.drain }));
 vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: mocks.after }));
 import { POST } from "./route";
 import { tokenHash } from "@/modules/whatsapp/uazapi";

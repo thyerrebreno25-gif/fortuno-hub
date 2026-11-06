@@ -1,8 +1,9 @@
+import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getServiceCenterMember, getWhatsAppPermission } from "@/modules/atendimento/auth";
-import { WHATSAPP_SOURCES, parseWhatsappChannelAddress } from "@/modules/whatsapp/core";
+import { parseWhatsappChannelAddress } from "@/modules/whatsapp/core";
 import { whatsappConnection } from "@/modules/whatsapp/uazapi-server";
 import { decryptIntegrationSecret } from "@/modules/purchase-invoices/server/crypto";
 import { object, uazapiRequest } from "@/modules/whatsapp/uazapi";
@@ -14,7 +15,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const permission = await getWhatsAppPermission(member.organizationId, member.role);
   if (!permission.canView) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   const { id } = await context.params;
-  const ticket = await prisma.serviceTicket.findFirst({ where: { id, organizationId: member.organizationId, source: { in: [...WHATSAPP_SOURCES] } }, select: { senderEmail: true } });
+  const ticket = await prisma.serviceTicket.findFirst({ where: { id, ...(await currentWhatsAppAccount(member.organizationId)).where }, select: { senderEmail: true } });
   if (!ticket) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });
   const connection = await whatsappConnection(member.organizationId);
   if (!connection || connection.status !== "CONNECTED" || connection.expiresAt && connection.expiresAt < new Date()) return NextResponse.json({ url: null });

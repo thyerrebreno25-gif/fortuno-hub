@@ -47,6 +47,6 @@ export async function transferWhatsappTicket(current: Current, actor: Actor, can
     }
     const metadata = { previousAssignedToId: current.assignedToId, assignedToId, previousRoutingArea: current.routingArea, routingArea: area || "UNKNOWN", clientId: client?.id || current.clientId, mode: input.mode, note };
     await tx.serviceTicketHistory.create({ data: { ticketId: current.id, userId: actor.userId, type: "WHATSAPP_TRANSFERRED", message: `Atendimento transferido por ${actorName} para ${targetName}.`, metadata } });
-    await tx.serviceMessage.create({ data: { ticketId: current.id, direction: "INTERNAL", fromName: actorName, fromEmail: actor.user.email, toEmails: [], textBody: `Transferência interna: ${actorName} → ${targetName}${input.mode === "AREA" ? " · " + areaName : ""}.${note ? "\n" + note : ""}`, receivedAt: now, providerMetadata: { ...metadata, type: "WHATSAPP_TRANSFER" } } });
+    await tx.serviceMessage.create({ data: { ticketId: current.id, direction: "INTERNAL", fromName: actorName, fromEmail: actor.user.email, toEmails: [], textBody: `Transferência interna: ${actorName} → ${targetName}${input.mode === "AREA" ? " · " + areaName : ""}.${note ? "\n" + note : ""}`, receivedAt: now, providerMetadata: { ...metadata, accountPhone: current.recipientEmail?.startsWith("wa-account:") ? current.recipientEmail.split(":").at(-1) : null, type: "WHATSAPP_TRANSFER" } } });
   });
 }

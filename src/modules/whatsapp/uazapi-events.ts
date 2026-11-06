@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import { classifyAndRouteEmail } from "@/modules/atendimento/routing/classifier";
+import { classifyWhatsappArea, AUTOMATIC_WHATSAPP_PREFIX, mayAutomaticallyRoute } from "./automatic-routing";
 import { normalizeWhatsappIdentity, whatsappChannelAddress } from "./core";
 import { resolveWhatsappRouting } from "./server";
 import { normalizeUazapiEvent, object, text } from "./uazapi";
@@ -17,17 +17,17 @@ const at = (timestamp: number) => {
 };
 export async function enqueueUazapiEvent(connection: Connection, event: Event) {
   const identity = event.kind === "messages" ? [event.kind, event.id, event.fromMe] : event;
-  const id = hash(connection.id + connection.instanceId + JSON.stringify(identity));
+  const id = hash(connection.id + connection.instanceId + (connection.phone || "unbound") + JSON.stringify(identity));
   await prisma.whatsAppWebhookInbox.upsert({ where: { id }, update: {}, create: {
     id, connectionId: connection.id, eventType: event.kind,
-    payload: { instanceId: connection.instanceId, event } as Prisma.InputJsonValue,
+    payload: { instanceId: connection.instanceId, accountPhone: connection.phone, event } as Prisma.InputJsonValue,
   } });
 }
 export async function enqueueUazapiHistory(connection: Connection, events: Array<Extract<Event, { kind: "messages" }>>) {
   if (!events.length) return 0;
   const result = await prisma.whatsAppWebhookInbox.createMany({ skipDuplicates: true, data: events.map((event) => ({
     id: hash(connection.id + (connection.phone || connection.instanceId) + JSON.stringify([event.kind, event.id, event.fromMe])),
-    connectionId: connection.id, eventType: event.kind, payload: { instanceId: connection.instanceId, event } as Prisma.InputJsonValue,
+    connectionId: connection.id, eventType: event.kind, payload: { instanceId: connection.instanceId, accountPhone: connection.phone, event } as Prisma.InputJsonValue,
   })) });
   return result.count;
 }
@@ -39,7 +39,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
   const address = whatsappChannelAddress(kind, identifier);
   const recipient = `wa-account:${connection.id}:${connection.phone || connection.instanceId}`;
   const externalMessageId = `uazapi:${connection.phone || connection.instanceId}:${event.id}`;
-  const existing = await prisma.serviceMessage.findFirst({ where: { ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", senderEmail: address }, OR: [
+  const existing = await prisma.serviceMessage.findFirst({ where: { ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", senderEmail: address, recipientEmail: recipient }, OR: [
     { externalMessageId }, { externalMessageId: `uazapi:${connection.instanceId}:${event.id}` },
     { AND: [{ providerMetadata: { path: ["connectionId"], equals: connection.id } }, { providerMetadata: { path: ["messageId"], equals: event.id } }] },
     { externalMessageId: { endsWith: ":" + event.id }, providerMetadata: { path: ["connectionId"], equals: connection.id } },
@@ -52,32 +52,40 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     if (object(existing.providerMetadata).instanceId !== connection.instanceId) await prisma.serviceTicket.update({ where: { id: existing.ticketId }, data: { updatedAt: new Date() } });
     return;
   }
-  const classification = await classifyAndRouteEmail({ organizationId: connection.organizationId, senderEmail: address, subject: event.chatName || event.senderName, textBody: event.body, attachmentNames: event.media ? [event.media.name] : [] });
-  const routing = await resolveWhatsappRouting({ organizationId: connection.organizationId, kind, identifier, routingArea: classification.area });
+  const directory = event.group && !event.chatName ? await prisma.whatsAppDirectoryEntry.findUnique({ where: { connectionId_accountPhone_externalId: { connectionId: connection.id, accountPhone: connection.phone || "", externalId: event.chatId } }, select: { displayName: true } }) : null;
+  const chatName = event.chatName || directory?.displayName || "";
+  const classification = classifyWhatsappArea(event.group ? chatName : "", event.body, event.media ? [event.media.name] : []);
+  const routing = await resolveWhatsappRouting({ organizationId: connection.organizationId, kind, identifier, displayName: chatName, routingArea: classification.area });
   const timestamp = at(event.timestamp);
   await prisma.$transaction(async (tx) => {
+    const currentAccount = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT id FROM "WhatsAppConnection" WHERE id = ${connection.id} AND "organizationId" = ${connection.organizationId} AND "instanceId" = ${connection.instanceId} AND phone = ${connection.phone} AND status = 'CONNECTED' FOR SHARE`);
+    if (!currentAccount.length) return;
     // Serialize each chat so simultaneous deliveries cannot create separate active tickets.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${connection.id + event.chatId}))`;
     if (await tx.serviceMessage.findFirst({ where: { externalMessageId, ticket: { organizationId: connection.organizationId } }, select: { id: true } })) return;
-    const scope = { organizationId: connection.organizationId, source: "WHATSAPP_API" as const, senderEmail: address, mergedIntoId: null, OR: [{ recipientEmail: recipient }, { recipientEmail: { startsWith: `wa-uazapi:${connection.id}:` } }] };
+    const scope = { organizationId: connection.organizationId, source: "WHATSAPP_API" as const, senderEmail: address, mergedIntoId: null, recipientEmail: recipient };
     const closed = event.historical ? await tx.serviceTicket.findFirst({ where: { ...scope, status: "RESOLVED", resolvedAt: { gte: timestamp } }, orderBy: { resolvedAt: "asc" } }) : null;
     const active = closed || await tx.serviceTicket.findFirst({ where: { ...scope, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } });
     if (event.fromMe && !active && !event.historical) return;
-    const name = event.chatName || (event.group || event.fromMe ? active?.senderName : event.senderName) || identifier;
+    const automatic = !event.fromMe && !event.historical && (!active || timestamp >= active.lastMessageAt) && (!active || mayAutomaticallyRoute(active, classification.area));
+    const routingReason = AUTOMATIC_WHATSAPP_PREFIX + routing.reason + " " + classification.reason;
+    const name = chatName || (event.group || event.fromMe ? active?.senderName : event.senderName) || identifier;
     const ticket = active ? await tx.serviceTicket.update({ where: { id: active.id }, data: {
       updatedAt: new Date(),
+      ...(automatic ? { clientId: routing.clientId || active.clientId, routingArea: classification.area, routingSquad: routing.routingSquad, routingReason, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null, status: routing.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
       recipientEmail: recipient,
       ...(event.historical && timestamp < active.receivedAt ? { receivedAt: timestamp } : {}),
-      ...(!event.fromMe && timestamp >= active.lastMessageAt && active.status === "WAITING_CUSTOMER" ? { status: active.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
+      ...(!automatic && !event.fromMe && timestamp >= active.lastMessageAt && active.status === "WAITING_CUSTOMER" ? { status: active.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
       ...(timestamp >= active.lastMessageAt ? { snippet: event.body.slice(0, 220), lastMessageAt: timestamp, senderName: name } : {}),
       ...(event.fromMe && !active.firstResponseAt ? { firstResponseAt: timestamp } : {}),
     } }) : await tx.serviceTicket.create({ data: {
       organizationId: connection.organizationId, source: "WHATSAPP_API", clientId: routing.clientId,
       routingArea: classification.area, routingSquad: routing.routingSquad, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0,
-      routingReason: `${routing.reason} ${classification.reason}`, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null,
+      routingReason, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null,
       externalThreadId: externalMessageId, subject: name, senderName: name, senderEmail: address, recipientEmail: recipient,
       snippet: event.body.slice(0, 220), status: event.fromMe ? "WAITING_CUSTOMER" : routing.assignedToId ? "IN_PROGRESS" : "NEW", receivedAt: timestamp, lastMessageAt: timestamp,
     } });
+    if (active && automatic && (active.assignedToId !== routing.assignedToId || active.clientId !== routing.clientId || active.routingArea !== classification.area)) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_AUTOMATIC_ROUTING", message: routingReason, metadata: { previousAssignedToId: active.assignedToId, assignedToId: routing.assignedToId, clientId: routing.clientId, routingArea: classification.area } } });
     const message = await tx.serviceMessage.create({ data: {
       ticketId: ticket.id, externalMessageId, direction: event.fromMe ? "OUTBOUND" : "INBOUND",
       fromName: event.senderName || name, fromEmail: event.fromMe ? recipient : address, toEmails: [event.fromMe ? address : recipient], textBody: event.body, receivedAt: timestamp,
@@ -97,7 +105,7 @@ async function processEvent(connection: Connection, event: Event) {
   if (event.kind === "messages") return receiveMessage(connection, event);
   if (event.kind === "connection") { await checkConnection(connection); return; }
   if (!event.status || !event.ids.length) return;
-  const messages = await prisma.serviceMessage.findMany({ where: { externalMessageId: { in: event.ids.flatMap((id) => [`uazapi:${connection.instanceId}:${id}`, `uazapi:${connection.phone}:${id}`]) }, ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API" } }, select: { id: true, ticketId: true, deliveryStatus: true } });
+  const messages = await prisma.serviceMessage.findMany({ where: { externalMessageId: { in: event.ids.flatMap((id) => [`uazapi:${connection.instanceId}:${id}`, `uazapi:${connection.phone}:${id}`]) }, ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", recipientEmail: `wa-account:${connection.id}:${connection.phone}` } }, select: { id: true, ticketId: true, deliveryStatus: true } });
   for (const message of messages) if (advancesDelivery(message.deliveryStatus, event.status)) {
     await prisma.$transaction(async (tx) => {
       const changed = await tx.serviceMessage.updateMany({ where: { id: message.id, deliveryStatus: message.deliveryStatus }, data: { deliveryStatus: event.status, statusUpdatedAt: at(event.timestamp) } });
@@ -117,7 +125,7 @@ export async function drainUazapiInbox(connectionId?: string) {
     if (!claimed.count) continue;
     try {
       const payload = object(item.payload);
-      if (text(payload.instanceId) === item.connection.instanceId) await processEvent(item.connection, payload.event as Event);
+      if (text(payload.instanceId) === item.connection.instanceId && (object(payload.event).kind === "connection" || Boolean(item.connection.phone) && payload.accountPhone === item.connection.phone)) await processEvent(item.connection, payload.event as Event);
       await prisma.whatsAppWebhookInbox.update({ where: { id: item.id }, data: { status: "COMPLETED", processedAt: new Date(), lastError: null, payload: { instanceId: item.connection.instanceId, kind: item.eventType } } });
     } catch {
       await prisma.whatsAppWebhookInbox.update({ where: { id: item.id }, data: { status: "FAILED", lastError: "Falha ao processar evento; nova tentativa agendada." } });
