@@ -16,3 +16,7 @@ it("keeps ambiguous messages and ambiguous group names in triage",async()=>{
 it("does not assign a former employee or a profile without WhatsApp attendance access",async()=>{
  m.member.mockResolvedValueOnce(null);expect((await resolveWhatsappRouting({...input,routingArea:"ACCOUNTS_PAYABLE"})).assignedToId).toBeNull();m.permission.mockResolvedValue({canView:true,canEdit:false});expect((await resolveWhatsappRouting({...input,routingArea:"ACCOUNTS_RECEIVABLE"})).assignedToId).toBeNull();
 });
+it("excludes removed identities from automatic group-name matching", async () => {
+  await resolveWhatsappRouting({ ...input, routingArea: "ACCOUNTS_PAYABLE" });
+  expect(m.clients.mock.calls[0][0].where.whatsappIdentities).toEqual({ none: { organizationId: "org", kind: "GROUP", externalId: "123@g.us", active: false } });
+});

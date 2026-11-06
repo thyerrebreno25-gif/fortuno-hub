@@ -75,7 +75,7 @@ export async function resolveWhatsappRouting(input: {
 
   if (unique.length !== 1) {
     const matched = unique.length === 0 && input.kind === "GROUP" && input.displayName ? matchWhatsappGroup(input.displayName, await prisma.client.findMany({
-      where: { organizationId: input.organizationId, active: true },
+      where: { organizationId: input.organizationId, active: true, whatsappIdentities: { none: { organizationId: input.organizationId, kind: input.kind, externalId, active: false } } },
       select: { id: true, name: true, document: true, serviceAliases: true, serviceSquad: true, operationLeaderId: true, payableResponsibleId: true, receivableResponsibleId: true, generalResponsibleId: true },
     })) : null;
     const client = matched?.client;
