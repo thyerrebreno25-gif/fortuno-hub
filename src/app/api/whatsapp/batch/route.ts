@@ -39,9 +39,10 @@ export async function POST(request:Request) {
   const deliveries=await prisma.$transaction(async tx=>{
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${member.organizationId}:${member.userId}:${parsed.data.batchId}`}))`;
     const existing=await tx.whatsAppBatchDelivery.findMany({where});
-    if(existing.length)return existing;
+    if(existing.length)return existing.length===parsed.data.ticketIds.length&&existing.every(d=>d.body===parsed.data.content&&d.accountRecipient===account.recipient&&parsed.data.ticketIds.includes(d.ticketId))?existing:null;
     await tx.whatsAppBatchDelivery.createMany({data:tickets.map(t=>({...where,ticketId:t.id,accountRecipient:account.recipient!,recipientName:t.senderName||t.subject,body:parsed.data.content}))});
     return tx.whatsAppBatchDelivery.findMany({where,orderBy:{id:"asc"}});
   });
+  if(!deliveries)return NextResponse.json({error:"O lote já foi preparado com outra mensagem ou outros destinatários. Reabra o lote e confira o conteúdo salvo."},{status:409});
   return NextResponse.json({batchId:parsed.data.batchId,deliveries:deliveries.map(d=>({id:d.id,recipientName:d.recipientName,status:d.status,error:d.error,body:d.body,updatedAt:d.updatedAt}))});
 }

@@ -21,7 +21,7 @@ export function WhatsAppBatchDialog({opened,onClose,content,scope,onSent}:{opene
         if(b.status==='UNKNOWN'||b.status==='SENDING'){setError('Lote pausado: confira o envio sem confirmação antes de continuar com os demais destinatários.');break;}
       }
       onSent();
-    }catch(e){setError(e instanceof Error?e.message:'O lote foi pausado. Consulte os resultados antes de continuar.');if(batchId.current)try{const r=await fetch('/api/whatsapp/batch?batchId='+batchId.current,{cache:'no-store'});if(r.ok)setDeliveries((await r.json()).deliveries);}catch{}}
+    }catch(e){setError(e instanceof Error?e.message:'O lote foi pausado. Consulte os resultados antes de continuar.');if(batchId.current)try{const r=await fetch('/api/whatsapp/batch?batchId='+batchId.current,{cache:'no-store'});if(r.ok){const recovered=(await r.json()).deliveries;setDeliveries(recovered);if(recovered?.length)setMessage(recovered[0].body);}}catch{}}
     finally{setBusy(false);}
   }
   const reset=()=>{setDeliveries([]);setSelected(new Map());setReview(false);setMessage(content);setError("");batchId.current=null;try{localStorage.removeItem(storageKey);}catch{}};
