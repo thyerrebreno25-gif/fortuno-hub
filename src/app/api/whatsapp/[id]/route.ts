@@ -36,7 +36,7 @@ export async function GET(_request: Request, context: Context) {
     member.organizationId,
     member.role,
   );
-  if (!permission.canView) {
+  if (!permission.canView || member.role === "CLIENT") {
     return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   }
 
@@ -66,7 +66,7 @@ export async function PATCH(request: Request, context: Context) {
     member.organizationId,
     member.role,
   );
-  if (!permission.canEdit) {
+  if (!permission.canEdit || member.role === "CLIENT") {
     return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   }
 
@@ -252,6 +252,18 @@ export async function PATCH(request: Request, context: Context) {
         },
       }),
     ]);
+  } else if (action === "comment") {
+    if (occupiedByAnother && !canManage) return NextResponse.json({ error: "Este atendimento está com outro colaborador." }, { status: 403 });
+    const content = typeof body.content === "string" ? body.content.trim() : "";
+    if (!content || content.length > 5000) return NextResponse.json({ error: "Escreva um comentário de até 5.000 caracteres." }, { status: 400 });
+    // INTERNAL messages never pass through the external provider or count as a customer reply.
+    await prisma.$transaction(async tx => {
+      const currentId = await resolveWhatsappTicketId(id, member.organizationId, tx);
+      const now = new Date();
+      await tx.serviceMessage.create({ data: { ticketId: currentId, direction: "INTERNAL", fromName: member.user.name || member.user.email, fromEmail: member.user.email, toEmails: [], textBody: content, receivedAt: now, providerMetadata: { type: "WHATSAPP_COMMENT", accountPhone: current.recipientEmail?.split(":").at(-1) || null, userId: member.userId } } });
+      await tx.serviceTicket.update({ where: { id: currentId, mergedIntoId: null }, data: { updatedAt: now } });
+      await tx.serviceTicketHistory.create({ data: { ticketId: currentId, userId: member.userId, type: "WHATSAPP_COMMENTED", message: "Comentário interno adicionado à conversa." } });
+    });
   } else if (action === "reply") {
     if (occupiedByAnother && !canManage) {
       return NextResponse.json(

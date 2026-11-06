@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),connection:vi.fn(),request:vi.fn(),lock:vi.fn(),save:vi.fn(),update:vi.fn(),transaction:vi.fn()}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("@/modules/whatsapp/uazapi-server",()=>({whatsappConnection:m.connection}));
+vi.mock("@/modules/purchase-invoices/server/crypto",()=>({decryptIntegrationSecret:()=>"protected-token"}));
+vi.mock("@/modules/whatsapp/uazapi",async importOriginal=>({...await importOriginal<typeof import('@/modules/whatsapp/uazapi')>(),uazapiRequest:m.request}));
+vi.mock("@/lib/prisma",()=>({prisma:{$transaction:m.transaction}}));
+import {POST} from "./route";
+const post=(body:unknown={name:'Contato',number:'+55 (61) 99999-1234'})=>POST(new Request('https://hub.test/api/whatsapp/contacts',{method:'POST',body:JSON.stringify(body)}));
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:'org',role:'OPERATOR'});m.permission.mockResolvedValue({canEdit:true});m.connection.mockResolvedValue({id:'c',instanceId:'i',phone:'5511',status:'CONNECTED',serverUrl:'https://test.uazapi.com',tokenEncrypted:'encrypted'});m.request.mockResolvedValue({success:true,contact:{jid:'5561999991234@s.whatsapp.net'}});m.lock.mockResolvedValue([{id:'c'}]);m.transaction.mockImplementation(async fn=>fn({$queryRaw:m.lock,whatsAppDirectorySync:{findUnique:async()=>null},whatsAppDirectoryEntry:{upsert:m.save},serviceTicket:{updateMany:m.update}}));});
+it('rejects clients and users without edit permission',async()=>{m.member.mockResolvedValueOnce({role:'CLIENT'});expect((await post()).status).toBe(403);m.permission.mockResolvedValueOnce({canEdit:false});expect((await post()).status).toBe(403);expect(m.request).not.toHaveBeenCalled();});
+it('uses the documented contact/add payload and stores only the confirmed account-scoped contact',async()=>{expect((await post()).status).toBe(200);expect(m.request.mock.calls[0]).toEqual(['https://test.uazapi.com','protected-token','/contact/add',{name:'Contato',number:'5561999991234'}]);expect(m.save.mock.calls[0][0].create).toMatchObject({organizationId:'org',connectionId:'c',accountPhone:'5511',kind:'CONTACT',externalId:'5561999991234@s.whatsapp.net'});});
+it('does not invent a local success after provider rejection or an account change',async()=>{m.request.mockResolvedValueOnce({success:false});expect((await post()).status).toBe(502);expect(m.save).not.toHaveBeenCalled();m.lock.mockResolvedValue([]);expect((await post()).status).toBe(502);expect(m.save).not.toHaveBeenCalled();});
+it('rejects a disconnected account before contacting the provider',async()=>{m.connection.mockResolvedValue({status:'DISCONNECTED',phone:'5511'});expect((await post()).status).toBe(409);expect(m.request).not.toHaveBeenCalled();});

@@ -51,7 +51,9 @@
 :global([data-mantine-color-scheme="dark"]) .outbound .bubble { --bubble-color: #005c4b; }
 :global([data-mantine-color-scheme="dark"]) .internal .bubble { --bubble-color: #3e3824; }
 .messageBody { white-space: pre-wrap; overflow-wrap: anywhere; }
-.composer { border-top: 1px solid var(--fortuno-line); padding: 12px 15px; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
+.composer { border-top: 1px solid var(--fortuno-line); padding: 12px 15px; display: grid; grid-template-columns: auto 1fr auto; align-items: end; gap: 10px; }
+.composerTools { display: flex; gap: 3px; align-items: center; padding-bottom: 4px; }
+.commentComposer { background: var(--mantine-color-yellow-light); border-top-color: var(--mantine-color-yellow-5); }
 .resolvedBar { min-height: 67px; border-top: 1px solid var(--fortuno-line); padding: 12px 16px; background: var(--fortuno-surface-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .testNotice { background: var(--fortuno-surface-soft); border-color: var(--fortuno-line); }
 @media (max-width: 1180px) {

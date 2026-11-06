@@ -36,6 +36,8 @@ import {
   IconSend,
   IconStar,
   IconUsers,
+  IconNotes,
+  IconLock,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatInfoDrawer } from "@/modules/whatsapp/chat-info-drawer";
@@ -47,6 +49,9 @@ import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
 import { ChatAvatar } from "@/modules/whatsapp/chat-avatar";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
+import { WhatsAppNotificationToggle } from "@/modules/whatsapp/notification-toggle";
+import { WhatsAppQuickReplies } from "@/modules/whatsapp/quick-replies";
+import { SaveWhatsAppContact } from "@/modules/whatsapp/save-contact";
 import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
 import styles from "./whatsapp.module.css";
 
@@ -208,6 +213,7 @@ export default function WhatsAppPage() {
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [connectionSettingsOpened, setConnectionSettingsOpened] = useState(false);
   const [reply, setReply] = useState("");
+  const [commentMode,setCommentMode]=useState(false),[comment,setComment]=useState(""),[quickRepliesOpened,setQuickRepliesOpened]=useState(false);
   const [historySync, setHistorySync] = useState<HistorySync | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
   const filterKey = JSON.stringify([view, chatKind, chatStatus, search.trim(), onlyUnread]);
@@ -222,6 +228,7 @@ export default function WhatsAppPage() {
   // Opening a conversation is an explicit user action. List sorting/filtering and
   // unread updates must never replace the conversation currently being read.
   const selectedId = managementSelection || preferredId;
+  useEffect(()=>{const timer=setTimeout(()=>{setCommentMode(false);setComment("");},0);return()=>clearTimeout(timer);},[selectedId]);
   const selectedRef = useRef<string | null>(null);
   const sendingReply = useRef(false);
   const detailCache = useRef(new Map<string, TicketDetail>());
@@ -465,23 +472,24 @@ export default function WhatsAppPage() {
   }
 
   async function sendReply() {
-    const content = reply.trim(), id = selectedId;
+    const content = (commentMode?comment:reply).trim(), id = selectedId;
     if (!content || !id || saving || sendingReply.current) return;
     sendingReply.current = true;
-    setReply("");
+    if(commentMode)setComment("");else setReply("");
     const pendingId = "pending:" + crypto.randomUUID();
     const previous = detailCache.current.get(id) || detail;
     if (previous) {
-      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, direction: "OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: "accepted", attachments: []}]};
+      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, direction: commentMode?"INTERNAL":"OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: commentMode?null:"accepted", attachments: []}]};
       detailCache.current.set(id, optimistic);
       setDetail(optimistic);
     }
     try {
-      const sent = await mutate({ action: "reply", content }, "Resposta enviada.");
+      const sent = await mutate({ action: commentMode?"comment":"reply", content }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
       if (!sent) {
         const cached = detailCache.current.get(id);
         if (cached) {
-          const failed = {...cached, messages: cached.messages.map(message => message.id === pendingId ? {...message, deliveryStatus: "unconfirmed"} : message)};
+          const failed = {...cached, messages: commentMode?cached.messages.filter(message=>message.id!==pendingId):cached.messages.map(message => message.id === pendingId ? {...message, deliveryStatus: "unconfirmed"} : message)};
+          if(commentMode&&selectedRef.current===id)setComment(content);
           detailCache.current.set(id, failed);
           if (selectedRef.current === id) setDetail(failed);
         }
@@ -571,6 +579,8 @@ export default function WhatsAppPage() {
               {bootstrap?.mode === "CONNECTED" ? "Conectado" : "WhatsApp desconectado"}
             </Badge>
             {section === "INBOX" && syncError && <Text size="xs" c="orange">Reconectando atualização automática…</Text>}
+            {bootstrap&&<WhatsAppNotificationToggle/>}
+            {connected&&bootstrap?.canEdit&&<Button variant="subtle" size="xs" leftSection={<IconNotes size={16}/>} onClick={()=>setQuickRepliesOpened(true)}>Mensagens padrão</Button>}
             {connected && historySync && ["PENDING", "RUNNING", "IMPORTING"].includes(historySync.status) && <Badge color="teal" variant="light">Sincronizando histórico…</Badge>}
             {connected && historySync?.status === "FAILED" && <Text size="xs" c="orange">Histórico pendente de atualização</Text>}
           </Group>
@@ -661,6 +671,7 @@ export default function WhatsAppPage() {
           ) : selectedId && detail?.id === selectedId ? (
             <>
               <div className={styles.detailHeader}>
+                {bootstrap?.canEdit&&/^wa-contact:\d+$/.test(detail.senderEmail)&&<SaveWhatsAppContact key={detail.id} compact initialName={detail.senderName||""} initialNumber={detail.senderEmail.slice(11)} onSaved={()=>{void loadList();}}/>}
                 <UnstyledButton onClick={() => setContactInfoId(detail.id)} aria-label="Ver informações da conversa"><Group gap="sm" wrap="nowrap">
                 <ChatAvatar id={detail.id} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} />
                 <div>
@@ -715,15 +726,20 @@ export default function WhatsAppPage() {
 
               <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} />
 
-              {detail.status !== "RESOLVED" ? (
-                <div className={styles.composer}>
+              {(detail.status !== "RESOLVED"||commentMode) ? (
+                <div className={`${styles.composer} ${commentMode?styles.commentComposer:""}`}>
+                  <div className={styles.composerTools}><Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>setCommentMode(v=>!v)}><IconLock size={18}/></ActionIcon></Tooltip></div>
                   <Textarea
                     autosize
                     minRows={1}
                     maxRows={5}
-                    placeholder={bootstrap?.mode === "TEST" ? "Escreva uma resposta para registrar no teste..." : "Escreva uma resposta..."}
-                    value={reply}
-                    onChange={(event) => setReply(event.currentTarget.value)}
+                    aria-label={commentMode?"Comentário interno":"Mensagem para o cliente"}
+                    description={commentMode?"Comentário interno · somente a equipe vê · não enviado ao cliente":undefined}
+                    placeholder={commentMode?"Escreva um comentário para a equipe...":"Escreva uma resposta..."}
+                    value={commentMode?comment:reply}
+                    maxLength={5000}
+                    disabled={!bootstrap?.canEdit||Boolean(detail.assignedTo&&detail.assignedTo.id!==bootstrap.currentUser.id&&!bootstrap.canManage)}
+                    onChange={(event) => commentMode?setComment(event.currentTarget.value):setReply(event.currentTarget.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -731,8 +747,8 @@ export default function WhatsAppPage() {
                       }
                     }}
                   />
-                  <Tooltip label="Enviar resposta">
-                    <ActionIcon size={44} radius="xl" color="green" loading={saving} disabled={!reply.trim()} onClick={sendReply}>
+                  <Tooltip label={commentMode?"Salvar comentário interno":"Enviar resposta"}>
+                    <ActionIcon aria-label={commentMode?"Salvar comentário interno":"Enviar resposta"} size={44} radius="xl" color={commentMode?"yellow":"green"} loading={saving} disabled={!(commentMode?comment:reply).trim()||!bootstrap?.canEdit||Boolean(detail.assignedTo&&detail.assignedTo.id!==bootstrap.currentUser.id&&!bootstrap.canManage)} onClick={sendReply}>
                       <IconSend size={19} />
                     </ActionIcon>
                   </Tooltip>
@@ -740,6 +756,7 @@ export default function WhatsAppPage() {
               ) : (
                 <div className={styles.resolvedBar}>
                   <Text size="sm" fw={700}>Atendimento finalizado</Text>
+                  {bootstrap?.canEdit&&<Button variant="subtle" size="xs" leftSection={<IconLock size={15}/>} onClick={()=>setCommentMode(true)}>Comentário interno</Button>}
                   <Group gap={5}>
                     <Text size="xs" c="dimmed">Registrar satisfação:</Text>
                     {[1, 2, 3, 4, 5].map((score) => (
@@ -774,6 +791,7 @@ export default function WhatsAppPage() {
       )}
 
       {contactInfoId && detail?.id === contactInfoId && selectedId === contactInfoId && <ChatInfoDrawer key={contactInfoId} id={contactInfoId} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} onClose={() => setContactInfoId(null)}/>}
+      {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} clients={bootstrap.clients} operators={bootstrap.members} clientId={detail.client?.id || null} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
       <Modal opened={connectionSettingsOpened && connected} onClose={() => setConnectionSettingsOpened(false)} title="Configuração do WhatsApp" size="xl" centered><UazapiConnection onStatus={onConnectionStatus} /></Modal>

@@ -21,3 +21,16 @@ it("sends the logged-in operator's signature while retaining the operator as the
   expect(m.sent.mock.calls[0][0].body).toBe("*Isabella Lago*\nEssa não foi efetuada.");
   expect(m.created.mock.calls[0][0].data).toMatchObject({ fromName: "Isabella Lago", textBody: "Essa não foi efetuada." });
 });
+it("stores a private comment without sending to Uazapi, assigning the call or recording a customer response",async()=>{
+  expect((await patch({action:"comment",content:"Conferir com o financeiro."})).status).toBe(200);
+  expect(m.sent).not.toHaveBeenCalled();
+  expect(m.created.mock.calls[0][0].data).toMatchObject({direction:"INTERNAL",toEmails:[],textBody:"Conferir com o financeiro.",fromName:"Isabella Lago",providerMetadata:{accountPhone:"5511",type:"WHATSAPP_COMMENT"}});
+  expect(m.updated.mock.calls[0][0].data).not.toHaveProperty("firstResponseAt");
+  expect(m.updated.mock.calls[0][0].data).not.toHaveProperty("lastMessageAt");
+  expect(m.updated.mock.calls[0][0].data).not.toHaveProperty("assignedToId");
+});
+it("rejects blank or oversized private comments",async()=>{
+  expect((await patch({action:"comment",content:"   "})).status).toBe(400);
+  expect((await patch({action:"comment",content:"x".repeat(5001)})).status).toBe(400);
+  expect(m.created).not.toHaveBeenCalled();expect(m.sent).not.toHaveBeenCalled();
+});

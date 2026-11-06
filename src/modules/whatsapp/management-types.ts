@@ -1,10 +1,17 @@
 export type ManagementAgent = { id: string | null; name: string; total: number; open: number; resolved: number };
 export type WhatsAppManagementData = {
+  cards: Array<ManagementConversation>;
+  presence: Array<{ userId: string; lastSeenAt: string | null }>;
+  portraits: Array<{ id: string; avatar: string | null }>;
+  areas: Array<{ area: string; open: number; resolved: number; total: number; queue: number }>;
+  clients: Array<{ id: string | null; name: string; open: number; resolved: number; total: number }>;
+  metrics: { averageFirstResponseSeconds: number | null; averageResolutionSeconds: number | null; firstResponseSample: number; resolutionSample: number };
   summary: { total: number; open: number; resolved: number; queue: number };
   agents: ManagementAgent[];
   tickets: Array<{ id: string; senderName: string | null; subject: string; senderEmail: string; snippet: string | null; status: string; lastMessageAt: string; receivedAt: string; client: { id: string; name: string } | null; assignedTo: { id: string; name: string | null; email: string } | null }>;
   total: number; page: number; pageSize: number; updatedAt: string;
 };
+export type ManagementConversation = WhatsAppManagementData["tickets"][number] & { assignedToId: string | null; routingArea: string; unreadCount: number };
 export function summarizeAssignments(groups: Array<{ assignedToId: string | null; status: string; _count: { _all: number } }>, members: Array<{ id: string; name: string | null; email: string }>) {
   const agents = new Map<string, ManagementAgent>(members.map(member => [member.id, { id: member.id, name: member.name || member.email, total: 0, open: 0, resolved: 0 }]));
   agents.set("QUEUE", { id: null, name: "Sem responsável", total: 0, open: 0, resolved: 0 });

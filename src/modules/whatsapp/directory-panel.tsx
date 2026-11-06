@@ -4,6 +4,7 @@ import {useDebouncedValue} from "@mantine/hooks";
 import {Alert,Badge,Button,Center,Group,Loader,Pagination,Paper,ScrollArea,SegmentedControl,Stack,Table,Text,TextInput} from "@mantine/core";
 import {IconMessageCircle,IconRefresh,IconSearch} from "@tabler/icons-react";
 import {ChatAvatar} from "./chat-avatar";
+import {SaveWhatsAppContact} from "./save-contact";
 type Entry={id:string;displayName:string;externalId:string;kind:string};
 type Result={accountLastDigits?:string;entries:Entry[];total:number;contacts:number;groups:number;sync:{status:string;lastError:string|null;completedAt:string|null;phase:string}|null};
 export function WhatsAppDirectory({canEdit,onOpenTicket}:{canEdit:boolean;onOpenTicket:(id:string)=>void}){
@@ -23,7 +24,7 @@ export function WhatsAppDirectory({canEdit,onOpenTicket}:{canEdit:boolean;onOpen
  async function open(entry:Entry){if(opening)return;setOpening(entry.id);try{const response=await fetch("/api/whatsapp/directory/"+encodeURIComponent(entry.id)+"/open",{method:"POST"});const body=await response.json();if(!response.ok)throw new Error(body.error);onOpenTicket(body.ticketId);}catch(error){setError(error instanceof Error?error.message:"Não foi possível abrir a conversa.");}finally{setOpening(null);}}
  return <Paper withBorder radius="lg" p="lg"><Stack>
   <Group justify="space-between"><Group><Text fw={800} size="lg">Contatos e grupos</Text><Badge>{result?.contacts||0} contatos salvos</Badge><Badge color="violet">{result?.groups||0} grupos</Badge></Group>{canEdit&&<Button variant="light" leftSection={<IconRefresh size={16}/>} loading={syncing} onClick={sync}>Atualizar agenda</Button>}</Group>
-  {result?.accountLastDigits&&<Text size="sm" c="dimmed">Agenda do WhatsApp conectado · final {result.accountLastDigits}</Text>}
+  <Group justify="space-between">{result?.accountLastDigits&&<Text size="sm" c="dimmed">Agenda do WhatsApp conectado · final {result.accountLastDigits}</Text>}{canEdit&&<SaveWhatsAppContact onSaved={()=>void load()}/>}</Group>
   <Group><TextInput aria-label="Buscar contatos e grupos" placeholder="Buscar por nome ou número" leftSection={<IconSearch size={16}/>} value={search} onChange={event=>{setSearch(event.currentTarget.value);setPage(1);}} style={{flex:1,minWidth:220}}/><SegmentedControl value={kind} onChange={value=>{setKind(value);setPage(1);}} data={[{value:"ALL",label:"Todos"},{value:"CONTACT",label:"Contatos"},{value:"GROUP",label:"Grupos"}]}/></Group>
   {error&&<Alert color="red">{error}</Alert>}
   {result?.sync?.lastError&&<Alert color="orange">{result.sync.lastError}</Alert>}

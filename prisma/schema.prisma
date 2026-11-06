@@ -2190,6 +2190,43 @@ model WhatsAppReadState {
   @@id([organizationId, userId, ticketId])
 }
 
+model WhatsAppQuickReply {
+  id String @id @default(cuid())
+  organizationId String
+  title String
+  body String
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([organizationId, title])
+}
+
+model WhatsAppOperatorPreference {
+  organizationId String
+  userId String
+  notificationsMuted Boolean @default(false)
+  lastSeenAt DateTime?
+  @@id([organizationId, userId])
+}
+
+model WhatsAppBatchDelivery {
+  id String @id @default(cuid())
+  organizationId String
+  userId String
+  batchId String
+  ticketId String
+  accountRecipient String
+  recipientName String
+  body String
+  status String @default("PENDING")
+  error String?
+  externalMessageId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([organizationId, userId, batchId, ticketId])
+  @@index([organizationId, userId, batchId])
+}
+
 model WhatsAppDirectoryEntry {
   id String @id @default(cuid())
   organizationId String

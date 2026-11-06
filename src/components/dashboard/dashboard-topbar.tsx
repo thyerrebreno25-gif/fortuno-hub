@@ -81,6 +81,7 @@ export function DashboardTopbar() {
         if(viewerKey.current !== scope){for(const id of activePopups.current)toastNotifications.hide(id);activePopups.current=[];viewerKey.current=scope;shownMemory.current=[];readMemory.current=[];}
         storedRead=[...new Set([...storedRead,...readMemory.current])].slice(-1000);
         storedShown=[...new Set([...storedShown,...shownMemory.current])].slice(-1000);
+        if(payload.whatsappNotificationsMuted){storedShown=[...new Set([...storedShown,...payload.items.filter((item:NotificationItem)=>item.href.startsWith("/whatsapp")).map((item:NotificationItem)=>item.id)])].slice(-1000);activePopups.current=activePopups.current.filter(id=>{if(id.includes(":whatsapp-message-")){toastNotifications.hide(id);return false;}return true;});}
         readMemory.current=storedRead;setReadIds(current=>current.length===storedRead.length&&current.every((id,index)=>id===storedRead[index])?current:storedRead);
         const batch=popupBatch<NotificationItem>(payload.items,storedShown,storedRead);
         shownMemory.current=batch.seen;
@@ -117,11 +118,14 @@ export function DashboardTopbar() {
     };
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("fortuno:notifications-refresh",handleVisibility);
+    const muteWhatsApp=(event:Event)=>{if((event as CustomEvent<{muted:boolean}>).detail?.muted){activePopups.current=activePopups.current.filter(id=>{if(id.includes(":whatsapp-message-")){toastNotifications.hide(id);return false;}return true;});}};
+    window.addEventListener("fortuno:whatsapp-notifications-muted",muteWhatsApp);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("fortuno:notifications-refresh",handleVisibility);
+      window.removeEventListener("fortuno:whatsapp-notifications-muted",muteWhatsApp);
     };
   }, [loadNotifications]);
 

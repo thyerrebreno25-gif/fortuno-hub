@@ -100,7 +100,8 @@ export async function GET() {
     const permissions = await getRolePermissions(member.organizationId, member.role);
     const [meetingItems,activityItems]=await Promise.all([permissions.MEETINGS.canView ? meetingNotifications(member.organizationId,member.userId,now) : [],permissions.OPERATIONS.canView ? activityNotifications(member.organizationId,member.userId,now) : []]);
     const whatsappItems = permissions.WHATSAPP.canView ? await whatsappNotifications(member.organizationId, member.userId, SERVICE_CENTER_MANAGER_ROLES.has(member.role), now) : [];
-    const items: NotificationItem[] = [...meetingItems,...activityItems,...whatsappItems];
+    const whatsappPreference = permissions.WHATSAPP.canView ? await prisma.whatsAppOperatorPreference.findUnique({ where: { organizationId_userId: { organizationId: member.organizationId, userId: member.userId } }, select: { notificationsMuted: true } }) : null;
+    const items: NotificationItem[] = [...meetingItems,...activityItems,...whatsappItems.map(item => ({ ...item, popup: !whatsappPreference?.notificationsMuted }))];
 
     for (const item of imports) {
       const isFailed = item.status === "FAILED";
@@ -162,6 +163,7 @@ export async function GET() {
 
     return NextResponse.json({
       viewerKey: `${member.organizationId}:${member.userId}`,
+      whatsappNotificationsMuted: Boolean(whatsappPreference?.notificationsMuted),
       items: items.slice(0, 60),
       total: items.length,
     });

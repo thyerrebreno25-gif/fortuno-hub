@@ -20,7 +20,7 @@ export async function transferWhatsappTicket(current: Current, actor: Actor, can
   const clientId = input.clientId || current.clientId;
   const client = clientId ? await prisma.client.findFirst({ where: { id: clientId, organizationId: actor.organizationId, active: true }, select: { id: true, name: true, serviceSquad: true, payableResponsibleId: true, receivableResponsibleId: true, generalResponsibleId: true, operationLeaderId: true } }) : null;
   if (clientId && !client) throw new WhatsAppTransferError(400, "Cliente inválido ou inativo.");
-  const area = input.mode === "AREA" ? input.routingArea : current.routingArea;
+  const area = input.routingArea || current.routingArea;
   if (input.mode === "AREA" && (!client || !input.routingArea)) throw new WhatsAppTransferError(400, "Selecione o cliente e a área para identificar o responsável.");
   const assignedToId = input.mode === "AREA" && client && area ? responsibleForTransfer(client, area) : input.assignedToId;
   if (!assignedToId) throw new WhatsAppTransferError(400, input.mode === "AREA" ? "O cliente não possui responsável cadastrado para esta área. Atualize o cadastro ou selecione um operador." : "Selecione o operador de destino.");

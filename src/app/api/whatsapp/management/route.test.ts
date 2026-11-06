@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),group:vi.fn(),members:vi.fn(),tickets:vi.fn(),count:vi.fn(),people:vi.fn()}));
-vi.mock("@/lib/prisma",()=>({prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },serviceTicket:{groupBy:m.group,findMany:m.tickets,count:m.count},organizationMember:{findMany:m.members},user:{findMany:m.people}}}));
+vi.mock("@/lib/prisma",()=>({prisma: { $queryRaw:vi.fn(async()=>[]),client:{findMany:vi.fn(async()=>[])},whatsAppOperatorPreference:{findMany:vi.fn(async()=>[])},whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },serviceTicket:{groupBy:m.group,findMany:m.tickets,count:m.count},organizationMember:{findMany:m.members},user:{findMany:m.people}}}));
 vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
 import { GET } from "./route";
 const get=(params='')=>GET(new Request('https://hub.test/api/whatsapp/management'+params));
