@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import {idleSessionDecision,visibleWorkspaceKeepsSession,WARNING_BEFORE_MS} from "@/modules/session/idle-policy";
 import { createClient } from "@/lib/supabase/client";
 import { SESSION_KEEP_ALIVE_EVENT } from "@/modules/session/client-activity";
 
-const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
-const WARNING_BEFORE_MS = 2 * 60 * 1000;
-const WARNING_AT_MS = INACTIVITY_LIMIT_MS - WARNING_BEFORE_MS;
 const ACTIVITY_WRITE_THROTTLE_MS = 15 * 1000;
 const STORAGE_KEY = "fortuno:last-activity";
 
 export function SessionTimeout() {
   const supabase = createClient();
+  const pathname=usePathname();
   const [warningOpen, setWarningOpen] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(
     Math.floor(WARNING_BEFORE_MS / 1000),
@@ -68,6 +68,7 @@ export function SessionTimeout() {
   }, [persistActivity]);
 
   useEffect(() => {
+    if(pathname!=="/painel-gerencial")tvModeRef.current=false;
     const stored = Number(
       localStorage.getItem(STORAGE_KEY),
     );
@@ -128,34 +129,18 @@ export function SessionTimeout() {
 
     const onTvMode=(event:Event)=>{tvModeRef.current=Boolean((event as CustomEvent<{active:boolean}>).detail?.active)&&window.location.pathname==="/painel-gerencial";if(tvModeRef.current)markActivity();};
     window.addEventListener("fortuno:tv-mode",onTvMode);
+    const onVisibleWorkspace=()=>{if(visibleWorkspaceKeepsSession(pathname,document.visibilityState,tvModeRef.current))markActivity();};
+    document.addEventListener("visibilitychange",onVisibleWorkspace);
+    const initialPulse=window.setTimeout(onVisibleWorkspace,0);
     const interval = window.setInterval(() => {
-      const now = Date.now();
-      if (keepAliveCountRef.current > 0 || (tvModeRef.current && document.visibilityState==="visible" && window.location.pathname==="/painel-gerencial")) {
-        persistActivity(now);
-        setWarningOpen(false);
-        setRemainingSeconds(Math.floor(WARNING_BEFORE_MS / 1000));
-        return;
+      const now=Date.now();
+      const decision=idleSessionDecision({now,lastActivity:lastActivityRef.current,pathname,visibilityState:document.visibilityState,tvMode:tvModeRef.current,keepAliveCount:keepAliveCountRef.current});
+      if(decision.action==="KEEP_ALIVE"){
+        persistActivity(now);setWarningOpen(false);setRemainingSeconds(decision.remainingSeconds);return;
       }
-      const idleFor =
-        now - lastActivityRef.current;
-
-      if (idleFor >= INACTIVITY_LIMIT_MS) {
-        void signOut();
-        return;
-      }
-
-      if (idleFor >= WARNING_AT_MS) {
-        const seconds = Math.max(
-          0,
-          Math.ceil(
-            (INACTIVITY_LIMIT_MS - idleFor) / 1000,
-          ),
-        );
-
-        setRemainingSeconds(seconds);
-        setWarningOpen(true);
-      }
-    }, 1000);
+      if(decision.action==="EXPIRE"){void signOut();return;}
+      if(decision.action==="WARN"){setRemainingSeconds(decision.remainingSeconds);setWarningOpen(true);}
+    },1000);
 
     return () => {
       activityEvents.forEach((eventName) => {
@@ -176,9 +161,11 @@ export function SessionTimeout() {
       );
 
       window.removeEventListener("fortuno:tv-mode",onTvMode);
+      document.removeEventListener("visibilitychange",onVisibleWorkspace);
+      window.clearTimeout(initialPulse);
       window.clearInterval(interval);
     };
-  }, [markActivity, persistActivity, signOut]);
+  }, [markActivity, persistActivity, signOut, pathname]);
 
   if (!warningOpen) return null;
 
