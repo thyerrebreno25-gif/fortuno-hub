@@ -1,9 +1,7 @@
 "use client";
 import { Alert, Avatar, Badge, Button, Group, Loader, Pagination, Paper, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { IconChartBar, IconInbox, IconMessageCircle, IconRefresh, IconSearch } from "@tabler/icons-react";
-import { useEffect, useState, type ReactNode } from "react";
-import { WhatsAppOperationStart } from "@/modules/whatsapp/operation-start-dialog";
-import { WhatsAppSurveySettings } from "@/modules/whatsapp/survey-panel";
+import { useEffect, useState } from "react";
 import { WhatsAppClientLinks } from "./client-links";
 import { ChatAvatar } from "@/modules/whatsapp/chat-avatar";
 import type { ManagementConversation, WhatsAppManagementData } from "@/modules/whatsapp/management-types";
@@ -17,7 +15,7 @@ function Conversations({ rows, onOpen }: { rows: ManagementConversation[]; onOpe
 function Counts({ title, rows, onChoose }: { title:string; rows:Array<{id:string|null;name:string;open:number;resolved:number;total:number}>; onChoose?:(id:string)=>void }) {
   return <Paper withBorder p="md" radius="md"><Text fw={800} mb="sm">{title}</Text><div className={styles.clientSummary}><Table><Table.Thead><Table.Tr><Table.Th>Nome</Table.Th><Table.Th>Abertos</Table.Th><Table.Th>Finalizados</Table.Th><Table.Th>Total</Table.Th>{onChoose&&<Table.Th/>}</Table.Tr></Table.Thead><Table.Tbody>{rows.map(r=><Table.Tr key={r.id||"NONE"}><Table.Td>{r.name}</Table.Td><Table.Td>{r.open}</Table.Td><Table.Td>{r.resolved}</Table.Td><Table.Td>{r.total}</Table.Td>{onChoose&&<Table.Td><Button size="compact-xs" variant="subtle" onClick={()=>onChoose(r.id||"QUEUE")}>Ver</Button></Table.Td>}</Table.Tr>)}</Table.Tbody></Table></div></Paper>;
 }
-export function WhatsAppManagement({ onOpenTicket, actions, canEdit }: { onOpenTicket:(id:string)=>void; actions?:ReactNode; canEdit:boolean }) {
+export function WhatsAppManagement({ onOpenTicket, canEdit }: { onOpenTicket:(id:string)=>void; canEdit:boolean }) {
   const [data,setData]=useState<WhatsAppManagementData|null>(null),[tab,setTab]=useState<string|null>("ACTIVE"),[assignee,setAssignee]=useState("ALL"),[status,setStatus]=useState("OPEN"),[search,setSearch]=useState(""),[page,setPage]=useState(1),[refresh,setRefresh]=useState(0),[loading,setLoading]=useState(true),[error,setError]=useState<string|null>(null);
   useEffect(()=>{
     const controller=new AbortController();let busy=false;
@@ -27,7 +25,7 @@ export function WhatsAppManagement({ onOpenTicket, actions, canEdit }: { onOpenT
   useEffect(()=>{const refresh=()=>setRefresh(v=>v+1);window.addEventListener("fortuno:operation-started",refresh);return()=>window.removeEventListener("fortuno:operation-started",refresh);},[]);
   const choose=(id:string)=>{setAssignee(id);setPage(1);setTab("SUMMARY");};const cards=data?.cards||[];
   return <Stack gap="md" className={styles.management}>
-    <Group>{actions}<WhatsAppSurveySettings canEdit={canEdit}/>{canEdit&&<WhatsAppOperationStart/>}</Group><Group justify="space-between"><div><Text fw={850} size="xl">Gestão dos atendimentos</Text><Text size="xs" c="dimmed">{data?'Atualizado às '+new Date(data.updatedAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo'}):'Carregando equipe'} · atualização a cada 15 segundos</Text></div><Button variant="light" leftSection={<IconRefresh size={16}/>} loading={loading} onClick={()=>setRefresh(v=>v+1)}>Atualizar</Button></Group>
+    <Group justify="space-between"><div><Text fw={850} size="xl">Gestão dos atendimentos</Text><Text size="xs" c="dimmed">{data?'Atualizado às '+new Date(data.updatedAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo'}):'Carregando equipe'} · atualização a cada 15 segundos</Text></div><Button variant="light" leftSection={<IconRefresh size={16}/>} loading={loading} onClick={()=>setRefresh(v=>v+1)}>Atualizar</Button></Group>
     {error&&<Alert color="red">{error}</Alert>}{!data&&loading?<Group><Loader size="sm"/><Text>Carregando atendimentos…</Text></Group>:data&&<>
       <SimpleGrid cols={{base:2,md:5}}>{[{label:'Todos os chamados',value:data.summary.total},{label:'Em aberto',value:data.summary.open},{label:'Na fila',value:data.summary.queue},{label:'Finalizados',value:data.summary.resolved}].map(m=><Paper key={m.label} withBorder p="md" radius="md"><Text size="sm" c="dimmed">{m.label}</Text><Text fw={850} size="xl">{m.value}</Text></Paper>)}<WhatsAppClientLinks canEdit={canEdit} onOpenTicket={onOpenTicket}/></SimpleGrid>
       <Tabs value={tab} onChange={setTab} keepMounted={false}><Tabs.List><Tabs.Tab value="ACTIVE" leftSection={<IconMessageCircle size={17}/>}>Em atendimento</Tabs.Tab><Tabs.Tab value="QUEUE" leftSection={<IconInbox size={17}/>}>Filas de atendimento <Badge size="sm" ml={5}>{data.summary.queue}</Badge></Tabs.Tab><Tabs.Tab value="SUMMARY" leftSection={<IconChartBar size={17}/>}>Resumo</Tabs.Tab></Tabs.List>

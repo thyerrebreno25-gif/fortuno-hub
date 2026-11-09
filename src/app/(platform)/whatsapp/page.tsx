@@ -7,6 +7,7 @@ import {
   Group,
   Loader,
   Modal,
+  Menu,
   Select,
   Text,
   Textarea,
@@ -16,6 +17,10 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
+  IconDotsVertical,
+  IconSettings,
+  IconStar,
+  IconPlayerPlay,
   IconMaximize,
   IconMinimize,
   IconBrandWhatsapp,
@@ -48,6 +53,8 @@ import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
 import { WhatsAppNotificationToggle } from "@/modules/whatsapp/notification-toggle";
 import { WhatsAppQuickReplies } from "@/modules/whatsapp/quick-replies";
+import { WhatsAppSurveySettings } from "@/modules/whatsapp/survey-panel";
+import { WhatsAppOperationStart } from "@/modules/whatsapp/operation-start-dialog";
 import { WhatsAppFinalizeDialog } from "@/modules/whatsapp/finalize-dialog";
 import { SaveWhatsAppContact } from "@/modules/whatsapp/save-contact";
 import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
@@ -551,20 +558,36 @@ export default function WhatsAppPage() {
               <button type="button" className={section === "DIRECTORY" ? styles.sectionTabActive : ""} disabled={!connected} onClick={() => setSection("DIRECTORY")}><IconUsers size={18}/> Contatos e grupos</button>
               {bootstrap?.canViewManagement && <button type="button" className={section === "MANAGEMENT" ? styles.sectionTabActive : ""} onClick={() => setSection("MANAGEMENT")}><IconUsers size={18}/> Gestão</button>}
             </div>
-            <Badge color={bootstrap?.mode === "CONNECTED" ? "green" : "yellow"} variant="light">
-              {bootstrap?.mode === "CONNECTED" ? "Conectado" : "WhatsApp desconectado"}
-            </Badge>
             {section === "INBOX" && syncError && <Text size="xs" c="orange">Reconectando atualização automática…</Text>}
             {bootstrap&&<WhatsAppNotificationToggle/>}
-            {connected&&bootstrap?.canEdit&&<Button variant="subtle" size="xs" leftSection={<IconNotes size={16}/>} onClick={()=>setQuickRepliesOpened(true)}>Mensagens padrão</Button>}
             {connected && historySync && ["PENDING", "RUNNING", "IMPORTING"].includes(historySync.status) && <Badge color="teal" variant="light">Sincronizando histórico…</Badge>}
             {connected && historySync?.status === "FAILED" && <Text size="xs" c="orange">Histórico pendente de atualização</Text>}
           </Group>
         </div>
+        <Group gap={4} wrap="nowrap">
+          <Menu position="bottom-end" width={290} shadow="md" keepMounted>
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Opções do WhatsApp"><IconDotsVertical size={21}/></ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>Conexão</Menu.Label>
+              <Menu.Label><Badge color={connected ? "green" : "yellow"} variant="light">{connected ? "Conectado" : "WhatsApp desconectado"}</Badge></Menu.Label>
+              {connected && bootstrap?.canEdit && <Menu.Item leftSection={<IconNotes size={17}/>} onClick={()=>setQuickRepliesOpened(true)}>Mensagens padrão</Menu.Item>}
+              {section === "MANAGEMENT" && bootstrap?.canViewManagement && <>
+                <Menu.Divider/>
+                <Menu.Label>Gestão</Menu.Label>
+                {connected && bootstrap.canEdit && <Menu.Item leftSection={historyBusy ? <Loader size={17}/> : <IconRefresh size={17}/>} disabled={historyBusy} onClick={()=>void syncHistory()}>Atualizar conversas</Menu.Item>}
+                {bootstrap.canConfigureConnection && <Menu.Item leftSection={<IconSettings size={17}/>} onClick={()=>setConnectionSettingsOpened(true)}>Configurar WhatsApp</Menu.Item>}
+                <WhatsAppSurveySettings canEdit={bootstrap.canEdit} trigger={open=><Menu.Item leftSection={<IconStar size={17}/>} onClick={open}>Pesquisa de satisfação</Menu.Item>}/>
+                {bootstrap.canEdit && <WhatsAppOperationStart trigger={open=><Menu.Item leftSection={<IconPlayerPlay size={17}/>} onClick={open}>Preparar início da operação</Menu.Item>}/>}
+              </>}
+            </Menu.Dropdown>
+          </Menu>
         {connected && section === "INBOX" && <Tooltip label={focusMode ? "Restaurar visualização" : "Ampliar central"}><ActionIcon className={styles.focusToggle} size="lg" variant="subtle" aria-label={focusMode ? "Restaurar visualização" : "Ampliar central"} aria-pressed={focusMode} onClick={() => setFocusMode(value => !value)}>{focusMode ? <IconMinimize size={19}/> : <IconMaximize size={19}/>}</ActionIcon></Tooltip>}
+        </Group>
       </header>
 
-      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)} actions={<Group gap="xs">{connected && bootstrap.canEdit && <Button variant="light" color="teal" leftSection={<IconRefresh size={17}/>} loading={historyBusy} onClick={syncHistory}>Atualizar conversas</Button>}{bootstrap.canConfigureConnection && <Button variant="subtle" leftSection={<IconBrandWhatsapp size={17}/>} onClick={() => setConnectionSettingsOpened(true)}>Configurar WhatsApp</Button>}</Group>} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
+      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)}  onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
         <section data-whatsapp-workspace className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
         <aside className={styles.views} aria-label="Caixas e filtros">
           <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">CAIXAS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
