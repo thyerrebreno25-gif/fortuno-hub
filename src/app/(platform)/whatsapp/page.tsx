@@ -119,6 +119,7 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
   updatedAt?: string;
   messages: Array<{
     id: string;
+    sourceTicketId?: string;
     direction: "INBOUND" | "OUTBOUND" | "INTERNAL";
     fromName: string | null;
     textBody: string | null;
@@ -255,15 +256,15 @@ export default function WhatsAppPage() {
 
 
   const readMarkers = useRef(new Map<string, string>());
-  const markRead = useCallback(async (id: string, messageId: string) => {
+  const markRead = useCallback(async (id: string, messageId: string, sourceTicketId = id) => {
     if (messageId.startsWith("pending:") || selectedRef.current !== id || document.visibilityState !== "visible" || readMarkers.current.get(id) === messageId) return;
     readMarkers.current.set(id, messageId);
     try {
-      const response = await fetch('/api/whatsapp/' + encodeURIComponent(id) + '/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId }) });
+      const response = await fetch('/api/whatsapp/' + encodeURIComponent(sourceTicketId) + '/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId }) });
       const body = await readResponse<{ unreadCount: number }>(response);
       listRequest.current++;
       lastRevision.current = "";
-      setInbox(current => ({ ...current, tickets: current.tickets.map(ticket => ticket.id === id ? { ...ticket, unreadCount: body.unreadCount } : ticket) }));
+      setInbox(current => ({ ...current, tickets: current.tickets.map(ticket => ticket.id === sourceTicketId ? { ...ticket, unreadCount: body.unreadCount } : ticket) }));
     } catch { readMarkers.current.delete(id); }
   }, []);
 

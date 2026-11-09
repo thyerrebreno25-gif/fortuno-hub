@@ -1,11 +1,11 @@
 "use client";
 import { Button, Group, Image, Modal, Text } from "@mantine/core";
 import { IconArrowDown, IconDownload } from "@tabler/icons-react";
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mediaKind } from "./media";
 import styles from "@/app/(platform)/whatsapp/whatsapp.module.css";
 type Attachment = { id: string; name: string; mimeType: string | null };
-type Message = { id: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; attachments: Attachment[] };
+type Message = { id: string; sourceTicketId?: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; attachments: Attachment[] };
 const delivery: Record<string, string> = { accepted: "Enviando", sent: "Enviada", delivered: "Entregue", read: "Lida", failed: "Falha no envio" };
 function AttachmentPreview({ conversationId, attachment, message }: { conversationId: string; attachment: Attachment; message: string }) {
   const [opened, setOpened] = useState(false), [failed, setFailed] = useState(false);
@@ -20,7 +20,7 @@ function AttachmentPreview({ conversationId, attachment, message }: { conversati
     <Button component="a" href={src} target="_blank" rel="noreferrer" size="compact-xs" variant="subtle" color="gray" leftSection={<IconDownload size={13} />}>{kind === "file" ? attachment.name : kind === "audio" ? "Baixar áudio" : kind === "video" ? "Baixar vídeo" : "Baixar imagem"}</Button>
   </div>;
 }
-export const ChatMessages = memo(function ChatMessages({ conversationId, messages, senderName, hasOlder, loadingOlder, onLoadOlder, onRead }: { conversationId: string; messages: Message[]; senderName: string; hasOlder?: boolean; loadingOlder?: boolean; onLoadOlder?: () => void; onRead?: (id: string, messageId: string) => void }) {
+export const ChatMessages = memo(function ChatMessages({ conversationId, messages, senderName, hasOlder, loadingOlder, onLoadOlder, onRead }: { conversationId: string; messages: Message[]; senderName: string; hasOlder?: boolean; loadingOlder?: boolean; onLoadOlder?: () => void; onRead?: (id: string, messageId: string, sourceTicketId?:string) => void }) {
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const firstMessageId = messages[0]?.id;
   const prepend = useRef<{id:string;top:number;height:number}|null>(null);
@@ -47,17 +47,17 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    const visibleRead = () => { const el = viewport.current; if (lastConfirmed?.id && el && document.visibilityState === "visible" && el.scrollHeight - el.scrollTop - el.clientHeight < 90) onRead?.(conversationId, lastConfirmed.id); };
+    const visibleRead = () => { const el = viewport.current; if (lastConfirmed?.id && el && document.visibilityState === "visible" && el.scrollHeight - el.scrollTop - el.clientHeight < 90) onRead?.(conversationId, lastConfirmed.id, lastConfirmed.sourceTicketId); };
     const timer = setTimeout(visibleRead, 700);
     const el = viewport.current;
     el?.addEventListener("scroll", visibleRead, { passive: true });
     document.addEventListener("visibilitychange", visibleRead);
     window.addEventListener("focus", visibleRead);
     return () => { clearTimeout(timer); el?.removeEventListener("scroll", visibleRead); document.removeEventListener("visibilitychange", visibleRead); window.removeEventListener("focus", visibleRead); };
-  }, [conversationId, lastConfirmed?.id, onRead]);
+  }, [conversationId, lastConfirmed?.id, lastConfirmed?.sourceTicketId, onRead]);
   return <div className={styles.messagesFrame}>
     <div ref={viewport} className={styles.messages} role="log" aria-label="Mensagens da conversa" data-conversation-id={conversationId} onScroll={() => { const el = viewport.current; if (!el) return; sticky.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90; if (sticky.current) setHasNew(false); }}>
-      <div ref={content}>{hasOlder && <Group justify="center" py="sm"><Button variant="light" size="xs" loading={loadingOlder} onClick={() => { sticky.current = false; if (viewport.current) prepend.current = {id:conversationId,top:viewport.current.scrollTop,height:viewport.current.scrollHeight}; onLoadOlder?.(); }}>Carregar mensagens anteriores</Button></Group>}{messages.map(message=><MessageBubble key={message.id} message={message} conversationId={conversationId} senderName={senderName}/>)}</div>
+      <div ref={content}>{hasOlder && <Group justify="center" py="sm"><Button variant="light" size="xs" loading={loadingOlder} onClick={() => { sticky.current = false; if (viewport.current) prepend.current = {id:conversationId,top:viewport.current.scrollTop,height:viewport.current.scrollHeight}; onLoadOlder?.(); }}>Carregar mensagens anteriores</Button></Group>}{messages.map((message,index)=><Fragment key={message.id}>{message.sourceTicketId&&message.sourceTicketId!==messages[index-1]?.sourceTicketId&&message.sourceTicketId!==conversationId&&<Group justify="center" py="sm"><Text size="xs" c="dimmed">Histórico de atendimento anterior</Text></Group>}<MessageBubble message={message} conversationId={conversationId} senderName={senderName}/></Fragment>)}</div>
     </div>
     {hasNew && <Button className={styles.newMessages} size="xs" radius="xl" leftSection={<IconArrowDown size={14} />} onClick={() => { sticky.current = true; if (viewport.current) viewport.current.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" }); setHasNew(false); }}>Novas mensagens</Button>}
   </div>;
@@ -70,7 +70,7 @@ const MessageBubble=memo(function MessageBubble({message,conversationId,senderNa
           {message.direction==="INTERNAL"&&<Text size="xs" c="yellow.8" fw={750} mb={4}>Comentário interno · somente a equipe</Text>}
           <Text size="xs" fw={800} mb={4}>{message.fromName || (message.direction === "OUTBOUND" ? "Fortuno" : senderName)}</Text>
           {message.textBody && !(message.attachments.length && /^\[(Image|Audio|Video|Sticker|Document)Message\]$/.test(message.textBody)) && <Text size="sm" className={styles.messageBody}>{message.textBody}</Text>}
-          {message.attachments.map((attachment) => <AttachmentPreview key={attachment.id} conversationId={conversationId} attachment={attachment} message={message.textBody || ""} />)}
+          {message.attachments.map((attachment) => <AttachmentPreview key={attachment.id} conversationId={message.sourceTicketId||conversationId} attachment={attachment} message={message.textBody || ""} />)}
           <Group justify="flex-end" gap={6} mt={5}>{message.direction === "OUTBOUND" && message.deliveryStatus && <Text size="xs" c={["failed", "unconfirmed"].includes(message.deliveryStatus) ? "red" : "dimmed"}>{message.deliveryStatus === "unconfirmed" ? "Envio não confirmado · confira antes de reenviar" : delivery[message.deliveryStatus] || message.deliveryStatus}</Text>}<Text size="xs" c="dimmed">{messageTime.format(new Date(message.receivedAt))}</Text></Group>
         </div>
       </div>;

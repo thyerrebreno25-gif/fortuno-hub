@@ -3,14 +3,14 @@ import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {currentWhatsAppAccount} from "./account-scope";
 
-export type ConversationMessage={id:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
+export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
 type Person={id:string;name:string|null;email:string};
 export type ConversationSnapshot={
   id:string;subject:string;senderName:string|null;senderEmail:string;source:string;snippet:string|null;status:string;
   routingArea:string;routingReason:string|null;assignedAt:string|null;receivedAt:string;resolvedAt:string|null;
   firstResponseAt:string|null;lastMessageAt:string;updatedAt:string;
   client:{id:string;name:string;document:string|null;contaAzulConnection:{status:string;active:boolean;externalTenantName:string|null}|null}|null;
-  assignedTo:Person|null;messages:ConversationMessage[];history:never[];hasOlderMessages:boolean;
+  assignedTo:Person|null;messages:ConversationMessage[];history:never[];hasOlderMessages:boolean;previousTicketCount?:number;
 };
 export class ConversationCursorError extends Error {}
 type Account=Awaited<ReturnType<typeof currentWhatsAppAccount>>;
@@ -29,11 +29,15 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
       WHERE a.depth<4 AND NOT(t.id=ANY(a.path)) AND t."organizationId"=${organizationId} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${recipient}
     ), target AS (
       SELECT t.* FROM "ServiceTicket" t JOIN aliases a ON a.id=t.id WHERE t."mergedIntoId" IS NULL ORDER BY a.depth DESC LIMIT 1
+    ), thread_tickets AS (
+      SELECT h.id FROM "ServiceTicket" h JOIN target t ON h."senderEmail"=t."senderEmail"
+      WHERE h."organizationId"=${organizationId} AND h.source='WHATSAPP_API' AND h."recipientEmail"=${recipient}
+        AND (h.id=t.id OR (h.status::text='RESOLVED' AND h."isSpam"=false AND h."mergedIntoId" IS NULL AND h."createdAt"<=t."createdAt"))
     ), cursor_row AS (
-      SELECT m.id,m."receivedAt" FROM "ServiceMessage" m JOIN target t ON t.id=m."ticketId"
+      SELECT m.id,m."receivedAt" FROM "ServiceMessage" m JOIN thread_tickets t ON t.id=m."ticketId"
       WHERE m.id=${beforeId||null} AND (m."providerMetadata"->>'accountPhone'=${phone} OR m."externalMessageId" LIKE ${`uazapi:${phone}:%`})
     ), message_page AS (
-      SELECT m.* FROM "ServiceMessage" m JOIN target t ON t.id=m."ticketId"
+      SELECT m.* FROM "ServiceMessage" m JOIN thread_tickets t ON t.id=m."ticketId"
       WHERE (m."providerMetadata"->>'accountPhone'=${phone} OR m."externalMessageId" LIKE ${`uazapi:${phone}:%`})
         AND (${beforeId||null}::text IS NULL OR (m."receivedAt",m.id)<(SELECT "receivedAt",id FROM cursor_row))
       ORDER BY m."receivedAt" DESC,m.id DESC LIMIT 51
@@ -50,8 +54,9 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
         'updatedAt',to_char(t."updatedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
         'client',(SELECT jsonb_build_object('id',c.id,'name',c.name,'document',c.document,'contaAzulConnection',CASE WHEN ca.id IS NULL THEN NULL ELSE jsonb_build_object('status',ca.status,'active',ca.active,'externalTenantName',ca."externalTenantName") END) FROM "Client" c LEFT JOIN "ContaAzulConnection" ca ON ca."clientId"=c.id AND ca."organizationId"=${organizationId} WHERE c.id=t."clientId" AND c."organizationId"=${organizationId}),
         'assignedTo',(SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email) FROM "User" u WHERE u.id=t."assignedToId"),
+        'previousTicketCount',(SELECT GREATEST(COUNT(*)-1,0) FROM thread_tickets),
         'messages',COALESCE((SELECT jsonb_agg(jsonb_build_object(
-          'id',m.id,'direction',m.direction,'fromName',m."fromName",'textBody',m."textBody",'deliveryStatus',m."deliveryStatus",'receivedAt',to_char(m."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+          'id',m.id,'sourceTicketId',m."ticketId",'direction',m.direction,'fromName',m."fromName",'textBody',m."textBody",'deliveryStatus',m."deliveryStatus",'receivedAt',to_char(m."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
           'attachments',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'mimeType',a."mimeType",'size',a.size) ORDER BY a."createdAt",a.id) FROM "ServiceAttachment" a WHERE a."messageId"=m.id),'[]'::jsonb)
         ) ORDER BY m."receivedAt" DESC,m.id DESC) FROM message_page m),'[]'::jsonb)
       ) AS payload FROM target t
