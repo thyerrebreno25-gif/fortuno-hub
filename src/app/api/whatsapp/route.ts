@@ -12,7 +12,7 @@ import {
   minutesBetween,
   parseWhatsappChannelAddress,
 } from "@/modules/whatsapp/core";
-import { inboxFacets, inboxWhere, type InboxFilters } from "@/modules/whatsapp/inbox-filters";
+import { inboxFacets, inboxWhere, searchInboxFilters, type InboxFilters } from "@/modules/whatsapp/inbox-filters";
 
 
 export async function GET(request: Request) {
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   const kind = url.searchParams.get("kind") || "ALL";
   const status = url.searchParams.get("status") || "ALL";
   if (!["GENERAL", "MINE", "QUEUE"].includes(view) || !["ALL", "GROUP", "CONTACT"].includes(kind) || !["ALL", "OPEN", "RESOLVED"].includes(status)) return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
-  const filters = { view, kind, status } as InboxFilters;
+  const filters = searchInboxFilters(search, { view, kind, status } as InboxFilters);
   const baseWhere: Prisma.ServiceTicketWhereInput = {
     ...(await currentWhatsAppAccount(member.organizationId)).where,
     isSpam: false,
@@ -55,7 +55,7 @@ export async function GET(request: Request) {
   }
 
   if (url.searchParams.get("light") === "1") {
-    const filteredUnread = url.searchParams.get("unread") === "1" ? await unreadCounts(member.organizationId, member.userId) : null;
+    const filteredUnread = !search && url.searchParams.get("unread") === "1" ? await unreadCounts(member.organizationId, member.userId) : null;
     if (filteredUnread) where.AND = [inboxWhere(filters, member.userId), { id: { in: [...filteredUnread.keys()] } }];
     const [rows, metrics, unread] = await Promise.all([
       prisma.serviceTicket.findMany({where,orderBy:[{lastMessageAt:"desc"},{receivedAt:"desc"}],take:251,select:{id:true,subject:true,senderName:true,senderEmail:true,snippet:true,status:true,routingArea:true,routingReason:true,priority:true,assignedAt:true,receivedAt:true,resolvedAt:true,firstResponseAt:true,lastMessageAt:true,updatedAt:true,client:{select:{id:true,name:true}},assignedTo:{select:{id:true,name:true,email:true}}}}),

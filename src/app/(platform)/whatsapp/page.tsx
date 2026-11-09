@@ -21,6 +21,7 @@ import {
   IconSettings,
   IconStar,
   IconPlayerPlay,
+  IconMessagePlus,
   IconMaximize,
   IconMinimize,
   IconBrandWhatsapp,
@@ -49,6 +50,7 @@ import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import { ConversationRequests } from "@/modules/whatsapp/conversation-requests";
 import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
 import { ChatAvatar } from "@/modules/whatsapp/chat-avatar";
+import {WhatsAppAttachmentSender} from "@/modules/whatsapp/attachment-sender";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
 import { WhatsAppNotificationToggle } from "@/modules/whatsapp/notification-toggle";
@@ -57,7 +59,7 @@ import { WhatsAppSurveySettings } from "@/modules/whatsapp/survey-panel";
 import { WhatsAppOperationStart } from "@/modules/whatsapp/operation-start-dialog";
 import { WhatsAppFinalizeDialog } from "@/modules/whatsapp/finalize-dialog";
 import { SaveWhatsAppContact } from "@/modules/whatsapp/save-contact";
-import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
+import { inboxFacets, matchesInboxFilters, searchInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
 import styles from "./whatsapp.module.css";
 
 type View = InboxView;
@@ -132,6 +134,8 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
     textBody: string | null;
     receivedAt: string;
     deliveryStatus: string | null;
+    reaction?: {emoji:string;name:string}|null;
+    customerReactions?: Array<{emoji:string;name:string}>;
     attachments: Array<{
       id: string;
       name: string;
@@ -217,6 +221,7 @@ export default function WhatsAppPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [connectionSettingsOpened, setConnectionSettingsOpened] = useState(false);
+  const [surveySettingsOpened,setSurveySettingsOpened]=useState(false),[operationStartOpened,setOperationStartOpened]=useState(false);
   const [reply, setReply] = useState("");
   const [commentMode,setCommentMode]=useState(false),[comment,setComment]=useState(""),[quickRepliesOpened,setQuickRepliesOpened]=useState(false);
   const [historySync, setHistorySync] = useState<HistorySync | null>(null);
@@ -227,7 +232,7 @@ export default function WhatsAppPage() {
   const tickets = useMemo(() => {
     if (!inbox.complete) return inbox.key === filterKey ? inbox.tickets : [];
     const needle = search.trim().toLocaleLowerCase("pt-BR");
-    return inbox.tickets.filter((ticket) => (!onlyUnread || Boolean(ticket.unreadCount)) && matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, filters, currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
+    return inbox.tickets.filter((ticket) => (Boolean(needle) || !onlyUnread || Boolean(ticket.unreadCount)) && matchesInboxFilters({ ...ticket, assignedToId: ticket.assignedTo?.id || null }, searchInboxFilters(search,filters), currentUserId) && (!needle || [ticket.subject, ticket.senderName, ticket.senderEmail, ticket.snippet, ticket.client?.name].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
   }, [inbox, filterKey, filters, search, currentUserId, onlyUnread]);
   const stats = useMemo(() => baseStats && inbox.complete ? { ...baseStats, facets: inboxFacets(inbox.tickets.map((ticket) => ({ ...ticket, assignedToId: ticket.assignedTo?.id || null })), filters, currentUserId) } : baseStats, [baseStats, inbox, filters, currentUserId]);
   // Opening a conversation is an explicit user action. List sorting/filtering and
@@ -287,7 +292,7 @@ export default function WhatsAppPage() {
     partialList.current = true;
     }
     const params = new URLSearchParams({ view, kind: chatKind, status: chatStatus, light: "1" });
-    if (onlyUnread) params.set("unread", "1");
+    if (onlyUnread && !search.trim()) params.set("unread", "1");
     if (search.trim()) params.set("search", search.trim());
     const payload = await readResponse<{ tickets: Ticket[]; stats: Stats }>(
       await fetch(`/api/whatsapp?${params}`, { cache: "no-store" }),
@@ -471,9 +476,14 @@ export default function WhatsAppPage() {
           body: JSON.stringify(action),
         }),
       );
+      if(!payload.ticket)throw new Error("O chamado foi aberto, mas não foi possível carregar a conversa. Atualize a lista.");
       const previous = detailCache.current.get(id);
       const next = {...payload.ticket, messages:mergeChatMessages((previous?.messages || []).filter(message => !message.id.startsWith("pending:")),payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
-      detailCache.current.set(id, next);
+      detailCache.current.set(next.id, next);
+      if(action.action==="reopen"){
+        detailCache.current.delete(id);rememberDetail(next.id,next);
+        selectedRef.current=next.id;setSelectedId(next.id);setManagementSelection(next.id);setDetail(next);setView(next.assignedTo?.id===bootstrap?.currentUser.id?"MINE":"GENERAL");setChatKind("ALL");setChatStatus("OPEN");setOnlyUnread(false);setSearch("");
+      }
       if (action.action === "finalize") removeClosed([id]);
       else { if (selectedRef.current === id) setDetail(next); void loadList(); }
       if (action.action !== "reply") notifications.show({ color: "green", title: "Tudo certo", message: success });
@@ -489,6 +499,14 @@ export default function WhatsAppPage() {
       setSaving(false);
     }
   }
+
+  const updateReaction=useCallback((conversationId:string,messageId:string,reaction:{emoji:string;name:string})=>{
+    const previous=detailCache.current.get(conversationId);
+    if(!previous)return;
+    const next={...previous,messages:previous.messages.map(message=>message.id===messageId?{...message,reaction}:message)};
+    detailCache.current.set(conversationId,next);
+    if(selectedRef.current===conversationId)setDetail(next);
+  },[]);
 
   async function sendReply() {
     const content = (commentMode?comment:reply).trim(), id = selectedId;
@@ -578,8 +596,8 @@ export default function WhatsAppPage() {
                 <Menu.Label>Gestão</Menu.Label>
                 {connected && bootstrap.canEdit && <Menu.Item leftSection={historyBusy ? <Loader size={17}/> : <IconRefresh size={17}/>} disabled={historyBusy} onClick={()=>void syncHistory()}>Atualizar conversas</Menu.Item>}
                 {bootstrap.canConfigureConnection && <Menu.Item leftSection={<IconSettings size={17}/>} onClick={()=>setConnectionSettingsOpened(true)}>Configurar WhatsApp</Menu.Item>}
-                <WhatsAppSurveySettings canEdit={bootstrap.canEdit} trigger={open=><Menu.Item leftSection={<IconStar size={17}/>} onClick={open}>Pesquisa de satisfação</Menu.Item>}/>
-                {bootstrap.canEdit && <WhatsAppOperationStart trigger={open=><Menu.Item leftSection={<IconPlayerPlay size={17}/>} onClick={open}>Preparar início da operação</Menu.Item>}/>}
+                <Menu.Item leftSection={<IconStar size={17}/>} onClick={()=>setSurveySettingsOpened(true)}>Pesquisa de satisfação</Menu.Item>
+                {bootstrap.canEdit && <Menu.Item leftSection={<IconPlayerPlay size={17}/>} onClick={()=>setOperationStartOpened(true)}>Preparar início da operação</Menu.Item>}
               </>}
             </Menu.Dropdown>
           </Menu>
@@ -587,7 +605,7 @@ export default function WhatsAppPage() {
         </Group>
       </header>
 
-      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)}  onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
+      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
         <section data-whatsapp-workspace className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
         <aside className={styles.views} aria-label="Caixas e filtros">
           <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">CAIXAS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
@@ -619,17 +637,18 @@ export default function WhatsAppPage() {
           <div className={styles.listHeader}>
             <TextInput
               leftSection={<IconSearch size={16} />}
-              placeholder="Buscar contato, cliente ou mensagem"
+              placeholder="Buscar em todas as conversas"
               value={search}
               onChange={(event) => setSearch(event.currentTarget.value)}
               className={styles.search}
             />
-            <div className={styles.conversationFilters} aria-label="Filtrar conversas">
+            {search.trim()&&<Text size="xs" c="dimmed" mt={6}>Busca em todas as caixas, grupos e situações</Text>}
+          <div className={styles.conversationFilters} aria-label="Filtrar conversas">
               <button type="button" aria-pressed={onlyUnread} className={onlyUnread ? styles.conversationFilterActive : undefined} onClick={() => { setSelectedId(null); setOnlyUnread(value => !value); }}>Não lidas</button>
               {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
             </div>
           </div>
-          {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...filters,search:search.trim(),onlyUnread}} onClosed={removeClosed}/></Group>}
+          {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></Group>}
           <div className={styles.ticketList}>
             {tickets.length ? (
               tickets.map((ticket) => (
@@ -726,11 +745,12 @@ export default function WhatsAppPage() {
                 </div>
               </div>
 
-              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} />
+              <WhatsAppAttachmentSender key={detail.id+":"+bootstrap?.accountKey} ticketId={detail.id} recipient={detail.senderName||detail.subject} canSend={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id&&!saving&&!commentMode)} onSent={()=>{if(selectedRef.current===detail.id)void loadDetail(detail.id,true);void loadList();}}>{(attachmentButton,mediaBusy)=><>
+              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} />
 
               {(detail.status !== "RESOLVED"||commentMode) ? (
                 <div className={`${styles.composer} ${commentMode?styles.commentComposer:""}`}>
-                  <div className={styles.composerTools}><Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>setCommentMode(v=>!v)}><IconLock size={18}/></ActionIcon></Tooltip></div>
+                  <div className={styles.composerTools}>{attachmentButton}<Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>setCommentMode(v=>!v)}><IconLock size={18}/></ActionIcon></Tooltip></div>
                   <Textarea
                     autosize
                     minRows={1}
@@ -740,7 +760,7 @@ export default function WhatsAppPage() {
                     placeholder={commentMode?"Escreva um comentário para a equipe...":detail.assignedTo?.id===bootstrap?.currentUser.id?"Escreva uma resposta...":"Assuma o chamado para responder ao cliente"}
                     value={commentMode?comment:reply}
                     maxLength={5000}
-                    disabled={!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)}
+                    disabled={mediaBusy||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)}
                     onChange={(event) => commentMode?setComment(event.currentTarget.value):setReply(event.currentTarget.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
@@ -750,7 +770,7 @@ export default function WhatsAppPage() {
                     }}
                   />
                   <Tooltip label={commentMode?"Salvar comentário interno":"Enviar resposta"}>
-                    <ActionIcon aria-label={commentMode?"Salvar comentário interno":"Enviar resposta"} size={44} radius="xl" color={commentMode?"yellow":"green"} loading={saving} disabled={!(commentMode?comment:reply).trim()||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)} onClick={sendReply}>
+                    <ActionIcon aria-label={commentMode?"Salvar comentário interno":"Enviar resposta"} size={44} radius="xl" color={commentMode?"yellow":"green"} loading={saving||mediaBusy} disabled={mediaBusy||!(commentMode?comment:reply).trim()||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)} onClick={sendReply}>
                       <IconSend size={19} />
                     </ActionIcon>
                   </Tooltip>
@@ -758,10 +778,12 @@ export default function WhatsAppPage() {
               ) : (
                 <div className={styles.resolvedBar}>
                   <Text size="sm" fw={700}>Atendimento finalizado</Text>
+                  {bootstrap?.canEdit&&<Button size="sm" color="teal" leftSection={<IconMessagePlus size={17}/>} loading={saving} onClick={()=>void mutate({action:"reopen"},"Chamado aberto.")}>Abrir chamado</Button>}
                   {bootstrap?.canEdit&&<Button variant="subtle" size="xs" leftSection={<IconLock size={15}/>} onClick={()=>setCommentMode(true)}>Comentário interno</Button>}
 
                 </div>
               )}
+              </>}</WhatsAppAttachmentSender>
             </>
           ) : (
             <div className={styles.detailEmpty}>
@@ -776,7 +798,7 @@ export default function WhatsAppPage() {
         <WhatsAppMonitoring
           clients={clientOptions}
           members={memberOptions}
-          onOpenTicket={(id) => {
+         onOpenTicket={(id) => {
             setManagementSelection(null);
             setView("GENERAL");
             setSelectedId(id);
@@ -789,6 +811,8 @@ export default function WhatsAppPage() {
       {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} operators={bootstrap.members} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
+      {bootstrap?.canViewManagement&&<WhatsAppSurveySettings opened={surveySettingsOpened} onClose={()=>setSurveySettingsOpened(false)} canEdit={bootstrap.canEdit}/>}
+      {bootstrap?.canViewManagement&&bootstrap.canEdit&&<WhatsAppOperationStart opened={operationStartOpened} onClose={()=>setOperationStartOpened(false)}/>}
       <Modal opened={connectionSettingsOpened && connected} onClose={() => setConnectionSettingsOpened(false)} title="Configuração do WhatsApp" size="xl" centered><UazapiConnection onStatus={onConnectionStatus} /></Modal>
 
     </main>

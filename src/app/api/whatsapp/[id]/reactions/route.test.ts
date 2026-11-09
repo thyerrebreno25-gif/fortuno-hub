@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({access:vi.fn(),find:vi.fn(),send:vi.fn(),store:vi.fn(),update:vi.fn()}));
+vi.mock("@/modules/whatsapp/outbound-access",async original=>({...await original<typeof import("@/modules/whatsapp/outbound-access")>(),whatsappSendAccess:m.access}));
+vi.mock("@/modules/whatsapp/reactions",()=>({storeOwnReaction:m.store}));
+vi.mock("@/modules/whatsapp/uazapi-server",()=>({sendUazapiReaction:m.send}));
+vi.mock("@/lib/prisma",()=>({prisma:{serviceMessage:{findFirst:m.find},serviceTicket:{update:m.update}}}));
+import {POST} from "./route";
+const post=(emoji:unknown="👍")=>POST(new Request("https://hub/api/whatsapp/ticket/reactions",{method:"POST",body:JSON.stringify({messageId:"message",emoji})}),{params:Promise.resolve({id:"ticket"})});
+beforeEach(()=>{vi.clearAllMocks();m.access.mockResolvedValue({member:{organizationId:"org",userId:"me",user:{name:"Ana"}},ticket:{id:"ticket",senderEmail:"wa-group:120363@g.us"},account:{recipient:"wa-account:conn:5511",where:{organizationId:"org",recipientEmail:"wa-account:conn:5511"},connection:{phone:"5511"}}});m.find.mockResolvedValue({id:"message",receivedAt:new Date(),externalMessageId:"uazapi:5511:provider-id",providerMetadata:{messageId:"provider-id"}});});
+it("sends a reaction to the provider id and persists it only after confirmation",async()=>{expect((await post()).status).toBe(200);expect(m.send).toHaveBeenCalledWith({organizationId:"org",accountRecipient:"wa-account:conn:5511",messageId:"provider-id",emoji:"👍"});expect(m.store).toHaveBeenCalledWith("message","👍","Ana");expect(m.find.mock.calls[0][0].where.ticket).toMatchObject({organizationId:"org",recipientEmail:"wa-account:conn:5511",senderEmail:"wa-group:120363@g.us"});});
+it("supports removing our reaction",async()=>{expect((await post("")).status).toBe(200);expect(m.send.mock.calls[0][0].emoji).toBe("");});
+it("rejects arbitrary text, unrelated messages and expired reactions without external calls",async()=>{expect((await post("not emoji")).status).toBe(400);m.find.mockResolvedValueOnce(null);expect((await post()).status).toBe(404);m.find.mockResolvedValueOnce({receivedAt:new Date(Date.now()-8*24*60*60*1000)});expect((await post()).status).toBe(400);expect(m.send).not.toHaveBeenCalled();});
+it("does not mark a reaction successful on provider failure",async()=>{m.send.mockRejectedValueOnce(new Error("não confirmado"));expect((await post()).status).toBe(502);expect(m.store).not.toHaveBeenCalled();});

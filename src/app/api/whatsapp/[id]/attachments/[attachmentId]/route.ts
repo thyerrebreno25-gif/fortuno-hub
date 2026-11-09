@@ -1,4 +1,6 @@
 import { currentWhatsAppAccount, accountMessageWhere } from "@/modules/whatsapp/account-scope";
+import {createAdminClient} from "@/lib/supabase/admin";
+import {WHATSAPP_FILES_BUCKET,WHATSAPP_FILE_LIMIT} from "@/modules/whatsapp/outbound-files";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -46,10 +48,11 @@ export async function GET(request: Request, context: Context) {
       name: true,
       mimeType: true,
       externalAttachmentId: true,
+      storagePath: true,
     },
   });
 
-  if (!attachment?.externalAttachmentId) {
+  if (!attachment || !attachment.externalAttachmentId && !attachment.storagePath) {
     return NextResponse.json(
       { error: "Anexo não encontrado." },
       { status: 404 },
@@ -57,8 +60,16 @@ export async function GET(request: Request, context: Context) {
   }
 
   try {
-    if (!attachment.externalAttachmentId.startsWith("uazapi:")) throw new Error("Anexo da integração anterior. Consulte o arquivo no WhatsApp original.");
-    const file = await downloadUazapiMedia(member.organizationId, attachment.externalAttachmentId);
+    let file;
+    if(attachment.storagePath){
+      if(!attachment.storagePath.startsWith(`${member.organizationId}/`))throw new Error("Anexo indisponível nesta conversa.");
+      const stored=await createAdminClient()?.storage.from(WHATSAPP_FILES_BUCKET).download(attachment.storagePath);
+      if(!stored?.data||stored.error||stored.data.size>WHATSAPP_FILE_LIMIT)throw new Error("Não foi possível baixar o anexo privado.");
+      file={body:new Uint8Array(await stored.data.arrayBuffer()),mimeType:attachment.mimeType||"",size:stored.data.size};
+    }else{
+      if (!attachment.externalAttachmentId?.startsWith("uazapi:")) throw new Error("Anexo da integração anterior. Consulte o arquivo no WhatsApp original.");
+      file = await downloadUazapiMedia(member.organizationId, attachment.externalAttachmentId);
+    }
     const preview = new URL(request.url).searchParams.get("preview") === "1";
     const safeMime = previewMime(file.body, file.mimeType || attachment.mimeType || "");
     if (preview && !safeMime) return NextResponse.json({ error: "Este formato está disponível somente para download." }, { status: 415 });

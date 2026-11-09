@@ -51,3 +51,5 @@ it.each([true, 1, "true", "1"])("recognizes outbound provider flag %s without ma
 it.each([false, 0, "false", "0", undefined])("keeps incoming provider flag %s inbound", (flag) => {
  expect(normalizeUazapiEvent({EventType:"messages",message:{id:"in",chatid:"123@lid",fromMe:flag,text:"Pergunta"}})).toMatchObject({fromMe:false});
 });
+
+it("normalizes reactions separately so they never create calls or unread message bubbles",()=>{const event=normalizeUazapiEvent({EventType:"messages",message:{messageid:"reaction-id",chatid:"5511999999999@s.whatsapp.net",messageType:"ReactionMessage",sender:"5511999999999@s.whatsapp.net",text:"👍",content:{key:{id:"target"}},messageTimestamp:Date.now()}});expect(event).toMatchObject({kind:"reaction",targetId:"target",emoji:"👍",fromMe:false});});

@@ -5,6 +5,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { classifyWhatsappArea, AUTOMATIC_WHATSAPP_PREFIX, mayAutomaticallyRoute } from "./automatic-routing";
 import { normalizeWhatsappIdentity, whatsappChannelAddress } from "./core";
 import { resolveWhatsappRouting } from "./server";
+import {validReactionEmoji} from "./reaction-core";
+import {storeOwnReaction} from "./reactions";
 import { normalizeUazapiEvent, object, text } from "./uazapi";
 import { checkConnection, whatsappConnection } from "./uazapi-server";
 
@@ -101,8 +103,19 @@ export function advancesDelivery(current: string | null, next: string) {
   if (next === "failed") return !current || current === "accepted";
   return next in ranks && (ranks[next] > (ranks[current || ""] ?? -1));
 }
+async function receiveReaction(connection:Connection,event:Extract<Event,{kind:"reaction"}>){
+  if(!validReactionEmoji(event.emoji))return;
+  const senderEmail=whatsappChannelAddress(event.chatId.endsWith("@g.us")?"GROUP":"CONTACT",normalizeWhatsappIdentity(event.chatId.endsWith("@g.us")?"GROUP":"CONTACT",event.chatId));
+  const message=await prisma.serviceMessage.findFirst({where:{ticket:{organizationId:connection.organizationId,source:"WHATSAPP_API",senderEmail,recipientEmail:`wa-account:${connection.id}:${connection.phone}`},OR:[{externalMessageId:`uazapi:${connection.phone}:${event.targetId}`},{providerMetadata:{path:["messageId"],equals:event.targetId}}]},select:{id:true,ticketId:true,providerMetadata:true}});
+  if(!message)return;
+  if(event.fromMe&&object(object(message.providerMetadata).hubReaction).emoji===event.emoji)return;
+  if(event.fromMe)await storeOwnReaction(message.id,event.emoji,event.senderName||"WhatsApp da empresa");
+  else await prisma.$executeRaw(Prisma.sql`UPDATE "ServiceMessage" SET "providerMetadata"=jsonb_set(COALESCE("providerMetadata",'{}'::jsonb),'{customerReactions}',COALESCE("providerMetadata"->'customerReactions','{}'::jsonb)||jsonb_build_object(${event.sender||event.chatId},jsonb_build_object('emoji',${event.emoji},'name',${event.senderName||"Cliente"})),true) WHERE id=${message.id}`);
+  await prisma.serviceTicket.updateMany({where:{organizationId:connection.organizationId,source:"WHATSAPP_API",senderEmail,recipientEmail:`wa-account:${connection.id}:${connection.phone}`,mergedIntoId:null},data:{updatedAt:new Date()}});
+}
 async function processEvent(connection: Connection, event: Event) {
   if (event.kind === "messages") return receiveMessage(connection, event);
+  if(event.kind === "reaction")return receiveReaction(connection,event);
   if (event.kind === "connection") { await checkConnection(connection); return; }
   if (!event.status || !event.ids.length) return;
   const messages = await prisma.serviceMessage.findMany({ where: { externalMessageId: { in: event.ids.flatMap((id) => [`uazapi:${connection.instanceId}:${id}`, `uazapi:${connection.phone}:${id}`]) }, ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", recipientEmail: `wa-account:${connection.id}:${connection.phone}` } }, select: { id: true, ticketId: true, deliveryStatus: true } });

@@ -1,3 +1,4 @@
+import {reopenWhatsAppCall,ReopenWhatsAppError} from "@/modules/whatsapp/reopen";
 import {readWhatsAppConversation,ConversationCursorError} from "@/modules/whatsapp/conversation-read";
 import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {outgoingContext} from "@/modules/whatsapp/outgoing-context";
@@ -74,6 +75,11 @@ export async function PATCH(request: Request, context: Context) {
     permission.canManage || SERVICE_CENTER_MANAGER_ROLES.has(member.role);
   const occupiedByAnother =
     current.assignedToId && current.assignedToId !== member.userId;
+
+  if(action==="reopen"){
+    try{const openedId=await reopenWhatsAppCall(current,member.userId);return NextResponse.json({ticket:await readWhatsAppConversation(openedId,member.organizationId)});}
+    catch(error){return NextResponse.json({error:error instanceof ReopenWhatsAppError?error.message:"Não foi possível abrir o chamado."},{status:error instanceof ReopenWhatsAppError?error.status:500});}
+  }
 
   if (action === "transfer") {
     try { await transferWhatsappTicket(current, member, canManage, body); }

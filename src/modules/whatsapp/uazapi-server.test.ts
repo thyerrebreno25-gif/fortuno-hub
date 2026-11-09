@@ -6,7 +6,7 @@ vi.mock("./directory", () => ({ scheduleDirectorySync: vi.fn() }));
 vi.mock("./history-sync", () => ({ scheduleHistorySync: vi.fn() }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "private-token" }));
 vi.mock("./uazapi", async (original) => ({ ...await original<typeof import("./uazapi")>(), uazapiRequest: m.request }));
-import { checkConnection, configureWebhook, connectionView, sendUazapiText, type whatsappConnection } from "./uazapi-server";
+import { checkConnection, configureWebhook, connectionView, sendUazapiText, sendUazapiMedia, sendUazapiReaction, type whatsappConnection } from "./uazapi-server";
 const connection = { id: "connection", instanceId: "instance", organizationId: "org", serverUrl: "https://free.uazapi.com", tokenEncrypted: "encrypted-secret", tokenHash: "private-hash", status: "DISCONNECTED", expiresAt: null } as NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>;
 beforeEach(() => { vi.clearAllMocks(); m.update.mockResolvedValue({}); });
 describe("Uazapi server-side connection", () => {
@@ -39,4 +39,15 @@ describe("Uazapi server-side connection", () => {
     await expect(sendUazapiText({ organizationId: "org", to: "5511000000000", body: "test", instanceId: "instance", accountRecipient: "wa-account:connection:5511888888888" })).rejects.toThrow("número conectado mudou");
     expect(m.request).not.toHaveBeenCalled();
   });
+});
+
+it("uses the documented media payload and confirms the provider message id",async()=>{
+ m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockResolvedValueOnce({messageid:"sent-media"});
+ const sent=await sendUazapiMedia({organizationId:"org",accountRecipient:"wa-account:connection:5511",to:"5522",type:"document",file:"https://storage.example/signed",name:"arquivo.pdf",mimeType:"application/pdf",caption:"Documento",trackingId:"upload"});
+ expect(sent.messageId).toBe("uazapi:5511:sent-media");expect(m.request.mock.calls[0].slice(2)).toEqual(["/send/media",{number:"5522",type:"document",file:"https://storage.example/signed",text:"Documento",docName:"arquivo.pdf",mimetype:"application/pdf",track_source:"FORTUNO_HUB",track_id:"upload"}]);
+});
+it("uses id and text for provider reactions and rejects old physical accounts",async()=>{
+ m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockResolvedValueOnce({success:true});
+ await sendUazapiReaction({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"target",emoji:"👍"});expect(m.request.mock.calls[0].slice(2)).toEqual(["/message/react",{id:"target",text:"👍"}]);
+ await expect(sendUazapiReaction({organizationId:"org",accountRecipient:"wa-account:connection:old",messageId:"target",emoji:"👍"})).rejects.toThrow("número conectado mudou");expect(m.request).toHaveBeenCalledTimes(1);
 });

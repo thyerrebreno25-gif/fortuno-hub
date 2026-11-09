@@ -24,3 +24,5 @@ it("filters conversations and all counters by the currently connected physical p
 it("does not create simulated calls through the retired endpoint",async()=>{expect((await POST()).status).toBe(410);expect(m.find).not.toHaveBeenCalled();});
 
 it("preserves personal ownership and open-state filters when filtering unread calls",async()=>{await GET(new Request("https://example.test/api/whatsapp?light=1&unread=1&view=MINE&status=OPEN"));expect(m.find.mock.calls[0][0].where.AND[0].AND).toContainEqual({assignedToId:"user",status:{notIn:["RESOLVED","SPAM"]}});});
+
+it("searches all statuses and owners even when the caller has active inbox filters",async()=>{await GET(new Request("https://hub/api/whatsapp?light=1&search=cliente&view=MINE&kind=GROUP&status=OPEN&unread=1"));const query=m.find.mock.calls[0][0];expect(query.where.AND).toEqual([]);expect(query.where.OR).toContainEqual({client:{name:{contains:"cliente",mode:"insensitive"}}});expect(query.where).toMatchObject({organizationId:"org",recipientEmail:"wa-account:conn:5511888888888",isSpam:false});});

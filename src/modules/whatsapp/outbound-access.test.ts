@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),account:vi.fn(),ticket:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findFirst:m.ticket}}}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("./account-scope",()=>({currentWhatsAppAccount:m.account}));
+import {whatsappSendAccess} from "./outbound-access";
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",userId:"me",role:"MASTER"});m.permission.mockResolvedValue({canEdit:true});m.account.mockResolvedValue({recipient:"wa-account:conn:5511",connection:{phone:"5511"},where:{organizationId:"org",recipientEmail:"wa-account:conn:5511",source:"WHATSAPP_API"}});m.ticket.mockResolvedValue({id:"ticket",assignedToId:"me",status:"IN_PROGRESS"});});
+it("scopes all sends to the current organization and physical phone",async()=>{await whatsappSendAccess("ticket");expect(m.ticket.mock.calls[0][0].where).toMatchObject({id:"ticket",organizationId:"org",recipientEmail:"wa-account:conn:5511",source:"WHATSAPP_API",mergedIntoId:null,isSpam:false});});
+it("does not let a manager react or send media on another operator's call",async()=>{m.ticket.mockResolvedValue({assignedToId:"other",status:"IN_PROGRESS"});await expect(whatsappSendAccess("ticket")).rejects.toMatchObject({status:403});});
+it("blocks unassigned and finalized calls",async()=>{m.ticket.mockResolvedValue({assignedToId:null,status:"NEW"});await expect(whatsappSendAccess("ticket")).rejects.toMatchObject({status:403});m.ticket.mockResolvedValue({assignedToId:"me",status:"RESOLVED"});await expect(whatsappSendAccess("ticket")).rejects.toMatchObject({status:409});});
+it("rejects missing sessions and edit permissions before reading conversations",async()=>{m.member.mockResolvedValue(null);await expect(whatsappSendAccess("ticket")).rejects.toMatchObject({status:401});expect(m.ticket).not.toHaveBeenCalled();m.member.mockResolvedValue({organizationId:"org",role:"OPERATOR"});m.permission.mockResolvedValue({canEdit:false});await expect(whatsappSendAccess("ticket")).rejects.toMatchObject({status:403});});

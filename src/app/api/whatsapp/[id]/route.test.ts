@@ -3,6 +3,7 @@ const m = vi.hoisted(() => ({ role: "MASTER", identities: new Map<string, unknow
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: async () => ({ organizationId: "org", role: m.role, userId: "operator", user: { id: "operator", name: "Isabella Lago", email: "operator@test" } }), getWhatsAppPermission: async () => ({ canView: true, canEdit: true, canManage: m.role === "MASTER" }), SERVICE_CENTER_MANAGER_ROLES: new Set(["MASTER"]) }));
 vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:async()=>({recipient:"wa-account:c:5511",connection:{phone:"5511"}})}));
 vi.mock("@/modules/whatsapp/conversation-read",()=>({readWhatsAppConversation:m.read,ConversationCursorError:Error}));
+vi.mock("@/modules/whatsapp/reopen",()=>({reopenWhatsAppCall:async()=>"new-call",ReopenWhatsAppError:Error}));
 vi.mock("@/modules/whatsapp/server", () => ({ getWhatsappTicket: async () => m.current, resolveWhatsappTicketId: async (id: string) => id, eligibleWhatsappResponsible: m.assignee }));
 vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: async () => ({ id: "c", phone: "5511", instanceId: "instance" }), sendUazapiText: m.sent }));
 vi.mock("@/modules/whatsapp/transfer", () => ({ transferWhatsappTicket: vi.fn(), WhatsAppTransferError: Error }));
@@ -55,3 +56,5 @@ it("serves the lean authorized conversation snapshot without public caching",asy
 it("blocks client roles before reading conversation contents",async()=>{
  m.role="CLIENT";expect((await GET(new Request("https://hub.test/api/whatsapp/ticket"),{params:Promise.resolve({id:"ticket"})})).status).toBe(403);expect(m.read).not.toHaveBeenCalled();
 });
+
+it("opens a finalized call through the authorized action and returns the actual active id",async()=>{m.current.status="RESOLVED";expect((await patch({action:"reopen"})).status).toBe(200);expect(m.read).toHaveBeenCalledWith("new-call","org");expect(m.sent).not.toHaveBeenCalled();});

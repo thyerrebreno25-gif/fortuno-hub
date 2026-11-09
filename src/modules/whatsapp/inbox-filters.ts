@@ -28,3 +28,7 @@ export function inboxFacets(tickets: MetricTicket[], filters: InboxFilters, user
     status: { ALL: count({ ...filters, status: "ALL" }), OPEN: count({ ...filters, status: "OPEN" }), RESOLVED: count({ ...filters, status: "RESOLVED" }) },
   };
 }
+
+export function searchInboxFilters(search: string, filters: InboxFilters): InboxFilters {
+  return search.trim() ? {view:"GENERAL",kind:"ALL",status:"ALL"} : filters;
+}

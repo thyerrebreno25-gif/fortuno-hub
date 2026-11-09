@@ -44,6 +44,11 @@ export function normalizeUazapiEvent(payload: unknown) {
   const flag = (value: unknown) => value === true || value === 1 || value === "true" || value === "1";
   const fromMe = flag(message.fromMe ?? message.from_me ?? object(message.key).fromMe) || flag(message.wasSentByApi);
   const mediaType = text(message.messageType, 80);
+  if(/reaction/i.test(mediaType)){
+    const reaction=object(content.reactionMessage),targetId=text(message.reaction||object(content.key).id||object(reaction.key).id,200);
+    if(!targetId)return null;
+    return {kind:"reaction" as const,id,chatId,fromMe,sender:text(message.sender,150),senderName:text(message.senderName,250),targetId,emoji:text(message.text??content.text??reaction.text,24),timestamp:Number(message.messageTimestamp)||Date.now()};
+  }
   const media = /image|document|audio|video|sticker/i.test(mediaType);
   const result = { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: flag(message.wasSentByApi),
     senderName: text(message.senderName, 250), chatName: text(chat.name, 250), sender: text(message.sender, 150),

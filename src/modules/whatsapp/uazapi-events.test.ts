@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m = vi.hoisted(() => ({ upsert: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), update: vi.fn(), check: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppWebhookInbox: { upsert: m.upsert, updateMany: m.updateMany, findMany: m.findMany, update: m.update } } }));
+const m = vi.hoisted(() => ({ upsert: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), update: vi.fn(), check: vi.fn(), message:vi.fn(), raw:vi.fn(), ticket:vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: {serviceMessage:{findFirst:m.message},serviceTicket:{updateMany:m.ticket},$executeRaw:m.raw, whatsAppWebhookInbox: { upsert: m.upsert, updateMany: m.updateMany, findMany: m.findMany, update: m.update } } }));
 vi.mock("./uazapi-server", () => ({ checkConnection: m.check }));
 vi.mock("./server", () => ({ resolveWhatsappRouting: vi.fn() }));
 vi.mock("@/modules/atendimento/routing/classifier", () => ({ classifyAndRouteEmail: vi.fn() }));
@@ -39,4 +39,10 @@ it("discards queued messages from a different physical phone even if the instanc
 });
 it("uses different delivery keys when the same instance connects another number",async()=>{
  const event={kind:"connection" as const,eventId:"same",status:"connected"};await enqueueUazapiEvent({...connection,phone:"old"},event);await enqueueUazapiEvent({...connection,phone:"new"},event);expect(m.upsert.mock.calls[0][0].where.id).not.toBe(m.upsert.mock.calls[1][0].where.id);
+});
+
+it("attaches customer reactions to their original message without creating calls or unread messages",async()=>{
+ m.message.mockResolvedValueOnce({id:"message",ticketId:"ticket",providerMetadata:{}});
+ m.findMany.mockResolvedValueOnce([{id:"reaction-event",connection:{...connection,phone:"5511"},payload:{instanceId:"i",accountPhone:"5511",event:{kind:"reaction",id:"reaction",targetId:"original",chatId:"5522@s.whatsapp.net",sender:"5522@s.whatsapp.net",senderName:"Cliente",emoji:"👍",fromMe:false,timestamp:Date.now()}},status:"PENDING",attempts:0,eventType:"reaction"}]);
+ await drainUazapiInbox();expect(m.raw).toHaveBeenCalledTimes(1);expect(m.ticket.mock.calls[0][0].data).toEqual({updatedAt:expect.any(Date)});expect(m.update.mock.calls.at(-1)?.[0].data.status).toBe("COMPLETED");expect(m.message.mock.calls[0][0].where.ticket).toMatchObject({organizationId:"org",recipientEmail:"wa-account:c:5511",senderEmail:"wa-contact:5522"});
 });
