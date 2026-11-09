@@ -41,6 +41,7 @@ import { WhatsAppDirectory } from "@/modules/whatsapp/directory-panel";
 import { WhatsAppManagement } from "./management";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
+import { ConversationRequests } from "@/modules/whatsapp/conversation-requests";
 import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
 import { ChatAvatar } from "@/modules/whatsapp/chat-avatar";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
@@ -232,7 +233,11 @@ export default function WhatsAppPage() {
   const accountKeyRef = useRef<string | null | undefined>(undefined);
   const partialList = useRef(false);
   const ticketVersions = useRef(new Map<string,string>());
-  const detailController = useRef<AbortController | null>(null);
+  const detailFetchedAt = useRef(new Map<string,number>());
+  const warmTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const conversationRequests = useRef(new ConversationRequests<TicketDetail>(async(id,signal)=>{
+    const body=await readResponse<{ticket:TicketDetail}>(await fetch(`/api/whatsapp/${encodeURIComponent(id)}`,{cache:"no-store",signal}));return body.ticket;
+  }));
   const listRequest = useRef(0), detailRequest = useRef(0);
   const [syncError, setSyncError] = useState(false);
   const connected = bootstrap?.mode === "CONNECTED";
@@ -285,36 +290,42 @@ export default function WhatsAppPage() {
     setStats(payload.stats);
   }, [search, view, chatKind, chatStatus, onlyUnread]);
 
+  const rememberDetail=useCallback((id:string,incoming:TicketDetail)=>{
+    const previous=detailCache.current.get(id);
+    const messages=mergeChatMessages(previous?.messages||[],incoming.messages);
+    const next={...incoming,messages,hasOlderMessages:previous&&previous.messages.length>incoming.messages.length?previous.hasOlderMessages:incoming.hasOlderMessages};
+    detailCache.current.delete(id);detailCache.current.set(id,next);detailFetchedAt.current.set(id,Date.now());
+    if(detailCache.current.size>20){const oldest=[...detailCache.current.keys()].find(key=>key!==id&&key!==selectedRef.current);if(oldest){detailCache.current.delete(oldest);detailFetchedAt.current.delete(oldest);}}
+    return next;
+  },[]);
+  const detailFresh=useCallback((id:string)=>{
+    const cached=detailCache.current.get(id),version=ticketVersions.current.get(id);
+    return Boolean(cached&&Date.now()-(detailFetchedAt.current.get(id)||0)<15000&&(!version||version===cached.updatedAt));
+  },[]);
   const loadDetail = useCallback(async (id: string, silent = false) => {
-    const request = ++detailRequest.current;
-    detailController.current?.abort();
-    const controller = new AbortController(); detailController.current = controller;
-    const cached = detailCache.current.get(id);
-    if (cached && selectedRef.current === id) { setDetail(cached); setDetailLoading(false); }
-    else if (!silent) setDetailLoading(true);
-    try {
-      const payload = await readResponse<{ ticket: TicketDetail }>(
-        await fetch(`/api/whatsapp/${id}`, { cache: "no-store", signal: controller.signal }),
-      );
-      if (request === detailRequest.current && selectedRef.current === id) {
-        const previous = detailCache.current.get(id);
-        const messages = mergeChatMessages(previous?.messages || [], payload.ticket.messages);
-        const next = {...payload.ticket, messages, hasOlderMessages: previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
-        detailCache.current.set(id, next); setDetail(next);
-        if (detailCache.current.size > 20) { const oldest = detailCache.current.keys().next().value; if (oldest && oldest !== id) detailCache.current.delete(oldest); }
-      }
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      if (!silent) notifications.show({
-        color: "red",
-        title: "Central WhatsApp",
-        message: error instanceof Error ? error.message : "Não foi possível abrir a conversa.",
-      });
-      if (silent) throw error;
-    } finally {
-      if (request === detailRequest.current) setDetailLoading(false);
-    }
-  }, []);
+    const request=++detailRequest.current,scope=accountKeyRef.current,cached=detailCache.current.get(id);
+    if(cached&&selectedRef.current===id){setDetail(cached);setDetailLoading(false);if(!silent&&detailFresh(id)){conversationRequests.current.clear();return;}}
+    else if(!silent)setDetailLoading(true);
+    try{
+      const incoming=await conversationRequests.current.load(id);
+      if(request===detailRequest.current&&selectedRef.current===id&&scope===accountKeyRef.current)setDetail(rememberDetail(id,incoming));
+    }catch(error){
+      if(request!==detailRequest.current||scope!==accountKeyRef.current||error instanceof Error&&error.name==="AbortError")return;
+      if(!silent)notifications.show({color:"red",title:"Central WhatsApp",message:error instanceof Error?error.message:"Não foi possível abrir a conversa."});
+      if(silent)throw error;
+    }finally{if(request===detailRequest.current)setDetailLoading(false);}
+  },[rememberDetail,detailFresh]);
+  const warmDetail=useCallback((id:string)=>{
+    if(detailFresh(id))return;
+    if(warmTimer.current)clearTimeout(warmTimer.current);
+    warmTimer.current=setTimeout(()=>{
+      const scope=accountKeyRef.current;
+      const pending=conversationRequests.current.prefetch(id);
+      if(pending)void pending.then(incoming=>{if(scope===accountKeyRef.current)rememberDetail(id,incoming);}).catch(()=>{});
+    },120);
+  },[detailFresh,rememberDetail]);
+  const cancelWarm=useCallback((id:string)=>{if(warmTimer.current)clearTimeout(warmTimer.current);conversationRequests.current.cancelPrefetch(id);},[]);
+  useEffect(()=>{const requests=conversationRequests.current;return()=>{if(warmTimer.current)clearTimeout(warmTimer.current);requests.clear();};},[]);
 
   useEffect(() => {
     fetch("/api/whatsapp/bootstrap", { cache: "no-store" })
@@ -355,8 +366,8 @@ export default function WhatsAppPage() {
         const state = await readResponse<{ revision: string; mode: string; accountKey: string | null; historySync: HistorySync | null }>(await fetch("/api/whatsapp/updates", { cache: "no-store", signal: controller.signal }));
         if (cancelled) return;
         if (accountKeyRef.current !== undefined && accountKeyRef.current !== state.accountKey || state.mode !== "CONNECTED") {
-          listRequest.current++; detailRequest.current++; detailController.current?.abort();
-          detailCache.current.clear(); ticketVersions.current.clear(); readMarkers.current.clear();
+          listRequest.current++; detailRequest.current++; conversationRequests.current.clear();
+          detailCache.current.clear(); detailFetchedAt.current.clear(); if(warmTimer.current)clearTimeout(warmTimer.current); ticketVersions.current.clear(); readMarkers.current.clear();
           partialList.current = false; lastRevision.current = ""; selectedRef.current = null;
           setInbox({ tickets: [], complete: false, key: "" }); setStats(null); setDetail(null);
           setSelectedId(null); setManagementSelection(null); setSection("INBOX"); setReply(""); setTransferOpened(false); setContactInfoId(null);
@@ -431,9 +442,9 @@ export default function WhatsAppPage() {
     const closed=new Set(ids);
     ++listRequest.current; lastRevision.current="";
     setInbox(current=>({...current,tickets:current.tickets.map(ticket=>closed.has(ticket.id)?{...ticket,status:"RESOLVED",resolvedAt:new Date().toISOString()}:ticket).filter(ticket=>!(closed.has(ticket.id)&&(view!=="GENERAL"||chatStatus==="OPEN")))}));
-    for(const id of ids){detailCache.current.delete(id);ticketVersions.current.delete(id);}
+    for(const id of ids){detailCache.current.delete(id);detailFetchedAt.current.delete(id);ticketVersions.current.delete(id);}
     if(selectedRef.current&&closed.has(selectedRef.current)){
-      ++detailRequest.current;detailController.current?.abort();selectedRef.current=null;
+      ++detailRequest.current;conversationRequests.current.clear();selectedRef.current=null;
       setSelectedId(null);setManagementSelection(null);setDetail(null);setDetailLoading(false);setReply("");
     }
     void loadList();
@@ -601,6 +612,8 @@ export default function WhatsAppPage() {
                 <button
                   type="button"
                   key={ticket.id}
+                  data-conversation-id={ticket.id}
+                  onMouseEnter={()=>warmDetail(ticket.id)} onFocus={()=>warmDetail(ticket.id)} onMouseLeave={()=>cancelWarm(ticket.id)} onBlur={()=>cancelWarm(ticket.id)}
                   className={`${styles.ticket} ${selectedId === ticket.id ? styles.ticketActive : ""}`}
                   onClick={() => { setManagementSelection(null); selectedRef.current = ticket.id; const cached = detailCache.current.get(ticket.id); setDetail(cached || null); setDetailLoading(!cached); setSelectedId(ticket.id); }}
                 >

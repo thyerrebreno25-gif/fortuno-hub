@@ -1,3 +1,5 @@
+import {readWhatsAppConversation,ConversationCursorError} from "@/modules/whatsapp/conversation-read";
+import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {outgoingContext} from "@/modules/whatsapp/outgoing-context";
 import { signedWhatsappText } from "@/modules/whatsapp/operator-signature";
 import { NextResponse } from "next/server";
@@ -32,28 +34,14 @@ export async function GET(_request: Request, context: Context) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
-  const permission = await getWhatsAppPermission(
-    member.organizationId,
-    member.role,
-  );
-  if (!permission.canView || member.role === "CLIENT") {
-    return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  }
-
-  let { id } = await context.params;
-  const beforeId = new URL(_request.url).searchParams.get("before") || undefined;
-  if (beforeId) {
-    id = await resolveWhatsappTicketId(id, member.organizationId);
-    const cursor = await prisma.serviceMessage.findFirst({ where: { id: beforeId, ticketId: id, ticket: { organizationId: member.organizationId } }, select: { id: true } });
-    if (!cursor) return NextResponse.json({ error: "Página de mensagens inválida." }, { status: 400 });
-  }
-  const ticket = await getWhatsappTicket(id, member.organizationId, { beforeId });
-  return ticket
-    ? NextResponse.json({ ticket })
-    : NextResponse.json(
-        { error: "Atendimento não encontrado." },
-        { status: 404 },
-      );
+  const [permission,account]=await Promise.all([getWhatsAppPermission(member.organizationId,member.role),currentWhatsAppAccount(member.organizationId)]);
+  if(!permission.canView||member.role==="CLIENT")return NextResponse.json({error:"Sem permissão."},{status:403});
+  const {id}=await context.params,beforeId=new URL(_request.url).searchParams.get("before")||undefined;
+  if(id.length>100||(beforeId?.length||0)>100)return NextResponse.json({error:"Conversa inválida."},{status:400});
+  try{
+    const ticket=await readWhatsAppConversation(id,member.organizationId,beforeId,account);
+    return ticket?NextResponse.json({ticket},{headers:{"Cache-Control":"private, no-store"}}):NextResponse.json({error:"Atendimento não encontrado."},{status:404});
+  }catch(error){if(error instanceof ConversationCursorError)return NextResponse.json({error:error.message},{status:400});throw error;}
 }
 
 export async function PATCH(request: Request, context: Context) {
@@ -383,6 +371,6 @@ export async function PATCH(request: Request, context: Context) {
   }
 
   return NextResponse.json({
-    ticket: await getWhatsappTicket(id, member.organizationId, {}),
+    ticket: await readWhatsAppConversation(id, member.organizationId),
   });
 }
