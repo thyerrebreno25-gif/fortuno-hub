@@ -12,7 +12,7 @@ import {
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
 import { whatsappConnection, sendUazapiText } from "@/modules/whatsapp/uazapi-server";
-import { object, text } from "@/modules/whatsapp/uazapi";
+import { object } from "@/modules/whatsapp/uazapi";
 import { eligibleWhatsappResponsible, getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
 import { chatLock } from "@/modules/whatsapp/merge";
 import { transferWhatsappTicket, WhatsAppTransferError } from "@/modules/whatsapp/transfer";
@@ -354,6 +354,7 @@ export async function PATCH(request: Request, context: Context) {
       });
     });
   } else if (action === "finalize") {
+    if (current.status === "RESOLVED") return NextResponse.json({ticket:current});
     if (occupiedByAnother && !canManage) {
       return NextResponse.json(
         { error: "Este atendimento está com outro colaborador." },
@@ -376,27 +377,7 @@ export async function PATCH(request: Request, context: Context) {
       }),
     ]);
   } else if (action === "satisfaction") {
-    const score = Number(body.score);
-    if (!Number.isInteger(score) || score < 1 || score > 5) {
-      return NextResponse.json(
-        { error: "A nota deve estar entre 1 e 5." },
-        { status: 400 },
-      );
-    }
-    await prisma.$transaction(async (tx) => {
-    const connectionId = text(object(current.messages.find((message) => object(message.providerMetadata).provider === "UAZAPI")?.providerMetadata).connectionId);
-    if (connectionId) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chatLock(connectionId, current.senderEmail)}))`;
-    const currentId = await resolveWhatsappTicketId(id, member.organizationId, tx);
-    await tx.serviceTicketHistory.create({
-      data: {
-        ticketId: currentId,
-        userId: member.userId,
-        type: "WHATSAPP_SATISFACTION",
-        message: `Satisfação registrada: ${score}/5.`,
-        metadata: { score, comment: String(body.comment || "").trim() || null },
-      },
-    });
-    });
+    return NextResponse.json({error:"A satisfação é registrada pelo cliente no link da pesquisa."},{status:410});
   } else {
     return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
   }

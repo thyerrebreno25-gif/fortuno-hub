@@ -33,6 +33,7 @@ function redirectTo(request: NextRequest, pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  if(matchesRoute(request.nextUrl.pathname,"/satisfacao")||matchesRoute(request.nextUrl.pathname,"/api/satisfacao"))return NextResponse.next({request});
   // The public policy must remain readable even when the auth provider is unavailable.
   if (["/politica-de-privacidade", "/termos-de-servico"].includes(request.nextUrl.pathname)) return NextResponse.next({ request });
   let response = NextResponse.next({ request });

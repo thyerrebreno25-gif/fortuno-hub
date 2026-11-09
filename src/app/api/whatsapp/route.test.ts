@@ -15,10 +15,12 @@ it("enforces permissions before loading the inbox",async()=>{m.permission.mockRe
 
 it("includes per-operator unread counts without loading message histories",async()=>{m.find.mockResolvedValueOnce([{id:"ticket",senderEmail:"wa-contact:5511999999999"}]).mockResolvedValueOnce([]);const body=await(await GET(new Request("https://example.test/api/whatsapp?light=1"))).json();expect(body.tickets[0].unreadCount).toBe(3);});
 
-it("filters unread conversations before applying the list limit",async()=>{await GET(new Request("https://example.test/api/whatsapp?light=1&unread=1"));expect(m.find.mock.calls[0][0].where.AND).toEqual([{id:{in:["ticket"]}}]);});
+it("filters unread conversations before applying the list limit",async()=>{await GET(new Request("https://example.test/api/whatsapp?light=1&unread=1"));expect(m.find.mock.calls[0][0].where.AND).toEqual([{AND:[]},{id:{in:["ticket"]}}]);});
 
 it("filters conversations and all counters by the currently connected physical phone",async()=>{
  await GET(new Request("https://hub.test/api/whatsapp?light=1"));
  for(const [query] of m.find.mock.calls) expect(query.where).toMatchObject({source:"WHATSAPP_API",recipientEmail:"wa-account:conn:5511888888888"});
 });
 it("does not create simulated calls through the retired endpoint",async()=>{expect((await POST()).status).toBe(410);expect(m.find).not.toHaveBeenCalled();});
+
+it("preserves personal ownership and open-state filters when filtering unread calls",async()=>{await GET(new Request("https://example.test/api/whatsapp?light=1&unread=1&view=MINE&status=OPEN"));expect(m.find.mock.calls[0][0].where.AND[0].AND).toContainEqual({assignedToId:"user",status:{notIn:["RESOLVED","SPAM"]}});});

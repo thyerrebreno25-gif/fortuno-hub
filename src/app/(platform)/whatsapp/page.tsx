@@ -31,7 +31,6 @@ import {
   IconMessageCircle,
   IconSearch,
   IconSend,
-  IconStar,
   IconUsers,
   IconNotes,
   IconLock,
@@ -48,6 +47,7 @@ import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
 import { WhatsAppNotificationToggle } from "@/modules/whatsapp/notification-toggle";
 import { WhatsAppQuickReplies } from "@/modules/whatsapp/quick-replies";
+import { WhatsAppFinalizeDialog } from "@/modules/whatsapp/finalize-dialog";
 import { SaveWhatsAppContact } from "@/modules/whatsapp/save-contact";
 import { inboxFacets, matchesInboxFilters, type InboxKind, type InboxStatus, type InboxView } from "@/modules/whatsapp/inbox-filters";
 import styles from "./whatsapp.module.css";
@@ -427,6 +427,18 @@ export default function WhatsAppPage() {
     return () => window.removeEventListener("fortuno:notification-open", listener);
   }, []);
 
+  function removeClosed(ids:string[]) {
+    const closed=new Set(ids);
+    ++listRequest.current; lastRevision.current="";
+    setInbox(current=>({...current,tickets:current.tickets.map(ticket=>closed.has(ticket.id)?{...ticket,status:"RESOLVED",resolvedAt:new Date().toISOString()}:ticket).filter(ticket=>!(closed.has(ticket.id)&&(view!=="GENERAL"||chatStatus==="OPEN")))}));
+    for(const id of ids){detailCache.current.delete(id);ticketVersions.current.delete(id);}
+    if(selectedRef.current&&closed.has(selectedRef.current)){
+      ++detailRequest.current;detailController.current?.abort();selectedRef.current=null;
+      setSelectedId(null);setManagementSelection(null);setDetail(null);setDetailLoading(false);setReply("");
+    }
+    void loadList();
+  }
+
   async function mutate(action: Record<string, unknown>, success: string) {
     if (!selectedId) return false;
     const id = selectedId;
@@ -443,8 +455,8 @@ export default function WhatsAppPage() {
       const previous = detailCache.current.get(id);
       const next = {...payload.ticket, messages:mergeChatMessages((previous?.messages || []).filter(message => !message.id.startsWith("pending:")),payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
       detailCache.current.set(id, next);
-      if (selectedRef.current === id) setDetail(next);
-      void loadList();
+      if (action.action === "finalize") removeClosed([id]);
+      else { if (selectedRef.current === id) setDetail(next); void loadList(); }
       if (action.action !== "reply") notifications.show({ color: "green", title: "Tudo certo", message: success });
       return true;
     } catch (error) {
@@ -548,7 +560,7 @@ export default function WhatsAppPage() {
           <div id="whatsapp-boxes-content" className={styles.boxesContent}>
           <div className={styles.filterSection}>
             <ViewButton active={view === "GENERAL"} icon={<IconUsers size={18} />} label="Caixa geral" count={stats?.facets?.view.GENERAL ?? stats?.general ?? 0} onClick={() => setView("GENERAL")} />
-            <ViewButton active={view === "MINE"} icon={<IconMessageCircle size={18} />} label="Minha caixa" count={stats?.facets?.view.MINE ?? stats?.mine ?? 0} onClick={() => setView("MINE")} />
+            <ViewButton active={view === "MINE"} icon={<IconMessageCircle size={18} />} label="Minha caixa" count={stats?.facets?.view.MINE ?? stats?.mine ?? 0} onClick={() => { setView("MINE"); setChatStatus("OPEN"); }} />
             <ViewButton active={view === "QUEUE"} icon={<IconInbox size={18} />} label="Fila de atendimento" count={stats?.facets?.view.QUEUE ?? stats?.queue ?? 0} onClick={() => setView("QUEUE")} />
           </div>
           <div className={styles.filterSection}>
@@ -561,7 +573,7 @@ export default function WhatsAppPage() {
             <Text fw={800} size="xs" c="dimmed" mb="xs">SITUAÇÃO</Text>
             <ViewButton active={chatStatus === "ALL"} icon={<IconMessageCircle size={18} />} label="Todas as situações" count={stats?.facets?.status.ALL || 0} onClick={() => setChatStatus("ALL")} />
             <ViewButton active={chatStatus === "OPEN"} icon={<IconInbox size={18} />} label="Em aberto" count={stats?.facets?.status.OPEN || 0} onClick={() => setChatStatus("OPEN")} />
-            <ViewButton active={chatStatus === "RESOLVED"} icon={<IconCheck size={18} />} label="Finalizadas" count={stats?.facets?.status.RESOLVED || 0} onClick={() => setChatStatus("RESOLVED")} />
+            <ViewButton active={chatStatus === "RESOLVED"} icon={<IconCheck size={18} />} label="Finalizadas" count={view === "MINE" ? undefined : stats?.facets?.status.RESOLVED || 0} onClick={() => { setView("GENERAL"); setChatStatus("RESOLVED"); }} />
           </div></div>
         </aside>
 
@@ -582,6 +594,7 @@ export default function WhatsAppPage() {
               {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
             </div>
           </div>
+          {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...filters,search:search.trim(),onlyUnread}} onClosed={removeClosed}/></Group>}
           <div className={styles.ticketList}>
             {tickets.length ? (
               tickets.map((ticket) => (
@@ -709,14 +722,7 @@ export default function WhatsAppPage() {
                 <div className={styles.resolvedBar}>
                   <Text size="sm" fw={700}>Atendimento finalizado</Text>
                   {bootstrap?.canEdit&&<Button variant="subtle" size="xs" leftSection={<IconLock size={15}/>} onClick={()=>setCommentMode(true)}>Comentário interno</Button>}
-                  <Group gap={5}>
-                    <Text size="xs" c="dimmed">Registrar satisfação:</Text>
-                    {[1, 2, 3, 4, 5].map((score) => (
-                      <ActionIcon key={score} variant="subtle" color="yellow" onClick={() => mutate({ action: "satisfaction", score }, `Satisfação ${score}/5 registrada.`)}>
-                        <IconStar size={17} />
-                      </ActionIcon>
-                    ))}
-                  </Group>
+
                 </div>
               )}
             </>
@@ -752,10 +758,10 @@ export default function WhatsAppPage() {
   );
 }
 
-function ViewButton({ active, icon, label, count, onClick }: { active: boolean; icon: React.ReactNode; label: string; count: number; onClick: () => void }) {
+function ViewButton({ active, icon, label, count, onClick }: { active: boolean; icon: React.ReactNode; label: string; count?: number; onClick: () => void }) {
   return (
     <button type="button" aria-pressed={active} className={`${styles.viewButton} ${active ? styles.viewActive : ""}`} onClick={onClick}>
-      <span>{icon}{label}</span><Badge size="sm" title={String(count)} variant={active ? "filled" : "light"}>{count > 999 ? new Intl.NumberFormat("pt-BR",{notation:"compact",maximumFractionDigits:1}).format(count) : count}</Badge>
+      <span>{icon}{label}</span>{count!==undefined&&<Badge size="sm" title={String(count)} variant={active ? "filled" : "light"}>{count > 999 ? new Intl.NumberFormat("pt-BR",{notation:"compact",maximumFractionDigits:1}).format(count) : count}</Badge>}
     </button>
   );
 }

@@ -9,8 +9,10 @@ export async function unreadCounts(organizationId: string, userId: string, ticke
   const rows = await prisma.$queryRaw<Array<{ ticketId: string; count: number }>>(Prisma.sql`
     SELECT m."ticketId", COUNT(*)::int AS count FROM "ServiceMessage" m
     JOIN "ServiceTicket" t ON t.id = m."ticketId"
+    LEFT JOIN "WhatsAppOperationStart" baseline ON baseline."organizationId"=t."organizationId" AND baseline."accountRecipient"=t."recipientEmail"
     LEFT JOIN "WhatsAppReadState" r ON r."ticketId" = t.id AND r."organizationId" = ${organizationId} AND r."userId" = ${userId}
     WHERE t."organizationId" = ${organizationId} AND t.source::text = 'WHATSAPP_API' AND t."recipientEmail" = ${recipient}
+      AND (baseline."startedAt" IS NULL OR m."receivedAt">baseline."startedAt")
       AND t."mergedIntoId" IS NULL AND t."isSpam" = false AND m.direction::text = 'INBOUND'
       AND (m."providerMetadata"->>'accountPhone' = ${account.connection?.phone} OR m."externalMessageId" LIKE ${`uazapi:${account.connection?.phone}:%`})
       ${ticketId ? Prisma.sql`AND t.id = ${ticketId}` : Prisma.empty}
@@ -36,7 +38,7 @@ export async function latestConversationDirections(organizationId: string, ticke
   const rows = await prisma.$queryRaw<Array<{ticketId: string; direction: string}>>(Prisma.sql`
     SELECT t.id AS "ticketId", last.direction::text AS direction
     FROM "ServiceTicket" t
-    CROSS JOIN LATERAL (SELECT m.direction FROM "ServiceMessage" m WHERE m."ticketId" = t.id AND m.direction::text <> 'INTERNAL' ORDER BY m."receivedAt" DESC, m.id DESC LIMIT 1) last
+    CROSS JOIN LATERAL (SELECT m.direction FROM "ServiceMessage" m WHERE m."ticketId" = t.id AND m.direction::text <> 'INTERNAL' AND COALESCE(m."providerMetadata"->>'type','') <> 'WHATSAPP_SURVEY' ORDER BY m."receivedAt" DESC, m.id DESC LIMIT 1) last
     WHERE t."organizationId" = ${organizationId} AND t.id IN (${Prisma.join(ticketIds)})
   `);
   return new Map(rows.map(row => [row.ticketId, row.direction]));

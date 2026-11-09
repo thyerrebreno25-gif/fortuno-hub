@@ -6,14 +6,14 @@ export type InboxFilters = { view: InboxView; kind: InboxKind; status: InboxStat
 type MetricTicket = { assignedToId: string | null; senderEmail: string; status: string };
 export function matchesInboxFilters(ticket: MetricTicket, current: InboxFilters, userId: string) {
   return ticket.status !== "SPAM" &&
-    (current.view !== "MINE" || ticket.assignedToId === userId) &&
+    (current.view !== "MINE" || ticket.assignedToId === userId && ticket.status !== "RESOLVED") &&
     (current.view !== "QUEUE" || !ticket.assignedToId && ticket.status !== "RESOLVED") &&
     (current.kind === "ALL" || ticket.senderEmail.startsWith(current.kind === "GROUP" ? "wa-group:" : "wa-contact:")) &&
     (current.status === "ALL" || (current.status === "RESOLVED" ? ticket.status === "RESOLVED" : ticket.status !== "RESOLVED"));
 }
 export function inboxWhere(filters: InboxFilters, userId: string): Prisma.ServiceTicketWhereInput {
   const AND: Prisma.ServiceTicketWhereInput[] = [];
-  if (filters.view === "MINE") AND.push({ assignedToId: userId });
+  if (filters.view === "MINE") AND.push({ assignedToId: userId, status: { notIn: ["RESOLVED", "SPAM"] } });
   if (filters.view === "QUEUE") AND.push({ assignedToId: null, status: { notIn: ["RESOLVED", "SPAM"] } });
   if (filters.kind !== "ALL") AND.push({ senderEmail: { startsWith: filters.kind === "GROUP" ? "wa-group:" : "wa-contact:" } });
   if (filters.status === "OPEN") AND.push({ status: { notIn: ["RESOLVED", "SPAM"] } });

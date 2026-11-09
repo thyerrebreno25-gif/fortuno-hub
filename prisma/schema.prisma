@@ -2190,6 +2190,50 @@ model WhatsAppReadState {
   @@id([organizationId, userId, ticketId])
 }
 
+model WhatsAppSurveyPolicy {
+  organizationId String @id
+  enabled Boolean @default(false)
+  cadenceDays Int @default(15)
+  delayMinutes Int @default(30)
+  message String
+  activatedAt DateTime?
+  updatedAt DateTime @updatedAt
+}
+
+model WhatsAppSurveyClientState {
+  organizationId String
+  clientId String
+  optedOutAt DateTime?
+  @@id([organizationId, clientId])
+}
+
+model WhatsAppSurvey {
+  id String @id @default(cuid())
+  organizationId String
+  clientId String
+  clientName String
+  operatorId String
+  operatorName String
+  ticketId String
+  accountRecipient String
+  destination String
+  status String @default("PENDING")
+  scheduledAt DateTime
+  sentAt DateTime?
+  expiresAt DateTime?
+  answeredAt DateTime?
+  score Int?
+  comment String?
+  tokenHash String? @unique
+  externalMessageId String?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([organizationId, clientId, createdAt])
+  @@index([status, scheduledAt])
+  @@index([organizationId, accountRecipient, sentAt])
+}
+
 model WhatsAppQuickReply {
   id String @id @default(cuid())
   organizationId String
@@ -2323,4 +2367,14 @@ model FathomRecording {
   connection FathomConnection @relation(fields:[connectionId],references:[id],onDelete:Cascade)
   @@unique([connectionId,recordingId])
   @@index([meetingId])
+}
+
+model WhatsAppOperationStart {
+ organizationId String
+ accountRecipient String
+ startedAt DateTime
+ startedById String
+ closedCount Int @default(0)
+ @@id([organizationId, accountRecipient])
+ @@index([organizationId, startedAt])
 }

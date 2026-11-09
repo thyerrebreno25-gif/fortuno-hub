@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inboxFacets, inboxWhere } from "./inbox-filters";
+import { inboxFacets, inboxWhere, matchesInboxFilters } from "./inbox-filters";
 const tickets = [
   { assignedToId: "me", senderEmail: "wa-group:a", status: "IN_PROGRESS" },
   { assignedToId: "me", senderEmail: "wa-group:b", status: "RESOLVED" },
@@ -9,21 +9,18 @@ const tickets = [
   { assignedToId: null, senderEmail: "wa-group:d", status: "SPAM" },
 ];
 describe("Combinable WhatsApp sidebar filters", () => {
-  it("keeps owner, group and resolved conditions together", () => {
-    const where = inboxWhere({ view: "MINE", kind: "GROUP", status: "RESOLVED" }, "me");
-    expect(where.AND).toEqual([{ assignedToId: "me" }, { senderEmail: { startsWith: "wa-group:" } }, { status: "RESOLVED" }]);
-  });
-  it("counts closed groups belonging to the operator", () => {
-    const facets = inboxFacets(tickets, { view: "MINE", kind: "GROUP", status: "RESOLVED" }, "me");
-    expect(facets.view.MINE).toBe(1); expect(facets.kind.CONTACT).toBe(0); expect(facets.status).toEqual({ ALL: 2, OPEN: 1, RESOLVED: 1 });
+  it("keeps the personal inbox active even with the ALL status filter", () => {
+    expect(matchesInboxFilters(tickets[1],{view:"MINE",kind:"ALL",status:"ALL"},"me")).toBe(false);
+    expect(inboxWhere({view:"MINE",kind:"GROUP",status:"ALL"},"me").AND).toEqual([{assignedToId:"me",status:{notIn:["RESOLVED","SPAM"]}},{senderEmail:{startsWith:"wa-group:"}}]);
+    expect(inboxFacets(tickets,{view:"MINE",kind:"ALL",status:"ALL"},"me").view.MINE).toBe(1);
   });
   it("keeps resolved and spam conversations outside the waiting queue", () => {
     const facets = inboxFacets(tickets, { view: "QUEUE", kind: "ALL", status: "ALL" }, "me");
     expect(facets.kind.ALL).toBe(1); expect(facets.status.RESOLVED).toBe(0);
   });
-  it("allows an operator to find their finalized conversations", () => {
-    const where = inboxWhere({ view: "MINE", kind: "ALL", status: "RESOLVED" }, "me");
-    expect(JSON.stringify(where)).not.toContain("notIn");
-    expect(inboxFacets(tickets, { view: "GENERAL", kind: "ALL", status: "ALL" }, "me").status).toEqual({ ALL: 5, OPEN: 3, RESOLVED: 2 });
+  it("keeps finalized history in the general box and accepts a newly assigned call", () => {
+    expect(matchesInboxFilters(tickets[1],{view:"GENERAL",kind:"ALL",status:"RESOLVED"},"me")).toBe(true);
+    expect(matchesInboxFilters({...tickets[1],status:"NEW"},{view:"MINE",kind:"ALL",status:"ALL"},"me")).toBe(true);
+    expect(matchesInboxFilters({...tickets[1],status:"NEW",assignedToId:"other"},{view:"MINE",kind:"ALL",status:"ALL"},"me")).toBe(false);
   });
 });

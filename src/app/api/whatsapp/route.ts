@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
   if (url.searchParams.get("light") === "1") {
     const filteredUnread = url.searchParams.get("unread") === "1" ? await unreadCounts(member.organizationId, member.userId) : null;
-    if (filteredUnread) where.AND = [{ id: { in: [...filteredUnread.keys()] } }];
+    if (filteredUnread) where.AND = [inboxWhere(filters, member.userId), { id: { in: [...filteredUnread.keys()] } }];
     const [rows, metrics, unread] = await Promise.all([
       prisma.serviceTicket.findMany({where,orderBy:[{lastMessageAt:"desc"},{receivedAt:"desc"}],take:251,select:{id:true,subject:true,senderName:true,senderEmail:true,snippet:true,status:true,routingArea:true,routingReason:true,priority:true,assignedAt:true,receivedAt:true,resolvedAt:true,firstResponseAt:true,lastMessageAt:true,updatedAt:true,client:{select:{id:true,name:true}},assignedTo:{select:{id:true,name:true,email:true}}}}),
       prisma.serviceTicket.findMany({where:baseWhere,take:2000,orderBy:{receivedAt:"desc"},select:{assignedToId:true,status:true,senderEmail:true}}),
@@ -122,6 +122,7 @@ export async function GET(request: Request) {
     prisma.serviceTicketHistory.findMany({
       where: {
         type: "WHATSAPP_SATISFACTION",
+        metadata: {path:["origin"],equals:"CUSTOMER_SURVEY"},
         ticket: baseWhere,
       },
       take: 2000,

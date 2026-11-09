@@ -26,6 +26,7 @@ import {
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Breakdown, MonitoringData } from "@/modules/whatsapp/monitoring-types";
+import { WhatsAppSurveyResults } from "@/modules/whatsapp/survey-panel";
 import styles from "./monitoring.module.css";
 
 type Option = { value: string; label: string };
@@ -170,6 +171,8 @@ export function WhatsAppMonitoring({
         </Group>
       </Paper>
 
+      {data?.operationStartedAt&&<Text size="xs" c="dimmed">Operação iniciada em {dateTime(data.operationStartedAt)} · indicadores anteriores reiniciados; histórico preservado.</Text>}
+      <WhatsAppSurveyResults from={from} to={to} clientId={clientId} assigneeId={assigneeId}/>
       {loading && !data ? (
         <div className={styles.loading}><Loader size="sm" /><Text>Calculando indicadores...</Text></div>
       ) : data ? (

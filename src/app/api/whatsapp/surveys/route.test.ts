@@ -1,0 +1,13 @@
+import {beforeEach,expect,it,vi} from "vitest";
+vi.mock("@/modules/whatsapp/operation-start",()=>({operationStartedAt:async()=>null}));
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),account:vi.fn(),policy:vi.fn(),rows:vi.fn(),upsert:vi.fn(),cancel:vi.fn(),transaction:vi.fn()}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:m.account}));
+vi.mock("@/lib/prisma",()=>({prisma:{whatsAppSurveyPolicy:{findUnique:m.policy},whatsAppSurvey:{findMany:m.rows},$transaction:m.transaction}}));
+import {GET,PUT} from "./route";
+const request=(enabled:boolean)=>new Request("https://hub.test/api/whatsapp/surveys",{method:"PUT",body:JSON.stringify({enabled,cadenceDays:15,delayMinutes:30,message:"Conte como foi o atendimento: {{link}}"})});
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",role:"MASTER"});m.permission.mockResolvedValue({canView:true,canEdit:true});m.account.mockResolvedValue({recipient:"wa-account:c:5511"});m.policy.mockResolvedValue(null);m.rows.mockResolvedValue([]);m.transaction.mockImplementation(async fn=>fn({whatsAppSurveyPolicy:{upsert:m.upsert},whatsAppSurvey:{updateMany:m.cancel}}));});
+it("defaults to a paused 15-day policy and scopes results to the connected number and filters",async()=>{const response=await GET(new Request("https://hub.test/api/whatsapp/surveys?from=2026-11-01&to=2026-11-09&clientId=cl&assigneeId=op"));const data=await response.json();expect(data.policy).toMatchObject({enabled:false,cadenceDays:15});expect(data.summary.answered).toBe(0);expect(m.rows.mock.calls[0][0].where).toMatchObject({organizationId:"org",accountRecipient:"wa-account:c:5511",clientId:"cl",operatorId:"op"});expect(m.rows.mock.calls[0][0].select).not.toHaveProperty("tokenHash");});
+it("permits only management to change the policy",async()=>{for(const role of ["OPERATOR","CLIENT"]){m.member.mockResolvedValueOnce({organizationId:"org",role});expect((await PUT(request(true))).status).toBe(403);}expect(m.upsert).not.toHaveBeenCalled();});
+it("marks activation time so existing historical closures do not trigger mass invitations",async()=>{expect((await PUT(request(true))).status).toBe(200);expect(m.upsert.mock.calls[0][0].create).toMatchObject({organizationId:"org",enabled:true,cadenceDays:15,activatedAt:expect.any(Date)});expect(m.cancel).not.toHaveBeenCalled();});
+it("pauses queued invitations without sending or erasing responses",async()=>{expect((await PUT(request(false))).status).toBe(200);expect(m.cancel.mock.calls[0][0]).toMatchObject({where:{organizationId:"org",status:"PENDING"},data:{status:"CANCELLED"}});});

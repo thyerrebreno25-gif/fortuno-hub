@@ -11,6 +11,7 @@ export type Breakdown = {
 };
 
 export type MonitoringData = {
+  operationStartedAt?: string|null;
   period: { from: string; to: string; days: number };
   summary: {
     conversations: number;

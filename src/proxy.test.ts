@@ -103,3 +103,8 @@ it("honors the signed daily verification for a member with an enrolled factor", 
   const response = await proxy(new NextRequest("https://example.test/api/onboarding/projects"));
   expect(response.headers.get("x-middleware-next")).toBe("1");
 });
+
+it("allows only the public satisfaction page and response API without opening management APIs", async()=>{
+  for(const path of ["/satisfacao/preview","/api/satisfacao/token"]){const r=await proxy(new NextRequest("https://example.test"+path));expect(r.headers.get("x-middleware-next")).toBe("1");expect(r.headers.get("location")).toBeNull();}
+  for(const path of ["/api/whatsapp/surveys","/api/whatsapp/finalize-batch","/api/satisfacao-admin"]){const r=await proxy(new NextRequest("https://example.test"+path));expect(r.headers.get("location")).toBe("https://example.test/login");}
+});

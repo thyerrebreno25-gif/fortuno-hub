@@ -1,3 +1,4 @@
+import { operationStartedAt } from "@/modules/whatsapp/operation-start";
 import { accountMessageWhere, currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -51,14 +52,6 @@ function shortDate(key: string) {
   return `${day}/${month}`;
 }
 
-function scoreFromMetadata(metadata: unknown) {
-  if (!metadata || typeof metadata !== "object") return null;
-  const score = (metadata as { score?: unknown }).score;
-  return typeof score === "number" && score >= 1 && score <= 5
-    ? score
-    : null;
-}
-
 export async function GET(request: Request) {
   const member = await getServiceCenterMember();
   if (!member) {
@@ -108,11 +101,13 @@ export async function GET(request: Request) {
     : null;
 
   const account=await currentWhatsAppAccount(member.organizationId);
+  const baseline=await operationStartedAt(member.organizationId,account.recipient);
+  const effectiveStart=baseline&&baseline>start?baseline:start;
   const where = {
     ...account.where,
     isSpam: false,
     mergedIntoId: null,
-    receivedAt: { gte: start, lte: end },
+    receivedAt: { gte: effectiveStart, lte: end },
     ...(clientId ? { clientId } : {}),
     ...(selectedAssignee
       ? {
@@ -134,7 +129,7 @@ export async function GET(request: Request) {
       : {}),
   };
 
-  const [tickets, satisfactionHistory] = await Promise.all([
+  const [rawTickets, satisfactionSurveys] = await Promise.all([
     prisma.serviceTicket.findMany({
       where,
       orderBy: { receivedAt: "asc" },
@@ -157,30 +152,21 @@ export async function GET(request: Request) {
           orderBy: { receivedAt: "asc" },
           select: {
             direction: true,
+            providerMetadata: true,
             fromEmail: true,
             receivedAt: true,
           },
         },
       },
     }),
-    prisma.serviceTicketHistory.findMany({
-      where: {
-        type: "WHATSAPP_SATISFACTION",
-        ticket: where,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 10000,
-      select: { ticketId: true, metadata: true },
+    prisma.whatsAppSurvey.findMany({
+      where:{organizationId:member.organizationId,accountRecipient:account.recipient||"disconnected",status:"ANSWERED",...(baseline?{createdAt:{gte:baseline}}:{}),answeredAt:{gte:start,lte:end},...(clientId?{clientId}:{}),...(assigneeId?{operatorId:assigneeId}:{})},
+      take:10000,
+      select:{ticketId:true,score:true,clientId:true,clientName:true,operatorId:true,operatorName:true},
     }),
   ]);
 
-  const latestScoreByTicket = new Map<string, number>();
-  for (const item of satisfactionHistory) {
-    if (latestScoreByTicket.has(item.ticketId)) continue;
-    const score = scoreFromMetadata(item.metadata);
-    if (score !== null) latestScoreByTicket.set(item.ticketId, score);
-  }
-
+  const tickets=rawTickets.map(ticket=>({...ticket,messages:ticket.messages.filter(message=>!message.providerMetadata||typeof message.providerMetadata!=="object"||Array.isArray(message.providerMetadata)||message.providerMetadata.type!=="WHATSAPP_SURVEY")}));
   const now = new Date();
   const active = tickets.filter(
     (ticket) => !["RESOLVED", "SPAM"].includes(ticket.status),
@@ -314,10 +300,8 @@ export async function GET(request: Request) {
     current.messages += outboundMessages;
     const first = minutesBetween(ticket.receivedAt, ticket.firstResponseAt);
     const handling = minutesBetween(ticket.firstResponseAt, ticket.resolvedAt);
-    const score = latestScoreByTicket.get(ticket.id);
     if (first !== null) current.firstResponses.push(first);
     if (handling !== null) current.handling.push(handling);
-    if (score !== undefined) current.scores.push(score);
     map.set(id, current);
   }
 
@@ -369,6 +353,14 @@ export async function GET(request: Request) {
     }
   }
 
+  for(const survey of satisfactionSurveys){
+    if(survey.score===null)continue;
+    for(const [map,id,name] of [[clients,survey.clientId,survey.clientName],[agents,survey.operatorId,survey.operatorName]] as const){
+      const row=map.get(id)||{id,name,conversations:0,active:0,resolved:0,messages:0,firstResponses:[],handling:[],scores:[]};
+      row.scores.push(survey.score);map.set(id,row);
+    }
+  }
+
   const finishBreakdown = (items: Map<string, Breakdown>) =>
     [...items.values()]
       .map(({ firstResponses, handling, scores, ...item }) => ({
@@ -402,8 +394,9 @@ export async function GET(request: Request) {
     .sort((a, b) => b.waitingMinutes - a.waitingMinutes)
     .slice(0, 50);
 
-  const scores = [...latestScoreByTicket.values()];
+  const scores = satisfactionSurveys.flatMap(row=>row.score===null?[]:[row.score]);
   return NextResponse.json({
+    operationStartedAt:baseline,
     period: { from: start.toISOString(), to: end.toISOString(), days: periodDays },
     summary: {
       conversations: tickets.length,

@@ -9,8 +9,10 @@ export async function whatsappNotifications(organizationId: string, userId: stri
   const rows = await prisma.$queryRaw<Array<{ id: string; ticketId: string; senderName: string | null; receivedAt: Date }>>(Prisma.sql`
     SELECT DISTINCT ON (t.id) m.id, t.id AS "ticketId", t."senderName", m."receivedAt"
     FROM "ServiceTicket" t JOIN "ServiceMessage" m ON m."ticketId" = t.id
+    LEFT JOIN "WhatsAppOperationStart" baseline ON baseline."organizationId"=t."organizationId" AND baseline."accountRecipient"=t."recipientEmail"
     LEFT JOIN "WhatsAppReadState" r ON r."ticketId" = t.id AND r."organizationId" = ${organizationId} AND r."userId" = ${userId}
     WHERE t."organizationId" = ${organizationId} AND t.source::text = 'WHATSAPP_API' AND t."recipientEmail" = ${account.recipient}
+      AND (baseline."startedAt" IS NULL OR m."receivedAt">baseline."startedAt")
       AND t."mergedIntoId" IS NULL AND t."isSpam" = false AND t.status::text NOT IN ('RESOLVED', 'SPAM')
       AND (t."assignedToId" = ${userId} OR (${manageQueue} AND t."assignedToId" IS NULL))
       AND (m."providerMetadata"->>'accountPhone' = ${account.connection?.phone} OR m."externalMessageId" LIKE ${`uazapi:${account.connection?.phone}:%`})

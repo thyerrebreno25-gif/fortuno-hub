@@ -1,3 +1,5 @@
+import { notificationAfterReset } from "@/modules/notifications/reset";
+import { operationStartedAt } from "@/modules/whatsapp/operation-start";
 import { whatsappNotifications } from "@/modules/whatsapp/notifications";
 import { SERVICE_CENTER_MANAGER_ROLES } from "@/modules/atendimento/auth";
 import { activityNotifications } from "@/modules/operations/notifications";
@@ -16,6 +18,8 @@ type NotificationItem = {
   createdAt: string;
   popup?: boolean;
   priority?: number;
+  reminderDay?:string;
+  originAt?:string;
 };
 
 export async function GET() {
@@ -156,7 +160,9 @@ export async function GET() {
       });
     }
 
-    items.sort(
+    const clearedAt=await operationStartedAt(member.organizationId);
+    const visibleItems=clearedAt?items.filter(item=>notificationAfterReset(item,clearedAt)):items;
+    visibleItems.sort(
       (a, b) =>
         (b.priority || 0) - (a.priority || 0) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
@@ -164,8 +170,8 @@ export async function GET() {
     return NextResponse.json({
       viewerKey: `${member.organizationId}:${member.userId}`,
       whatsappNotificationsMuted: Boolean(whatsappPreference?.notificationsMuted),
-      items: items.slice(0, 60),
-      total: items.length,
+      items: visibleItems.slice(0, 60),
+      total: visibleItems.length,
     });
   } catch (error) {
     console.error("Erro ao carregar notificações:", error);
