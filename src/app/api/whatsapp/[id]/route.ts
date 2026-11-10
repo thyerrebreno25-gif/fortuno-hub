@@ -1,4 +1,5 @@
 import {reopenWhatsAppCall,ReopenWhatsAppError} from "@/modules/whatsapp/reopen";
+import {findReplyTarget,ReplyTargetError} from "@/modules/whatsapp/reply-target";
 import {readWhatsAppConversation,ConversationCursorError} from "@/modules/whatsapp/conversation-read";
 import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {outgoingContext} from "@/modules/whatsapp/outgoing-context";
@@ -275,8 +276,13 @@ export async function PATCH(request: Request, context: Context) {
       );
     }
 
+    let replyTarget:Awaited<ReturnType<typeof findReplyTarget>>|null=null;
+    if(body.replyToMessageId!==undefined&&body.replyToMessageId!==null){
+      try{replyTarget=await findReplyTarget(current,body.replyToMessageId);if(!replyTarget.providerId)throw new ReplyTargetError("Esta mensagem não está disponível para responder pelo WhatsApp.");}
+      catch(error){return NextResponse.json({error:error instanceof ReplyTargetError?error.message:"Não foi possível validar a mensagem original."},{status:error instanceof ReplyTargetError?error.status:500});}
+    }
     let externalMessageId: string | null = null;
-    let providerMetadata: { provider: string; instanceId: string; connectionId: string; accountPhone: string | null } | undefined;
+    let providerMetadata: { provider: string; instanceId: string; connectionId: string; accountPhone: string | null;replyToMessageId?:string } | undefined;
     if (current.source === "WHATSAPP_API") {
       const latestInbound = [...current.messages]
         .reverse()
@@ -285,9 +291,9 @@ export async function PATCH(request: Request, context: Context) {
         const metadata = object(latestInbound?.providerMetadata);
         const connection = await whatsappConnection(member.organizationId);
         const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
-        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, content),...destination});
+        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, content),...destination,replyToMessageId:replyTarget?.providerId});
         externalMessageId = sent.messageId;
-        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone };
+        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone,...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{}) };
       } catch (error) {
         console.error("Falha ao enviar resposta pelo WhatsApp:", error);
         return NextResponse.json(

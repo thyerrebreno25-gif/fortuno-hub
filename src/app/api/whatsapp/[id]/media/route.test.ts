@@ -1,7 +1,8 @@
 import {beforeEach,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-const m=vi.hoisted(()=>({access:vi.fn(),send:vi.fn(),draft:vi.fn(),claim:vi.fn(),update:vi.fn(),create:vi.fn(),count:vi.fn(),upload:vi.fn(),download:vi.fn(),signed:vi.fn(),getBucket:vi.fn(),message:vi.fn(),attachment:vi.fn(),ticket:vi.fn()}));
+const m=vi.hoisted(()=>({access:vi.fn(),send:vi.fn(),draft:vi.fn(),claim:vi.fn(),update:vi.fn(),create:vi.fn(),count:vi.fn(),upload:vi.fn(),download:vi.fn(),signed:vi.fn(),getBucket:vi.fn(),message:vi.fn(),attachment:vi.fn(),ticket:vi.fn(),target:vi.fn()}));
 vi.mock("@/modules/whatsapp/outbound-access",async original=>({...await original<typeof import("@/modules/whatsapp/outbound-access")>(),whatsappSendAccess:m.access}));
+vi.mock("@/modules/whatsapp/reply-target",()=>({findReplyTarget:m.target,ReplyTargetError:class extends Error{status=404;}}));
 vi.mock("@/modules/whatsapp/uazapi-server",()=>({sendUazapiMedia:m.send}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({storage:{getBucket:m.getBucket,from:()=>({createSignedUploadUrl:m.upload,download:m.download,createSignedUrl:m.signed})}})}));
 vi.mock("@/lib/prisma",()=>{const tx={serviceTicketHistory:{findFirst:m.draft,updateMany:m.claim,update:m.update,create:m.create,count:m.count},serviceMessage:{upsert:m.message},serviceAttachment:{upsert:m.attachment},serviceTicket:{updateMany:m.ticket}};return {prisma:{...tx,$transaction:(fn:(t:typeof tx)=>unknown)=>fn(tx)}};});
@@ -17,3 +18,8 @@ it("never sends an already sent or uncertain upload twice",async()=>{m.draft.moc
 it("rejects a different account, corrupt file and a concurrent claim before sending",async()=>{m.draft.mockResolvedValueOnce({id:"upload",createdAt:new Date(),metadata:{...meta,accountRecipient:"old-number"}});expect((await post({action:"send",uploadId:"upload"})).status).toBe(404);m.download.mockResolvedValueOnce({data:new Blob(["bad-file!"])});expect((await post({action:"send",uploadId:"upload"})).status).toBe(400);m.claim.mockResolvedValueOnce({count:0});expect((await post({action:"send",uploadId:"upload"})).status).toBe(409);expect(m.send).not.toHaveBeenCalled();});
 it("preserves an uncertain state when the provider response is lost",async()=>{m.send.mockRejectedValueOnce(new Error("timeout"));expect((await post({action:"send",uploadId:"upload"})).status).toBe(502);expect(m.claim.mock.calls.at(-1)![0].data.metadata.state).toBe("UNCONFIRMED");expect(m.message).not.toHaveBeenCalled();});
 it("enforces ownership again just before external send",async()=>{m.access.mockResolvedValueOnce(await m.access()).mockRejectedValueOnce(new WhatsAppSendError("Transferido para outro operador.",403));expect((await post({action:"send",uploadId:"upload"})).status).toBe(403);expect(m.send).not.toHaveBeenCalled();});
+
+it("keeps a pasted image or document attached to the explicitly selected original message",async()=>{
+ m.target.mockResolvedValueOnce({providerId:"quoted-provider",quote:{id:"quoted-hub"}});expect((await post({action:"send",uploadId:"upload",replyToMessageId:"quoted-hub"})).status).toBe(200);
+ expect(m.send.mock.calls[0][0].replyToMessageId).toBe("quoted-provider");expect(m.message.mock.calls[0][0].create.providerMetadata.replyToMessageId).toBe("quoted-hub");
+});

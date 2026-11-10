@@ -61,3 +61,10 @@ describe("Importing missed WhatsApp messages safely", () => {
     m.duplicate.mockResolvedValueOnce({ id: "already-imported" }); await receiveMessage(connection, event); expect(m.lock).toHaveBeenCalledOnce(); expect(m.createMessage).not.toHaveBeenCalled();
   });
 });
+
+it("preserves an incoming reply's original even when it belongs to a previous call",async()=>{
+ m.existing.mockResolvedValueOnce({id:"yesterday-hub"}).mockResolvedValueOnce(null);
+ await receiveMessage(connection,{...event,historical:false,quote:{externalId:"yesterday-provider",apiId:"owner:yesterday-provider",fallback:{id:null,sourceTicketId:null,fromName:null,textBody:"Pergunta de ontem",receivedAt:null,attachmentName:null}}});
+ expect(m.createMessage.mock.calls[0][0].data.providerMetadata).toMatchObject({replyToMessageId:"yesterday-hub",quotedExternalId:"yesterday-provider",quotedFallback:{textBody:"Pergunta de ontem"}});
+ expect(m.existing.mock.calls[0][0].where).toMatchObject({direction:{not:"INTERNAL"},ticket:{organizationId:"org",source:"WHATSAPP_API",senderEmail:"wa-group:123@g.us",recipientEmail:"wa-account:c:5511999999999"}});
+});

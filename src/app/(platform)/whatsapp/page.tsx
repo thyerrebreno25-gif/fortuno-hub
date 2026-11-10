@@ -17,6 +17,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
+  IconX,
   IconDotsVertical,
   IconSettings,
   IconStar,
@@ -51,6 +52,8 @@ import { ConversationRequests } from "@/modules/whatsapp/conversation-requests";
 import { mergeChatMessages } from "@/modules/whatsapp/message-pages";
 import { ChatAvatar } from "@/modules/whatsapp/chat-avatar";
 import {WhatsAppAttachmentSender} from "@/modules/whatsapp/attachment-sender";
+import type {QuotedMessage} from "@/modules/whatsapp/quote-core";
+import {QuotedMessagePreview} from "@/modules/whatsapp/quoted-message";
 import { ChatMessages } from "@/modules/whatsapp/chat-messages";
 import { WhatsAppTransferDialog } from "@/modules/whatsapp/transfer-dialog";
 import { WhatsAppNotificationToggle } from "@/modules/whatsapp/notification-toggle";
@@ -134,6 +137,7 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
     textBody: string | null;
     receivedAt: string;
     deliveryStatus: string | null;
+    replyTo?:QuotedMessage|null;
     reaction?: {emoji:string;name:string}|null;
     customerReactions?: Array<{emoji:string;name:string}>;
     attachments: Array<{
@@ -224,6 +228,8 @@ export default function WhatsAppPage() {
   const [surveySettingsOpened,setSurveySettingsOpened]=useState(false),[operationStartOpened,setOperationStartOpened]=useState(false);
   const [reply, setReply] = useState("");
   const [commentMode,setCommentMode]=useState(false),[comment,setComment]=useState(""),[quickRepliesOpened,setQuickRepliesOpened]=useState(false);
+  const [replyTarget,setReplyTarget]=useState<{conversationId:string;quote:QuotedMessage}|null>(null);
+  const replyInput=useRef<HTMLTextAreaElement>(null);
   const [historySync, setHistorySync] = useState<HistorySync | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
   const filterKey = JSON.stringify([view, chatKind, chatStatus, search.trim(), onlyUnread]);
@@ -238,7 +244,8 @@ export default function WhatsAppPage() {
   // Opening a conversation is an explicit user action. List sorting/filtering and
   // unread updates must never replace the conversation currently being read.
   const selectedId = managementSelection || preferredId;
-  useEffect(()=>{const timer=setTimeout(()=>{setCommentMode(false);setComment("");},0);return()=>clearTimeout(timer);},[selectedId]);
+  const selectedQuote=replyTarget?.conversationId===selectedId?replyTarget.quote:null;
+  useEffect(()=>{const timer=setTimeout(()=>{setCommentMode(false);setComment("");setReplyTarget(null);},0);return()=>clearTimeout(timer);},[selectedId]);
   const selectedRef = useRef<string | null>(null);
   const sendingReply = useRef(false);
   const detailCache = useRef(new Map<string, TicketDetail>());
@@ -508,21 +515,29 @@ export default function WhatsAppPage() {
     if(selectedRef.current===conversationId)setDetail(next);
   },[]);
 
+  const selectReply=useCallback((conversationId:string,quote:QuotedMessage)=>{
+    if(selectedRef.current!==conversationId)return;
+    setReplyTarget({conversationId,quote});setCommentMode(false);
+    requestAnimationFrame(()=>replyInput.current?.focus());
+  },[]);
+
   async function sendReply() {
     const content = (commentMode?comment:reply).trim(), id = selectedId;
     if (!content || !id || saving || sendingReply.current) return;
     if(!commentMode&&detail?.assignedTo?.id!==bootstrap?.currentUser.id)return;
     sendingReply.current = true;
     if(commentMode)setComment("");else setReply("");
+    const quote=commentMode?null:selectedQuote;
+    if(!commentMode)setReplyTarget(null);
     const pendingId = "pending:" + crypto.randomUUID();
     const previous = detailCache.current.get(id) || detail;
     if (previous) {
-      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, direction: commentMode?"INTERNAL":"OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: commentMode?null:"accepted", attachments: []}]};
+      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, direction: commentMode?"INTERNAL":"OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: commentMode?null:"accepted", replyTo:quote, attachments: []}]};
       detailCache.current.set(id, optimistic);
       setDetail(optimistic);
     }
     try {
-      const sent = await mutate({ action: commentMode?"comment":"reply", content }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
+      const sent = await mutate({ action: commentMode?"comment":"reply", content,...(!commentMode&&quote?.id?{replyToMessageId:quote.id}:{}) }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
       if (!sent) {
         const cached = detailCache.current.get(id);
         if (cached) {
@@ -745,13 +760,15 @@ export default function WhatsAppPage() {
                 </div>
               </div>
 
-              <WhatsAppAttachmentSender key={detail.id+":"+bootstrap?.accountKey} ticketId={detail.id} recipient={detail.senderName||detail.subject} canSend={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id&&!saving&&!commentMode)} onSent={()=>{if(selectedRef.current===detail.id)void loadDetail(detail.id,true);void loadList();}}>{(attachmentButton,mediaBusy)=><>
-              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} />
+              <WhatsAppAttachmentSender key={detail.id+":"+bootstrap?.accountKey} ticketId={detail.id} recipient={detail.senderName||detail.subject} canSend={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id&&!saving&&!commentMode)} replyTo={selectedQuote} onSent={()=>{setReplyTarget(null);if(selectedRef.current===detail.id)void loadDetail(detail.id,true);void loadList();}}>{(attachmentButton,mediaBusy)=><>
+              <ChatMessages conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} canReply={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED")} onReply={selectReply} />
 
+              {selectedQuote&&!commentMode&&<div className={styles.replyComposerBar}><div><Text size="xs" c="dimmed" mb={3}>Respondendo à mensagem</Text><QuotedMessagePreview quote={selectedQuote}/></div><ActionIcon variant="subtle" color="gray" aria-label="Cancelar resposta à mensagem" onClick={()=>setReplyTarget(null)}><IconX size={17}/></ActionIcon></div>}
               {(detail.status !== "RESOLVED"||commentMode) ? (
                 <div className={`${styles.composer} ${commentMode?styles.commentComposer:""}`}>
-                  <div className={styles.composerTools}>{attachmentButton}<Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>setCommentMode(v=>!v)}><IconLock size={18}/></ActionIcon></Tooltip></div>
+                  <div className={styles.composerTools}>{attachmentButton}<Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>{setReplyTarget(null);setCommentMode(v=>!v);}}><IconLock size={18}/></ActionIcon></Tooltip></div>
                   <Textarea
+                    ref={replyInput}
                     autosize
                     minRows={1}
                     maxRows={5}

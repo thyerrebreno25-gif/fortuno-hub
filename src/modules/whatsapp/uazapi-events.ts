@@ -41,6 +41,8 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
   const address = whatsappChannelAddress(kind, identifier);
   const recipient = `wa-account:${connection.id}:${connection.phone || connection.instanceId}`;
   const externalMessageId = `uazapi:${connection.phone || connection.instanceId}:${event.id}`;
+  const quotedOriginal=event.quote?await prisma.serviceMessage.findFirst({where:{direction:{not:"INTERNAL"},ticket:{organizationId:connection.organizationId,source:"WHATSAPP_API",senderEmail:address,recipientEmail:recipient,isSpam:false,mergedIntoId:null},OR:[{externalMessageId:`uazapi:${connection.phone}:${event.quote.externalId}`},{providerMetadata:{path:["apiMessageId"],equals:event.quote.apiId}}]},select:{id:true}}):null;
+  const quoteMetadata=event.quote?{quotedExternalId:event.quote.externalId,quotedFallback:event.quote.fallback,...(quotedOriginal?{replyToMessageId:quotedOriginal.id}:{})}:{};
   const existing = await prisma.serviceMessage.findFirst({ where: { ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", senderEmail: address, recipientEmail: recipient }, OR: [
     { externalMessageId }, { externalMessageId: `uazapi:${connection.instanceId}:${event.id}` },
     { AND: [{ providerMetadata: { path: ["connectionId"], equals: connection.id } }, { providerMetadata: { path: ["messageId"], equals: event.id } }] },
@@ -48,8 +50,8 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
   ] }, select: { id: true, ticketId: true, providerMetadata: true } });
   if (existing && (!object(existing.providerMetadata).accountPhone || object(existing.providerMetadata).accountPhone === connection.phone)) {
     const previous = object(existing.providerMetadata);
-    if (previous.instanceId === connection.instanceId && previous.apiMessageId === event.apiId && previous.accountPhone === connection.phone) return;
-    await prisma.serviceMessage.update({ where: { id: existing.id }, data: { providerMetadata: { ...object(existing.providerMetadata), provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, messageId: event.id, apiMessageId: event.apiId } } });
+    if (previous.instanceId === connection.instanceId && previous.apiMessageId === event.apiId && previous.accountPhone === connection.phone && (!event.quote||previous.quotedExternalId===event.quote.externalId&&(!quotedOriginal||previous.replyToMessageId===quotedOriginal.id))) return;
+    await prisma.serviceMessage.update({ where: { id: existing.id }, data: { providerMetadata: { ...object(existing.providerMetadata), provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, messageId: event.id, apiMessageId: event.apiId, ...quoteMetadata } } });
     if (event.media) await prisma.serviceAttachment.updateMany({ where: { messageId: existing.id }, data: { externalAttachmentId: `uazapi:${connection.instanceId}:${event.media.id}`, ...(event.media.mimeType ? { mimeType: event.media.mimeType } : {}) } });
     if (object(existing.providerMetadata).instanceId !== connection.instanceId) await prisma.serviceTicket.update({ where: { id: existing.ticketId }, data: { updatedAt: new Date() } });
     return;
@@ -91,7 +93,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     const message = await tx.serviceMessage.create({ data: {
       ticketId: ticket.id, externalMessageId, direction: event.fromMe ? "OUTBOUND" : "INBOUND",
       fromName: event.senderName || name, fromEmail: event.fromMe ? recipient : address, toEmails: [event.fromMe ? address : recipient], textBody: event.body, receivedAt: timestamp,
-      providerMetadata: { provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, messageId: event.id, apiMessageId: event.apiId, historical: Boolean(event.historical) },
+      providerMetadata: { provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, messageId: event.id, apiMessageId: event.apiId, historical: Boolean(event.historical),...quoteMetadata },
     } });
     if (event.media) await tx.serviceAttachment.create({ data: { id: "uazapi_" + hash(connection.organizationId + externalMessageId), messageId: message.id, externalAttachmentId: `uazapi:${connection.instanceId}:${event.media.id}`, name: event.media.name, mimeType: event.media.mimeType } });
     if (!active) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_API_INBOUND_CREATED", message: routing.assignedToId ? "Mensagem recebida pela Uazapi e direcionada ao responsável." : "Mensagem recebida pela Uazapi na fila geral." } });

@@ -11,3 +11,5 @@ it("rejects sending an old account's conversation after switching the connected 
 it("uses the new instance after reconnecting the same account without quoting an old-instance message",()=>{
  expect(outgoingContext("wa-account:connection:5511888888888","wa-contact:5511999999999",connection,{provider:"UAZAPI",instanceId:"expired",messageId:"old"})).toMatchObject({instanceId:"paid",replyToMessageId:undefined});
 });
+
+it("does not implicitly quote the latest inbound when no target was selected",()=>{expect(outgoingContext("wa-account:connection:5511888888888","wa-contact:5511999999999",connection,{provider:"UAZAPI",instanceId:"paid",messageId:"last-inbound"}).replyToMessageId).toBeUndefined();});

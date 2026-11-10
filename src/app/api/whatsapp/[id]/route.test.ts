@@ -1,8 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ role: "MASTER", identities: new Map<string, unknown>(), current: {} as Record<string, unknown>, sent: vi.fn(), created: vi.fn(), updated: vi.fn(), history: vi.fn(), assignee: vi.fn(), read:vi.fn() }));
+const m = vi.hoisted(() => ({ role: "MASTER", identities: new Map<string, unknown>(), current: {} as Record<string, unknown>, sent: vi.fn(), created: vi.fn(), updated: vi.fn(), history: vi.fn(), assignee: vi.fn(), read:vi.fn(), target:vi.fn() }));
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: async () => ({ organizationId: "org", role: m.role, userId: "operator", user: { id: "operator", name: "Isabella Lago", email: "operator@test" } }), getWhatsAppPermission: async () => ({ canView: true, canEdit: true, canManage: m.role === "MASTER" }), SERVICE_CENTER_MANAGER_ROLES: new Set(["MASTER"]) }));
 vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:async()=>({recipient:"wa-account:c:5511",connection:{phone:"5511"}})}));
 vi.mock("@/modules/whatsapp/conversation-read",()=>({readWhatsAppConversation:m.read,ConversationCursorError:Error}));
+vi.mock("@/modules/whatsapp/reply-target",()=>({findReplyTarget:m.target,ReplyTargetError:class extends Error{constructor(message:string,public status=404){super(message);}}}));
 vi.mock("@/modules/whatsapp/reopen",()=>({reopenWhatsAppCall:async()=>"new-call",ReopenWhatsAppError:Error}));
 vi.mock("@/modules/whatsapp/server", () => ({ getWhatsappTicket: async () => m.current, resolveWhatsappTicketId: async (id: string) => id, eligibleWhatsappResponsible: m.assignee }));
 vi.mock("@/modules/whatsapp/uazapi-server", () => ({ whatsappConnection: async () => ({ id: "c", phone: "5511", instanceId: "instance" }), sendUazapiText: m.sent }));
@@ -58,3 +59,12 @@ it("blocks client roles before reading conversation contents",async()=>{
 });
 
 it("opens a finalized call through the authorized action and returns the actual active id",async()=>{m.current.status="RESOLVED";expect((await patch({action:"reopen"})).status).toBe(200);expect(m.read).toHaveBeenCalledWith("new-call","org");expect(m.sent).not.toHaveBeenCalled();});
+
+it("quotes the selected old message rather than the latest inbound and records its safe hub reference",async()=>{
+ m.current.assignedToId="operator";m.target.mockResolvedValueOnce({providerId:"yesterday-id",quote:{id:"old-hub-id"}});
+ expect((await patch({action:"reply",content:"Segue a confirmação",replyToMessageId:"old-hub-id"})).status).toBe(200);
+ expect(m.target).toHaveBeenCalledWith(m.current,"old-hub-id");expect(m.sent.mock.calls[0][0].replyToMessageId).toBe("yesterday-id");expect(m.created.mock.calls[0][0].data.providerMetadata.replyToMessageId).toBe("old-hub-id");
+});
+it("does not send when the selected original cannot be validated",async()=>{
+ m.current.assignedToId="operator";m.target.mockRejectedValueOnce(new Error("not in this chat"));expect((await patch({action:"reply",content:"Resposta",replyToMessageId:"foreign"})).status).toBe(500);expect(m.sent).not.toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import {normalizeMessageQuote} from "./quote-core";
 import { createHash, timingSafeEqual } from "node:crypto";
 export const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export const text = (value: unknown, max = 20000) => typeof value === "string" ? value.slice(0, max) : "";
@@ -53,9 +54,10 @@ export function normalizeUazapiEvent(payload: unknown) {
   const result = { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: flag(message.wasSentByApi),
     senderName: text(message.senderName, 250), chatName: text(chat.name, 250), sender: text(message.sender, 150),
     body: text(message.text || content.caption || content.text || content.conversation || (!media && typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
+    quote:normalizeMessageQuote(message,content),
     media: media ? { id: text(message.id || id, 250), name: text(content.fileName || content.filename, 250) || mediaType, mimeType: text(content.mimetype || content.mimeType, 150) || null } : null,
   };
-  return result as typeof result & { historical?: boolean };
+  return result as Omit<typeof result,"quote"> & {quote?:typeof result.quote;historical?:boolean};
 }
 export function normalizeUazapiHistory(payload: unknown, names: Record<string, string> = {}) {
   const root = object(payload);

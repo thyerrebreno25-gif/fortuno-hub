@@ -51,3 +51,9 @@ it("uses id and text for provider reactions and rejects old physical accounts",a
  await sendUazapiReaction({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"target",emoji:"👍"});expect(m.request.mock.calls[0].slice(2)).toEqual(["/message/react",{id:"target",text:"👍"}]);
  await expect(sendUazapiReaction({organizationId:"org",accountRecipient:"wa-account:connection:old",messageId:"target",emoji:"👍"})).rejects.toThrow("número conectado mudou");expect(m.request).toHaveBeenCalledTimes(1);
 });
+
+it("sends replyid only when explicitly given for text and media",async()=>{
+ m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockResolvedValue({messageid:"answer"});
+ await sendUazapiText({organizationId:"org",accountRecipient:"wa-account:connection:5511",to:"5522",body:"Resposta",replyToMessageId:"original"});expect(m.request.mock.calls[0][3]).toMatchObject({replyid:"original"});
+ await sendUazapiMedia({organizationId:"org",accountRecipient:"wa-account:connection:5511",to:"5522",type:"image",file:"https://storage.example/print",name:"print.png",mimeType:"image/png",caption:"Segue o print",trackingId:"upload",replyToMessageId:"original"});expect(m.request.mock.calls[1][3]).toMatchObject({replyid:"original",type:"image"});
+});

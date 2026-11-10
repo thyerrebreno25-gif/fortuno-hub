@@ -1,3 +1,4 @@
+import {findReplyTarget,ReplyTargetError} from "@/modules/whatsapp/reply-target";
 import {NextResponse} from "next/server";
 import {z} from "zod";
 import {prisma} from "@/lib/prisma";
@@ -11,7 +12,7 @@ export const runtime="nodejs";
 export const maxDuration=60;
 const inputSchema=z.discriminatedUnion("action",[
   z.object({action:z.literal("prepare"),name:z.string().min(1).max(200),size:z.number().int().positive().max(WHATSAPP_FILE_LIMIT)}),
-  z.object({action:z.literal("send"),uploadId:z.string().min(1).max(100),caption:z.string().max(5000).default(""),asDocument:z.boolean().default(false)}),
+  z.object({action:z.literal("send"),uploadId:z.string().min(1).max(100),caption:z.string().max(5000).default(""),asDocument:z.boolean().default(false),replyToMessageId:z.string().min(1).max(100).nullish()}),
 ]);
 export async function POST(request:Request,context:{params:Promise<{id:string}>}){
   try{
@@ -44,6 +45,8 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
     if(meta.state==="SENT")return NextResponse.json({ok:true,messageId:meta.messageId,alreadySent:true});
     if(meta.state!=="READY")throw new WhatsAppSendError("Envio em processamento ou sem confirmação. Confira a conversa antes de repetir.",409);
     if(Date.now()-draft.createdAt.getTime()>60*60*1000)throw new WhatsAppSendError("A preparação do anexo expirou. Selecione o arquivo novamente.",410);
+    const replyTarget=input.replyToMessageId?await findReplyTarget({...ticket,organizationId:member.organizationId},input.replyToMessageId,account):null;
+    if(replyTarget&&!replyTarget.providerId)throw new WhatsAppSendError("Mensagem original indisponível para responder.");
     const info=whatsappFileInfo(String(meta.name),Number(meta.size)),path=String(meta.path);
     if(!path.startsWith(`${member.organizationId}/${ticket.id}/`))throw new WhatsAppSendError("Anexo inválido.");
     const file=await storage.download(path);
@@ -56,10 +59,10 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
     if(!claimed.count)throw new WhatsAppSendError("Este anexo já está em processamento.",409);
     try{
       await whatsappSendAccess(id);
-      const sent=await sendUazapiMedia({organizationId:member.organizationId,accountRecipient:account.recipient!,to:parseWhatsappChannelAddress(ticket.senderEmail).externalId,type:input.asDocument?"document":info.type,file:signed.data.signedUrl,name:info.name,mimeType:info.mimeType,caption:signedWhatsappText(member.user.name,input.caption||info.name),trackingId:draft.id});
+      const sent=await sendUazapiMedia({organizationId:member.organizationId,accountRecipient:account.recipient!,to:parseWhatsappChannelAddress(ticket.senderEmail).externalId,type:input.asDocument?"document":info.type,file:signed.data.signedUrl,name:info.name,mimeType:info.mimeType,caption:signedWhatsappText(member.user.name,input.caption||info.name),trackingId:draft.id,replyToMessageId:replyTarget?.providerId});
       const now=new Date();
       const message=await prisma.$transaction(async tx=>{
-        const result=await tx.serviceMessage.upsert({where:{ticketId_externalMessageId:{ticketId:ticket.id,externalMessageId:sent.messageId}},create:{ticketId:ticket.id,externalMessageId:sent.messageId,direction:"OUTBOUND",deliveryStatus:"accepted",statusUpdatedAt:now,fromName:member.user.name||member.user.email,fromEmail:member.user.email,toEmails:[ticket.senderEmail],textBody:input.caption||info.name,receivedAt:now,providerMetadata:{provider:"UAZAPI",connectionId:sent.connectionId,instanceId:sent.instanceId,accountPhone:sent.accountPhone,messageId:sent.providerMessageId,uploadId:draft.id}},update:{}});
+        const result=await tx.serviceMessage.upsert({where:{ticketId_externalMessageId:{ticketId:ticket.id,externalMessageId:sent.messageId}},create:{ticketId:ticket.id,externalMessageId:sent.messageId,direction:"OUTBOUND",deliveryStatus:"accepted",statusUpdatedAt:now,fromName:member.user.name||member.user.email,fromEmail:member.user.email,toEmails:[ticket.senderEmail],textBody:input.caption||info.name,receivedAt:now,providerMetadata:{provider:"UAZAPI",connectionId:sent.connectionId,instanceId:sent.instanceId,accountPhone:sent.accountPhone,messageId:sent.providerMessageId,uploadId:draft.id,...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{})}},update:{}});
         await tx.serviceAttachment.upsert({where:{id:`wa_upload_${draft.id}`},create:{id:`wa_upload_${draft.id}`,messageId:result.id,name:info.name,mimeType:info.mimeType,size:Number(meta.size),storagePath:path,externalAttachmentId:`uazapi:${sent.instanceId}:${sent.providerMessageId}`},update:{}});
         await tx.serviceTicket.updateMany({where:{id:ticket.id,assignedToId:member.userId,status:{notIn:["RESOLVED","SPAM"]}},data:{lastMessageAt:now,snippet:(input.caption||info.name).slice(0,220),status:"IN_PROGRESS"}});
         await tx.serviceTicket.updateMany({where:{id:ticket.id,firstResponseAt:null},data:{firstResponseAt:now}});
@@ -71,5 +74,5 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
       await prisma.serviceTicketHistory.updateMany({where:{id:draft.id,metadata:{path:["state"],equals:"SENDING"}},data:{metadata:{...meta,state:"UNCONFIRMED"},message:"Envio de anexo sem confirmação. Conferir no WhatsApp antes de repetir."}});
       throw new WhatsAppSendError(error instanceof WhatsAppSendError?error.message:"O envio do anexo não foi confirmado. Confira a conversa antes de repetir.",error instanceof WhatsAppSendError?error.status:502);
     }
-  }catch(error){return NextResponse.json({error:error instanceof z.ZodError?"Dados do anexo inválidos.":error instanceof WhatsAppSendError||error instanceof WhatsAppFileError?error.message:"Não foi possível enviar o anexo."},{status:error instanceof WhatsAppSendError?error.status:error instanceof z.ZodError||error instanceof WhatsAppFileError?400:500});}
+  }catch(error){return NextResponse.json({error:error instanceof z.ZodError?"Dados do anexo inválidos.":error instanceof WhatsAppSendError||error instanceof WhatsAppFileError||error instanceof ReplyTargetError?error.message:"Não foi possível enviar o anexo."},{status:error instanceof WhatsAppSendError||error instanceof ReplyTargetError?error.status:error instanceof z.ZodError||error instanceof WhatsAppFileError?400:500});}
 }

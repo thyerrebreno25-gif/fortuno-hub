@@ -1,0 +1,13 @@
+import {beforeEach,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),find:vi.fn(),target:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{serviceTicket:{findFirst:m.find}}}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:async()=>({where:{organizationId:"org",source:"WHATSAPP_API",recipientEmail:"wa-account:c:5511"}})}));
+vi.mock("@/modules/whatsapp/server",()=>({resolveWhatsappTicketId:async()=>"canonical"}));
+vi.mock("@/modules/whatsapp/reply-target",()=>({findReplyTarget:m.target,ReplyTargetError:class extends Error{status=404;}}));
+import {GET} from "./route";
+const context={params:Promise.resolve({id:"active",messageId:"older"})};
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",role:"MASTER"});m.permission.mockResolvedValue({canView:true});m.find.mockResolvedValue({id:"canonical"});m.target.mockResolvedValue({message:{id:"older",textBody:"original",attachments:[]}});});
+it("opens an authorized original message without loading pages of history",async()=>{const response=await GET(new Request("https://hub/message"),context);expect(response.status).toBe(200);expect(response.headers.get("cache-control")).toBe("private, no-store");expect((await response.json()).message.textBody).toBe("original");expect(m.find.mock.calls[0][0].where).toMatchObject({id:"canonical",organizationId:"org",recipientEmail:"wa-account:c:5511"});expect(m.target.mock.calls[0].slice(0,2)).toEqual([{id:"canonical"},"older"]);});
+it("requires view permission before exposing an original message",async()=>{m.permission.mockResolvedValueOnce({canView:false});expect((await GET(new Request("https://hub/message"),context)).status).toBe(403);expect(m.find).not.toHaveBeenCalled();m.member.mockResolvedValueOnce(null);expect((await GET(new Request("https://hub/message"),context)).status).toBe(401);});

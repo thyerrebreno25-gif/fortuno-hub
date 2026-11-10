@@ -79,11 +79,11 @@ async function fetchMedia(connection: NonNullable<Awaited<ReturnType<typeof what
   return { body: new Uint8Array(body), mimeType: text(response.mimetype, 150), size: body.length };
 }
 
-export async function sendUazapiMedia(input:{organizationId:string;accountRecipient:string;to:string;type:"image"|"video"|"audio"|"document";file:string;name:string;mimeType:string;caption:string;trackingId:string}){
+export async function sendUazapiMedia(input:{organizationId:string;accountRecipient:string;to:string;type:"image"|"video"|"audio"|"document";file:string;name:string;mimeType:string;caption:string;trackingId:string;replyToMessageId?:string}){
   const connection=await whatsappConnection(input.organizationId);
   if(!connection||connection.status!=="CONNECTED"||!connection.webhookConfiguredAt||connection.expiresAt&&connection.expiresAt<new Date())throw new Error("Conecte o WhatsApp antes de enviar anexos.");
   if(input.accountRecipient!==`wa-account:${connection.id}:${connection.phone}`)throw new Error("O número conectado mudou. Abra a conversa na conta atual.");
-  const response=object(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/send/media",{number:input.to,type:input.type,file:input.file,text:input.caption,docName:input.name,mimetype:input.mimeType,track_source:"FORTUNO_HUB",track_id:input.trackingId}));
+  const response=object(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/send/media",{number:input.to,type:input.type,file:input.file,text:input.caption,docName:input.name,mimetype:input.mimeType,track_source:"FORTUNO_HUB",track_id:input.trackingId,...(input.replyToMessageId?{replyid:input.replyToMessageId}:{})}));
   const id=text(response.messageid||text(response.id).split(":").at(-1),250);
   if(!id||response.error||response.success===false)throw new Error("A Uazapi não confirmou o anexo. Confira o WhatsApp antes de repetir.");
   return {messageId:`uazapi:${connection.phone}:${id}`,instanceId:connection.instanceId,connectionId:connection.id,accountPhone:connection.phone,providerMessageId:id};

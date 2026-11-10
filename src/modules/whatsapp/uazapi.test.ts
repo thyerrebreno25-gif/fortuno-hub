@@ -53,3 +53,8 @@ it.each([false, 0, "false", "0", undefined])("keeps incoming provider flag %s in
 });
 
 it("normalizes reactions separately so they never create calls or unread message bubbles",()=>{const event=normalizeUazapiEvent({EventType:"messages",message:{messageid:"reaction-id",chatid:"5511999999999@s.whatsapp.net",messageType:"ReactionMessage",sender:"5511999999999@s.whatsapp.net",text:"👍",content:{key:{id:"target"}},messageTimestamp:Date.now()}});expect(event).toMatchObject({kind:"reaction",targetId:"target",emoji:"👍",fromMe:false});});
+
+it("preserves incoming replies to earlier messages independently of their reaction content",()=>{
+ const event=normalizeUazapiEvent({EventType:"messages",message:{messageid:"answer",chatid:"5511999999999@s.whatsapp.net",messageType:"ExtendedTextMessage",quoted:"original",text:"Sim",content:{contextInfo:{stanzaId:"original",quotedMessage:{conversation:"Posso pagar amanhã?"}}}}});
+ expect(event).toMatchObject({kind:"messages",body:"Sim",quote:{externalId:"original",fallback:{textBody:"Posso pagar amanhã?"}}});
+});
