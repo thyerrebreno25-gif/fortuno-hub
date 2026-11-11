@@ -5,7 +5,7 @@ import {
   DAILY_MFA_COOKIE_NAME,
   verifyDailyMfaToken,
 } from "@/lib/auth/daily-mfa";
-import { sessionDay, signedInToday } from "@/modules/session/daily-policy";
+import { sessionDay, signedInToday, verifiedTotpToday } from "@/modules/session/daily-policy";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
   if (!signedInToday(userResult.user.last_sign_in_at)) return NextResponse.json({error:"Entre novamente com sua senha para iniciar o acesso de hoje.",code:"DAILY_LOGIN_REQUIRED"},{status:401});
-  if (assuranceError || assurance?.currentLevel !== "aal2") {
+  if (assuranceError || assurance?.currentLevel !== "aal2" || !verifiedTotpToday(assurance?.currentAuthenticationMethods)) {
     return NextResponse.json(
       { error: "Confirme o código do autenticador antes de liberar este dispositivo." },
       { status: 403 },
