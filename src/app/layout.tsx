@@ -12,6 +12,7 @@ import "@fontsource-variable/inter";
 
 import "./globals.css";
 import "./design-foundation.css";
+import {RecoveryLanding} from "@/components/session/recovery-landing";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
@@ -52,6 +53,7 @@ export default function RootLayout({
       </head>
 
       <body>
+        <RecoveryLanding/>
         <Providers>{children}</Providers>
       </body>
     </html>

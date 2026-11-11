@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconArrowLeft,
@@ -14,7 +14,8 @@ import {
   IconMail,
   IconShieldCheck,
 } from "@tabler/icons-react";
-import { createClient } from "@/lib/supabase/client";
+import {RECOVERY_INTENT_COOKIE} from "@/lib/auth/recovery-return";
+import { createRecoveryClient } from "@/lib/supabase/client";
 import loginStyles from "@/app/login/login.module.css";
 import styles from "./recuperar-senha.module.css";
 
@@ -39,6 +40,7 @@ function recoveryTokens() {
     accessToken: hash.get("access_token") ?? "",
     refreshToken: hash.get("refresh_token") ?? "",
     hashType: hash.get("type") ?? "",
+    failed: Boolean(hash.get("error")||hash.get("error_code")),
   };
 }
 
@@ -56,7 +58,7 @@ function friendlyMfaError(message: string) {
 
 export default function RecoverPasswordPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(() => createRecoveryClient(), []);
 
   const [mode, setMode] = useState<RecoveryMode>("request");
   const [email, setEmail] = useState("");
@@ -68,6 +70,7 @@ export default function RecoverPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const recoveryAttempt=useRef<Promise<{userEmail:string;factorId:string|null}>|null>(null);
   useEffect(() => {
     let active = true;
 
@@ -78,7 +81,7 @@ export default function RecoverPasswordPage() {
           tokens.code ||
           tokens.accessToken ||
           tokens.recovery ||
-          tokens.hashType === "recovery",
+          tokens.hashType === "recovery" || tokens.failed,
       );
       if (!hasRecoveryPayload) return;
 
@@ -86,6 +89,8 @@ export default function RecoverPasswordPage() {
       setError("");
 
       try {
+        if(!recoveryAttempt.current)recoveryAttempt.current=(async()=>{
+          if(tokens.failed)throw new Error("expired-link");
         if (tokens.tokenHash) {
           if (tokens.tokenType !== "recovery") {
             throw new Error("invalid-recovery-type");
@@ -122,16 +127,10 @@ export default function RecoverPasswordPage() {
         const verifiedFactor = factors.totp.find(
           (factor) => factor.status === "verified",
         );
-        if (!verifiedFactor) {
-          if (active) {
-            setError(
-              "Esta conta não possui um autenticador confirmado. Solicite ao gestor a redefinição do acesso.",
-            );
-            setMode("invalid");
-          }
-          return;
-        }
-
+          return {userEmail:user.email||"sua conta",factorId:verifiedFactor?.id||null};
+        })();
+        const recovered=await recoveryAttempt.current;
+        document.cookie=`${RECOVERY_INTENT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; Secure`;
         window.history.replaceState(
           {},
           document.title,
@@ -139,9 +138,9 @@ export default function RecoverPasswordPage() {
         );
 
         if (active) {
-          setEmail(user.email || "sua conta");
-          setFactorId(verifiedFactor.id);
-          setMode("authenticator");
+          setEmail(recovered.userEmail);
+          setFactorId(recovered.factorId||"");
+          setMode(recovered.factorId?"authenticator":"password");
         }
       } catch {
         if (active) {
@@ -166,6 +165,7 @@ export default function RecoverPasswordPage() {
 
     setLoading(true);
     setError("");
+    document.cookie=`${RECOVERY_INTENT_COOKIE}=1; Path=/; Max-Age=3600; SameSite=Lax; Secure`;
     const redirectTo = `${window.location.origin}/recuperar-senha?recovery=1`;
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       normalizedEmail,
@@ -293,7 +293,7 @@ export default function RecoverPasswordPage() {
             <div className={loginStyles.shieldIcon}>
               <IconShieldCheck aria-hidden="true" />
             </div>
-            <span>Recuperação protegida em duas etapas</span>
+            <span>Recuperação protegida de acesso</span>
           </div>
         </div>
       </section>
@@ -333,8 +333,8 @@ export default function RecoverPasswordPage() {
                 <span>RECUPERAR SENHA</span>
                 <h1>Confirme seu e-mail</h1>
                 <p>
-                  Enviaremos um link seguro. Depois, confirme o código do seu
-                  autenticador para criar uma nova senha.
+                  Enviaremos um link seguro para criar uma nova senha. Se sua conta
+                  possui autenticador, também confirmaremos o código.
                 </p>
               </div>
               <form className={loginStyles.form} onSubmit={requestRecovery}>

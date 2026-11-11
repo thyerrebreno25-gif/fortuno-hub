@@ -108,3 +108,6 @@ it("allows only the public satisfaction page and response API without opening ma
   for(const path of ["/satisfacao/preview","/api/satisfacao/token"]){const r=await proxy(new NextRequest("https://example.test"+path));expect(r.headers.get("x-middleware-next")).toBe("1");expect(r.headers.get("location")).toBeNull();}
   for(const path of ["/api/whatsapp/surveys","/api/whatsapp/finalize-batch","/api/satisfacao-admin"]){const r=await proxy(new NextRequest("https://example.test"+path));expect(r.headers.get("location")).toBe("https://example.test/login");}
 });
+
+it("preserves password recovery tokens before the authenticated-login redirect",async()=>{session.user={id:"user"};const response=await proxy(new NextRequest("https://example.test/login?token_hash=hash&type=recovery"));expect(response.headers.get("location")).toBe("https://example.test/recuperar-senha?token_hash=hash&type=recovery");});
+it("recovers a PKCE code that was sent to the site URL after a reset request",async()=>{const response=await proxy(new NextRequest("https://example.test/?code=one-time",{headers:{cookie:"fortuno-password-recovery=1"}}));expect(response.headers.get("location")).toBe("https://example.test/recuperar-senha?code=one-time&recovery=1");});
