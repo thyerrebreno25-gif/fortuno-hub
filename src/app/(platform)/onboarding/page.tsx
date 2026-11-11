@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -469,7 +470,7 @@ export default function OnboardingPage() {
 
         <Tabs.Panel value="projects" pt="xl">
           <Stack gap="lg">
-            <Group justify="space-between"><TextInput leftSection={<IconSearch size={16} />} placeholder="Pesquisar empresa, CNPJ ou responsável" value={search} onChange={(e) => setSearch(e.currentTarget.value)} w={{ base: "100%", sm: 420 }} /><Button leftSection={<IconPlus size={16} />} onClick={() => setNewOpened(true)}>Nova implantação</Button></Group>
+            <Group justify="space-between"><FilterPanel title="Filtros de implantações"><TextInput leftSection={<IconSearch size={16} />} placeholder="Pesquisar empresa, CNPJ ou responsável" value={search} onChange={(e) => setSearch(e.currentTarget.value)} w={{ base: "100%", sm: 420 }} /></FilterPanel><Button leftSection={<IconPlus size={16} />} onClick={() => setNewOpened(true)}>Nova implantação</Button></Group>
             <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
               {filtered.map((p) => {
                 const progress = projectProgress(p); const blocked = p.stages.flatMap((s) => s.tasks).filter((t) => t.status === "BLOCKED").length; const waiting = p.stages.flatMap((s) => s.tasks).filter((t) => t.status === "WAITING_CLIENT").length;

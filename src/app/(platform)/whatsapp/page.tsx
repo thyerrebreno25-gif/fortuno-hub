@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
 import {PaymentRequestsPanel} from "@/modules/whatsapp/payment-requests-panel";
 import {MentionPicker} from "@/modules/whatsapp/mention-picker";
@@ -222,7 +223,7 @@ export default function WhatsAppPage() {
   const [managementSelection, setManagementSelection] = useState<string | null>(null);
   const [preferredId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TicketDetail | null>(null);
-  useUsageClient(detail?.client?.id);
+  useUsageClient(section === "INBOX" ? detail?.client?.id : null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -655,7 +656,7 @@ export default function WhatsAppPage() {
           <Group justify="space-between" wrap="nowrap" className={styles.listHeading}>{!listMinimized&&<Text fw={850} size="md">Conversas</Text>}<Tooltip label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"}><ActionIcon variant="subtle" color="gray" aria-label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"} aria-expanded={!listMinimized} aria-controls="whatsapp-list-content" onClick={()=>setListMinimized(value=>!value)}>{listMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
           {listMinimized&&<span className={styles.railLabel}>Conversas</span>}
           <div id="whatsapp-list-content" className={styles.listContent}>
-          <div className={styles.listHeader}>
+          <div className={styles.listHeader}><FilterPanel title="Filtros de conversas" activeCount={Number(Boolean(search))+Number(onlyUnread)+Number(chatKind!=="ALL")}>
             <TextInput
               leftSection={<IconSearch size={16} />}
               placeholder="Buscar em todas as conversas"
@@ -668,7 +669,7 @@ export default function WhatsAppPage() {
               <button type="button" aria-pressed={onlyUnread} className={onlyUnread ? styles.conversationFilterActive : undefined} onClick={() => { setSelectedId(null); setOnlyUnread(value => !value); }}>Não lidas</button>
               {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
             </div>
-          </div>
+          </FilterPanel></div>
           {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></Group>}
           <div className={styles.ticketList}>
             {tickets.length ? (

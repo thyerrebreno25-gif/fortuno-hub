@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { IntegratedOverview } from "@/modules/dashboard/integrated-overview";
 
 import { navigationGroup, navigationGroups } from "@/components/navigation-groups";
@@ -381,7 +382,7 @@ export default function InicioPage() {
               </Text>
             </div>
 
-            <TextInput
+            <FilterPanel title="Buscar funcionalidades"><TextInput
               size="md"
               radius="md"
               placeholder="Buscar uma funcionalidade..."
@@ -392,7 +393,7 @@ export default function InicioPage() {
               }
               maw={620}
               className={styles.search}
-            />
+            /></FilterPanel>
           </Stack>
 
           {data?.permissions?.NOTICES?.canView !== false && <NoticeHomePanel />}

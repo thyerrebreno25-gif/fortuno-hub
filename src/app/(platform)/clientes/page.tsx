@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import { NotionClientSyncControl } from "@/modules/notion/client-sync-control";
 import type { Route } from "next";
@@ -958,7 +959,7 @@ export default function ClientesPage() {
         </SimpleGrid>
 
         <Paper withBorder radius="lg">
-          <Group
+          <FilterPanel title="Filtros" activeCount={Number(Boolean(searchInput))+Number(status!=="active")}><Group
             justify="space-between"
             p="lg"
             gap="md"
@@ -1015,7 +1016,7 @@ export default function ClientesPage() {
                 <IconRefresh size={18} />
               </ActionIcon>
             </Group>
-          </Group>
+          </Group></FilterPanel>
 
           {listError && (
             <Alert color="red" mx="lg" mb="lg">

@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import {ProfilePhotoEditor} from "@/modules/profile/photo-editor";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -674,7 +675,7 @@ export default function ConfiguracoesPage() {
                 </Text>
               </Stack>
 
-              <Group>
+              <FilterPanel title="Filtros de perfis"><Group>
                 <TextInput
                   placeholder="Buscar usuário"
                   value={search}
@@ -688,7 +689,7 @@ export default function ConfiguracoesPage() {
                 >
                   Convidar usuário
                 </Button>
-              </Group>
+              </Group></FilterPanel>
             </Group>
 
             <ScrollArea>

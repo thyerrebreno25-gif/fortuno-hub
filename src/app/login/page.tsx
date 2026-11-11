@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { FortunoWordmark } from "@/components/fortuno-brand";
 import Link from "next/link";
 /* eslint-disable react-hooks/set-state-in-effect */
 import {PROFILE_HINT_KEY,REMEMBER_HINT_KEY,parseLoginHint,type LoginProfileHint} from "@/modules/profile/remembered-login";
@@ -58,65 +59,8 @@ export default function LoginPage() {
         <div className={styles.decorativeCircles} />
 
         <div className={styles.brandContent}>
-          <div className={styles.fortunoBrand}>
-            <div className={styles.fortunoWord}>
-              <span>F</span>
+          <div className={styles.fortunoBrand}><FortunoWordmark className={styles.brandWordmark}/></div>
 
-              <svg
-                className={styles.fortunoO}
-                viewBox="0 0 190 100"
-                aria-label="O"
-                role="img"
-              >
-                <defs>
-                  <linearGradient
-                    id="fortunoGradient"
-                    x1="0"
-                    y1="0"
-                    x2="1"
-                    y2="0"
-                  >
-                    <stop offset="0%" stopColor="#285E9F" />
-                    <stop offset="22%" stopColor="#6798D0" />
-                    <stop offset="46%" stopColor="#D6A158" />
-                    <stop offset="100%" stopColor="#F5A13A" />
-                  </linearGradient>
-                </defs>
-
-                <path
-                  d="M38 13
-                     H138
-                     C163 13 178 28 178 50
-                     C178 72 163 87 138 87
-                     H38
-                     C19 87 8 76 8 60"
-                  fill="none"
-                  stroke="url(#fortunoGradient)"
-                  strokeWidth="9"
-                  strokeLinecap="round"
-                />
-
-                <path
-                  d="M8 40
-                     C8 24 18 13 38 13"
-                  fill="none"
-                  stroke="#315D91"
-                  strokeWidth="9"
-                  strokeLinecap="round"
-                />
-              </svg>
-
-              <span>R</span>
-              <span>T</span>
-              <span>U</span>
-              <span>N</span>
-              <span>O</span>
-            </div>
-
-            <div className={styles.fortunoSubtitle}>
-              GESTÃO FINANCEIRA
-            </div>
-          </div>
 
           <div className={styles.securityStatus}>
             <div className={styles.shieldIcon}>
@@ -149,7 +93,7 @@ export default function LoginPage() {
           <header className={styles.convertNowHeader}>
             <div className={styles.convertNowLogo}>
               <Image
-                src="/fortuno-logo-v2.png"
+                src="/brand/fortuno-icon-blue.png"
                 alt="Fortuno"
                 width={56}
                 height={56}
@@ -173,7 +117,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {hint&&<div className={styles.returningProfile}><button type="button" className={styles.profileChoice} onClick={()=>{setEmail(hint.email);setHintSelected(true);}}><Image src={hint.avatar||"/fortuno-logo-v2.png"} width={96} height={96} alt={"Foto de "+hint.name} unoptimized/><strong>{hint.name}</strong><span>{hintSelected?"Confirme sua senha para continuar":"Clique para entrar novamente"}</span></button><button type="button" className={styles.otherAccount} onClick={otherAccount}>Usar outra conta</button></div>}
+          {hint&&<div className={styles.returningProfile}><button type="button" className={styles.profileChoice} onClick={()=>{setEmail(hint.email);setHintSelected(true);}}><Image src={hint.avatar||"/brand/fortuno-icon-blue.png"} width={96} height={96} alt={"Foto de "+hint.name} unoptimized/><strong>{hint.name}</strong><span>{hintSelected?"Confirme sua senha para continuar":"Clique para entrar novamente"}</span></button><button type="button" className={styles.otherAccount} onClick={otherAccount}>Usar outra conta</button></div>}
           {(!hint||hintSelected)&&<form className={styles.form} onSubmit={handleLogin}>
             <div className={styles.field} hidden={Boolean(hint&&hintSelected)}>
               <label htmlFor="email">E-mail</label>

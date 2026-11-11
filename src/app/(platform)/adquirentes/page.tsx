@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
 import { FinancialExportHistory } from "@/components/conta-azul/financial-export-history";
 
@@ -1385,7 +1386,7 @@ export default function AdquirentesPage() {
                   Abra uma data para conferir todos os lançamentos vinculados ao recebimento.
                 </Text>
               </Stack>
-              <Group>
+              <FilterPanel title="Filtros dos lançamentos"><Group>
                 <Checkbox
                   checked={onlyProblems}
                   onChange={(event) => setOnlyProblems(event.currentTarget.checked)}
@@ -1398,7 +1399,7 @@ export default function AdquirentesPage() {
                   leftSection={<IconSearch size={17} />}
                   w={320}
                 />
-              </Group>
+              </Group></FilterPanel>
             </Group>
 
             <Accordion variant="separated" radius="lg" px="md" pb="md">

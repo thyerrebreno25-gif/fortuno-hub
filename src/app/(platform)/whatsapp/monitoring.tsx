@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import {
   Badge,
@@ -138,7 +139,7 @@ export function WhatsAppMonitoring({
 
   return (
     <section className={styles.monitoring}>
-      <Paper withBorder radius="lg" p="md" className={styles.filters}>
+      <FilterPanel title="Filtros do monitoramento"><Paper withBorder radius="lg" p="md" className={styles.filters}>
         <Group justify="space-between" align="end" gap="md">
           <div>
             <Group gap={7} mb={4}>
@@ -169,7 +170,7 @@ export function WhatsAppMonitoring({
             </Button>
           </Tooltip>
         </Group>
-      </Paper>
+      </Paper></FilterPanel>
 
       {data?.operationStartedAt&&<Text size="xs" c="dimmed">Operação iniciada em {dateTime(data.operationStartedAt)} · indicadores anteriores reiniciados; histórico preservado.</Text>}
       <WhatsAppSurveyResults from={from} to={to} clientId={clientId} assigneeId={assigneeId}/>

@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
 import { EmailAnalyticsPanel } from "@/modules/atendimento/components/email-analytics-panel";
 
@@ -437,7 +438,7 @@ export default function AtendimentoPage() {
 
         <section className={styles.list}>
           <div className={styles.searchBar}>
-            <Group gap="sm" wrap="wrap">
+            <FilterPanel title="Filtros dos e-mails" activeCount={Number(Boolean(search))+Number(Boolean(clientId))}><Group gap="sm" wrap="wrap">
               {selectedTeamMember && (
                 <Badge size="lg" variant="light" className={styles.memberFilterBadge}>
                   {selectedTeamMember.name || selectedTeamMember.email}
@@ -455,7 +456,7 @@ export default function AtendimentoPage() {
                 onChange={(event) => {setSearch(event.currentTarget.value);setPage(1);}}
                 style={{ flex: 1 }}
               />
-            </Group>
+            </Group></FilterPanel>
           </div>
 
           <ScrollArea style={{ flex: 1, minHeight: 0 }} type="auto">

@@ -3,3 +3,9 @@
 .timeline { display: flex; align-items: flex-end; gap: 10px; overflow-x: auto; min-height: 118px; padding: 14px 0 0; }
 .day { min-width: 42px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
 .bar { width: 24px; background: var(--mantine-color-blue-5); border-radius: 5px 5px 0 0; }
+
+.metricsGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
+.coverage, .metric { min-width: 0; overflow: hidden; }
+.coverageText { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+
+.filtersGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }

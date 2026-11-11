@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Autocomplete, Badge, Button, Checkbox, Group, Loader, Modal, MultiSelect, Paper, Tabs, Select, SimpleGrid, Stack, TagsInput, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -72,7 +73,7 @@ export function MeetingsPage() {
     {error && <Alert color="red" withCloseButton onClose={() => setError("")}>{error}</Alert>}
     {!options && !error && <Loader />}
     {options && <div className={styles.layout}>
-      <Stack gap="sm"><Group wrap="nowrap"><TextInput aria-label="Buscar reuniões" placeholder="Buscar reunião ou tipo" value={q} onChange={(event) => setQ(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { setPage(0); setQuery(q); } }} /><Button variant="light" onClick={() => { setPage(0); setQuery(q); }}>Buscar</Button></Group>
+      <Stack gap="sm"><FilterPanel title="Filtros de reuniões"><Group wrap="nowrap"><TextInput aria-label="Buscar reuniões" placeholder="Buscar reunião ou tipo" value={q} onChange={(event) => setQ(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { setPage(0); setQuery(q); } }} /><Button variant="light" onClick={() => { setPage(0); setQuery(q); }}>Buscar</Button></Group></FilterPanel>
         <div className={styles.list}>{!meetings.length && <Paper p="md" withBorder><Text c="dimmed" size="sm">Nenhuma reunião neste filtro. Crie a primeira para organizar as entregas do squad.</Text></Paper>}{meetings.map((item) => <button key={item.id} className={styles.meetingButton} aria-pressed={meeting?.id === item.id} disabled={busy} onClick={() => void run(() => openMeeting(item.id,trash))}><Group justify="space-between"><Badge size="xs" variant="light">{item.type}</Badge><Badge size="xs" color={item.status === "CANCELLED" ? "gray" : item.status === "COMPLETED" ? "green" : "blue"}>{meetingStatus[item.status]}</Badge></Group><Text fw={750} size="sm">{item.title}</Text><Text size="xs" c="dimmed">{formatMeetingDate(item.startsAt)}</Text><Text size="xs">{item._count.participants} participantes · {item.actions.filter((action) => action.completedAt).length}/{item._count.actions} entregas</Text></button>)}</div>
         <Group justify="space-between"><Button size="xs" variant="subtle" disabled={!page || busy} onClick={() => setPage((value) => value - 1)}>Anterior</Button><Text size="xs">Página {page + 1}</Text><Button size="xs" variant="subtle" disabled={!hasMore || busy} onClick={() => setPage((value) => value + 1)}>Próxima</Button></Group>
       </Stack>

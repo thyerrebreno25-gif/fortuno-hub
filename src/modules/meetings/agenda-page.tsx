@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Checkbox, Group, Loader, Menu, Modal, Paper, SegmentedControl, SimpleGrid, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -110,7 +111,7 @@ export function AgendaPage() {
             <Group gap="xs"><Button size="xs" variant="default" onClick={() => setAnchor(dayKey(new Date()))}>Hoje</Button><Button size="xs" variant="subtle" aria-label="Período anterior" onClick={() => setAnchor(moveCalendar(anchor, view, -1))}>‹</Button><Button size="xs" variant="subtle" aria-label="Próximo período" onClick={() => setAnchor(moveCalendar(anchor, view, 1))}>›</Button><h3 className={calendarStyles.period} aria-live="polite">{periodLabel}</h3></Group>
             <Group gap="xs"><SegmentedControl aria-label="Visualização da agenda" value={view} onChange={(value) => setView(value as CalendarView)} data={[{ value: "day", label: "Dia" }, { value: "week", label: "Semana" }, { value: "month", label: "Mês" }, { value: "list", label: "Lista" }]} /><Button size="xs" variant="default" loading={loading} onClick={() => void load()}>Atualizar</Button></Group>
           </div>
-          <Group px="md" py="xs" gap="sm"><TextInput type="date" size="xs" aria-label="Ir para uma data" value={anchor} onChange={(event) => { if (/^\d{4}-\d{2}-\d{2}$/.test(event.currentTarget.value)) setAnchor(event.currentTarget.value); }} /><Checkbox size="xs" label="Fortuno" checked={showHub} onChange={(event) => setShowHub(event.currentTarget.checked)} /><Checkbox size="xs" color="green" label="Google" checked={showGoogle} onChange={(event) => setShowGoogle(event.currentTarget.checked)} /><Text size="xs" c="dimmed">Horário de Brasília</Text></Group>
+          <FilterPanel title="Filtros da agenda"><Group px="md" py="xs" gap="sm"><TextInput type="date" size="xs" aria-label="Ir para uma data" value={anchor} onChange={(event) => { if (/^\d{4}-\d{2}-\d{2}$/.test(event.currentTarget.value)) setAnchor(event.currentTarget.value); }} /><Checkbox size="xs" label="Fortuno" checked={showHub} onChange={(event) => setShowHub(event.currentTarget.checked)} /><Checkbox size="xs" color="green" label="Google" checked={showGoogle} onChange={(event) => setShowGoogle(event.currentTarget.checked)} /><Text size="xs" c="dimmed">Horário de Brasília</Text></Group></FilterPanel>
           {data.truncated && <Alert color="orange">Exibindo os primeiros 1.000 compromissos deste período.</Alert>}
           {loading ? <Group justify="center" p="xl"><Loader size="sm" /><Text size="sm" c="dimmed">Carregando compromissos…</Text></Group> : <CalendarBoard anchor={anchor} view={view} today={today} items={visibleItems} renderItem={eventButton} onDate={selectDay} onCreate={data.permissions.canCreate && !busy ? createAt : undefined} />}
         </div>

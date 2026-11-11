@@ -22,17 +22,17 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/fortuno-logo-v2.png",
+        url: "/brand/fortuno-icon-blue.png",
         type: "image/png",
-        sizes: "512x512",
+        sizes: "512x298",
       },
     ],
-    shortcut: "/fortuno-logo-v2.png",
+    shortcut: "/brand/fortuno-icon-blue.png",
     apple: [
       {
-        url: "/fortuno-logo-v2.png",
+        url: "/brand/fortuno-icon-blue.png",
         type: "image/png",
-        sizes: "512x512",
+        sizes: "512x298",
       },
     ],
   },

@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -308,13 +309,13 @@ export default function ContaAzulConnectionsPage() {
               Adquirentes.
             </Text>
           </Stack>
-          <TextInput
+          <FilterPanel title="Filtros de conexões"><TextInput
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
             placeholder="Buscar cliente ou empresa"
             leftSection={<IconSearch size={16} />}
             w={{ base: "100%", sm: 330 }}
-          />
+          /></FilterPanel>
         </Group>
 
         <Table.ScrollContainer minWidth={850}>

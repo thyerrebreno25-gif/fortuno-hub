@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const session = vi.hoisted(() => ({ user: null as { id: string } | null, totp: true, aal: "aal2", daily: true }));
+const session = vi.hoisted(() => ({ user: null as { id: string; last_sign_in_at?: string } | null, totp: true, aal: "aal2", daily: true }));
 beforeEach(() => { session.user = null; session.totp = true; session.aal = "aal2"; session.daily = true; });
 vi.mock("@/lib/auth/daily-mfa", () => ({ DAILY_MFA_COOKIE_NAME: "daily", verifyDailyMfaToken: async () => session.daily }));
 vi.mock("@supabase/ssr", () => ({
@@ -87,13 +87,13 @@ it("does not let API resource names bypass authentication by ending in an image 
 
 
 it("blocks protected APIs until the second factor has been enrolled", async () => {
-  session.user = { id: "user" }; session.totp = false;
+  session.user = { id: "user", last_sign_in_at: new Date().toISOString() }; session.totp = false;
   const response = await proxy(new NextRequest("https://example.test/api/onboarding/projects"));
   expect(response.status).toBe(403);
   expect((await response.json()).code).toBe("MFA_ENROLLMENT_REQUIRED");
 });
 it("blocks APIs after daily verification expires until a new MFA challenge succeeds", async () => {
-  session.user = { id: "user" }; session.aal = "aal1"; session.daily = false;
+  session.user = { id: "user", last_sign_in_at: new Date().toISOString() }; session.aal = "aal1"; session.daily = false;
   const response = await proxy(new NextRequest("https://example.test/api/onboarding/projects/file.png"));
   expect(response.status).toBe(403);
   expect((await response.json()).code).toBe("MFA_CHALLENGE_REQUIRED");
@@ -111,3 +111,6 @@ it("allows only the public satisfaction page and response API without opening ma
 
 it("preserves password recovery tokens before the authenticated-login redirect",async()=>{session.user={id:"user"};const response=await proxy(new NextRequest("https://example.test/login?token_hash=hash&type=recovery"));expect(response.headers.get("location")).toBe("https://example.test/recuperar-senha?token_hash=hash&type=recovery");});
 it("recovers a PKCE code that was sent to the site URL after a reset request",async()=>{const response=await proxy(new NextRequest("https://example.test/?code=one-time",{headers:{cookie:"fortuno-password-recovery=1"}}));expect(response.headers.get("location")).toBe("https://example.test/recuperar-senha?code=one-time&recovery=1");});
+
+it("requires a new daily login even if yesterday's session is still AAL2",async()=>{session.user={id:"user",last_sign_in_at:"2000-01-01T12:00:00Z"};session.aal="aal2";session.daily=false;const api=await proxy(new NextRequest("https://example.test/api/management"));expect(api.status).toBe(401);expect((await api.json()).code).toBe("DAILY_LOGIN_REQUIRED");const page=await proxy(new NextRequest("https://example.test/inicio"));expect(page.headers.get("location")).toBe("https://example.test/auth/signout?reason=day");});
+it("requires today's MFA cookie after a new password login, while allowing its authenticated mint endpoint",async()=>{session.user={id:"user",last_sign_in_at:new Date().toISOString()};session.aal="aal2";session.daily=false;const page=await proxy(new NextRequest("https://example.test/inicio"));expect(page.headers.get("location")).toBe("https://example.test/mfa");const mint=await proxy(new NextRequest("https://example.test/api/auth/mfa/daily",{method:"POST"}));expect(mint.headers.get("x-middleware-next")).toBe("1");});

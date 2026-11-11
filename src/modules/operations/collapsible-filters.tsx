@@ -4,7 +4,7 @@ import { Button, Collapse, Group, Paper, Text } from "@mantine/core";
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 
 export function CollapsibleOperationFilters({ title, summary, children }: { title: string; summary: string; children: ReactNode }) {
-  const [opened, setOpened] = useState(true);
+  const [opened, setOpened] = useState(false);
   const id = useId();
   return <Paper withBorder radius="lg" p="md">
     <Group justify="space-between" gap="xs">

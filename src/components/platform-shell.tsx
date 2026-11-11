@@ -3,6 +3,7 @@
 import { navigationGroup, navigationGroups, type NavigationGroup } from "./navigation-groups";
 import type { Route } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "@/app/dashboard.module.css";
@@ -379,49 +380,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
           <div className={styles.logoMark} aria-label="Fortuno">
-  <svg
-    className={styles.logoImage}
-    viewBox="0 0 100 60"
-    role="img"
-    aria-hidden="true"
-  >
-    <defs>
-      <linearGradient
-        id="fortunoEmblemGradient"
-        x1="0"
-        y1="0"
-        x2="1"
-        y2="0"
-      >
-        <stop offset="0%" stopColor="#315D91" />
-        <stop offset="38%" stopColor="#6798D0" />
-        <stop offset="65%" stopColor="#D6A158" />
-        <stop offset="100%" stopColor="#F5A13A" />
-      </linearGradient>
-    </defs>
-
-    <path
-      d="M18 10
-         H70
-         C84 10 92 18 92 30
-         C92 42 84 50 70 50
-         H18
-         C9 50 4 45 4 37"
-      fill="none"
-      stroke="url(#fortunoEmblemGradient)"
-      strokeWidth="5"
-      strokeLinecap="round"
-    />
-
-    <path
-      d="M4 23
-         C4 15 9 10 18 10"
-      fill="none"
-      stroke="#315D91"
-      strokeWidth="5"
-      strokeLinecap="round"
-    />
-  </svg>
+  <Image src="/brand/fortuno-icon-gold.png" width={512} height={298} sizes="42px" alt="Fortuno" className={styles.logoImage}/>
 </div>
 
           <div className={styles.logoText}>

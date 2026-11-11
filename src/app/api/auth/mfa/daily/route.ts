@@ -3,7 +3,9 @@ import {
   createDailyMfaToken,
   DAILY_MFA_COOKIE_MAX_AGE_SECONDS,
   DAILY_MFA_COOKIE_NAME,
+  verifyDailyMfaToken,
 } from "@/lib/auth/daily-mfa";
+import { sessionDay, signedInToday } from "@/modules/session/daily-policy";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -17,6 +19,7 @@ export async function POST(request: NextRequest) {
   if (!userResult.user) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
+  if (!signedInToday(userResult.user.last_sign_in_at)) return NextResponse.json({error:"Entre novamente com sua senha para iniciar o acesso de hoje.",code:"DAILY_LOGIN_REQUIRED"},{status:401});
   if (assuranceError || assurance?.currentLevel !== "aal2") {
     return NextResponse.json(
       { error: "Confirme o código do autenticador antes de liberar este dispositivo." },
@@ -42,4 +45,13 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  const supabase = await createClient();
+  const {data:{user}} = await supabase.auth.getUser();
+  if(!user) return NextResponse.json({error:"Sessão inválida."},{status:401});
+  const valid = await verifyDailyMfaToken(request.cookies.get(DAILY_MFA_COOKIE_NAME)?.value,user.id);
+  if(!valid) return NextResponse.json({error:"Entre novamente para iniciar o acesso de hoje.",code:"DAILY_LOGIN_REQUIRED"},{status:401});
+  return NextResponse.json({ok:true,day:sessionDay()},{headers:{"Cache-Control":"private, no-store"}});
 }

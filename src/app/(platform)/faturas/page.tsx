@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
 import { FinancialExportHistory } from "@/components/conta-azul/financial-export-history";
 
@@ -1676,7 +1677,7 @@ export default function FaturasPage() {
                 </Text>
               </Stack>
 
-              <Stack gap="xs" align="stretch" w={{ base: "100%", sm: 340 }}>
+              <FilterPanel title="Filtros dos lançamentos"><Stack gap="xs" align="stretch" w={{ base: "100%", sm: 340 }}>
                 <Checkbox
                   checked={showOnlyUncategorized}
                   onChange={(event) => setShowOnlyUncategorized(event.currentTarget.checked)}
@@ -1693,7 +1694,7 @@ export default function FaturasPage() {
                   leftSection={<IconSearch size={17} />}
                   w="100%"
                 />
-              </Stack>
+              </Stack></FilterPanel>
             </Group>
 
             <ScrollArea>

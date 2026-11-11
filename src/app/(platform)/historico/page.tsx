@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import { useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
@@ -118,7 +119,7 @@ export default function HistoricoPage() {
 
       {error && <Alert color="red" icon={<IconAlertTriangle size={18} />}>{error}</Alert>}
 
-      <Paper withBorder radius="lg" p="lg">
+      <FilterPanel title="Filtros" activeCount={Number(Boolean(search))+Number(Boolean(source))}><Paper withBorder radius="lg" p="lg">
         <Group grow>
           <TextInput
             placeholder="Pesquisar atividade, cliente ou colaborador"
@@ -134,7 +135,7 @@ export default function HistoricoPage() {
             data={Object.entries(sourceLabel).map(([value, label]) => ({ value, label }))}
           />
         </Group>
-      </Paper>
+      </Paper></FilterPanel>
 
       {loading && !items.length ? (
         <Center mih={320}><Loader /></Center>

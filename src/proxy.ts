@@ -1,3 +1,4 @@
+import { signedInToday } from "@/modules/session/daily-policy";
 import {RECOVERY_INTENT_COOKIE,recoveryReturnPath} from "@/lib/auth/recovery-return";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
@@ -20,7 +21,7 @@ const PUBLIC_ROUTES = [
   "/api/cron/management",
 ];
 
-const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout"];
+const AUTHENTICATION_ROUTES = ["/mfa", "/auth/signout", "/api/auth/mfa/daily"];
 
 function matchesRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
@@ -91,22 +92,21 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const [factorsResult, assuranceResult] = await Promise.all([
-    supabase.auth.mfa.listFactors(),
-    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
-  ]);
+  const factorsResult = await supabase.auth.mfa.listFactors();
 
   const hasVerifiedTotp = Boolean(factorsResult.data?.totp.length);
-  const hasAssuranceLevelTwo =
-    assuranceResult.data?.currentLevel === "aal2";
+  // A persisted AAL2 refresh token does not waive the next calendar day login.
   const hasDailyVerification = hasVerifiedTotp
     ? await verifyDailyMfaToken(
         request.cookies.get(DAILY_MFA_COOKIE_NAME)?.value,
         user.id,
       )
     : false;
-  const requiresMfa =
-    !hasVerifiedTotp || (!hasAssuranceLevelTwo && !hasDailyVerification);
+  if (!hasDailyVerification && !signedInToday(user.last_sign_in_at)) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({error:"Entre novamente para iniciar o acesso de hoje.",code:"DAILY_LOGIN_REQUIRED"},{status:401});
+    return NextResponse.redirect(new URL("/auth/signout?reason=day",request.url));
+  }
+  const requiresMfa = !hasVerifiedTotp || !hasDailyVerification;
 
   if (requiresMfa && !isMfaPage) {
     if (pathname.startsWith("/api/")) {

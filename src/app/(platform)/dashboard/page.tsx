@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import { IntegratedOverview } from "@/modules/dashboard/integrated-overview";
 import { ActivityChart } from "@/modules/dashboard/activity-chart";
 import { dashboardDestinations } from "@/modules/dashboard/destinations";
@@ -227,14 +228,14 @@ export default function DashboardPage() {
         </Stack>
 
         <Group align="flex-end">
-          <Select
+          <FilterPanel title="Filtros do painel"><Select
             label="Período dos indicadores"
             data={periodOptions}
             value={period}
             onChange={(value) => setPeriod((value as DashboardPeriodCode) || "30D")}
             allowDeselect={false}
             w={200}
-          />
+          /></FilterPanel>
           <Button
             variant="default"
             leftSection={<IconRefresh size={16} />}

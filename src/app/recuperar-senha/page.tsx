@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { FortunoWordmark } from "@/components/fortuno-brand";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -252,42 +253,8 @@ export default function RecoverPasswordPage() {
         <div className={loginStyles.decorativeCircles} />
 
         <div className={loginStyles.brandContent}>
-          <div className={loginStyles.fortunoBrand}>
-            <div className={loginStyles.fortunoWord}>
-              <span>F</span>
-              <svg
-                className={loginStyles.fortunoO}
-                viewBox="0 0 190 100"
-                aria-label="O"
-                role="img"
-              >
-                <defs>
-                  <linearGradient id="recoveryGradient" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#285E9F" />
-                    <stop offset="22%" stopColor="#6798D0" />
-                    <stop offset="46%" stopColor="#D6A158" />
-                    <stop offset="100%" stopColor="#F5A13A" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M38 13 H138 C163 13 178 28 178 50 C178 72 163 87 138 87 H38 C19 87 8 76 8 60"
-                  fill="none"
-                  stroke="url(#recoveryGradient)"
-                  strokeWidth="9"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M8 40 C8 24 18 13 38 13"
-                  fill="none"
-                  stroke="#315D91"
-                  strokeWidth="9"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span>R</span><span>T</span><span>U</span><span>N</span><span>O</span>
-            </div>
-            <div className={loginStyles.fortunoSubtitle}>GESTÃO FINANCEIRA</div>
-          </div>
+          <div className={loginStyles.fortunoBrand}><FortunoWordmark className={loginStyles.brandWordmark}/></div>
+
 
           <div className={loginStyles.securityStatus}>
             <div className={loginStyles.shieldIcon}>
@@ -303,7 +270,7 @@ export default function RecoverPasswordPage() {
           <header className={loginStyles.convertNowHeader}>
             <div className={loginStyles.convertNowLogo}>
               <Image
-                src="/fortuno-logo-v2.png"
+                src="/brand/fortuno-icon-blue.png"
                 alt="Fortuno"
                 width={56}
                 height={56}

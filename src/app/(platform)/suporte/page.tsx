@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -480,7 +481,7 @@ export default function SuportePage() {
                 </Text>
               </Stack>
 
-              <Group>
+              <FilterPanel title="Filtros dos chamados"><Group>
                 <TextInput
                   placeholder="Buscar título ou descrição"
                   value={search}
@@ -509,7 +510,7 @@ export default function SuportePage() {
                 >
                   <IconRefresh size={17} />
                 </ActionIcon>
-              </Group>
+              </Group></FilterPanel>
             </Group>
 
             {loading && !data ? (

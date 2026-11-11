@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {useDebouncedValue} from "@mantine/hooks";
 import {Alert,Badge,Button,Center,Group,Loader,Pagination,Paper,ScrollArea,SegmentedControl,Stack,Table,Text,TextInput} from "@mantine/core";
@@ -25,7 +26,7 @@ export function WhatsAppDirectory({canEdit,onOpenTicket}:{canEdit:boolean;onOpen
  return <Paper withBorder radius="lg" p="lg"><Stack>
   <Group justify="space-between"><Group><Text fw={800} size="lg">Contatos e grupos</Text><Badge>{result?.contacts||0} contatos salvos</Badge><Badge color="violet">{result?.groups||0} grupos</Badge></Group>{canEdit&&<Button variant="light" leftSection={<IconRefresh size={16}/>} loading={syncing} onClick={sync}>Atualizar agenda</Button>}</Group>
   <Group justify="space-between">{result?.accountLastDigits&&<Text size="sm" c="dimmed">Agenda do WhatsApp conectado · final {result.accountLastDigits}</Text>}{canEdit&&<SaveWhatsAppContact onSaved={()=>void load()}/>}</Group>
-  <Group><TextInput aria-label="Buscar contatos e grupos" placeholder="Buscar por nome ou número" leftSection={<IconSearch size={16}/>} value={search} onChange={event=>{setSearch(event.currentTarget.value);setPage(1);}} style={{flex:1,minWidth:220}}/><SegmentedControl value={kind} onChange={value=>{setKind(value);setPage(1);}} data={[{value:"ALL",label:"Todos"},{value:"CONTACT",label:"Contatos"},{value:"GROUP",label:"Grupos"}]}/></Group>
+  <FilterPanel title="Filtros de contatos e grupos"><Group><TextInput aria-label="Buscar contatos e grupos" placeholder="Buscar por nome ou número" leftSection={<IconSearch size={16}/>} value={search} onChange={event=>{setSearch(event.currentTarget.value);setPage(1);}} style={{flex:1,minWidth:220}}/><SegmentedControl value={kind} onChange={value=>{setKind(value);setPage(1);}} data={[{value:"ALL",label:"Todos"},{value:"CONTACT",label:"Contatos"},{value:"GROUP",label:"Grupos"}]}/></Group></FilterPanel>
   {error&&<Alert color="red">{error}</Alert>}
   {result?.sync?.lastError&&<Alert color="orange">{result.sync.lastError}</Alert>}
   {result?.sync&&["PENDING","RUNNING"].includes(result.sync.status)?<Text size="sm" c="teal">Sincronizando {result.sync.phase==="GROUPS"?"grupos":"contatos"}… A lista será atualizada automaticamente.</Text>:result?.sync?.completedAt?<Text size="xs" c="dimmed">Agenda atualizada em {new Date(result.sync.completedAt).toLocaleString("pt-BR")}</Text>:null}

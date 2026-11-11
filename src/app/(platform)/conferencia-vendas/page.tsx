@@ -1,4 +1,5 @@
 "use client";
+import { FilterPanel } from "@/components/filter-panel";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -532,7 +533,7 @@ export default function SalesReconciliationPage() {
                 <Text fw={800}>Resultado da planilha</Text>
                 <Text size="sm" c="dimmed">{filteredRows.length} linha(s) nos filtros atuais</Text>
               </div>
-              <Group>
+              <FilterPanel title="Filtros dos resultados"><Group>
                 <Select
                   w={220}
                   data={[
@@ -543,7 +544,7 @@ export default function SalesReconciliationPage() {
                   onChange={(value) => { setStatusFilter(value); setPage(1); }}
                 />
                 <TextInput w={280} leftSection={<IconSearch size={16} />} placeholder="Cliente, produto ou descrição" value={search} onChange={(event) => { setSearch(event.currentTarget.value); setPage(1); }} />
-              </Group>
+              </Group></FilterPanel>
             </Group>
             <Table.ScrollContainer minWidth={1250}>
               <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
