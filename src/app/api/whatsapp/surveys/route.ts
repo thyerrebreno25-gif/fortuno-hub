@@ -15,9 +15,13 @@ export async function GET(request:Request) {
   const baseline=await operationStartedAt(member.organizationId,account.recipient);
   const [policy,rows]=await Promise.all([
     prisma.whatsAppSurveyPolicy.findUnique({where:{organizationId:member.organizationId}}),
-    prisma.whatsAppSurvey.findMany({where:{organizationId:member.organizationId,accountRecipient:account.recipient||"disconnected",...(baseline?{createdAt:{gte:baseline}}:{}),...(clientId?{clientId}:{}),...(operatorId?{operatorId}:{}),OR:[{sentAt:{gte:start,lte:end}},{answeredAt:{gte:start,lte:end}},{status:"PENDING",createdAt:{gte:start,lte:end}}]},orderBy:{createdAt:"desc"},take:10000,select:{id:true,clientName:true,operatorName:true,status:true,score:true,comment:true,sentAt:true,answeredAt:true,scheduledAt:true,error:true}}),
+    prisma.whatsAppSurvey.findMany({where:{organizationId:member.organizationId,accountRecipient:account.recipient||"disconnected",...(baseline?{createdAt:{gte:baseline}}:{}),...(clientId?{clientId}:{}),...(operatorId?{operatorId}:{}),OR:[{sentAt:{gte:start,lte:end}},{answeredAt:{gte:start,lte:end}},{status:"PENDING",createdAt:{gte:start,lte:end}}]},orderBy:{createdAt:"desc"},take:10000,select:{id:true,clientName:true,operatorName:true,destination:true,ticketId:true,status:true,score:true,comment:true,sentAt:true,answeredAt:true,scheduledAt:true,error:true}}),
   ]);
-  return NextResponse.json({policy:policy||{enabled:false,cadenceDays:15,delayMinutes:30,message:DEFAULT_SURVEY_MESSAGE},canConfigure:permission.canEdit&&canViewWhatsAppManagement(member.role,true),summary:surveySummary(rows),responses:rows.filter(r=>r.status==="ANSWERED").slice(0,100),recent:rows.slice(0,50)},{headers:{"Cache-Control":"private, no-store"}});
+  const answers=await prisma.serviceTicketHistory.findMany({where:{type:"WHATSAPP_SATISFACTION",ticket:{organizationId:member.organizationId},OR:rows.filter(r=>r.status==="ANSWERED").slice(0,100).map(r=>({metadata:{path:["surveyId"],equals:r.id}}))},take:100,select:{metadata:true}});
+  const groups=await prisma.serviceTicket.findMany({where:{...account.where,id:{in:rows.filter(r=>r.sentAt).slice(0,500).map(r=>r.ticketId)}},select:{id:true,senderName:true}});
+  const groupNames=new Map(groups.map(row=>[row.id,row.senderName]));
+  const names=new Map(answers.map(row=>{const meta=row.metadata as Record<string,unknown>;return [meta.surveyId,typeof meta.respondentName==="string"?meta.respondentName:null];}));
+  return NextResponse.json({policy:policy||{enabled:false,cadenceDays:15,delayMinutes:30,message:DEFAULT_SURVEY_MESSAGE},canConfigure:permission.canEdit&&canViewWhatsAppManagement(member.role,true),summary:surveySummary(rows),responses:rows.filter(r=>r.status==="ANSWERED").slice(0,100).map(r=>({...r,respondentName:names.get(r.id)||null})),sent:rows.filter(r=>r.sentAt).slice(0,500).map(r=>({...r,groupName:groupNames.get(r.ticketId)||r.destination})),recent:rows.slice(0,50)},{headers:{"Cache-Control":"private, no-store"}});
 }
 export async function PUT(request:Request) {
   const member=await getServiceCenterMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});

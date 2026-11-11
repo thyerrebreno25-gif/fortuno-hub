@@ -1,0 +1,9 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),find:vi.fn(),download:vi.fn(),account:vi.fn()}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));vi.mock("@/lib/prisma",()=>({prisma:{serviceAttachment:{findFirst:m.find}}}));vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:m.account,accountMessageWhere:()=>({})}));vi.mock("../route",()=>({GET:m.download}));
+import {POST} from "./route";
+const run=()=>POST(new Request("https://hub.test/transcribe",{method:"POST"}),{params:Promise.resolve({id:"ticket",attachmentId:"audio"})});
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",role:"OPERATOR"});m.permission.mockResolvedValue({canView:true});m.account.mockResolvedValue({where:{organizationId:"org",recipientEmail:"wa-account:c:5511"}});m.find.mockResolvedValue({message:{id:"message",providerMetadata:{audioTranscript:"Já transcrito"}}});});
+it("reuses the saved transcription without downloading or billing again",async()=>{expect(await(await run()).json()).toEqual({text:"Já transcrito"});expect(m.download).not.toHaveBeenCalled();expect(m.find.mock.calls[0][0].where.message).toMatchObject({ticketId:"ticket",ticket:{organizationId:"org",recipientEmail:"wa-account:c:5511"}});});
+it("denies anonymous and unauthorized access before touching audio",async()=>{m.member.mockResolvedValueOnce(null);expect((await run()).status).toBe(401);m.permission.mockResolvedValueOnce({canView:false});expect((await run()).status).toBe(403);expect(m.find).not.toHaveBeenCalled();});
+it("rejects unknown attachments without contacting the AI",async()=>{m.find.mockResolvedValueOnce(null);expect((await run()).status).toBe(404);expect(m.download).not.toHaveBeenCalled();});

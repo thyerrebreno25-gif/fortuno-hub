@@ -17,6 +17,10 @@ export async function scheduleSurveyForTicket(ticketId:string,organizationId:str
   if(!account.recipient)return null;
   const ticket=await prisma.serviceTicket.findFirst({where:{...account.where,id:ticketId,status:"RESOLVED",mergedIntoId:null,isSpam:false,client:{active:true},resolvedAt:{gte:policy.activatedAt},firstResponseAt:{not:null}},include:{client:{select:{id:true,name:true}},assignedTo:{select:{id:true,name:true,email:true}}}});
   if(!ticket?.client||!ticket.assignedTo||!ticket.resolvedAt)return null;
+  // Never send the invitation to an individual contact, even when that call triggered it.
+  const group=ticket.senderEmail.startsWith("wa-group:")?ticket:await prisma.serviceTicket.findFirst({where:{...account.where,clientId:ticket.client.id,senderEmail:{startsWith:"wa-group:"},status:"RESOLVED",mergedIntoId:null,isSpam:false},orderBy:{resolvedAt:"desc"}});
+  if(!group)return null;
+
   return prisma.$transaction(async tx=>{
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"survey:"+organizationId+":"+ticket.clientId}))`;
     const [optOut,previous]=await Promise.all([
@@ -25,7 +29,7 @@ export async function scheduleSurveyForTicket(ticketId:string,organizationId:str
     ]);
     if(optOut?.optedOutAt||isSurveyCoolingDown(previous,policy.cadenceDays,now))return null;
     if(await tx.whatsAppSurvey.findFirst({where:{organizationId,ticketId:ticket.id,createdAt:{gte:ticket.resolvedAt!}},select:{id:true}}))return null;
-    return tx.whatsAppSurvey.create({data:{organizationId,clientId:ticket.client!.id,clientName:ticket.client!.name,operatorId:ticket.assignedTo!.id,operatorName:ticket.assignedTo!.name||ticket.assignedTo!.email,ticketId:ticket.id,accountRecipient:account.recipient!,destination:ticket.senderEmail,scheduledAt:nextSurveyBusinessTime(new Date(Math.max(now.getTime(),ticket.resolvedAt!.getTime()+policy.delayMinutes*60000)))}});
+    return tx.whatsAppSurvey.create({data:{organizationId,clientId:ticket.client!.id,clientName:ticket.client!.name,operatorId:ticket.assignedTo!.id,operatorName:ticket.assignedTo!.name||ticket.assignedTo!.email,ticketId:group.id,accountRecipient:account.recipient!,destination:group.senderEmail,scheduledAt:nextSurveyBusinessTime(new Date(Math.max(now.getTime(),ticket.resolvedAt!.getTime()+policy.delayMinutes*60000)))}});
   });
 }
 async function dispatchSurvey(id:string,now=new Date()) {
@@ -35,7 +39,7 @@ async function dispatchSurvey(id:string,now=new Date()) {
   const account=await currentWhatsAppAccount(original.organizationId);
   const ticket=await getWhatsappTicket(original.ticketId,original.organizationId,{});
   const cancel=async(error:string)=>{await prisma.whatsAppSurvey.updateMany({where:{id,status:"PENDING"},data:{status:"CANCELLED",error}});};
-  if(!policy?.enabled||account.recipient!==original.accountRecipient||!ticket||ticket.status!=="RESOLVED"||ticket.clientId!==original.clientId||!ticket.resolvedAt){await cancel("Envio cancelado: configuração, conexão ou atendimento alterados.");return;}
+  if(!original.destination?.startsWith("wa-group:")||!ticket?.senderEmail.startsWith("wa-group:")||ticket.senderEmail!==original.destination||!policy?.enabled||account.recipient!==original.accountRecipient||!ticket||ticket.status!=="RESOLVED"||ticket.clientId!==original.clientId||!ticket.resolvedAt){await cancel("Envio cancelado: configuração, conexão ou atendimento alterados.");return;}
   if(original.createdAt.getTime()<now.getTime()-3*86400000){await cancel("Agendamento antigo. Aguarde uma nova finalização elegível.");return;}
   const newTime=nextSurveyBusinessTime(now);
   if(newTime.getTime()>now.getTime()){await prisma.whatsAppSurvey.updateMany({where:{id,status:"PENDING"},data:{scheduledAt:newTime}});return;}
@@ -83,6 +87,6 @@ export async function processWhatsAppSurveys(now=new Date()) {
     const recent=await prisma.$queryRaw<Array<{id:string}>>(Prisma.sql`SELECT t.id FROM "ServiceTicket" t WHERE t."organizationId"=${policy.organizationId} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${account.recipient} AND t.status::text='RESOLVED' AND t."mergedIntoId" IS NULL AND t."isSpam"=false AND t."clientId" IS NOT NULL AND t."firstResponseAt" IS NOT NULL AND NOT EXISTS(SELECT 1 FROM "WhatsAppOperationStart" b WHERE b."organizationId"=t."organizationId" AND b."accountRecipient"=t."recipientEmail" AND t."receivedAt"<b."startedAt") AND t."resolvedAt">=${new Date(Math.max(policy.activatedAt.getTime(),now.getTime()-3*86400000))} AND NOT EXISTS(SELECT 1 FROM "WhatsAppSurvey" s WHERE s."organizationId"=t."organizationId" AND s."ticketId"=t.id AND s."createdAt">=t."resolvedAt") AND NOT EXISTS(SELECT 1 FROM "WhatsAppSurveyClientState" p WHERE p."organizationId"=t."organizationId" AND p."clientId"=t."clientId" AND p."optedOutAt" IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM "WhatsAppSurvey" s WHERE s."organizationId"=t."organizationId" AND s."clientId"=t."clientId" AND (s.status IN ('PENDING','SENDING') OR (s.status IN ('SENT','ANSWERED','DECLINED','UNKNOWN','EXPIRED') AND s."sentAt">=${new Date(now.getTime()-policy.cadenceDays*86400000)}))) ORDER BY t."resolvedAt" DESC LIMIT 25`);
     for(const ticket of recent)await scheduleSurveyForTicket(ticket.id,policy.organizationId,now);
   }
-  const due=await prisma.whatsAppSurvey.findMany({where:{status:"PENDING",scheduledAt:{lte:now}},orderBy:{scheduledAt:"asc"},take:5,select:{id:true}});
+  const due=await prisma.whatsAppSurvey.findMany({where:{status:"PENDING",scheduledAt:{lte:now}},orderBy:{scheduledAt:"asc"},take:25,select:{id:true}});
   for(const item of due)await dispatchSurvey(item.id,now);
 }

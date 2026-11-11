@@ -4,7 +4,7 @@ import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {currentWhatsAppAccount} from "./account-scope";
 
-export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;deletedAt?:string|null;editedAt?:string|null;replyTo?:QuotedMessage|null;reaction?:{emoji:string;name:string}|null;customerReactions?:Array<{emoji:string;name:string}>;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
+export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null;replyTo?:QuotedMessage|null;reaction?:{emoji:string;name:string}|null;customerReactions?:Array<{emoji:string;name:string}>;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
 type Person={id:string;name:string|null;email:string};
 export type ConversationSnapshot={
   id:string;subject:string;senderName:string|null;senderEmail:string;source:string;snippet:string|null;status:string;
@@ -65,7 +65,7 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
               AND (q.id=m."providerMetadata"->>'replyToMessageId' OR (NOT(m."providerMetadata"?'replyToMessageId') AND q."externalMessageId"=${`uazapi:${phone}:`}||(m."providerMetadata"->>'quotedExternalId')))
             LIMIT 1
           ),m."providerMetadata"->'quotedFallback') ELSE NULL END,
-          'deletedAt',m."providerMetadata"->>'deletedAt','editedAt',m."providerMetadata"->>'editedAt',
+          'forwarded',m."providerMetadata"?'forwardedFromMessageId','audioTranscript',m."providerMetadata"->>'audioTranscript','deletedAt',m."providerMetadata"->>'deletedAt','editedAt',m."providerMetadata"->>'editedAt',
           'reaction',m."providerMetadata"->'hubReaction',
           'customerReactions',COALESCE((SELECT jsonb_agg(r.value) FROM (SELECT value FROM jsonb_each(COALESCE(m."providerMetadata"->'customerReactions','{}'::jsonb)) WHERE value->>'emoji'<>'' LIMIT 20) r),'[]'::jsonb),
           'attachments',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'mimeType',a."mimeType",'size',a.size) ORDER BY a."createdAt",a.id) FROM "ServiceAttachment" a WHERE a."messageId"=m.id),'[]'::jsonb)

@@ -1,0 +1,2 @@
+import {expect,it} from "vitest";import {mentionedNumbers} from "./mentions";
+it("mentions only explicit phone tags in groups, with duplicates removed",()=>{expect(mentionedNumbers("Olá @5561999999999 e @5561888888888. @5561999999999","123@g.us")).toBe("5561999999999,5561888888888");expect(mentionedNumbers("financeiro@5561999999999.com @all", "123@g.us")).toBeUndefined();expect(mentionedNumbers("@5561999999999", "5561888888888")).toBeUndefined();});

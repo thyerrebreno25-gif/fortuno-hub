@@ -22,6 +22,8 @@ export async function POST(_request:Request,context:{params:Promise<{id:string}>
   if(!current)return null;
   const existing=await tx.serviceTicket.findFirst({where:{organizationId:member.organizationId,source:"WHATSAPP_API",senderEmail,mergedIntoId:null,isSpam:false,status:{notIn:["RESOLVED","SPAM"]},recipientEmail},orderBy:{lastMessageAt:"desc"},select:{id:true}});
   if(existing)return existing;
+  const closed=await tx.serviceTicket.findFirst({where:{organizationId:member.organizationId,source:"WHATSAPP_API",senderEmail,recipientEmail,mergedIntoId:null,isSpam:false,status:"RESOLVED"},orderBy:{lastMessageAt:"desc"},select:{id:true}});
+  if(closed)return tx.serviceTicket.update({where:{id:closed.id},data:{status:"IN_PROGRESS",assignedToId:member.userId,assignedAt:new Date(),receivedAt:new Date(),resolvedAt:null,firstResponseAt:null,history:{create:{userId:member.userId,type:"WHATSAPP_REOPENED",message:"Mesma conversa reaberta pela agenda."}}},select:{id:true}});
   return tx.serviceTicket.create({data:{organizationId:member.organizationId,source:"WHATSAPP_API",subject:entry.displayName,senderName:entry.displayName,senderEmail,recipientEmail,clientId:routing.clientId,routingArea:"GENERAL",routingSquad:routing.routingSquad,routingReason:routing.reason,assignedToId:routing.assignedToId||member.userId,assignedAt:new Date(),status:"IN_PROGRESS",history:{create:{userId:member.userId,type:"WHATSAPP_DIRECTORY_OPENED",message:"Conversa aberta pela agenda. Nenhuma mensagem enviada."}}},select:{id:true}});
  });
  return ticket?NextResponse.json({ticketId:ticket.id}):NextResponse.json({error:"A conexão mudou. Atualize a agenda."},{status:409});

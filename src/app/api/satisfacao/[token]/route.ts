@@ -18,7 +18,7 @@ export async function GET(_request:Request,context:Context){
 export async function POST(request:Request,context:Context){
   const {token}=await context.params;if(token!=="preview"&&!valid(token))return json({error:"Link inválido."},404);
   if(Number(request.headers.get('content-length')||0)>8000)return json({error:"Resposta muito longa."},413);
-  const parsed=surveyAnswerSchema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return json({error:"Escolha uma nota de 1 a 5 e limite o comentário a 1.000 caracteres."},400);
+  const parsed=surveyAnswerSchema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return json({error:"Informe seu nome, escolha uma nota de 1 a 5 e limite o comentário a 1.000 caracteres."},400);
   if(token==="preview")return json({ok:true,preview:true});
   const hash=surveyTokenHash(token),now=new Date(),input=parsed.data;
   const result=await prisma.$transaction(async tx=>{
@@ -36,7 +36,7 @@ export async function POST(request:Request,context:Context){
     }
     if(!input.decline){
       const ticket=await tx.serviceTicket.findFirst({where:{id:survey.ticketId,organizationId:survey.organizationId},select:{id:true}});
-      if(ticket)await tx.serviceTicketHistory.create({data:{ticketId:ticket.id,type:"WHATSAPP_SATISFACTION",message:"Avaliação recebida do cliente pela pesquisa periódica.",metadata:{score:input.score!,comment:input.comment||null,origin:"CUSTOMER_SURVEY",surveyId:survey.id,clientId:survey.clientId,operatorId:survey.operatorId}}});
+      if(ticket)await tx.serviceTicketHistory.create({data:{ticketId:ticket.id,type:"WHATSAPP_SATISFACTION",message:"Avaliação recebida do cliente pela pesquisa periódica.",metadata:{respondentName:input.respondentName,score:input.score!,comment:input.comment||null,origin:"CUSTOMER_SURVEY",surveyId:survey.id,clientId:survey.clientId,operatorId:survey.operatorId}}});
     }
     return "OK";
   });

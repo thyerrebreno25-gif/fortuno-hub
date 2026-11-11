@@ -1,3 +1,4 @@
+import {mentionedNumbers} from "./mentions";
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { decryptIntegrationSecret } from "@/modules/purchase-invoices/server/crypto";
@@ -36,12 +37,12 @@ export async function configureWebhook(connection: NonNullable<Awaited<ReturnTyp
   if (!confirmed) throw new Error("A configuração do recebimento não foi confirmada pela Uazapi.");
   await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { webhookId: text(confirmed.id, 200) || null, webhookConfiguredAt: new Date(), lastError: null } });
 }
-export async function sendUazapiText(input: { organizationId: string; to: string; body: string; accountRecipient?: string | null; instanceId?: string; replyToMessageId?: string | null }) {
+export async function sendUazapiText(input: { organizationId: string; to: string; body: string; accountRecipient?: string | null; instanceId?: string; replyToMessageId?: string | null;forward?:boolean }) {
   const connection = await whatsappConnection(input.organizationId);
   if (!connection || connection.status !== "CONNECTED" || !connection.webhookConfiguredAt || connection.expiresAt && connection.expiresAt < new Date()) throw new Error("Conecte o WhatsApp na aba Conexão Uazapi antes de enviar.");
   if (input.accountRecipient && input.accountRecipient !== `wa-account:${connection.id}:${connection.phone}`) throw new Error("O número conectado mudou. Abra a conversa na conta atual antes de enviar.");
   if (input.instanceId && input.instanceId !== connection.instanceId) throw new Error("A conversa pertence a outra instância. Aguarde uma mensagem recebida pela conexão atual.");
-  const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/send/text", { number: input.to, text: input.body, ...(input.replyToMessageId ? { replyid: input.replyToMessageId } : {}) }));
+  const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/send/text", { number: input.to, text: input.body, mentions:mentionedNumbers(input.body,input.to),...(input.forward?{forward:true}:{}), ...(input.replyToMessageId ? { replyid: input.replyToMessageId } : {}) }));
   const id = text(response.messageid || text(response.id).split(":").at(-1), 250);
   if (!id) throw new Error("A Uazapi não confirmou o identificador da mensagem. Confira o WhatsApp antes de repetir.");
   return { messageId: "uazapi:" + (connection.phone || connection.instanceId) + ":" + id, instanceId: connection.instanceId, connectionId: connection.id, accountPhone: connection.phone };
@@ -79,11 +80,11 @@ async function fetchMedia(connection: NonNullable<Awaited<ReturnType<typeof what
   return { body: new Uint8Array(body), mimeType: text(response.mimetype, 150), size: body.length };
 }
 
-export async function sendUazapiMedia(input:{organizationId:string;accountRecipient:string;to:string;type:"image"|"video"|"audio"|"document";file:string;name:string;mimeType:string;caption:string;trackingId:string;replyToMessageId?:string}){
+export async function sendUazapiMedia(input:{organizationId:string;accountRecipient:string;to:string;type:"image"|"video"|"audio"|"document";file:string;name:string;mimeType:string;caption:string;trackingId:string;replyToMessageId?:string;forward?:boolean}){
   const connection=await whatsappConnection(input.organizationId);
   if(!connection||connection.status!=="CONNECTED"||!connection.webhookConfiguredAt||connection.expiresAt&&connection.expiresAt<new Date())throw new Error("Conecte o WhatsApp antes de enviar anexos.");
   if(input.accountRecipient!==`wa-account:${connection.id}:${connection.phone}`)throw new Error("O número conectado mudou. Abra a conversa na conta atual.");
-  const response=object(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/send/media",{number:input.to,type:input.type,file:input.file,text:input.caption,docName:input.name,mimetype:input.mimeType,track_source:"FORTUNO_HUB",track_id:input.trackingId,...(input.replyToMessageId?{replyid:input.replyToMessageId}:{})}));
+  const response=object(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/send/media",{number:input.to,type:input.type,...(input.forward?{forward:true}:{}),file:input.file,text:input.caption,docName:input.name,mimetype:input.mimeType,track_source:"FORTUNO_HUB",track_id:input.trackingId,...(input.replyToMessageId?{replyid:input.replyToMessageId}:{})}));
   const id=text(response.messageid||text(response.id).split(":").at(-1),250);
   if(!id||response.error||response.success===false)throw new Error("A Uazapi não confirmou o anexo. Confira o WhatsApp antes de repetir.");
   return {messageId:`uazapi:${connection.phone}:${id}`,instanceId:connection.instanceId,connectionId:connection.id,accountPhone:connection.phone,providerMessageId:id};
