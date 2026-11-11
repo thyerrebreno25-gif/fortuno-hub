@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "@/app/dashboard.module.css";
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar";
+import { UsageTracker } from "@/modules/usage/tracker";
 import { SessionTimeout } from "@/components/session/session-timeout";
 import { FloatingAssistant } from "@/modules/assistant/floating";
 
@@ -372,6 +373,7 @@ export function PlatformShell({ children }: { children: ReactNode }) {
       }`}
     >
       <SessionTimeout />
+      <UsageTracker enabled={permissionsLoaded && Boolean(viewerRole) && viewerRole !== "CLIENT"} />
       {permissionsLoaded && permissions?.ASSISTANT?.canView === true && <FloatingAssistant />}
 
       <aside className={styles.sidebar}>

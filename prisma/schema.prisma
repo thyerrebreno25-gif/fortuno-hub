@@ -2379,3 +2379,20 @@ model WhatsAppOperationStart {
  @@id([organizationId, accountRecipient])
  @@index([organizationId, startedAt])
 }
+
+
+// One contiguous visit. Active seconds are cumulative, not an idle session duration.
+model HubUsageSession {
+  id             String   @id
+  organizationId String
+  userId         String
+  pageKey        String
+  clientId       String?
+  activeSeconds  Int      @default(0)
+  startedAt      DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+
+  @@index([organizationId, startedAt])
+  @@index([organizationId, userId, startedAt])
+  @@index([organizationId, clientId, startedAt])
+}

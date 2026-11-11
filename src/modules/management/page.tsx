@@ -1,11 +1,14 @@
 "use client";
+import { useUsageClient } from "@/modules/usage/client-context";
+import { UsagePanel } from "@/modules/usage/panel";
+import { ManagementOverview } from "./overview";
 import { IntegratedOverview } from "@/modules/dashboard/integrated-overview";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Tabs, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { IconRefresh, IconSearch, IconChecklist, IconAlertTriangle } from "@tabler/icons-react";
 import { balanceValidation, caBalanceSummary, localDay, reconciliationStatus, type AccountCheck, type AccountSnapshot, type ManagementSnapshot } from "./model";
 type Client = { notionSquad?: string | null; payableResponsible?: { name: string | null } | null; receivableResponsible?: { name: string | null } | null; id: string; name: string; document: string | null; cluster: string; operationLeader: { name: string | null } | null; contaAzulConnection: { active: boolean; status: string } | null; management: { snapshot: ManagementSnapshot | null; checkedAccounts: Record<string, AccountCheck>; notionPageId: string | null; revision: number; lastError: string | null } | null };
-type Payload = { clients: Client[]; canEdit: boolean; canManage: boolean; sync?: { intervalMinutes: number; configured: boolean; setupError: string | null; lastFinishedAt?: string; lastStartedAt?: string; running: boolean; lastError?: string } };
+type Payload = { canViewUsage?: boolean; clients: Client[]; canEdit: boolean; canManage: boolean; sync?: { intervalMinutes: number; configured: boolean; setupError: string | null; lastFinishedAt?: string; lastStartedAt?: string; running: boolean; lastError?: string } };
 const money = (value: number | null | undefined) => value == null ? "Não disponível" : value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const when = (value?: string | null) => value ? new Date(value).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "Não informado";
 const labels: Record<string, string> = { OK: "OK", DIVERGENT: "Divergente", UNKNOWN: "Não conferido", STALE: "Atualizar conferência", PENDING: "Pendente" };
@@ -36,6 +39,7 @@ const localInput = (value?: string | null) => value ? new Date(new Date(value).g
 const toIso = (value: string) => value ? new Date(`${value}:00-03:00`).toISOString() : null;
 
 export function ManagementPage() {
+  const [managementTab, setManagementTab] = useState<string | null>("overview");
   const [data, setData] = useState<Payload>({ clients: [], canEdit: false, canManage: false }), [loading, setLoading] = useState(true), [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null), [query, setQuery] = useState(""), [filter, setFilter] = useState<string | null>("ALL"), [busy, setBusy] = useState<string | null>(null), [progress, setProgress] = useState("");
   const [editing, setEditing] = useState<AccountSnapshot | null>(null), [saving, setSaving] = useState(false), [pageLink, setPageLink] = useState("");
@@ -47,6 +51,7 @@ export function ManagementPage() {
     if (mounted.current) setData(next);
   }, []);
   useEffect(() => {
+    if (managementTab !== "overview") return;
     void load().catch((e) => setError(e.message)).finally(() => setLoading(false));
     const startSync = () => fetch("/api/management/sync", { method: "POST" }).catch(() => undefined);
     void startSync();
@@ -55,8 +60,9 @@ export function ManagementPage() {
     const visible = () => { if (document.visibilityState === "visible") { void load().catch(() => {}); void startSync(); } };
     document.addEventListener("visibilitychange", visible);
     return () => { window.clearInterval(poll); window.clearInterval(sync); document.removeEventListener("visibilitychange", visible); };
-  }, [load]);
+  }, [load, managementTab]);
   const selected = data.clients.find((client) => client.id === selectedId);
+  useUsageClient(selectedId);
   const connectionErrors = data.clients.filter((client) => client.contaAzulConnection?.active && client.contaAzulConnection.status !== "CONNECTED");
   const visible = useMemo(() => data.clients.filter((client) => `${client.name} ${client.document || ""}`.toLowerCase().includes(query.toLowerCase())).filter((client) => filter === "DIVERGENT" ? aggregate(client, "balance") === "DIVERGENT" : filter === "OVERDUE" ? (client.management?.snapshot?.payable.count || 0) + (client.management?.snapshot?.receivable.count || 0) > 0 : filter === "UNKNOWN" ? !client.management?.snapshot : true), [data.clients, query, filter]);
   const summary = useMemo(() => ({ connected: data.clients.filter(connected).length, overdue: data.clients.filter((c) => (c.management?.snapshot?.payable.count || 0) + (c.management?.snapshot?.receivable.count || 0) > 0).length, divergent: data.clients.filter((c) => aggregate(c, "balance") === "DIVERGENT").length, unverified: data.clients.filter((c) => aggregate(c, "balance") === "UNKNOWN" || aggregate(c, "balance") === "STALE").length }), [data.clients]);
@@ -107,6 +113,9 @@ export function ManagementPage() {
   const snapshot = selected?.management?.snapshot;
   return <Stack gap="lg">
     <Group justify="space-between"><div><Title order={2}>Gestão</Title></div><Button leftSection={<IconRefresh size={16} />} loading={Boolean(busy)} disabled={!data.clients.some(connected)} onClick={() => void refresh(data.clients.filter(connected))}>Atualizar clientes conectados</Button></Group>
+    <Tabs value={managementTab} onChange={setManagementTab}><Tabs.List><Tabs.Tab value="overview">Visão geral e clientes</Tabs.Tab>{data.canViewUsage && <Tabs.Tab value="usage">Uso da ferramenta</Tabs.Tab>}</Tabs.List></Tabs>
+    {managementTab === "usage" && data.canViewUsage ? <UsagePanel /> : <>
+    {data.canViewUsage && <ManagementOverview />}
     <IntegratedOverview />
     {error && <Alert color="red" title="Não foi possível concluir"><Text style={{ whiteSpace: "pre-wrap" }}>{error}</Text></Alert>}
     {progress && <Alert color="blue" icon={<Loader size="xs" />}>Consultando Conta Azul: {progress}. Os dados aparecem conforme cada cliente termina.</Alert>}
@@ -132,5 +141,6 @@ export function ManagementPage() {
     </>}
     </Stack></Paper></div>
     <Modal opened={Boolean(editing)} onClose={() => !saving && setEditing(null)} title={`Conferência · ${editing?.name || ""}`} size="lg"><Stack><Text size="sm" c="dimmed">Copie os dados conferidos no banco e na tela de conciliação do CA. Deixe vazio o que não foi conferido; zero significa nenhuma pendência.</Text><NumberInput label="Saldo bancário" decimalScale={2} fixedDecimalScale value={form.bankBalance} onChange={(bankBalance) => setForm({ ...form, bankBalance })} /><TextInput type="datetime-local" label="Data e hora do saldo bancário · Brasília" value={form.balanceAt} onChange={(event) => setForm({ ...form, balanceAt: event.currentTarget.value })} /><TextInput type="datetime-local" label="Última importação do extrato no CA · Brasília" value={form.lastImportAt} onChange={(event) => setForm({ ...form, lastImportAt: event.currentTarget.value })} /><SimpleGrid cols={2}><NumberInput label="Conciliações pendentes · a pagar" min={0} allowDecimal={false} value={form.pendingPayable} onChange={(pendingPayable) => setForm({ ...form, pendingPayable })} /><NumberInput label="Conciliações pendentes · a receber" min={0} allowDecimal={false} value={form.pendingReceivable} onChange={(pendingReceivable) => setForm({ ...form, pendingReceivable })} /></SimpleGrid><Textarea label="Observações / referência da conferência" value={form.note} onChange={(event) => setForm({ ...form, note: event.currentTarget.value })} maxLength={1000} /><Button loading={saving} onClick={() => void saveCheck()}>Salvar conferência</Button></Stack></Modal>
+    </>}
   </Stack>;
 }

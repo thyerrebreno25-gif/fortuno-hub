@@ -1,3 +1,4 @@
+import { managementRole } from "@/modules/executive/model";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -24,7 +25,7 @@ export async function GET() {
       prisma.managementSyncState.findUnique({ where: { id: "worker" } }),
     ]);
     const configured = schedules.some((schedule) => schedule.configuredAt && !schedule.setupError);
-    return NextResponse.json({ sync: { intervalMinutes: 15, configured, setupError: configured ? null : schedules.find((schedule) => schedule.setupError)?.setupError || null, lastStartedAt: worker?.lastStartedAt, lastFinishedAt: worker?.lastFinishedAt, running: Boolean(worker?.leaseUntil && worker.leaseUntil > new Date()), lastError: worker?.lastError }, clients: clients.map(({ management, ...client }) => ({ ...client, management: management ? { ...management, refreshLeaseUntil: undefined } : null })), canEdit: permission.canEdit, canManage: permission.canManage });
+    return NextResponse.json({ canViewUsage: managementRole(member.role), sync: { intervalMinutes: 15, configured, setupError: configured ? null : schedules.find((schedule) => schedule.setupError)?.setupError || null, lastStartedAt: worker?.lastStartedAt, lastFinishedAt: worker?.lastFinishedAt, running: Boolean(worker?.leaseUntil && worker.leaseUntil > new Date()), lastError: worker?.lastError }, clients: clients.map(({ management, ...client }) => ({ ...client, management: management ? { ...management, refreshLeaseUntil: undefined } : null })), canEdit: permission.canEdit, canManage: permission.canManage });
   } catch (error) { return failure(error); }
 }
 export async function POST(request: Request) {

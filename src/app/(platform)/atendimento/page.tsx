@@ -1,4 +1,5 @@
 "use client";
+import { useUsageClient } from "@/modules/usage/client-context";
 import { EmailAnalyticsPanel } from "@/modules/atendimento/components/email-analytics-panel";
 
 import {
@@ -95,6 +96,7 @@ export default function AtendimentoPage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Any | null>(null);
+  useUsageClient(selected?.client?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);

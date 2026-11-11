@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+import { useUsageClient } from "@/modules/usage/client-context";
 import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Checkbox, FileButton, Group, Loader, Modal, NumberInput, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
 import { IconFileUpload, IconPlayerPlay, IconRefresh } from "@tabler/icons-react";
@@ -21,6 +22,7 @@ async function jsonResponse(response: Response) { const body = await response.js
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Não foi possível concluir a operação.";
 export function ImportWorkbench({ kind }: { kind: ImportKind }) {
   const [companies, setCompanies] = useState<Company[]>([]), [clientId, setClientId] = useState("");
+  useUsageClient(clientId);
   const [drafts, setDrafts] = useState<Draft[]>([]), [selected, setSelected] = useState<Draft | null>(null), [review, setReview] = useState<Review | null>(null);
   const [options, setOptions] = useState<Options>(emptyOptions), [loading, setLoading] = useState(true), [optionsLoading, setOptionsLoading] = useState(false), [busy, setBusy] = useState(false);
   const [canImport, setCanImport] = useState(false), [canEdit, setCanEdit] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");

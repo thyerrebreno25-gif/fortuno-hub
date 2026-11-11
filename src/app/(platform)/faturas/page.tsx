@@ -1,4 +1,5 @@
 "use client";
+import { useUsageClient } from "@/modules/usage/client-context";
 import { FinancialExportHistory } from "@/components/conta-azul/financial-export-history";
 
 import { invoiceReviewItems } from "@/modules/card-invoices/review-items";
@@ -148,6 +149,7 @@ export default function FaturasPage() {
   const [view, setView] = useState<"upload" | "review">("upload");
   const [processing, setProcessing] = useState(false);
   const [clientId, setClientId] = useState<string | null>(null);
+  useUsageClient(clientId);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [clientsLoading, setClientsLoading] = useState(true);
   const [bank, setBank] = useState<string | null>("Banco Inter");

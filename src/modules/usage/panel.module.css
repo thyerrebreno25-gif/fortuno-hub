@@ -1,0 +1,5 @@
+.coverage { background: light-dark(var(--mantine-color-blue-0),var(--mantine-color-dark-6)); }
+.name { min-width: 210px; max-width: 330px; white-space: normal; overflow-wrap: anywhere; }
+.timeline { display: flex; align-items: flex-end; gap: 10px; overflow-x: auto; min-height: 118px; padding: 14px 0 0; }
+.day { min-width: 42px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.bar { width: 24px; background: var(--mantine-color-blue-5); border-radius: 5px 5px 0 0; }

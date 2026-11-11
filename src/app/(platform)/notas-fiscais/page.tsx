@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+import { useUsageClient } from "@/modules/usage/client-context";
 
 import { INVOICE_SEND_PENDING, requiresInvoiceVerification } from "@/modules/purchase-invoices/send-state";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -142,6 +143,7 @@ function roundedMoney(value: number) {
 export default function NotasFiscaisPage() {
   const [clients, setClients] = useState<Option[]>([]);
   const [clientId, setClientId] = useState<string | null>(null);
+  useUsageClient(clientId);
   const [data, setData] = useState<Bootstrap | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);

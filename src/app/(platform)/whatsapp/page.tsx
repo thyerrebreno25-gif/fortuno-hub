@@ -1,4 +1,5 @@
 "use client";
+import { useUsageClient } from "@/modules/usage/client-context";
 import {PaymentRequestsPanel} from "@/modules/whatsapp/payment-requests-panel";
 import {MentionPicker} from "@/modules/whatsapp/mention-picker";
 
@@ -221,6 +222,7 @@ export default function WhatsAppPage() {
   const [managementSelection, setManagementSelection] = useState<string | null>(null);
   const [preferredId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TicketDetail | null>(null);
+  useUsageClient(detail?.client?.id);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
