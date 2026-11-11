@@ -1,3 +1,4 @@
+import {paymentRequestNotifications} from "./payment-requests";
 import { currentWhatsAppAccount } from "./account-scope";
 import "server-only";
 import { prisma } from "@/lib/prisma";
@@ -21,9 +22,10 @@ export async function whatsappNotifications(organizationId: string, userId: stri
       AND (r."ticketId" IS NULL OR (m."receivedAt", m.id) > (r."readAt", r."lastMessageId"))
     ORDER BY t.id, m."receivedAt" DESC, m.id DESC
   `);
-  return rows.sort((a,b) => b.receivedAt.getTime() - a.receivedAt.getTime()).slice(0,20).map(row => ({
+  const paymentItems=await paymentRequestNotifications(organizationId,userId,manageQueue);
+  return [...paymentItems,...rows.sort((a,b) => b.receivedAt.getTime() - a.receivedAt.getTime()).slice(0,20).map(row => ({
     id: `whatsapp-message-${row.id}`, type: "INFO" as const, title: "Nova mensagem no WhatsApp",
     description: row.senderName || "Conversa aguardando leitura", href: `/whatsapp?ticket=${encodeURIComponent(row.ticketId)}`,
     createdAt: row.receivedAt.toISOString(), popup: true, priority: 4,
-  }));
+  }))];
 }

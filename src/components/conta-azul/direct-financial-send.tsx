@@ -54,7 +54,7 @@ export type DirectFinancialLine = {
 
 type Props = {
   clientId: string | null;
-  module: "CREDIT_CARD_INVOICE" | "ACQUIRER";
+  module: "CREDIT_CARD_INVOICE" | "ACQUIRER" | "WHATSAPP";
   sourceKey: string;
   sourceName: string;
   counterpartyHint?: string | null;
@@ -117,7 +117,7 @@ export function DirectFinancialSend({
   const [technicalContactId, setTechnicalContactId] = useState<string | null>(null);
   const [technicalContactName, setTechnicalContactName] = useState<string | null>(null);
   const [financialAccountId, setFinancialAccountId] = useState<string | null>(null);
-  const [settle, setSettle] = useState(true);
+  const [settle, setSettle] = useState(module!=="WHATSAPP");
   const [counts, setCounts] = useState<ProgressCounts>(emptyCounts);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
   const [costCenterOverrides, setCostCenterOverrides] = useState<Record<string, string>>({});
@@ -434,12 +434,12 @@ export function DirectFinancialSend({
 
               <Alert
                 color="blue"
-                title={module === "ACQUIRER"
+                title={module === "WHATSAPP"?"Lançamento da conversa":module === "ACQUIRER"
                   ? "Vínculo automático da adquirente"
                   : "Vínculo automático da fatura"}
               >
                 {useLineAccounts ? "Cada lançamento será direcionado para o cadastro/CNPJ e a conta escolhidos na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}
-                {module === "CREDIT_CARD_INVOICE"
+                {module === "WHATSAPP"?`O favorecido revisado é “${counterpartyHint}”. O Hub localizará ou criará seu cadastro no CA antes de criar o lançamento.`:module === "CREDIT_CARD_INVOICE"
                   ? `O Fortuno Hub usará ${counterpartyHint ? `“${counterpartyHint}”` : "o banco selecionado"} como fornecedor das despesas, localizando ou criando esse cadastro automaticamente no Conta Azul.`
                   : `O Fortuno Hub usará a adquirente ${counterpartyHint ? `“${counterpartyHint}”` : "identificada no arquivo"} como fornecedor das taxas e despesas e como cliente das receitas, localizando ou criando o cadastro no CA.`}
               </Alert>

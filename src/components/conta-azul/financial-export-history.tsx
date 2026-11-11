@@ -6,7 +6,7 @@ type Line = { id: string; description: string; amount: string | number; dueDate:
 type Batch = { id: string; sourceName: string; status: string; financialAccountName: string | null; settleRequested: boolean; createdAt: string; lastError: string | null; _count: { lines: number }; lines: Line[] };
 type Check = { lineId: string; status: string; message: string };
 const labels: Record<string, string> = { PENDING: "Aguardando envio", CREATED: "Criação registrada", SETTLED: "Baixa registrada", FAILED: "Falha", PROCESSING: "Em processamento", PARTIAL: "Parcial", COMPLETED: "Concluído no histórico" };
-export function FinancialExportHistory({ clientId, clients, exportModule }: { clientId: string | null; clients: { value: string; label: string }[]; exportModule: "CREDIT_CARD_INVOICE" | "ACQUIRER" }) {
+export function FinancialExportHistory({ clientId, clients, exportModule }: { clientId: string | null; clients: { value: string; label: string }[]; exportModule: "CREDIT_CARD_INVOICE" | "ACQUIRER" | "WHATSAPP" }) {
   const [opened, setOpened] = useState(false), [selected, setSelected] = useState<string | null>(null), [batches, setBatches] = useState<Batch[]>([]), [checks, setChecks] = useState<Record<string, Check>>({}), [pages, setPages] = useState<Record<string, number>>({}), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const generation = useRef(0);
   const [operation, setOperation] = useState<{ batch: Batch; kind: "PREPARE" | "SEND" } | null>(null), [confirmed, setConfirmed] = useState(false), [notice, setNotice] = useState("");

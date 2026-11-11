@@ -1,3 +1,4 @@
+import {detectPaymentRequest} from "./payment-core";
 import "server-only";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
@@ -98,6 +99,8 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
       fromName: event.senderName || name, fromEmail: event.fromMe ? recipient : address, toEmails: [event.fromMe ? address : recipient], textBody: event.body, receivedAt: timestamp,
       providerMetadata: { provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, messageId: event.id, apiMessageId: event.apiId, historical: Boolean(event.historical),...quoteMetadata },
     } });
+    const paymentReason=!event.historical&&!event.fromMe?(detectPaymentRequest(event.body,event.media?[event.media.name]:[])||(classification.area==="ACCOUNTS_PAYABLE"&&event.media?"Anexo recebido em contas a pagar: confira se contém uma solicitação de pagamento.":null)):null;
+    if(paymentReason)await tx.$executeRaw(Prisma.sql`INSERT INTO "WhatsAppPaymentRequest" ("messageId","organizationId","ticketId","accountRecipient",reason) VALUES (${message.id},${connection.organizationId},${ticket.id},${recipient},${paymentReason}) ON CONFLICT ("messageId") DO NOTHING`);
     if (event.media) await tx.serviceAttachment.create({ data: { id: "uazapi_" + hash(connection.organizationId + externalMessageId), messageId: message.id, externalAttachmentId: `uazapi:${connection.instanceId}:${event.media.id}`, name: event.media.name, mimeType: event.media.mimeType } });
     if (!active) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_API_INBOUND_CREATED", message: routing.assignedToId ? "Mensagem recebida pela Uazapi e direcionada ao responsável." : "Mensagem recebida pela Uazapi na fila geral." } });
   });

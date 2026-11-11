@@ -20,12 +20,12 @@ export async function GET(request: Request) {
   const clientId = params.get("clientId") || "";
   if (!await findAuthorizedClient(member, clientId)) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
   const exportModule = params.get("module");
-  if (exportModule && exportModule !== "CREDIT_CARD_INVOICE" && exportModule !== "ACQUIRER") return NextResponse.json({ error: "Módulo inválido." }, { status: 400 });
+  if (exportModule && exportModule !== "CREDIT_CARD_INVOICE" && exportModule !== "ACQUIRER" && exportModule !== "WHATSAPP") return NextResponse.json({ error: "Módulo inválido." }, { status: 400 });
   const verify = params.get("verify") === "1";
   if (verify && !params.get("exportId")) return NextResponse.json({ error: "Selecione um envio para conferir." }, { status: 400 });
   const page = Math.max(0, Math.min(250, Number.parseInt(params.get("page") || "0", 10) || 0));
   const batches = await prisma.contaAzulFinancialExport.findMany({
-    where: { organizationId: member.organizationId, clientId, ...(exportModule ? { module: exportModule as "CREDIT_CARD_INVOICE" | "ACQUIRER" } : {}), ...(params.get("exportId") ? { id: params.get("exportId")! } : {}) },
+    where: { organizationId: member.organizationId, clientId, ...(exportModule ? { module: exportModule as "CREDIT_CARD_INVOICE" | "ACQUIRER" | "WHATSAPP" } : {}), ...(params.get("exportId") ? { id: params.get("exportId")! } : {}) },
     orderBy: { createdAt: "desc" }, take: 20,
     select: { id: true, module: true, sourceName: true, status: true, financialAccountId: true, financialAccountName: true, settleRequested: true, lastError: true, createdAt: true, updatedAt: true, completedAt: true,
       _count: { select: { lines: true } },

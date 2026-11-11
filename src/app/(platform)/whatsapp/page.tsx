@@ -1,4 +1,5 @@
 "use client";
+import {PaymentRequestsPanel} from "@/modules/whatsapp/payment-requests-panel";
 import {MentionPicker} from "@/modules/whatsapp/mention-picker";
 
 import {
@@ -508,6 +509,7 @@ export default function WhatsAppPage() {
     }
   }
 
+  const refreshVisibleConversation=useCallback(()=>{const id=selectedRef.current;if(id)void loadDetail(id,true);},[loadDetail]);
   const updateReaction=useCallback((conversationId:string,messageId:string,reaction:{emoji:string;name:string})=>{
     const previous=detailCache.current.get(conversationId);
     if(!previous)return;
@@ -599,6 +601,7 @@ export default function WhatsAppPage() {
           </Group>
         </div>
         <Group gap={4} wrap="nowrap">
+          {connected&&<PaymentRequestsPanel onOpenTicket={id=>{setView("GENERAL");setChatKind("ALL");setChatStatus("ALL");setOnlyUnread(false);setSearch("");setManagementSelection(id);selectedRef.current=id;setSelectedId(id);setSection("INBOX");}}/>}
           <Menu position="bottom-end" width={290} shadow="md" keepMounted>
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Opções do WhatsApp"><IconDotsVertical size={21}/></ActionIcon>
@@ -762,7 +765,7 @@ export default function WhatsAppPage() {
               </div>
 
               <WhatsAppAttachmentSender key={detail.id+":"+bootstrap?.accountKey} ticketId={detail.id} recipient={detail.senderName||detail.subject} canSend={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id&&!saving&&!commentMode)} replyTo={selectedQuote} onSent={()=>{setReplyTarget(null);if(selectedRef.current===detail.id)void loadDetail(detail.id,true);void loadList();}}>{(attachmentButton,mediaBusy)=><>
-              <ChatMessages onChanged={()=>{void loadDetail(detail.id,true);}} conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} canReply={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED")} onReply={selectReply} />
+              <ChatMessages clientId={detail.client?.id} clientName={detail.client?.name} onChanged={refreshVisibleConversation} conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} canReply={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED")} onReply={selectReply} />
 
               {selectedQuote&&!commentMode&&<div className={styles.replyComposerBar}><div><Text size="xs" c="dimmed" mb={3}>Respondendo à mensagem</Text><QuotedMessagePreview quote={selectedQuote}/></div><ActionIcon variant="subtle" color="gray" aria-label="Cancelar resposta à mensagem" onClick={()=>setReplyTarget(null)}><IconX size={17}/></ActionIcon></div>}
               {(detail.status !== "RESOLVED"||commentMode) ? (

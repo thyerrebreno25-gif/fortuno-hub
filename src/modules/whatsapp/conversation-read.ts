@@ -33,7 +33,7 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
     ), thread_tickets AS (
       SELECT h.id FROM "ServiceTicket" h JOIN target t ON h."senderEmail"=t."senderEmail"
       WHERE h."organizationId"=${organizationId} AND h.source='WHATSAPP_API' AND h."recipientEmail"=${recipient}
-        AND (h.id=t.id OR (h.status::text='RESOLVED' AND h."isSpam"=false AND h."mergedIntoId" IS NULL AND h."createdAt"<=t."createdAt"))
+        AND (h.id=t.id OR (h.status::text='RESOLVED' AND h."isSpam"=false AND h."mergedIntoId" IS NULL))
     ), cursor_row AS (
       SELECT m.id,m."receivedAt" FROM "ServiceMessage" m JOIN thread_tickets t ON t.id=m."ticketId"
       WHERE m.id=${beforeId||null} AND (m."providerMetadata"->>'accountPhone'=${phone} OR m."externalMessageId" LIKE ${`uazapi:${phone}:%`})

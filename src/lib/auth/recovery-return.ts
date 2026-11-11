@@ -8,6 +8,6 @@ export function recoveryReturnPath(value:string,intended=false){
  const code=query.get("code");
  if(code&&(query.get("type")==="recovery"||query.get("recovery")==="1"||intended&&["/","/login","/auth/callback"].includes(url.pathname)))return "/recuperar-senha?"+new URLSearchParams({code,recovery:"1"});
  if(hash.get("type")==="recovery"&&hash.get("access_token")&&hash.get("refresh_token"))return "/recuperar-senha?recovery=1#"+hash.toString();
- if(intended&&(hash.has("error_code")||hash.has("error")))return "/recuperar-senha?recovery=1#"+hash.toString();
+ if((intended||hash.get("type")==="recovery")&&(hash.has("error_code")||hash.has("error")))return "/recuperar-senha?recovery=1#"+hash.toString();
  return null;
 }

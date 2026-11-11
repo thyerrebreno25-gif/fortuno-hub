@@ -1,3 +1,4 @@
+import {validateWhatsAppFinancialSource,completeWhatsAppPaymentRequest} from "@/modules/whatsapp/payment-financial-source";
 import { resolveAcquirerContact } from "@/modules/conta-azul/acquirer-contact";
 import crypto from "node:crypto";
 import { confirmFinancialInstallment, confirmFinancialSettlement } from "@/modules/conta-azul/financial-confirmation";
@@ -52,7 +53,7 @@ const lineSchema = z.object({
 });
 const payloadSchema = z.object({
   clientId: z.string().trim().min(1),
-  module: z.enum(["CREDIT_CARD_INVOICE", "ACQUIRER"]),
+  module: z.enum(["CREDIT_CARD_INVOICE", "ACQUIRER", "WHATSAPP"]),
   sourceKey: z.string().trim().min(1).max(1000),
   sourceName: z.string().trim().min(1).max(500),
   contactId: z.string().uuid().nullable().optional(),
@@ -219,12 +220,12 @@ async function resolveTechnicalContact(
   if (module === "ACQUIRER") return resolveAcquirerContact(clientId, direction, requestedName, requestedContactId);
   const name = requestedName?.trim()
     || "FATURAS DE CARTÃO";
-  const technicalObservation = direction === "PAYABLE" && requestedName?.trim()
+  const technicalObservation = module==="WHATSAPP"?"Cadastro validado pelo operador para lançamento originado de conversa no Fortuno Hub.":direction === "PAYABLE" && requestedName?.trim()
       ? `Fornecedor do cartão ${requestedName.trim()} vinculado automaticamente pelo Fortuno Hub.`
       : "Contato técnico criado pelo Fortuno Hub para lançamentos financeiros de faturas de cartão.";
   const requiredProfiles = requiredContactProfiles([direction]);
   const requiredProfile = requiredProfiles[0];
-  const technicalName = module === "CREDIT_CARD_INVOICE" && direction === "PAYABLE"
+  const technicalName = module === "WHATSAPP" || module === "CREDIT_CARD_INVOICE" && direction === "PAYABLE"
     ? requestedName?.trim() || automaticFinancialContactName(requiredProfiles)
     : automaticFinancialContactName(requiredProfiles);
 
@@ -674,6 +675,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Revise os dados do envio ao Conta Azul." }, { status: 400 });
   }
   const requestedBody = parsed.data;
+  if(requestedBody.module==="WHATSAPP"){
+    if(!requestedBody.counterpartyHint?.trim()||requestedBody.lines.length!==1||!await validateWhatsAppFinancialSource(member,requestedBody.clientId,requestedBody.sourceKey))return NextResponse.json({error:"Vincule o cliente e assuma o chamado antes de criar o lançamento. Informe também o favorecido."},{status:403});
+  }
+
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   if (requestedBody.settle && requestedBody.lines.some((line) => (line.paymentDate || line.dueDate) > today)) return NextResponse.json({ error: "A data de pagamento não pode ser futura. Envie como pendente ou informe a data real do pagamento." }, { status: 400 });
   const client = await findAuthorizedClient(member, requestedBody.clientId);
@@ -852,6 +857,7 @@ export async function POST(request: Request) {
     },
   });
 
+  if(done&&body.module==="WHATSAPP")await completeWhatsAppPaymentRequest(body.sourceKey,member.organizationId,member.userId,exportBatch.id);
   return NextResponse.json({
     exportId: exportBatch.id,
     contactId: body.contactId,

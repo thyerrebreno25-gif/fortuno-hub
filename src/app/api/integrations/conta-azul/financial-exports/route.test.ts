@@ -2,12 +2,13 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  member: vi.fn(), permission: vi.fn(), client: vi.fn(), request: vi.fn(),
+  source:vi.fn(),completePayment:vi.fn(),member: vi.fn(), permission: vi.fn(), client: vi.fn(), request: vi.fn(),
   db: { documentImportDispatchLease: { upsert: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn() }, contaAzulConnection: { findFirst: vi.fn() },
     contaAzulFinancialExport: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     contaAzulFinancialExportLine: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn(), findFirst: vi.fn() },
   },
 }));
+vi.mock("@/modules/whatsapp/payment-financial-source",()=>({validateWhatsAppFinancialSource:mocks.source,completeWhatsAppPaymentRequest:mocks.completePayment}));
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.db }));
 vi.mock("@/modules/permissions/permissions", () => ({ getRolePermissions: mocks.permission }));
 vi.mock("@/modules/purchase-invoices/server/auth", () => ({ getPurchaseInvoiceMember: mocks.member, findAuthorizedClient: mocks.client }));
@@ -42,12 +43,13 @@ async function send(data: unknown) {
 function financialCreates() { return mocks.request.mock.calls.filter((call) => call[2]?.method === "POST" && /contas-a-(?:pagar|receber)$/.test(call[1])); }
 function settlementCreates() { return mocks.request.mock.calls.filter((call) => call[2]?.method === "POST" && call[1].endsWith("/baixa")); }
 beforeEach(() => {
-  vi.resetAllMocks(); batch = null; protocols = new Map(); eventSequence = 10;
+  vi.resetAllMocks(); mocks.source.mockResolvedValue(true); batch = null; protocols = new Map(); eventSequence = 10;
   mocks.db.documentImportDispatchLease.updateMany.mockResolvedValue({ count: 1 }); mocks.db.documentImportDispatchLease.findFirst.mockResolvedValue({});
   mocks.member.mockResolvedValue({ organizationId: "org1", userId: "user1", role: "OPERATOR" });
   mocks.permission.mockResolvedValue({ IMPORTS: { canExport: true }, PURCHASE_INVOICES: { canExport: true } });
   mocks.client.mockImplementation(async (_member, id: string) => ({ id, name: id === "client1" ? "Unidade 1" : "Unidade 2", document: id === "client1" ? "11111111000111" : "22222222000122" })); mocks.db.contaAzulConnection.findFirst.mockResolvedValue({ id: "connection1" });
   mocks.db.contaAzulFinancialExport.findUnique.mockImplementation(async () => batch);
+  mocks.db.contaAzulFinancialExport.update.mockImplementation(async ({data})=>{if(batch)Object.assign(batch,data);return batch;});
   mocks.db.contaAzulFinancialExport.create.mockImplementation(async ({ data }) => {
     batch = { id: "export1", financialAccountId: data.financialAccountId, settleRequested: data.settleRequested, contactId: data.contactId, metadata: data.metadata,
       lines: data.lines.create.map((line: NewLine, index: number): MemoryLine => ({ ...line, id: `line${index + 1}`, status: "PENDING", createdAt: new Date(), updatedAt: new Date(),
@@ -331,4 +333,9 @@ it("não troca silenciosamente valor ou categoria de um envio existente", async 
 it("retoma a partir dos dados salvos sem exigir novo upload nem recriar itens concluídos", async () => {
   await send(body()); mocks.db.contaAzulFinancialExport.findFirst.mockResolvedValue({ ...batch!, clientId: "client1", module: "CREDIT_CARD_INVOICE", sourceName: "fatura-teste.pdf", contactName: "Banco Teste" });
   const result = await send({ resumeExportId: "export1", confirmation: "ENVIAR AO CA" }); expect(result.status).toBe(200); expect((await result.json()).done).toBe(true); expect(financialCreates()).toHaveLength(2);
+});
+
+describe("lançamento revisado a partir do WhatsApp",()=>{
+ it("creates one pending payable, attributes the origin and does not duplicate on resume",async()=>{const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor revisado",lines:[body(false,false).lines[0]]};const first=await send(data);expect(first.status).toBe(200);expect((await first.json()).done).toBe(true);expect(mocks.source).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org1",userId:"user1"}),"client1","whatsapp:message");expect(financialCreates()).toHaveLength(1);expect(settlementCreates()).toHaveLength(0);expect(mocks.completePayment).toHaveBeenCalledWith("whatsapp:message","org1","user1","export1");expect((await(await send(data)).json()).alreadyRecorded).toBe(true);expect(financialCreates()).toHaveLength(1);});
+ it("rejects an unowned or unrelated conversation before querying Conta Azul",async()=>{mocks.source.mockResolvedValue(false);const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",lines:[body(false,false).lines[0]]};expect((await send(data)).status).toBe(403);expect(mocks.request).not.toHaveBeenCalled();});
 });

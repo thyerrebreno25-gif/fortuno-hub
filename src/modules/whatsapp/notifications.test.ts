@@ -1,3 +1,4 @@
+vi.mock("./payment-requests",()=>({paymentRequestNotifications:async()=>[]}));
 vi.mock("server-only", () => ({}));
 import { beforeEach, expect, it, vi } from "vitest";
 const query = vi.hoisted(() => vi.fn());

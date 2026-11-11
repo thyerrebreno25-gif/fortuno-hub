@@ -61,6 +61,7 @@ enum ImportStatus {
 enum ContaAzulFinancialExportModule {
   CREDIT_CARD_INVOICE
   ACQUIRER
+  WHATSAPP
 }
 
 enum ContaAzulFinancialExportStatus {
