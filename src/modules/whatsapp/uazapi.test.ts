@@ -58,3 +58,8 @@ it("preserves incoming replies to earlier messages independently of their reacti
  const event=normalizeUazapiEvent({EventType:"messages",message:{messageid:"answer",chatid:"5511999999999@s.whatsapp.net",messageType:"ExtendedTextMessage",quoted:"original",text:"Sim",content:{contextInfo:{stanzaId:"original",quotedMessage:{conversation:"Posso pagar amanhã?"}}}}});
  expect(event).toMatchObject({kind:"messages",body:"Sim",quote:{externalId:"original",fallback:{textBody:"Posso pagar amanhã?"}}});
 });
+
+it("handles deletion receipts and revocations as updates, never as a new inbound",()=>{
+ expect(normalizeUazapiEvent({EventType:"messages_update",state:"Deleted",event:{MessageIDs:["old"]}})).toMatchObject({kind:"messages_update",ids:["old"],status:"deleted"});
+ expect(normalizeUazapiEvent({EventType:"messages",message:{id:"revoke-event",chatid:"123@g.us",messageType:"ProtocolMessage",content:{type:0,key:{id:"original"}}}})).toMatchObject({kind:"messages_update",ids:["original"],status:"deleted"});
+});

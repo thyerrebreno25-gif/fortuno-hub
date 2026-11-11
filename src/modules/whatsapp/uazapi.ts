@@ -35,7 +35,7 @@ export function normalizeUazapiEvent(payload: unknown) {
   if (kind === "messages_update") {
     const receipts = Array.isArray(event.Receipts) ? event.Receipts.map(object) : [];
     const states = [root.state, event.Type, ...receipts.map((item) => item.state)].map((value) => text(value).toLowerCase());
-    const status = states.includes("read") || states.includes("played") ? "read" : states.includes("delivered") ? "delivered" : states.includes("sent") ? "sent" : states.includes("failed") ? "failed" : "";
+    const status = states.includes("deleted") || states.includes("revoked") ? "deleted" : states.includes("read") || states.includes("played") ? "read" : states.includes("delivered") ? "delivered" : states.includes("sent") ? "sent" : states.includes("failed") ? "failed" : "";
     return { kind: "messages_update" as const, ids: Array.isArray(event.MessageIDs) ? event.MessageIDs.filter((id): id is string => typeof id === "string").slice(0, 200) : [], status, timestamp: Number(event.Timestamp) || 0 };
   }
   let content = object(message.content);
@@ -45,6 +45,12 @@ export function normalizeUazapiEvent(payload: unknown) {
   const flag = (value: unknown) => value === true || value === 1 || value === "true" || value === "1";
   const fromMe = flag(message.fromMe ?? message.from_me ?? object(message.key).fromMe) || flag(message.wasSentByApi);
   const mediaType = text(message.messageType, 80);
+  const protocol=object(content.protocolMessage || (/protocol/i.test(mediaType)?content:null));
+  if(text(message.status).toLowerCase()==="deleted" || /protocol/i.test(mediaType)&&(protocol.type===0||protocol.type==="REVOKE")){
+    const target=text(object(protocol.key).id,200)||id;
+    return {kind:"messages_update" as const,ids:[target],status:"deleted",timestamp:Number(message.messageTimestamp)||Date.now()};
+  }
+
   if(/reaction/i.test(mediaType)){
     const reaction=object(content.reactionMessage),targetId=text(message.reaction||object(content.key).id||object(reaction.key).id,200);
     if(!targetId)return null;

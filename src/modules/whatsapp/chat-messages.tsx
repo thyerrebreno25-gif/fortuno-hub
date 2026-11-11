@@ -10,7 +10,7 @@ import {ImageZoomViewer} from "./image-zoom-viewer";
 import { mediaKind } from "./media";
 import styles from "@/app/(platform)/whatsapp/whatsapp.module.css";
 type Attachment = { id: string; name: string; mimeType: string | null };
-type Message = { id: string; sourceTicketId?: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; replyTo?:QuotedMessage|null; reaction?:MessageReaction|null; customerReactions?:MessageReaction[]; attachments: Attachment[] };
+type Message = { id: string; sourceTicketId?: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; deletedAt?:string|null;editedAt?:string|null; replyTo?:QuotedMessage|null; reaction?:MessageReaction|null; customerReactions?:MessageReaction[]; attachments: Attachment[] };
 const delivery: Record<string, string> = { accepted: "Enviando", sent: "Enviada", delivered: "Entregue", read: "Lida", failed: "Falha no envio" };
 function AttachmentPreview({ conversationId, attachment, message }: { conversationId: string; attachment: Attachment; message: string }) {
   const [opened, setOpened] = useState(false), [failed, setFailed] = useState(false);
@@ -92,6 +92,8 @@ const MessageBubble=memo(function MessageBubble({message,conversationId,senderNa
  }
  return <div data-message-id={message.id} data-highlighted={highlighted||undefined} className={`${styles.messageRow} ${message.direction === "OUTBOUND" ? styles.outbound : message.direction === "INTERNAL" ? styles.internal : ""}`}>
         <div className={styles.bubble}>
+          {message.deletedAt&&<Text size="xs" c="red" fw={700} mb={4}>Mensagem excluída no WhatsApp · conteúdo preservado no Hub</Text>}
+          {message.editedAt&&<Text size="xs" c="dimmed" mb={4}>Editada</Text>}
           {message.replyTo&&<QuotedMessagePreview quote={message.replyTo} onOpen={()=>onOpenOriginal(message.replyTo!)}/>}
           {message.direction==="INTERNAL"&&<Text size="xs" c="yellow.8" fw={750} mb={4}>Comentário interno · somente a equipe</Text>}
           <Text size="xs" fw={800} mb={4}>{message.fromName || (message.direction === "OUTBOUND" ? "Fortuno" : senderName)}</Text>

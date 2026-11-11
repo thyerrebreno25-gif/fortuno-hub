@@ -69,13 +69,15 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     if (await tx.serviceMessage.findFirst({ where: { externalMessageId, ticket: { organizationId: connection.organizationId } }, select: { id: true } })) return;
     const scope = { organizationId: connection.organizationId, source: "WHATSAPP_API" as const, senderEmail: address, mergedIntoId: null, recipientEmail: recipient };
     const closed = event.historical ? await tx.serviceTicket.findFirst({ where: { ...scope, status: "RESOLVED", resolvedAt: { gte: timestamp } }, orderBy: { resolvedAt: "asc" } }) : null;
-    const active = closed || await tx.serviceTicket.findFirst({ where: { ...scope, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } });
+    const active = closed || await tx.serviceTicket.findFirst({ where: { ...scope, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } }) || await tx.serviceTicket.findFirst({where:{...scope,status:"RESOLVED",isSpam:false},orderBy:{lastMessageAt:"desc"}});
+    const reopening=Boolean(active?.status==="RESOLVED"&&!event.historical&&!event.fromMe&&(!active.resolvedAt||timestamp>active.resolvedAt));
     if (event.fromMe && !active && !event.historical) return;
-    const automatic = !event.fromMe && !event.historical && (!active || timestamp >= active.lastMessageAt) && (!active || mayAutomaticallyRoute(active, classification.area));
+    const automatic = !reopening && active?.status!=="RESOLVED" && !event.fromMe && !event.historical && (!active || timestamp >= active.lastMessageAt) && (!active || mayAutomaticallyRoute(active, classification.area));
     const routingReason = AUTOMATIC_WHATSAPP_PREFIX + routing.reason + " " + classification.reason;
     const name = chatName || (event.group || event.fromMe ? active?.senderName : event.senderName) || identifier;
     const ticket = active ? await tx.serviceTicket.update({ where: { id: active.id }, data: {
       updatedAt: new Date(),
+      ...(reopening?{status:"NEW" as const,assignedToId:null,assignedAt:null,firstResponseAt:null,resolvedAt:null,receivedAt:timestamp,routingReason:"Conversa reaberta por nova mensagem do cliente; aguardando atendimento."}:{}),
       ...(automatic ? { clientId: routing.clientId || active.clientId, routingArea: classification.area, routingSquad: routing.routingSquad, routingReason, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null, status: routing.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
       recipientEmail: recipient,
       ...(event.historical && timestamp < active.receivedAt ? { receivedAt: timestamp } : {}),
@@ -89,6 +91,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
       externalThreadId: externalMessageId, subject: name, senderName: name, senderEmail: address, recipientEmail: recipient,
       snippet: event.body.slice(0, 220), status: event.fromMe ? "WAITING_CUSTOMER" : routing.assignedToId ? "IN_PROGRESS" : "NEW", receivedAt: timestamp, lastMessageAt: timestamp,
     } });
+    if(reopening&&active)await tx.serviceTicketHistory.create({data:{ticketId:ticket.id,type:"WHATSAPP_REOPENED",message:"Nova mensagem reabriu a mesma conversa na fila.",metadata:{previousAssignedToId:active.assignedToId,previousReceivedAt:active.receivedAt.toISOString(),previousFirstResponseAt:active.firstResponseAt?.toISOString()||null,previousResolvedAt:active.resolvedAt?.toISOString()||null}}});
     if (active && automatic && (active.assignedToId !== routing.assignedToId || active.clientId !== routing.clientId || active.routingArea !== classification.area)) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_AUTOMATIC_ROUTING", message: routingReason, metadata: { previousAssignedToId: active.assignedToId, assignedToId: routing.assignedToId, clientId: routing.clientId, routingArea: classification.area } } });
     const message = await tx.serviceMessage.create({ data: {
       ticketId: ticket.id, externalMessageId, direction: event.fromMe ? "OUTBOUND" : "INBOUND",
@@ -120,6 +123,12 @@ async function processEvent(connection: Connection, event: Event) {
   if(event.kind === "reaction")return receiveReaction(connection,event);
   if (event.kind === "connection") { await checkConnection(connection); return; }
   if (!event.status || !event.ids.length) return;
+  if(event.status==="deleted"){
+    // A deletion is a state change: retain the original text, media and delivery receipts.
+    await prisma.$executeRaw(Prisma.sql`UPDATE "ServiceMessage" m SET "providerMetadata"=jsonb_set(COALESCE(m."providerMetadata",'{}'::jsonb),'{deletedAt}',to_jsonb(${at(event.timestamp).toISOString()}::text),true) FROM "ServiceTicket" t WHERE t.id=m."ticketId" AND t."organizationId"=${connection.organizationId} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${`wa-account:${connection.id}:${connection.phone}`} AND (m."externalMessageId"=ANY(${event.ids.flatMap(id=>[`uazapi:${connection.phone}:${id}`,`uazapi:${connection.instanceId}:${id}`])}::text[]) OR m."providerMetadata"->>'apiMessageId'=ANY(${event.ids}::text[]))`);
+    await prisma.serviceTicket.updateMany({where:{organizationId:connection.organizationId,source:"WHATSAPP_API",recipientEmail:`wa-account:${connection.id}:${connection.phone}`,messages:{some:{externalMessageId:{in:event.ids.flatMap(id=>[`uazapi:${connection.phone}:${id}`,`uazapi:${connection.instanceId}:${id}`])}}}},data:{updatedAt:new Date()}});
+    return;
+  }
   const messages = await prisma.serviceMessage.findMany({ where: { externalMessageId: { in: event.ids.flatMap((id) => [`uazapi:${connection.instanceId}:${id}`, `uazapi:${connection.phone}:${id}`]) }, ticket: { organizationId: connection.organizationId, source: "WHATSAPP_API", recipientEmail: `wa-account:${connection.id}:${connection.phone}` } }, select: { id: true, ticketId: true, deliveryStatus: true } });
   for (const message of messages) if (advancesDelivery(message.deliveryStatus, event.status)) {
     await prisma.$transaction(async (tx) => {

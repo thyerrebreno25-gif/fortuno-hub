@@ -19,8 +19,8 @@ export async function reopenWhatsAppCall(ticket:ClosedCall,userId:string){
    const closed=await tx.serviceTicket.findFirst({where:{id:ticket.id,...account.where,status:"RESOLVED",mergedIntoId:null,isSpam:false},select:{id:true}});
    if(!closed)throw new ReopenWhatsAppError("O atendimento foi alterado. Atualize a conversa.");
    const now=new Date();
-   const next=await tx.serviceTicket.create({data:{organizationId:ticket.organizationId,source:"WHATSAPP_API",senderEmail:ticket.senderEmail,senderName:ticket.senderName,subject:ticket.subject,recipientEmail:account.recipient,clientId:ticket.clientId,routingArea:ticket.routingArea,routingSquad:ticket.routingSquad,priority:ticket.priority,externalThreadId:`reopen:${crypto.randomUUID()}`,status:"IN_PROGRESS",assignedToId:userId,assignedAt:now,receivedAt:now,lastMessageAt:now,snippet:"Chamado aberto pela equipe.",routingReason:"Atendimento aberto manualmente após a finalização."},select:{id:true}});
-   await tx.serviceTicketHistory.create({data:{ticketId:next.id,userId,type:"WHATSAPP_REOPENED",message:"Novo atendimento aberto a partir de conversa finalizada. Histórico anterior preservado.",metadata:{previousTicketId:ticket.id}}});
+   const next=await tx.serviceTicket.update({where:{id:closed.id},data:{status:"IN_PROGRESS",assignedToId:userId,assignedAt:now,receivedAt:now,firstResponseAt:null,resolvedAt:null,updatedAt:now,routingReason:"Atendimento reaberto manualmente após a finalização."},select:{id:true}});
+   await tx.serviceTicketHistory.create({data:{ticketId:next.id,userId,type:"WHATSAPP_REOPENED",message:"Conversa reaberta pela equipe. Mensagens e histórico preservados.",metadata:{previousTicketId:ticket.id}}});
    return next.id;
  });
 }

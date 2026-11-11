@@ -46,3 +46,8 @@ it("attaches customer reactions to their original message without creating calls
  m.findMany.mockResolvedValueOnce([{id:"reaction-event",connection:{...connection,phone:"5511"},payload:{instanceId:"i",accountPhone:"5511",event:{kind:"reaction",id:"reaction",targetId:"original",chatId:"5522@s.whatsapp.net",sender:"5522@s.whatsapp.net",senderName:"Cliente",emoji:"👍",fromMe:false,timestamp:Date.now()}},status:"PENDING",attempts:0,eventType:"reaction"}]);
  await drainUazapiInbox();expect(m.raw).toHaveBeenCalledTimes(1);expect(m.ticket.mock.calls[0][0].data).toEqual({updatedAt:expect.any(Date)});expect(m.update.mock.calls.at(-1)?.[0].data.status).toBe("COMPLETED");expect(m.message.mock.calls[0][0].where.ticket).toMatchObject({organizationId:"org",recipientEmail:"wa-account:c:5511",senderEmail:"wa-contact:5522"});
 });
+
+it("retains original content when a deletion arrives and isolates the connected phone",async()=>{
+ m.findMany.mockResolvedValueOnce([{id:"deleted-event",connection:{...connection,phone:"5511"},payload:{instanceId:"i",accountPhone:"5511",event:{kind:"messages_update",ids:["original"],status:"deleted",timestamp:Date.now()}},status:"PENDING",attempts:0,eventType:"messages_update"}]);
+ await drainUazapiInbox();expect(m.raw).toHaveBeenCalledOnce();const sql=m.raw.mock.calls[0][0];expect(sql.strings.join("")).toContain("'{deletedAt}'");expect(sql.strings.join("")).not.toContain('"textBody"=');expect(sql.values).toContain("wa-account:c:5511");expect(m.update.mock.calls.at(-1)?.[0].data.status).toBe("COMPLETED");
+});
