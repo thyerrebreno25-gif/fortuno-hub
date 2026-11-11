@@ -96,3 +96,11 @@ export async function sendUazapiReaction(input:{organizationId:string;accountRec
   if(response.success===false||response.error||!(response.success===true||response.messageid||response.id||object(response.reaction).status))throw new Error("A Uazapi não confirmou a reação. Confira a conversa antes de repetir.");
   return {connectionId:connection.id,accountPhone:connection.phone};
 }
+
+export async function changeUazapiMessage(input:{organizationId:string;accountRecipient:string;messageId:string;action:"edit"|"delete";body?:string}){
+ const connection=await whatsappConnection(input.organizationId);
+ if(!connection||connection.status!=="CONNECTED"||!connection.webhookConfiguredAt||connection.expiresAt&&connection.expiresAt<new Date())throw new Error("Conecte o WhatsApp antes de alterar mensagens.");
+ if(input.accountRecipient!==`wa-account:${connection.id}:${connection.phone}`)throw new Error("O número conectado mudou. Atualize a conversa.");
+ const result=object(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),`/message/${input.action}`,{id:input.messageId,...(input.action==="edit"?{text:input.body}:{})}));
+ if(result.error||result.success===false||!(result.id||result.messageid||result.timestamp||result.success===true))throw new Error("A alteração não foi confirmada. Confira no WhatsApp antes de repetir.");
+}

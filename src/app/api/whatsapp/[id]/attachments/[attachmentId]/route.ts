@@ -1,3 +1,4 @@
+import {imageDownload} from "@/modules/whatsapp/image-download";
 import { currentWhatsAppAccount, accountMessageWhere } from "@/modules/whatsapp/account-scope";
 import {createAdminClient} from "@/lib/supabase/admin";
 import {WHATSAPP_FILES_BUCKET,WHATSAPP_FILE_LIMIT} from "@/modules/whatsapp/outbound-files";
@@ -71,12 +72,17 @@ export async function GET(request: Request, context: Context) {
       file = await downloadUazapiMedia(member.organizationId, attachment.externalAttachmentId);
     }
     const preview = new URL(request.url).searchParams.get("preview") === "1";
-    const safeMime = previewMime(file.body, file.mimeType || attachment.mimeType || "");
+    let safeMime = previewMime(file.body, file.mimeType || attachment.mimeType || "");
     if (preview && !safeMime) return NextResponse.json({ error: "Este formato está disponível somente para download." }, { status: 415 });
+    let downloadName=attachment.name;
+    if(!preview&&safeMime?.startsWith("image/")){
+      const converted=await imageDownload(file.body,safeMime,attachment.name);
+      file={body:converted.body,mimeType:converted.mimeType,size:converted.body.length};safeMime=converted.mimeType;downloadName=converted.name;
+    }
     const range = byteRange(request.headers.get("range"), file.body.length);
     if (range === false) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${file.body.length}` } });
     const body = range ? file.body.slice(range.start, range.end + 1) : file.body;
-    const encodedName = encodeURIComponent(attachment.name || "anexo-whatsapp");
+    const encodedName = encodeURIComponent(downloadName || "anexo-whatsapp");
     return new Response(new Uint8Array(body), {
       status: range ? 206 : 200,
       headers: {

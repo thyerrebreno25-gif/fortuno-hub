@@ -16,3 +16,6 @@ export async function GET(_request:Request,context:{params:Promise<{id:string;me
   return NextResponse.json({message:target.message},{headers:{"Cache-Control":"private, no-store"}});
  }catch(error){return NextResponse.json({error:error instanceof ReplyTargetError?error.message:"Não foi possível abrir a mensagem original."},{status:error instanceof ReplyTargetError?error.status:500});}
 }
+
+export async function PATCH(request:Request,context:{params:Promise<{id:string;messageId:string}>}){const {mutateWhatsAppMessage}=await import("@/modules/whatsapp/message-mutations");const {id,messageId}=await context.params;return mutateWhatsAppMessage(request,id,messageId,"edit");}
+export async function DELETE(request:Request,context:{params:Promise<{id:string;messageId:string}>}){const {mutateWhatsAppMessage}=await import("@/modules/whatsapp/message-mutations");const {id,messageId}=await context.params;return mutateWhatsAppMessage(request,id,messageId,"delete");}
