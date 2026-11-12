@@ -1,10 +1,11 @@
+import type {WhatsAppCall} from "./call-core";
 import "server-only";
 import type {QuotedMessage} from "./quote-core";
 import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {currentWhatsAppAccount} from "./account-scope";
 
-export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null;replyTo?:QuotedMessage|null;reaction?:{emoji:string;name:string}|null;customerReactions?:Array<{emoji:string;name:string}>;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
+export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null;replyTo?:QuotedMessage|null;reaction?:{emoji:string;name:string}|null;customerReactions?:Array<{emoji:string;name:string}>;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
 type Person={id:string;name:string|null;email:string};
 export type ConversationSnapshot={
   id:string;subject:string;senderName:string|null;senderEmail:string;source:string;snippet:string|null;status:string;
@@ -29,7 +30,11 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
       SELECT t.id,t."mergedIntoId",a.depth+1,a.path||t.id FROM "ServiceTicket" t JOIN aliases a ON t.id=a."mergedIntoId"
       WHERE a.depth<4 AND NOT(t.id=ANY(a.path)) AND t."organizationId"=${organizationId} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${recipient}
     ), target AS (
-      SELECT t.* FROM "ServiceTicket" t JOIN aliases a ON a.id=t.id WHERE t."mergedIntoId" IS NULL ORDER BY a.depth DESC LIMIT 1
+      SELECT t.*,(SELECT d."displayName" FROM "WhatsAppDirectoryEntry" d
+        WHERE d."organizationId"=${organizationId} AND d."connectionId"=${account.connection.id} AND d."accountPhone"=${phone} AND d.active=true
+          AND (CASE WHEN d.kind='GROUP' THEN 'wa-group:'||d."externalId" ELSE 'wa-contact:'||replace(d."externalId",'@s.whatsapp.net','') END)=t."senderEmail"
+          AND d."displayName" !~ '^[+0-9 ().-]+$' AND d."displayName" !~ '@(lid|s\\.whatsapp\\.net|g\\.us)$'
+        LIMIT 1) AS "directoryName" FROM "ServiceTicket" t JOIN aliases a ON a.id=t.id WHERE t."mergedIntoId" IS NULL ORDER BY a.depth DESC LIMIT 1
     ), thread_tickets AS (
       SELECT h.id FROM "ServiceTicket" h JOIN target t ON h."senderEmail"=t."senderEmail"
       WHERE h."organizationId"=${organizationId} AND h.source='WHATSAPP_API' AND h."recipientEmail"=${recipient}
@@ -45,7 +50,7 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
     )
     SELECT (${beforeId||null}::text IS NULL OR EXISTS(SELECT 1 FROM cursor_row)) AS "cursorValid",
       jsonb_build_object(
-        'id',t.id,'subject',t.subject,'senderName',t."senderName",'senderEmail',t."senderEmail",'source',t.source,'snippet',t.snippet,'status',t.status,
+        'id',t.id,'subject',COALESCE(t."directoryName",t.subject),'senderName',COALESCE(t."directoryName",t."senderName"),'senderEmail',t."senderEmail",'source',t.source,'snippet',t.snippet,'status',t.status,
         'routingArea',t."routingArea",'routingReason',t."routingReason",
         'assignedAt',to_char(t."assignedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
         'receivedAt',to_char(t."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
@@ -65,6 +70,7 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
               AND (q.id=m."providerMetadata"->>'replyToMessageId' OR (NOT(m."providerMetadata"?'replyToMessageId') AND q."externalMessageId"=${`uazapi:${phone}:`}||(m."providerMetadata"->>'quotedExternalId')))
             LIMIT 1
           ),m."providerMetadata"->'quotedFallback') ELSE NULL END,
+          'call',m."providerMetadata"->'call',
           'forwarded',m."providerMetadata"?'forwardedFromMessageId','audioTranscript',m."providerMetadata"->>'audioTranscript','deletedAt',m."providerMetadata"->>'deletedAt','editedAt',m."providerMetadata"->>'editedAt',
           'reaction',m."providerMetadata"->'hubReaction',
           'customerReactions',COALESCE((SELECT jsonb_agg(r.value) FROM (SELECT value FROM jsonb_each(COALESCE(m."providerMetadata"->'customerReactions','{}'::jsonb)) WHERE value->>'emoji'<>'' LIMIT 20) r),'[]'::jsonb),

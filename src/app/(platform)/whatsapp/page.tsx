@@ -401,6 +401,7 @@ export default function WhatsAppPage() {
         onConnectionStatus(state.mode);
         setHistorySync(state.historySync || null);
         if (state.mode !== "CONNECTED") return;
+        if (lastRevision.current && lastRevision.current !== state.revision) window.dispatchEvent(new Event("fortuno:notifications-refresh"));
         if (section === "INBOX" && lastRevision.current !== state.revision) {
           await loadList();
           const currentId = selectedRef.current;

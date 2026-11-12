@@ -144,3 +144,6 @@ button.quotedMessage:focus-visible { outline: 2px solid var(--mantine-color-teal
 .replyComposerBar > div { flex: 1; min-width: 0; }
 .replyComposerBar .quotedMessage { margin-bottom: 0; }
 .messageRow[data-highlighted] .bubble { outline: 2px solid var(--mantine-color-teal-6); box-shadow: 0 0 0 5px color-mix(in srgb, var(--mantine-color-teal-6) 18%, transparent); }
+
+.callIcon { display: inline-flex; padding: 9px; border-radius: 50%; background: light-dark(#e6f3ed, #173a32); color: light-dark(#217258, #77d7b1); flex-shrink: 0; }
+.callIcon[data-missed="true"] { background: light-dark(#fff0ed, #412323); color: light-dark(#c14032, #ff9a90); }

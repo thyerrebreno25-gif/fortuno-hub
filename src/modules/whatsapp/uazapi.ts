@@ -1,3 +1,4 @@
+import {messageCall, nativeCall, callLabel, type WhatsAppCall} from "./call-core";
 import {normalizeMessageQuote} from "./quote-core";
 import { createHash, timingSafeEqual } from "node:crypto";
 export const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -30,6 +31,7 @@ export async function uazapiRequest(base: string, token: string, path: string, b
 export function normalizeUazapiEvent(payload: unknown) {
   const root = object(payload), message = object(root.message), event = object(root.event), instance = object(root.instance), chat = object(root.chat);
   const kind = text(root.EventType, 50);
+  if (kind === "call") return nativeCall(root);
   if (!["messages", "messages_update", "connection"].includes(kind)) return null;
   if (kind === "connection") return { kind: "connection" as const, eventId: text(root.event_id, 200), status: text(instance.status, 30) };
   if (kind === "messages_update") {
@@ -40,7 +42,8 @@ export function normalizeUazapiEvent(payload: unknown) {
   }
   let content = object(message.content);
   if (typeof message.content === "string") { try { content = object(JSON.parse(message.content)); } catch { /* Plain text content. */ } }
-  const chatId = text(message.chatid || chat.wa_chatid, 150), id = text(message.messageid || text(message.id).split(":").at(-1), 200);
+  const rawChatId = text(message.chatid || chat.wa_chatid,150);
+  const chatId = /^(?:call|calllogmessage)$/i.test(text(message.messageType)) && !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(rawChatId) ? text(object(message.callPeer).jid,150) : rawChatId, id = text(message.messageid || text(message.id).split(":").at(-1), 200);
   if (!id || !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(chatId)) return null;
   const flag = (value: unknown) => value === true || value === 1 || value === "true" || value === "1";
   const fromMe = flag(message.fromMe ?? message.from_me ?? object(message.key).fromMe) || flag(message.wasSentByApi);
@@ -56,14 +59,16 @@ export function normalizeUazapiEvent(payload: unknown) {
     if(!targetId)return null;
     return {kind:"reaction" as const,id,chatId,fromMe,sender:text(message.sender,150),senderName:text(message.senderName,250),targetId,emoji:text(message.text??content.text??reaction.text,24),timestamp:Number(message.messageTimestamp)||Date.now()};
   }
-  const media = /image|document|audio|video|sticker/i.test(mediaType);
+  const call = messageCall(message, content);
+  const media = !call && /image|document|audio|video|sticker/i.test(mediaType);
   const result = { kind: "messages" as const, id, apiId: text(message.id || id, 250), chatId, group: chatId.endsWith("@g.us"), fromMe, wasSentByApi: flag(message.wasSentByApi),
-    senderName: text(message.senderName, 250), chatName: text(chat.name, 250), sender: text(message.sender, 150),
-    body: text(message.text || content.caption || content.text || content.conversation || (!media && typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
+    senderName: text(message.senderName, 250), chatName: text(chat.name || (call ? object(message.callPeer).name : ""), 250), sender: text(message.sender, 150),
+    body: call ? callLabel(call, fromMe) : text(message.text || content.caption || content.text || content.conversation || (!media && typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
+    ...(call ? {call} : {}),
     quote:normalizeMessageQuote(message,content),
     media: media ? { id: text(message.id || id, 250), name: text(content.fileName || content.filename, 250) || mediaType, mimeType: text(content.mimetype || content.mimeType, 150) || null } : null,
   };
-  return result as Omit<typeof result,"quote"> & {quote?:typeof result.quote;historical?:boolean};
+  return result as Omit<typeof result,"quote"> & {quote?:typeof result.quote;historical?:boolean;call?:WhatsAppCall};
 }
 export function normalizeUazapiHistory(payload: unknown, names: Record<string, string> = {}) {
   const root = object(payload);

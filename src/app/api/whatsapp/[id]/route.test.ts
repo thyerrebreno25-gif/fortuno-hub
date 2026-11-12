@@ -1,4 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
+vi.mock("server-only",()=>({}));
+vi.mock("@/modules/whatsapp/uazapi-events",()=>({repairCallPlaceholders:vi.fn()}));
 const m = vi.hoisted(() => ({ role: "MASTER", identities: new Map<string, unknown>(), current: {} as Record<string, unknown>, sent: vi.fn(), created: vi.fn(), updated: vi.fn(), history: vi.fn(), assignee: vi.fn(), read:vi.fn(), target:vi.fn() }));
 vi.mock("@/modules/atendimento/auth", () => ({ getServiceCenterMember: async () => ({ organizationId: "org", role: m.role, userId: "operator", user: { id: "operator", name: "Isabella Lago", email: "operator@test" } }), getWhatsAppPermission: async () => ({ canView: true, canEdit: true, canManage: m.role === "MASTER" }), SERVICE_CENTER_MANAGER_ROLES: new Set(["MASTER"]) }));
 vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:async()=>({recipient:"wa-account:c:5511",connection:{phone:"5511"}})}));

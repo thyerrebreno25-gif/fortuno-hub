@@ -1,13 +1,13 @@
 import {beforeEach,it,expect,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),ticket:vi.fn(),connection:vi.fn(),request:vi.fn(),files:vi.fn(),count:vi.fn()}));
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),ticket:vi.fn(),connection:vi.fn(),request:vi.fn(),files:vi.fn(),count:vi.fn(),remember:vi.fn()}));
 vi.mock("next/cache",()=>({unstable_cache:(fn:()=>unknown)=>fn}));
 vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
 vi.mock("@/modules/whatsapp/server",()=>({resolveWhatsappTicketId:vi.fn().mockResolvedValue("ticket")}));
 vi.mock("@/modules/whatsapp/uazapi-server",()=>({whatsappConnection:m.connection}));
 vi.mock("@/modules/purchase-invoices/server/crypto",()=>({decryptIntegrationSecret:()=>"test-token"}));
 vi.mock("@/modules/whatsapp/uazapi",async original=>({...await original<typeof import("@/modules/whatsapp/uazapi")>(),uazapiRequest:m.request}));
-vi.mock("@/lib/prisma",()=>({prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },serviceTicket:{findFirst:m.ticket},serviceAttachment:{findMany:m.files,count:m.count}}}));
+vi.mock("@/lib/prisma",()=>({prisma: { whatsAppConnection: { findUnique: vi.fn(async () => ({ id: "conn", organizationId: "org", phone: "5511888888888", instanceId: "instance", status: "CONNECTED", expiresAt: null, webhookConfiguredAt: new Date() })) },serviceTicket:{findFirst:m.ticket,updateMany:m.remember},serviceAttachment:{findMany:m.files,count:m.count}}}));
 import {GET} from "./route";
 const get=(query="")=>GET(new Request("https://hub.test/api/whatsapp/ticket/info"+query),{params:Promise.resolve({id:"ticket"})});
 beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",userId:"operator",role:"OPERATOR"});m.permission.mockResolvedValue({canView:true});m.ticket.mockResolvedValue({id:"ticket",senderName:"Cliente",subject:"Grupo",senderEmail:"wa-group:120363000@g.us",recipientEmail:"wa-account:conn:5511888888888",client:null,assignedTo:null});m.connection.mockResolvedValue({id:"conn",instanceId:"instance",phone:"5511888888888",status:"CONNECTED",expiresAt:null,serverUrl:"https://fortunohub.uazapi.com",tokenEncrypted:"encrypted"});m.request.mockResolvedValue({Name:"Grupo",Topic:"Descrição",ParticipantCount:10});m.files.mockResolvedValue([]);m.count.mockResolvedValue(0);});
@@ -17,3 +17,7 @@ it("does not look up an old-account conversation using the newly connected Whats
 it("returns the group description and count from the group-info endpoint",async()=>{expect((await(await get()).json()).profile).toMatchObject({description:"Descrição",memberCount:10});expect(m.request.mock.calls[0][2]).toBe("/group/info");expect(m.request.mock.calls[0][3]).toEqual({groupjid:"120363000@g.us"});});
 it("paginates all synchronized attachments beyond the loaded message window",async()=>{await get("?section=files&page=2");expect(m.files.mock.calls[0][0]).toMatchObject({skip:40,take:40,where:{message:{ticketId:"ticket",ticket:{organizationId:"org",source:"WHATSAPP_API"}}}});expect(m.request).not.toHaveBeenCalled();});
 it("keeps local media available when remote profile lookup fails",async()=>{m.request.mockRejectedValue(new Error("provider failed"));const result=await(await get()).json();expect(result.warning).toContain("mídias sincronizadas");expect(result.profile).toBeNull();});
+
+it("remembers the authoritative profile name in the exact account so the inbox can show it",async()=>{
+ await get();expect(m.remember).toHaveBeenCalledOnce();expect(m.remember.mock.calls[0][0]).toMatchObject({where:{source:"WHATSAPP_API",recipientEmail:"wa-account:conn:5511888888888",senderEmail:"wa-group:120363000@g.us"},data:{senderName:"Grupo",subject:"Grupo"}});
+});

@@ -1,10 +1,13 @@
+import {repairCallPlaceholders} from "@/modules/whatsapp/uazapi-events";
 import {reopenWhatsAppCall,ReopenWhatsAppError} from "@/modules/whatsapp/reopen";
 import {findReplyTarget,ReplyTargetError} from "@/modules/whatsapp/reply-target";
 import {readWhatsAppConversation,ConversationCursorError} from "@/modules/whatsapp/conversation-read";
 import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {outgoingContext} from "@/modules/whatsapp/outgoing-context";
 import { signedWhatsappText } from "@/modules/whatsapp/operator-signature";
-import { NextResponse } from "next/server";
+import {isContactName} from "@/modules/whatsapp/contact-name";
+import {resolvedChatProfile,rememberChatName} from "@/modules/whatsapp/contact-profile";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getServiceCenterMember,
@@ -42,6 +45,16 @@ export async function GET(_request: Request, context: Context) {
   if(id.length>100||(beforeId?.length||0)>100)return NextResponse.json({error:"Conversa inválida."},{status:400});
   try{
     const ticket=await readWhatsAppConversation(id,member.organizationId,beforeId,account);
+    if(ticket && !beforeId && account.connection){
+      const needsName=!isContactName(ticket.senderName||ticket.subject);
+      const needsCallRepair=ticket.messages.some(message=>message.textBody==="[Mensagem sem texto]");
+      if(needsName||needsCallRepair)after(async()=>{
+        const connection=await whatsappConnection(member.organizationId);
+        if(!connection||connection.status!=="CONNECTED"||`wa-account:${connection.id}:${connection.phone}`!==account.recipient)return;
+        if(needsName)try{const channel=parseWhatsappChannelAddress(ticket.senderEmail),profile=await resolvedChatProfile(connection,channel.externalId,channel.kind==="GROUP");await rememberChatName(connection,ticket.senderEmail,profile.name);}catch{/* Keep message loading independent of profile lookup. */}
+        if(needsCallRepair)try{await repairCallPlaceholders(connection,ticket.id);}catch{/* Retry through a later read without blocking the conversation. */}
+      });
+    }
     return ticket?NextResponse.json({ticket},{headers:{"Cache-Control":"private, no-store"}}):NextResponse.json({error:"Atendimento não encontrado."},{status:404});
   }catch(error){if(error instanceof ConversationCursorError)return NextResponse.json({error:error.message},{status:400});throw error;}
 }

@@ -48,6 +48,12 @@ async function directoryBatch(connectionId?:string) {
     const current=await tx.whatsAppConnection.findFirst({where:{id:job.connectionId,organizationId:job.organizationId,instanceId:job.instanceId,phone:job.accountPhone,status:"CONNECTED"},select:{id:true}});
     if(!current){await tx.whatsAppDirectorySync.update({where:{id:job.id},data:{status:"CANCELLED"}});return;}
     if(page.entries.length) await tx.$executeRaw(Prisma.sql`INSERT INTO "WhatsAppDirectoryEntry" (id,"organizationId","connectionId","accountPhone","externalId",kind,"displayName",generation,active,"updatedAt") VALUES ${Prisma.join(page.entries.map(entry=>Prisma.sql`(${randomUUID()},${job.organizationId},${job.connectionId},${job.accountPhone},${entry.externalId},${entry.kind},${entry.displayName},${job.generation},true,NOW())`))} ON CONFLICT ("connectionId","accountPhone","externalId") DO UPDATE SET "displayName"=EXCLUDED."displayName",generation=EXCLUDED.generation,active=true,"updatedAt"=NOW()`);
+    if(page.entries.length) await tx.$executeRaw(Prisma.sql`UPDATE "ServiceTicket" t SET "senderName"=d."displayName",subject=d."displayName","updatedAt"=NOW()
+      FROM "WhatsAppDirectoryEntry" d WHERE d."organizationId"=${job.organizationId} AND d."connectionId"=${job.connectionId} AND d."accountPhone"=${job.accountPhone} AND d.active=true AND d.generation=${job.generation}
+      AND t."organizationId"=d."organizationId" AND t.source='WHATSAPP_API' AND t."recipientEmail"=${`wa-account:${job.connectionId}:${job.accountPhone}`}
+      AND t."senderEmail"=CASE WHEN d.kind='GROUP' THEN 'wa-group:'||d."externalId" ELSE 'wa-contact:'||replace(d."externalId",'@s.whatsapp.net','') END
+      AND d."displayName" !~ '^[+0-9 ().-]+$' AND d."displayName" !~ '@(lid|s\\.whatsapp\\.net|g\\.us)$'
+      AND (t."senderName" IS DISTINCT FROM d."displayName" OR t.subject IS DISTINCT FROM d."displayName")`);
     if(!page.hasMore) await tx.whatsAppDirectoryEntry.updateMany({where:{organizationId:job.organizationId,connectionId:job.connectionId,accountPhone:job.accountPhone,kind,generation:{not:job.generation}},data:{active:false}});
     const completed=!page.hasMore && kind==="GROUP";
     await tx.whatsAppDirectorySync.update({where:{id:job.id},data:{status:completed?"COMPLETED":"PENDING",phase:!page.hasMore?"GROUPS":job.phase,offset:page.hasMore?page.nextOffset:0,attempts:0,lastError:null,claimedAt:null,nextRunAt:new Date(Date.now()+(completed?900000:0)),...(completed?{completedAt:new Date()}:{})}});

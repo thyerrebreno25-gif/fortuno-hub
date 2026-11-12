@@ -1,5 +1,6 @@
 "use client";
 import { notifications as toastNotifications } from "@mantine/notifications";
+import {unlockMessageSound,messageSoundReady,freshMessageSound,playMessageBlip} from "@/modules/notifications/message-sound";
 import { notificationIds, popupBatch } from "@/modules/notifications/popup-state";
 
 import {rememberLoginProfile} from "@/modules/profile/remembered-login";
@@ -64,10 +65,12 @@ export function DashboardTopbar() {
   const notificationBusy=useRef(false);
   const activePopups=useRef<string[]>([]);
   const shownMemory=useRef<string[]>([]), readMemory=useRef<string[]>([]);
+  const notificationStartedAt=useRef(0);
+  const whatsappMuted=useRef(false);
   const darkMode = colorScheme === "dark";
 
   const loadNotifications = useCallback(async () => {
-    if(notificationBusy.current || document.visibilityState !== "visible") return;
+    if(notificationBusy.current || document.visibilityState !== "visible" && !messageSoundReady()) return;
     notificationBusy.current=true;
     try {
       const response = await fetch("/api/notifications", { cache: "no-store" });
@@ -83,7 +86,10 @@ export function DashboardTopbar() {
         storedShown=[...new Set([...storedShown,...shownMemory.current])].slice(-1000);
         if(payload.whatsappNotificationsMuted){storedShown=[...new Set([...storedShown,...payload.items.filter((item:NotificationItem)=>item.href.startsWith("/whatsapp")).map((item:NotificationItem)=>item.id)])].slice(-1000);activePopups.current=activePopups.current.filter(id=>{if(id.includes(":whatsapp-message-")){toastNotifications.hide(id);return false;}return true;});}
         readMemory.current=storedRead;setReadIds(current=>current.length===storedRead.length&&current.every((id,index)=>id===storedRead[index])?current:storedRead);
+        whatsappMuted.current=Boolean(payload.whatsappNotificationsMuted);
         const batch=popupBatch<NotificationItem>(payload.items,storedShown,storedRead);
+        const soundId=freshMessageSound(payload.items.filter((item:NotificationItem)=>!storedShown.includes(item.id)&&!storedRead.includes(item.id)),notificationStartedAt.current);
+        if(soundId&&!whatsappMuted.current)void playMessageBlip(scope,soundId);
         shownMemory.current=batch.seen;
         if(batch.show.some(item=>item.href.startsWith("/reunioes"))) window.dispatchEvent(new Event("fortuno:calendar-changed"));
         try{window.localStorage.setItem(popupKey,JSON.stringify(batch.seen));}catch{}
@@ -111,6 +117,9 @@ export function DashboardTopbar() {
   }, [colorScheme]);
 
   useEffect(() => {
+    if(!notificationStartedAt.current)notificationStartedAt.current=Date.now();
+    const unlock=()=>unlockMessageSound();
+    document.addEventListener("pointerdown",unlock,{passive:true});document.addEventListener("keydown",unlock);
     const initialLoad = window.setTimeout(() => void loadNotifications(), 0);
     const interval = window.setInterval(() => void loadNotifications(), 15000);
     const handleVisibility = () => {
@@ -118,9 +127,10 @@ export function DashboardTopbar() {
     };
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("fortuno:notifications-refresh",handleVisibility);
-    const muteWhatsApp=(event:Event)=>{if((event as CustomEvent<{muted:boolean}>).detail?.muted){activePopups.current=activePopups.current.filter(id=>{if(id.includes(":whatsapp-message-")){toastNotifications.hide(id);return false;}return true;});}};
+    const muteWhatsApp=(event:Event)=>{whatsappMuted.current=Boolean((event as CustomEvent<{muted:boolean}>).detail?.muted);if((event as CustomEvent<{muted:boolean}>).detail?.muted){activePopups.current=activePopups.current.filter(id=>{if(id.includes(":whatsapp-message-")){toastNotifications.hide(id);return false;}return true;});}};
     window.addEventListener("fortuno:whatsapp-notifications-muted",muteWhatsApp);
     return () => {
+      document.removeEventListener("pointerdown",unlock);document.removeEventListener("keydown",unlock);
       window.clearTimeout(initialLoad);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);

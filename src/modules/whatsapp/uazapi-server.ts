@@ -32,8 +32,8 @@ export async function configureWebhook(connection: NonNullable<Awaited<ReturnTyp
   const hooks = asList(await uazapiRequest(connection.serverUrl, token, "/webhook"));
   const own = hooks.find((hook) => hook.url === url);
   if (own && !own.id) throw new Error("A Uazapi não informou o identificador do webhook. Confira o painel da instância.");
-  await uazapiRequest(connection.serverUrl, token, "/webhook", { ...(own ? { action: "update", id: own.id } : { action: "add" }), enabled: true, url, events: ["connection", "messages", "messages_update", "history"], excludeMessages: [], addUrlEvents: false, addUrlTypesMessages: false });
-  const confirmed = asList(await uazapiRequest(connection.serverUrl, token, "/webhook")).find((hook) => hook.url === url && hook.enabled === true && Array.isArray(hook.events) && ["messages", "messages_update", "connection", "history"].every((name) => (hook.events as unknown[]).includes(name)));
+  await uazapiRequest(connection.serverUrl, token, "/webhook", { ...(own ? { action: "update", id: own.id } : { action: "add" }), enabled: true, url, events: ["connection", "messages", "messages_update", "history", "call"], excludeMessages: [], addUrlEvents: false, addUrlTypesMessages: false });
+  const confirmed = asList(await uazapiRequest(connection.serverUrl, token, "/webhook")).find((hook) => hook.url === url && hook.enabled === true && Array.isArray(hook.events) && ["messages", "messages_update", "connection", "history", "call"].every((name) => (hook.events as unknown[]).includes(name)));
   if (!confirmed) throw new Error("A configuração do recebimento não foi confirmada pela Uazapi.");
   await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { webhookId: text(confirmed.id, 200) || null, webhookConfiguredAt: new Date(), lastError: null } });
 }

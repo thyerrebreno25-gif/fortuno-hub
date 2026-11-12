@@ -63,3 +63,13 @@ it("handles deletion receipts and revocations as updates, never as a new inbound
  expect(normalizeUazapiEvent({EventType:"messages_update",state:"Deleted",event:{MessageIDs:["old"]}})).toMatchObject({kind:"messages_update",ids:["old"],status:"deleted"});
  expect(normalizeUazapiEvent({EventType:"messages",message:{id:"revoke-event",chatid:"123@g.us",messageType:"ProtocolMessage",content:{type:0,key:{id:"original"}}}})).toMatchObject({kind:"messages_update",ids:["original"],status:"deleted"});
 });
+
+it.each([false,true])("normalizes incoming/outgoing calls as call records, not empty text (%s)",fromMe=>{
+ const result=normalizeUazapiEvent({EventType:"messages",message:{messageid:"log",chatid:"123@lid",fromMe,messageType:"CallLogMessage",messageTimestamp:Date.parse("2026-11-11T13:20:00Z"),content:JSON.stringify({callOutcome:1,isVideo:false,durationSecs:0})}});
+ expect(result).toMatchObject({kind:"messages",fromMe,media:null,call:{status:"missed",media:"voice"}});
+ if(result?.kind==="messages")expect(result.body).toContain(fromMe?"realizada · não atendida":"perdida");
+});
+it("accepts live call notifications without retaining any credential or arbitrary content",()=>{
+ const result=normalizeUazapiEvent({EventType:"call",owner:"5511",token:"secret",event:{CallID:"c",CallCreator:"5522@s.whatsapp.net",Timestamp:"2026-11-11T13:20:00Z",Data:{Tag:"offer",Attrs:{token:"secret"}}}});
+ expect(result).toMatchObject({kind:"call",chatId:"5522@s.whatsapp.net",fromMe:false,call:{id:"c",status:"offered"}});expect(JSON.stringify(result)).not.toContain("secret");
+});

@@ -1,14 +1,11 @@
 import { currentWhatsAppAccount, accountMessageWhere } from "@/modules/whatsapp/account-scope";
 import {NextResponse} from "next/server";
-import {unstable_cache} from "next/cache";
+import {resolvedChatProfile,rememberChatName} from "@/modules/whatsapp/contact-profile";
 import {prisma} from "@/lib/prisma";
 import {getServiceCenterMember,getWhatsAppPermission} from "@/modules/atendimento/auth";
 import {resolveWhatsappTicketId} from "@/modules/whatsapp/server";
 import {parseWhatsappChannelAddress} from "@/modules/whatsapp/core";
 import {whatsappConnection} from "@/modules/whatsapp/uazapi-server";
-import {decryptIntegrationSecret} from "@/modules/purchase-invoices/server/crypto";
-import {uazapiRequest} from "@/modules/whatsapp/uazapi";
-import {chatProfile} from "@/modules/whatsapp/chat-info";
 import {mediaKind} from "@/modules/whatsapp/media";
 export async function GET(request:Request,context:{params:Promise<{id:string}>}){
  const member=await getServiceCenterMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
@@ -27,7 +24,8 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
  const local={ticketId:ticket.id,name:ticket.senderName||ticket.subject,group,identifier:channel.externalId,client:ticket.client?.name||null,operator:ticket.assignedTo?.name||ticket.assignedTo?.email||null};
  if(!connection?.phone||connection.status!=="CONNECTED"||connection.expiresAt&&connection.expiresAt<new Date()||ticket.recipientEmail!==`wa-account:${connection.id}:${connection.phone}`)return NextResponse.json({...local,profile:null,warning:"Dados do WhatsApp indisponíveis: a conversa não pertence à conta atualmente conectada ou a conexão está inativa."});
  try{
-  const profile=await unstable_cache(async()=>chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),group?"/group/info":"/chat/details",group?{groupjid:channel.externalId}:{number:channel.externalId,preview:false}),group),["whatsapp-chat-info-v1",member.organizationId,connection.id,connection.instanceId,connection.phone,channel.externalId],{revalidate:120})();
+  const profile=await resolvedChatProfile(connection,channel.externalId,group);
+  await rememberChatName(connection,ticket.senderEmail,profile.name);
   return NextResponse.json({...local,profile});
  }catch{return NextResponse.json({...local,profile:null,warning:"Não foi possível atualizar as informações no WhatsApp. As mídias sincronizadas continuam disponíveis."});}
 }
