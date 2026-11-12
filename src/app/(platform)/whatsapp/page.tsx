@@ -50,6 +50,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatInfoDrawer } from "@/modules/whatsapp/chat-info-drawer";
 import { WhatsAppDirectory } from "@/modules/whatsapp/directory-panel";
 import { WhatsAppManagement } from "./management";
+import { WhatsAppClosedGroupsAudit } from "@/modules/whatsapp/closed-groups-audit";
 import { WhatsAppDepartmentsManager } from "@/modules/whatsapp/departments-manager";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
@@ -228,6 +229,7 @@ export default function WhatsAppPage() {
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   useUsageClient(section === "INBOX" ? detail?.client?.id : null);
   const [messageSearchOpened,setMessageSearchOpened]=useState(false);
+  const [closedGroupsOpened,setClosedGroupsOpened]=useState(false);
   const [departmentsOpened,setDepartmentsOpened]=useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -622,6 +624,7 @@ export default function WhatsAppPage() {
               {section === "MANAGEMENT" && bootstrap?.canViewManagement && <>
                 <Menu.Divider/>
                 <Menu.Label>Gestão</Menu.Label>
+                <Menu.Item leftSection={<IconSearch size={17}/>} onClick={()=>setClosedGroupsOpened(true)}>Verificar grupos finalizados</Menu.Item>
                 {bootstrap.canEdit&&<Menu.Item leftSection={<IconUsers size={17}/>} onClick={()=>setDepartmentsOpened(true)}>Setores de atendimento</Menu.Item>}
                 {connected && bootstrap.canEdit && <Menu.Item leftSection={historyBusy ? <Loader size={17}/> : <IconRefresh size={17}/>} disabled={historyBusy} onClick={()=>void syncHistory()}>Atualizar conversas</Menu.Item>}
                 {bootstrap.canConfigureConnection && <Menu.Item leftSection={<IconSettings size={17}/>} onClick={()=>setConnectionSettingsOpened(true)}>Configurar WhatsApp</Menu.Item>}
@@ -843,6 +846,7 @@ export default function WhatsAppPage() {
       {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} operators={bootstrap.members} departmentId={detail.whatsappDepartmentId} departmentName={detail.whatsappDepartmentName} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
+      {bootstrap?.canViewManagement&&<WhatsAppClosedGroupsAudit opened={closedGroupsOpened} onClose={()=>setClosedGroupsOpened(false)}/>}
       {bootstrap?.canViewManagement&&bootstrap.canEdit&&<WhatsAppDepartmentsManager opened={departmentsOpened} onClose={()=>setDepartmentsOpened(false)}/>}
       {bootstrap?.canViewManagement&&<WhatsAppSurveySettings opened={surveySettingsOpened} onClose={()=>setSurveySettingsOpened(false)} canEdit={bootstrap.canEdit}/>}
       {bootstrap?.canViewManagement&&bootstrap.canEdit&&<WhatsAppOperationStart opened={operationStartOpened} onClose={()=>setOperationStartOpened(false)}/>}

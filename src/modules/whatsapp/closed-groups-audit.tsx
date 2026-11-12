@@ -1,0 +1,9 @@
+"use client";
+import {useEffect,useState} from "react";
+import {Alert,Loader,Modal,Stack,Text,Table} from "@mantine/core";
+type Result={groups:Array<{identifier:string;name:string;closed:number;open:number;messages:number;emptyClosed:number}>};
+export function WhatsAppClosedGroupsAudit({opened,onClose}:{opened:boolean;onClose:()=>void}){
+ const [data,setData]=useState<Result|null>(null),[error,setError]=useState("");
+ useEffect(()=>{if(!opened)return;const c=new AbortController();void fetch("/api/whatsapp/closed-groups",{signal:c.signal,cache:"no-store"}).then(async r=>{const b=await r.json();if(!r.ok)throw new Error(b.error);if(!c.signal.aborted){setData(b);setError("");}}).catch(e=>{if(!c.signal.aborted)setError(e instanceof Error?e.message:"Não foi possível verificar os grupos.");});return()=>c.abort();},[opened]);
+ return <Modal opened={opened} onClose={onClose} title="Verificação de grupos com chamados finalizados" size="xl" centered><Stack>{error?<Alert color="red">{error}</Alert>:!data?<Loader/>:<><Text fw={700}>{data.groups.length} grupos com mais de um chamado finalizado</Text><Alert color="blue">Chamados anteriores podem conter etapas diferentes do atendimento. Esta consulta não exclui nem reúne registros; o histórico permanece disponível na conversa.</Alert><Table.ScrollContainer minWidth={620}><Table><Table.Thead><Table.Tr><Table.Th>Grupo</Table.Th><Table.Th>Finalizados</Table.Th><Table.Th>Em aberto</Table.Th><Table.Th>Mensagens nos finalizados</Table.Th><Table.Th>Finalizados sem mensagens</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{data.groups.map(g=><Table.Tr key={g.identifier}><Table.Td>{g.name}</Table.Td><Table.Td>{g.closed}</Table.Td><Table.Td>{g.open}</Table.Td><Table.Td>{g.messages}</Table.Td><Table.Td>{g.emptyClosed}</Table.Td></Table.Tr>)}</Table.Tbody></Table></Table.ScrollContainer></>}</Stack></Modal>;
+}
