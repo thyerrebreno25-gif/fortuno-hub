@@ -1,3 +1,4 @@
+import { canViewWhatsAppManagement } from "@/modules/whatsapp/management-access";
 import { operationStartedAt } from "@/modules/whatsapp/operation-start";
 import { accountMessageWhere, currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
 import { NextResponse } from "next/server";
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
     member.organizationId,
     member.role,
   );
-  if (!permission.canView) {
+  if (!canViewWhatsAppManagement(member.role, permission.canView)) {
     return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   }
 

@@ -7,7 +7,7 @@ import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {DEFAULT_SURVEY_MESSAGE,surveyPolicySchema,surveySummary} from "@/modules/whatsapp/survey-core";
 export async function GET(request:Request) {
   const member=await getServiceCenterMember();if(!member||member.role==="CLIENT")return NextResponse.json({error:"Sem acesso."},{status:403});
-  const permission=await getWhatsAppPermission(member.organizationId,member.role);if(!permission.canView)return NextResponse.json({error:"Sem acesso."},{status:403});
+  const permission=await getWhatsAppPermission(member.organizationId,member.role);if(!canViewWhatsAppManagement(member.role,permission.canView))return NextResponse.json({error:"Sem acesso."},{status:403});
   const params=new URL(request.url).searchParams,from=params.get("from"),to=params.get("to"),clientId=params.get("clientId"),operatorId=params.get("assigneeId");
   const start=from&&/^\d{4}-\d{2}-\d{2}$/.test(from)?new Date(from+"T00:00:00-03:00"):new Date(Date.now()-30*86400000),end=to&&/^\d{4}-\d{2}-\d{2}$/.test(to)?new Date(to+"T23:59:59.999-03:00"):new Date();
   if(!Number.isFinite(start.getTime()+end.getTime())||start>end||end.getTime()-start.getTime()>370*86400000||(clientId?.length||0)>100||(operatorId?.length||0)>100)return NextResponse.json({error:"Filtros inválidos."},{status:400});

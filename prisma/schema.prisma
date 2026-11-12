@@ -313,6 +313,7 @@ enum AssistantMessageRole {
 }
 
 model Organization {
+  whatsappDepartments WhatsAppDepartment[]
   fathomConnections FathomConnection[]
   whatsappReadStates WhatsAppReadState[]
   notionConnection NotionConnection?
@@ -1843,6 +1844,9 @@ model ServiceTicket {
   mergedIntoId      String?
   organizationId    String
   clientId          String?
+  whatsappDepartmentId String?
+  whatsappDepartmentName String?
+  whatsappDepartment WhatsAppDepartment? @relation(fields: [whatsappDepartmentId], references: [id], onDelete: SetNull)
   routingArea       ServiceRoutingArea    @default(UNKNOWN)
   routingSquad      ClientSquad?
   routingConfidence Int?
@@ -2395,4 +2399,18 @@ model HubUsageSession {
   @@index([organizationId, startedAt])
   @@index([organizationId, userId, startedAt])
   @@index([organizationId, clientId, startedAt])
+}
+
+model WhatsAppDepartment {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  nameKey String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tickets ServiceTicket[]
+  @@unique([organizationId, nameKey])
+  @@index([organizationId, active])
 }

@@ -9,7 +9,7 @@ export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INB
 type Person={id:string;name:string|null;email:string};
 export type ConversationSnapshot={
   id:string;subject:string;senderName:string|null;senderEmail:string;source:string;snippet:string|null;status:string;
-  routingArea:string;routingReason:string|null;assignedAt:string|null;receivedAt:string;resolvedAt:string|null;
+  routingArea:string;whatsappDepartmentId?:string|null;whatsappDepartmentName?:string|null;routingReason:string|null;assignedAt:string|null;receivedAt:string;resolvedAt:string|null;
   firstResponseAt:string|null;lastMessageAt:string;updatedAt:string;
   client:{id:string;name:string;document:string|null;contaAzulConnection:{status:string;active:boolean;externalTenantName:string|null}|null}|null;
   assignedTo:Person|null;messages:ConversationMessage[];history:never[];hasOlderMessages:boolean;previousTicketCount?:number;
@@ -51,7 +51,7 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
     SELECT (${beforeId||null}::text IS NULL OR EXISTS(SELECT 1 FROM cursor_row)) AS "cursorValid",
       jsonb_build_object(
         'id',t.id,'subject',COALESCE(t."directoryName",t.subject),'senderName',COALESCE(t."directoryName",t."senderName"),'senderEmail',t."senderEmail",'source',t.source,'snippet',t.snippet,'status',t.status,
-        'routingArea',t."routingArea",'routingReason',t."routingReason",
+        'whatsappDepartmentId',t."whatsappDepartmentId",'whatsappDepartmentName',t."whatsappDepartmentName",'routingArea',t."routingArea",'routingReason',t."routingReason",
         'assignedAt',to_char(t."assignedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
         'receivedAt',to_char(t."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
         'resolvedAt',to_char(t."resolvedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),

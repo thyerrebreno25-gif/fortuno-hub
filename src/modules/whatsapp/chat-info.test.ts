@@ -6,3 +6,8 @@ it("reads the documented group description and member count without returning ra
 });
 it("does not show a deleted group description or fabricate unavailable contact details",()=>{expect(chatProfile({Topic:"deleted",TopicDeleted:true,Participants:null},true)).toMatchObject({description:null,memberCount:null});expect(chatProfile({name:"Contato"},false)).toMatchObject({name:"Contato",description:null,memberCount:null});});
 it("rejects unsafe profile image locations",()=>{expect(chatProfile({image:"https://evil.example/tracker",name:"Contato"},false).photo).toBeNull();});
+
+it("projects member names, roles and availability alongside the group information",()=>{
+ expect(chatProfile({Participants:[{JID:"123456789012345@lid",IsAdmin:true}],participant_profiles:[{lid:"123456789012345@lid",display_name:"Pessoa do grupo"}]},true)).toMatchObject({participantsAvailable:true,memberCount:1,participants:[{name:"Pessoa do grupo",phone:null,isAdmin:true}]});
+ expect(chatProfile({Name:"Sem lista"},true).participantsAvailable).toBe(false);
+});

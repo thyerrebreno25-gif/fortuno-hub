@@ -1,6 +1,6 @@
 import { currentWhatsAppAccount, accountMessageWhere } from "@/modules/whatsapp/account-scope";
 import {NextResponse} from "next/server";
-import {resolvedChatProfile,rememberChatName} from "@/modules/whatsapp/contact-profile";
+import {resolvedChatProfile,rememberChatName,resolvedGroupMemberNames} from "@/modules/whatsapp/contact-profile";
 import {prisma} from "@/lib/prisma";
 import {getServiceCenterMember,getWhatsAppPermission} from "@/modules/atendimento/auth";
 import {resolveWhatsappTicketId} from "@/modules/whatsapp/server";
@@ -24,7 +24,8 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
  const local={ticketId:ticket.id,name:ticket.senderName||ticket.subject,group,identifier:channel.externalId,client:ticket.client?.name||null,operator:ticket.assignedTo?.name||ticket.assignedTo?.email||null};
  if(!connection?.phone||connection.status!=="CONNECTED"||connection.expiresAt&&connection.expiresAt<new Date()||ticket.recipientEmail!==`wa-account:${connection.id}:${connection.phone}`)return NextResponse.json({...local,profile:null,warning:"Dados do WhatsApp indisponíveis: a conversa não pertence à conta atualmente conectada ou a conexão está inativa."});
  try{
-  const profile=await resolvedChatProfile(connection,channel.externalId,group);
+  const baseProfile=await resolvedChatProfile(connection,channel.externalId,group);
+  const profile=group?{...baseProfile,participants:await resolvedGroupMemberNames(connection,channel.externalId,baseProfile.participants).catch(()=>baseProfile.participants)}:baseProfile;
   await rememberChatName(connection,ticket.senderEmail,profile.name);
   return NextResponse.json({...local,profile});
  }catch{return NextResponse.json({...local,profile:null,warning:"Não foi possível atualizar as informações no WhatsApp. As mídias sincronizadas continuam disponíveis."});}

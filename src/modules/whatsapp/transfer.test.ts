@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m = vi.hoisted(() => ({ client: vi.fn(), member: vi.fn(), permission: vi.fn(), change: vi.fn(), history: vi.fn(), message: vi.fn(), relink: vi.fn(), identity: vi.fn(), transaction: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { client: { findFirst: m.client }, organizationMember: { findFirst: m.member }, $transaction: m.transaction } }));
+const m = vi.hoisted(() => ({ department:vi.fn(),client: vi.fn(), member: vi.fn(), permission: vi.fn(), change: vi.fn(), history: vi.fn(), message: vi.fn(), relink: vi.fn(), identity: vi.fn(), transaction: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: {whatsAppDepartment:{findFirst:m.department}, client: { findFirst: m.client }, organizationMember: { findFirst: m.member }, $transaction: m.transaction } }));
 vi.mock("@/modules/atendimento/auth", () => ({ getWhatsAppPermission: m.permission }));
 import { transferWhatsappTicket } from "./transfer";
 import type { getWhatsappTicket } from "./server";
@@ -57,3 +57,10 @@ describe("WhatsApp conversation transfers",()=>{
   await expect(transferWhatsappTicket(current,actor,false,{...destination,note:"x".repeat(1001)})).rejects.toMatchObject({status:400});expect(m.transaction).not.toHaveBeenCalled();
  });
 });
+
+it("uses an active custom sector from this organization and records it without changing the client",async()=>{
+ m.department.mockResolvedValue({id:"fiscal",name:"Fiscal"});await transferWhatsappTicket(current,actor,false,{...destination,departmentId:"fiscal"});
+ expect(m.department.mock.calls[0][0].where).toEqual({id:"fiscal",organizationId:"org",active:true});expect(m.change.mock.calls[0][0].data).toMatchObject({routingArea:"GENERAL",whatsappDepartmentId:"fiscal",whatsappDepartmentName:"Fiscal",assignedToId:"other"});expect(m.change.mock.calls[0][0].data).not.toHaveProperty("clientId");expect(m.message.mock.calls[0][0].data.textBody).toContain("Fiscal");
+});
+it("rejects inactive or foreign custom sectors before any transfer is written",async()=>{m.department.mockResolvedValue(null);await expect(transferWhatsappTicket(current,actor,true,{...destination,departmentId:"foreign"})).rejects.toMatchObject({status:400});expect(m.transaction).not.toHaveBeenCalled();});
+it("clears the previous custom sector when transferring to a standard sector",async()=>{await transferWhatsappTicket({...current,whatsappDepartmentId:"old",whatsappDepartmentName:"Antigo"},actor,false,destination);expect(m.change.mock.calls[0][0].data).toMatchObject({whatsappDepartmentId:null,whatsappDepartmentName:null,routingArea:"ACCOUNTS_PAYABLE"});});

@@ -1,9 +1,11 @@
 "use client";
 import {useEffect,useState} from "react";
 import {Alert,Anchor,Button,Drawer,Group,Image,Loader,Pagination,Paper,Stack,Tabs,Text} from "@mantine/core";
-import {IconDownload,IconFile,IconInfoCircle,IconPhoto} from "@tabler/icons-react";
+import {IconDownload,IconFile,IconInfoCircle,IconPhoto,IconUsers} from "@tabler/icons-react";
+import {GroupMembersPanel} from "./group-members-panel";
+import type {GroupMember} from "./group-members";
 import {ChatAvatar} from "./chat-avatar";
-type Info={ticketId:string;name:string;group:boolean;identifier:string;client:string|null;operator:string|null;warning?:string;profile:{name:string|null;description:string|null;memberCount:number|null;createdAt:string|null;photo:string|null;businessName:string|null}|null};
+type Info={ticketId:string;name:string;group:boolean;identifier:string;client:string|null;operator:string|null;warning?:string;profile:{participants:GroupMember[];participantsAvailable:boolean;name:string|null;description:string|null;memberCount:number|null;createdAt:string|null;photo:string|null;businessName:string|null}|null};
 type FileItem={id:string;name:string;kind:string;size:number|null;date:string};
 export function ChatInfoDrawer({id,name,group,onClose}:{id:string;name:string;group:boolean;onClose:()=>void}){
  const [info,setInfo]=useState<Info|null>(null),[error,setError]=useState(""),[tab,setTab]=useState<string|null>("profile"),[page,setPage]=useState(1),[files,setFiles]=useState<{ticketId:string;total:number;files:FileItem[]}|null>(null),[filesError,setFilesError]=useState("");
@@ -12,12 +14,13 @@ export function ChatInfoDrawer({id,name,group,onClose}:{id:string;name:string;gr
  return <Drawer opened onClose={onClose} position="right" size={480} title={group?"Dados do grupo":"Dados do contato"}>
  <Stack gap="lg" pb="lg">
   <Stack align="center" gap="sm">{info?.profile?.photo?<Image src={info.profile.photo} alt="Foto do perfil" radius="100%" w={140} h={140} fit="cover" referrerPolicy="no-referrer"/>:<ChatAvatar id={id} name={name} group={group} size={120}/>}<Text fw={800} size="xl" ta="center" style={{overflowWrap:"anywhere"}}>{info?.profile?.name||info?.name||name}</Text>{info&&<Text size="sm" c="dimmed">{group?(info.profile?.memberCount!==null&&info.profile?.memberCount!==undefined?"Grupo · "+info.profile.memberCount+" membros":"Grupo do WhatsApp"):info.identifier.endsWith("@lid")?"Contato do WhatsApp":"+"+info.identifier}</Text>}</Stack>
-  <Tabs value={tab} onChange={setTab}><Tabs.List grow><Tabs.Tab value="profile" leftSection={<IconInfoCircle size={16}/>}>Informações</Tabs.Tab><Tabs.Tab value="files" leftSection={<IconPhoto size={16}/>}>Mídias e documentos</Tabs.Tab></Tabs.List>
+  <Tabs value={tab} onChange={setTab}><Tabs.List grow><Tabs.Tab value="profile" leftSection={<IconInfoCircle size={16}/>}>Informações</Tabs.Tab>{group&&<Tabs.Tab value="members" leftSection={<IconUsers size={16}/>}>Membros</Tabs.Tab>}<Tabs.Tab value="files" leftSection={<IconPhoto size={16}/>}>Mídias e documentos</Tabs.Tab></Tabs.List>
   <Tabs.Panel value="profile" pt="lg"><Stack>{error?<Alert color="red">{error}</Alert>:!info?<Loader size="sm"/>:<>
    {info.warning&&<Alert color="orange">{info.warning}</Alert>}
    <Paper withBorder p="md" radius="md"><Text fw={700} mb="xs">{group?"Descrição do grupo":"Recado e informações"}</Text><Text size="sm" style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{info.profile?.description||"Descrição não disponibilizada pelo WhatsApp."}</Text>{info.profile?.businessName&&<Text size="sm" mt="sm">Empresa: {info.profile.businessName}</Text>}{info.profile?.createdAt&&<Text size="xs" c="dimmed" mt="sm">Criado em {new Date(info.profile.createdAt).toLocaleDateString("pt-BR")}</Text>}</Paper>
    <Paper withBorder p="md" radius="md"><Text size="sm">Cliente: {info.client||"Sem vínculo"}</Text><Text size="sm" mt="xs">Responsável: {info.operator||"Na fila"}</Text></Paper>
   </>}</Stack></Tabs.Panel>
+  {group&&<Tabs.Panel value="members" pt="lg">{error?<Alert color="red">{error}</Alert>:!info?<Loader size="sm"/>:<Stack>{info.warning&&<Alert color="orange">{info.warning}</Alert>}<GroupMembersPanel key={id} members={info.profile?.participants||[]} available={Boolean(info.profile?.participantsAvailable)} total={info.profile?.memberCount??null}/></Stack>}</Tabs.Panel>}
   <Tabs.Panel value="files" pt="lg"><Stack><Text size="xs" c="dimmed">Arquivos disponíveis no histórico sincronizado deste atendimento.</Text>{filesError&&<Alert color="red">{filesError}</Alert>}{!files&&!filesError?<Loader size="sm"/>:files?.files.length?files.files.map(file=>{const url="/api/whatsapp/"+encodeURIComponent(files.ticketId)+"/attachments/"+encodeURIComponent(file.id);return <Paper key={file.id} withBorder p="sm" radius="md"><Stack gap="xs">
     {file.kind==="image"?<Anchor href={url+"?preview=1"} target="_blank" rel="noreferrer"><Image loading="lazy" src={url+"?preview=1"} alt={file.name} fit="contain" mah={220}/></Anchor>:file.kind==="audio"?<audio controls preload="none" src={url+"?preview=1"} style={{width:"100%"}}/>:file.kind==="video"?<video controls preload="none" src={url+"?preview=1"} style={{maxWidth:"100%",maxHeight:240}}><track kind="captions"/></video>:<IconFile size={24}/>}
     <Text size="sm" fw={600} style={{overflowWrap:"anywhere"}}>{file.name}</Text><Group justify="space-between"><Text size="xs" c="dimmed">{new Date(file.date).toLocaleString("pt-BR")}</Text><Button component="a" href={url} target="_blank" rel="noreferrer" variant="subtle" size="compact-xs" leftSection={<IconDownload size={14}/>}>Baixar</Button></Group>

@@ -50,6 +50,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatInfoDrawer } from "@/modules/whatsapp/chat-info-drawer";
 import { WhatsAppDirectory } from "@/modules/whatsapp/directory-panel";
 import { WhatsAppManagement } from "./management";
+import { WhatsAppDepartmentsManager } from "@/modules/whatsapp/departments-manager";
 import { WhatsAppMonitoring } from "./monitoring";
 import { UazapiConnection } from "@/modules/whatsapp/uazapi-connection";
 import { ConversationRequests } from "@/modules/whatsapp/conversation-requests";
@@ -106,6 +107,8 @@ type Ticket = {
   snippet: string | null;
   status: string;
   routingArea: string;
+  whatsappDepartmentId?:string|null;
+  whatsappDepartmentName?:string|null;
   routingReason: string | null;
   assignedAt: string | null;
   receivedAt: string;
@@ -224,6 +227,8 @@ export default function WhatsAppPage() {
   const [preferredId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TicketDetail | null>(null);
   useUsageClient(section === "INBOX" ? detail?.client?.id : null);
+  const [messageSearchOpened,setMessageSearchOpened]=useState(false);
+  const [departmentsOpened,setDepartmentsOpened]=useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -587,14 +592,14 @@ export default function WhatsAppPage() {
               >
                 <IconBrandWhatsapp size={18} /> Central WhatsApp
               </button>
-              <button
+              {bootstrap?.canViewManagement && <button
                 type="button"
                 className={section === "MONITORING" ? styles.sectionTabActive : ""}
                 disabled={!connected}
                 onClick={() => setSection("MONITORING")}
               >
                 <IconChartBar size={18} /> Central de monitoramento
-              </button>
+              </button>}
               <button type="button" className={section === "DIRECTORY" ? styles.sectionTabActive : ""} disabled={!connected} onClick={() => setSection("DIRECTORY")}><IconUsers size={18}/> Contatos e grupos</button>
               {bootstrap?.canViewManagement && <button type="button" className={section === "MANAGEMENT" ? styles.sectionTabActive : ""} onClick={() => setSection("MANAGEMENT")}><IconUsers size={18}/> Gestão</button>}
             </div>
@@ -617,6 +622,7 @@ export default function WhatsAppPage() {
               {section === "MANAGEMENT" && bootstrap?.canViewManagement && <>
                 <Menu.Divider/>
                 <Menu.Label>Gestão</Menu.Label>
+                {bootstrap.canEdit&&<Menu.Item leftSection={<IconUsers size={17}/>} onClick={()=>setDepartmentsOpened(true)}>Setores de atendimento</Menu.Item>}
                 {connected && bootstrap.canEdit && <Menu.Item leftSection={historyBusy ? <Loader size={17}/> : <IconRefresh size={17}/>} disabled={historyBusy} onClick={()=>void syncHistory()}>Atualizar conversas</Menu.Item>}
                 {bootstrap.canConfigureConnection && <Menu.Item leftSection={<IconSettings size={17}/>} onClick={()=>setConnectionSettingsOpened(true)}>Configurar WhatsApp</Menu.Item>}
                 <Menu.Item leftSection={<IconStar size={17}/>} onClick={()=>setSurveySettingsOpened(true)}>Pesquisa de satisfação</Menu.Item>
@@ -729,6 +735,7 @@ export default function WhatsAppPage() {
                 </Group></UnstyledButton>
                 <Group gap="xs"><Tooltip label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"}><ActionIcon variant="subtle" color="gray" aria-label={contextMinimized?"Mostrar dados do atendimento":"Recolher dados do atendimento"} aria-expanded={!contextMinimized} aria-controls="whatsapp-context" onClick={()=>setContextMinimized(value=>!value)}>{contextMinimized?<IconChevronDown size={17}/>:<IconChevronUp size={17}/>}</ActionIcon></Tooltip>
                 {bootstrap?.canEdit&&/^wa-contact:\d+$/.test(detail.senderEmail)&&<SaveWhatsAppContact key={detail.id} compact ticketId={detail.id} initialName={detail.senderName||""} initialNumber={detail.senderEmail.slice(11)} onSaved={()=>{void loadList();}}/>}
+                  <Tooltip label="Pesquisar na conversa"><ActionIcon variant="subtle" aria-label="Pesquisar na conversa" onClick={()=>setMessageSearchOpened(true)}><IconSearch size={19}/></ActionIcon></Tooltip>
                   {detail.status !== "RESOLVED" && bootstrap?.canEdit && <Button size="xs" color="teal" variant="light" leftSection={<IconArrowRight size={15} />} disabled={saving || Boolean(detail.assignedTo && detail.assignedTo.id !== bootstrap.currentUser.id && !bootstrap.canManage)} onClick={() => setTransferOpened(true)}>Transferir</Button>}
                   {bootstrap?.canEdit && detail.status !== "RESOLVED" && detail.assignedTo?.id!==bootstrap.currentUser.id && (!detail.assignedTo||bootstrap.canManage) && (
                     <Button size="xs" variant="light" loading={saving} onClick={() => mutate({ action: "assign" }, "Atendimento assumido.")}>Assumir</Button>
@@ -751,10 +758,10 @@ export default function WhatsAppPage() {
                 />
                 <Select
                   label="Assunto"
-                  data={areaOptions}
-                  value={detail.routingArea}
+                  data={detail.whatsappDepartmentId?[...areaOptions,{value:"CUSTOM",label:detail.whatsappDepartmentName||"Setor personalizado"}]:areaOptions}
+                  value={detail.whatsappDepartmentId?"CUSTOM":detail.routingArea}
                   disabled={saving || detail.status === "RESOLVED"}
-                  onChange={(routingArea) => routingArea && mutate({ action: "routingArea", routingArea }, "Área do atendimento atualizada.")}
+                  onChange={(routingArea) => routingArea && routingArea!=="CUSTOM" && mutate({ action: "routingArea", routingArea }, "Área do atendimento atualizada.")}
                 />
                   <div className={styles.contextInfo}>
                     <Text size="xs" c="dimmed">Responsável</Text>
@@ -769,7 +776,7 @@ export default function WhatsAppPage() {
               </div>
 
               <WhatsAppAttachmentSender key={detail.id+":"+bootstrap?.accountKey} ticketId={detail.id} recipient={detail.senderName||detail.subject} canSend={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id&&!saving&&!commentMode)} replyTo={selectedQuote} onSent={()=>{setReplyTarget(null);if(selectedRef.current===detail.id)void loadDetail(detail.id,true);void loadList();}}>{(attachmentButton,mediaBusy)=><>
-              <ChatMessages clientId={detail.client?.id} clientName={detail.client?.name} onChanged={refreshVisibleConversation} conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} canReply={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED")} onReply={selectReply} />
+              <ChatMessages searchOpened={messageSearchOpened} onCloseSearch={()=>setMessageSearchOpened(false)} clientId={detail.client?.id} clientName={detail.client?.name} onChanged={refreshVisibleConversation} conversationId={detail.id} messages={detail.messages} senderName={detail.senderName || "Cliente"} hasOlder={detail.hasOlderMessages} loadingOlder={loadingOlder} onLoadOlder={loadOlderMessages} onRead={markRead} canReact={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED"&&detail.assignedTo?.id===bootstrap.currentUser.id)} onReaction={updateReaction} canReply={Boolean(bootstrap?.canEdit&&detail.status!=="RESOLVED")} onReply={selectReply} />
 
               {selectedQuote&&!commentMode&&<div className={styles.replyComposerBar}><div><Text size="xs" c="dimmed" mb={3}>Respondendo à mensagem</Text><QuotedMessagePreview quote={selectedQuote}/></div><ActionIcon variant="subtle" color="gray" aria-label="Cancelar resposta à mensagem" onClick={()=>setReplyTarget(null)}><IconX size={17}/></ActionIcon></div>}
               {(detail.status !== "RESOLVED"||commentMode) ? (
@@ -820,7 +827,7 @@ export default function WhatsAppPage() {
         </div>
         </section>
       ) : (
-        <WhatsAppMonitoring
+        bootstrap?.canViewManagement && <WhatsAppMonitoring
           clients={clientOptions}
           members={memberOptions}
          onOpenTicket={(id) => {
@@ -834,8 +841,9 @@ export default function WhatsAppPage() {
 
       {contactInfoId && detail?.id === contactInfoId && selectedId === contactInfoId && <ChatInfoDrawer key={contactInfoId} id={contactInfoId} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} onClose={() => setContactInfoId(null)}/>}
       {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
-      {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} operators={bootstrap.members} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
+      {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} operators={bootstrap.members} departmentId={detail.whatsappDepartmentId} departmentName={detail.whatsappDepartmentName} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
+      {bootstrap?.canViewManagement&&bootstrap.canEdit&&<WhatsAppDepartmentsManager opened={departmentsOpened} onClose={()=>setDepartmentsOpened(false)}/>}
       {bootstrap?.canViewManagement&&<WhatsAppSurveySettings opened={surveySettingsOpened} onClose={()=>setSurveySettingsOpened(false)} canEdit={bootstrap.canEdit}/>}
       {bootstrap?.canViewManagement&&bootstrap.canEdit&&<WhatsAppOperationStart opened={operationStartOpened} onClose={()=>setOperationStartOpened(false)}/>}
       <Modal opened={connectionSettingsOpened && connected} onClose={() => setConnectionSettingsOpened(false)} title="Configuração do WhatsApp" size="xl" centered><UazapiConnection onStatus={onConnectionStatus} /></Modal>

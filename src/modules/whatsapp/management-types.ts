@@ -3,7 +3,7 @@ export type WhatsAppManagementData = {
   cards: Array<ManagementConversation>;
   presence: Array<{ userId: string; lastSeenAt: string | null }>;
   portraits: Array<{ id: string; avatar: string | null }>;
-  areas: Array<{ area: string; open: number; resolved: number; total: number; queue: number }>;
+  areas: Array<{ area: string; name?:string; open: number; resolved: number; total: number; queue: number }>;
   clients: Array<{ id: string | null; name: string; open: number; resolved: number; total: number }>;
   metrics: { averageFirstResponseSeconds: number | null; averageResolutionSeconds: number | null; firstResponseSample: number; resolutionSample: number };
   summary: { total: number; open: number; resolved: number; queue: number };

@@ -243,7 +243,7 @@ export async function PATCH(request: Request, context: Context) {
       prisma.serviceTicket.update({
         where: { id, mergedIntoId: null },
         data: {
-          routingArea,
+          routingArea,whatsappDepartmentId:null,whatsappDepartmentName:null,
           routingReason: "Área do atendimento selecionada manualmente.",
           assignedToId,
           assignedAt: assignedToId ? current.assignedAt || new Date() : null,

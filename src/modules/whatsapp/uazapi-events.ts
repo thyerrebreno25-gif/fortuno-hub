@@ -85,7 +85,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     const ticket = active ? await tx.serviceTicket.update({ where: { id: active.id }, data: {
       updatedAt: new Date(),
       ...(reopening?{status:"NEW" as const,assignedToId:null,assignedAt:null,firstResponseAt:null,resolvedAt:null,receivedAt:timestamp,routingReason:"Conversa reaberta por nova mensagem do cliente; aguardando atendimento."}:{}),
-      ...(automatic ? { clientId: routing.clientId || active.clientId, routingArea: classification.area, routingSquad: routing.routingSquad, routingReason, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null, status: routing.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
+      ...(automatic ? { clientId: routing.clientId || active.clientId, whatsappDepartmentId:null,whatsappDepartmentName:null,routingArea: classification.area, routingSquad: routing.routingSquad, routingReason, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null, status: routing.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
       recipientEmail: recipient,
       ...(event.historical && timestamp < active.receivedAt ? { receivedAt: timestamp } : {}),
       ...(!automatic && !event.fromMe && timestamp >= active.lastMessageAt && active.status === "WAITING_CUSTOMER" ? { status: active.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
@@ -103,7 +103,7 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     const message = await tx.serviceMessage.create({ data: {
       ticketId: ticket.id, externalMessageId, direction: event.fromMe ? "OUTBOUND" : "INBOUND",
       fromName: event.senderName || name, fromEmail: event.fromMe ? recipient : address, toEmails: [event.fromMe ? address : recipient], textBody: event.body, receivedAt: timestamp,
-      providerMetadata: { provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, messageId: event.id, apiMessageId: event.apiId, historical: Boolean(event.historical),...(event.call ? {call:event.call} : {}),...quoteMetadata },
+      providerMetadata: { provider: "UAZAPI", connectionId: connection.id, instanceId: connection.instanceId, accountPhone: connection.phone, chatId: event.chatId, ...(event.group && event.sender ? {senderJid:event.sender} : {}), messageId: event.id, apiMessageId: event.apiId, historical: Boolean(event.historical),...(event.call ? {call:event.call} : {}),...quoteMetadata },
     } });
     const paymentReason=!event.call&&!event.historical&&!event.fromMe?(detectPaymentRequest(event.body,event.media?[event.media.name]:[])||(classification.area==="ACCOUNTS_PAYABLE"&&event.media?"Anexo recebido em contas a pagar: confira se contém uma solicitação de pagamento.":null)):null;
     if(paymentReason)await tx.$executeRaw(Prisma.sql`INSERT INTO "WhatsAppPaymentRequest" ("messageId","organizationId","ticketId","accountRecipient",reason) VALUES (${message.id},${connection.organizationId},${ticket.id},${recipient},${paymentReason}) ON CONFLICT ("messageId") DO NOTHING`);
