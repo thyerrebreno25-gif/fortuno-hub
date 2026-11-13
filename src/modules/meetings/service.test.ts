@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   find: vi.fn(),
-  tx: { $queryRaw: vi.fn(), teamMeeting: { findUniqueOrThrow: vi.fn(), findMany: vi.fn(), createManyAndReturn: vi.fn(), create: vi.fn(), updateMany: vi.fn() }, meetingActionItem: { count: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn() }, meetingParticipant: { deleteMany: vi.fn(), createMany: vi.fn() }, teamCalendarEvent: { createMany: vi.fn(), updateMany: vi.fn(), upsert: vi.fn() }, meetingDelivery: { updateMany: vi.fn(), createMany: vi.fn(), create: vi.fn() } }, members: vi.fn(),
+  tx: { $executeRaw: vi.fn(), $queryRaw: vi.fn(), teamMeeting: { findUniqueOrThrow: vi.fn(), findMany: vi.fn(), createManyAndReturn: vi.fn(), create: vi.fn(), updateMany: vi.fn() }, meetingActionItem: { count: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn() }, meetingParticipant: { deleteMany: vi.fn(), createMany: vi.fn() }, teamCalendarEvent: { createMany: vi.fn(), updateMany: vi.fn(), upsert: vi.fn() }, meetingDelivery: { updateMany: vi.fn(), createMany: vi.fn(), create: vi.fn() } }, members: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: { organizationMember: { count: mocks.members }, $transaction: (callback: (tx: typeof mocks.tx) => unknown) => callback(mocks.tx) } }));
 vi.mock("./auth", () => ({ findMeeting: mocks.find, MeetingError: class extends Error { constructor(message: string, public status = 400) { super(message); } } }));
@@ -10,7 +10,7 @@ const member = { id: "member", userId: "a", organizationId: "org", role: "OPERAT
 const meeting = { id: "m", organizationId: "org", createdById: "a", title: "Semanal", type: "Semanal", startsAt: new Date("2026-10-26T12:00:00Z"), endsAt: new Date("2026-10-26T13:00:00Z"), agenda: "", location: "", status: "SCHEDULED", revision: 1, participants: [{ userId: "a" }, { userId: "b" }] };
 const action = { id: "task", meetingId: "m", title: "Entregar relatório", description: "", responsibleId: "b", dueAt: new Date("2026-10-30T20:00:00Z"), completedAt: null, revision: 1 };
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.find.mockResolvedValue(meeting); mocks.members.mockResolvedValue(2);
+  vi.clearAllMocks(); mocks.tx.$queryRaw.mockReset().mockResolvedValue([]); mocks.tx.$executeRaw.mockReset().mockResolvedValue(1); mocks.find.mockResolvedValue(meeting); mocks.members.mockResolvedValue(2);
   mocks.tx.teamMeeting.findMany.mockResolvedValue([]);
   mocks.tx.teamMeeting.createManyAndReturn.mockImplementation(async ({data}) => data.map((row: object) => ({...meeting,...row,revision:1})));
   mocks.tx.teamMeeting.create.mockResolvedValue(meeting); mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(meeting); mocks.tx.teamMeeting.updateMany.mockResolvedValue({ count: 1 });
@@ -91,4 +91,16 @@ it("replays the same creation without duplicating meetings, calendars or invitat
 it("does not regenerate a series while editing one occurrence",async()=>{
   await expect(saveMeeting(member,{...payload,revision:1,recurrence:{frequency:"DAILY",until:"2026-11-18"}},"m")).rejects.toThrow("ocorrência");
   expect(mocks.tx.teamMeeting.createManyAndReturn).not.toHaveBeenCalled();
+});
+
+it("creates all 79 meetings and 395 participant commitments without decoding the void lock result",async()=>{
+  mocks.members.mockResolvedValue(5);
+  mocks.tx.$queryRaw.mockRejectedValueOnce(Error("Unsupported column type void"));
+  const result=await saveMeeting({...member,role:"MASTER"},{...payload,responsibleId:"b",participantIds:["a","b","c","d","e"],recurrence:{frequency:"WEEKLY",weekdays:[1,2,3,4,5],until:"2027-03-04"}});
+  expect(result.createdCount).toBe(79);
+  expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
+  expect(mocks.tx.$queryRaw).not.toHaveBeenCalled();
+  expect(mocks.tx.teamMeeting.createManyAndReturn.mock.calls[0][0].data).toHaveLength(79);
+  expect(mocks.tx.teamCalendarEvent.createMany.mock.calls[0][0].data).toHaveLength(395);
+  expect(mocks.tx.meetingDelivery.createMany.mock.calls[0][0].data).toHaveLength(395);
 });

@@ -28,7 +28,7 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
     const key = creationKey || randomUUID();
     const hash = createHash("sha256").update(JSON.stringify({ data, participantIds: [...participantIds].sort(), recurrence: recurrence || null })).digest("hex");
     return prisma.$transaction(async tx => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${member.organizationId}:meeting:${key}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${member.organizationId}:meeting:${key}`}))`;
       const existing = await tx.teamMeeting.findMany({ where: { organizationId: member.organizationId, creationKey: key }, orderBy: { startsAt: "asc" } });
       if (existing.length) {
         if (existing.some(meeting => meeting.createdById !== member.userId || meeting.creationHash !== hash)) throw new MeetingError("Esta solicitação já foi salva com outros dados. Reabra o formulário.", 409);
