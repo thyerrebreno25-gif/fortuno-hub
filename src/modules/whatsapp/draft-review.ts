@@ -22,7 +22,15 @@ export async function reviewWhatsAppDraft(text: string) {
       } },
     }),
   });
-  if (!response.ok) throw new Error(response.status === 429 ? "A IA está sem disponibilidade ou saldo. A escrita e o envio da mensagem continuam disponíveis." : "O revisor está indisponível agora. Seu rascunho foi preservado.");
+  if (!response.ok) {
+    const failure = await response.json().catch(()=>({}));
+    const code = typeof failure.error?.code === "string" ? failure.error.code : "";
+    const financial = ["insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached", "project_spend_limit_exceeded", "organization_spend_limit_exceeded", "organization_usage_limit_exceeded"].includes(code);
+    if (response.status === 429 && financial) throw new Error("A IA atingiu a cota financeira ou o limite de gastos. O administrador precisa conferir o saldo e os limites da conta OpenAI. A escrita e o envio continuam disponíveis.");
+    if (response.status === 429 && (code === "rate_limit_exceeded" || failure.error?.type === "rate_limit_error")) throw new Error("A IA atingiu o limite temporário de processamento. Aguarde alguns minutos. A escrita e o envio continuam disponíveis.");
+    if (response.status === 429) throw new Error("A IA recusou a revisão por limite de uso. Confira o saldo e os limites da conta OpenAI. A escrita e o envio continuam disponíveis.");
+    throw new Error("O revisor está indisponível agora. Seu rascunho foi preservado.");
+  }
   const body = await response.json();
   if (body.status === "incomplete") throw new Error("O revisor não concluiu o texto. Tente uma mensagem menor.");
   const output = body.output_text || (body.output || []).filter((item:{type:string})=>item.type==="message").flatMap((item:{content:Array<{type:string;text?:string}>})=>item.content||[]).filter((part:{type:string})=>part.type==="output_text").map((part:{text:string})=>part.text).join("");
