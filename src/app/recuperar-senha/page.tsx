@@ -41,7 +41,7 @@ function recoveryTokens() {
     accessToken: hash.get("access_token") ?? "",
     refreshToken: hash.get("refresh_token") ?? "",
     hashType: hash.get("type") ?? "",
-    failed: Boolean(hash.get("error")||hash.get("error_code")),
+    failed: Boolean(currentUrl.searchParams.get("error")||currentUrl.searchParams.get("error_code")||hash.get("error")||hash.get("error_code")),
   };
 }
 

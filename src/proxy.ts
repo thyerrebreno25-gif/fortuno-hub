@@ -37,6 +37,9 @@ function redirectTo(request: NextRequest, pathname: string) {
 export async function proxy(request: NextRequest) {
   const recoveryPath=recoveryReturnPath(request.url,request.cookies.get(RECOVERY_INTENT_COOKIE)?.value==="1");
   if(recoveryPath)return NextResponse.redirect(new URL(recoveryPath,request.url));
+  // The public recovery page validates its one-time token explicitly. Never run
+  // login, daily-session or MFA redirects before that client-side exchange.
+  if(matchesRoute(request.nextUrl.pathname,"/recuperar-senha"))return NextResponse.next({request});
   if(matchesRoute(request.nextUrl.pathname,"/satisfacao")||matchesRoute(request.nextUrl.pathname,"/api/satisfacao"))return NextResponse.next({request});
   // The public policy must remain readable even when the auth provider is unavailable.
   if (["/politica-de-privacidade", "/termos-de-servico"].includes(request.nextUrl.pathname)) return NextResponse.next({ request });

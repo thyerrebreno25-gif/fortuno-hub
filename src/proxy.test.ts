@@ -114,3 +114,16 @@ it("recovers a PKCE code that was sent to the site URL after a reset request",as
 
 it("requires a new daily login even if yesterday's session is still AAL2",async()=>{session.user={id:"user",last_sign_in_at:"2000-01-01T12:00:00Z"};session.aal="aal2";session.daily=false;const api=await proxy(new NextRequest("https://example.test/api/management"));expect(api.status).toBe(401);expect((await api.json()).code).toBe("DAILY_LOGIN_REQUIRED");const page=await proxy(new NextRequest("https://example.test/inicio"));expect(page.headers.get("location")).toBe("https://example.test/auth/signout?reason=day");});
 it("requires today's MFA cookie after a new password login, while allowing its authenticated mint endpoint",async()=>{session.user={id:"user",last_sign_in_at:new Date().toISOString()};session.aal="aal2";session.daily=false;const page=await proxy(new NextRequest("https://example.test/inicio"));expect(page.headers.get("location")).toBe("https://example.test/mfa");const mint=await proxy(new NextRequest("https://example.test/api/auth/mfa/daily",{method:"POST"}));expect(mint.headers.get("x-middleware-next")).toBe("1");});
+
+it("preserves a recovery code even when Site URL returns it on another domain without cookies",async()=>{
+ const response=await proxy(new NextRequest("https://example.test/?code=one-time"));
+ expect(response.headers.get("location")).toBe("https://example.test/recuperar-senha?code=one-time&recovery=1");
+});
+it("keeps valid, expired and MFA recovery links public instead of sending them to login",async()=>{
+ for(const user of [null,{id:"user",last_sign_in_at:"2000-01-01T12:00:00Z"}]){
+ session.user=user;session.daily=false;
+ for(const suffix of ["?token_hash=hash&type=recovery","?recovery=1","?error_code=otp_expired"]){
+ const response=await proxy(new NextRequest("https://example.test/recuperar-senha"+suffix));expect(response.headers.get("location")).toBeNull();expect(response.headers.get("x-middleware-next")).toBe("1");
+ }
+ }
+});
