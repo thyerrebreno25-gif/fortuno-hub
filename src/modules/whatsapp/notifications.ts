@@ -29,3 +29,24 @@ export async function whatsappNotifications(organizationId: string, userId: stri
     createdAt: row.receivedAt.toISOString(), popup: true, priority: 4,
   }))];
 }
+
+
+// Sound is based on arrival, independently of the unread state of the selected chat.
+export async function whatsappSoundEvents(organizationId:string,userId:string,includeQueue:boolean,since:string|null,now=new Date()){
+ const parsed=Date.parse(since||"");if(!Number.isFinite(parsed))return [];
+ const after=new Date(Math.max(now.getTime()-120000,Math.min(parsed,now.getTime())));
+ const account=await currentWhatsAppAccount(organizationId);if(!account.recipient)return [];
+ const rows=await prisma.$queryRaw<Array<{id:string;arrivedAt:Date}>>(Prisma.sql`
+   SELECT m.id,m."createdAt" AS "arrivedAt" FROM "ServiceMessage" m JOIN "ServiceTicket" t ON t.id=m."ticketId"
+   LEFT JOIN "WhatsAppOperationStart" baseline ON baseline."organizationId"=t."organizationId" AND baseline."accountRecipient"=t."recipientEmail"
+   WHERE t."organizationId"=${organizationId} AND t.source::text='WHATSAPP_API' AND t."recipientEmail"=${account.recipient}
+     AND t."mergedIntoId" IS NULL AND t."isSpam"=false AND t.status::text NOT IN ('RESOLVED','SPAM')
+     AND (t."assignedToId"=${userId} OR (${includeQueue} AND t."assignedToId" IS NULL))
+     AND (m."providerMetadata"->>'accountPhone'=${account.connection?.phone} OR m."externalMessageId" LIKE ${`uazapi:${account.connection?.phone}:%`})
+     AND m.direction::text='INBOUND' AND COALESCE(m."providerMetadata"->>'historical','false')<>'true'
+     AND m."createdAt">=${after} AND m."createdAt"<=${now}
+     AND (baseline."startedAt" IS NULL OR m."receivedAt">baseline."startedAt")
+   ORDER BY m."createdAt" DESC,m.id DESC LIMIT 20
+ `);
+ return rows.map(row=>({id:`whatsapp-message-${row.id}`,createdAt:row.arrivedAt.toISOString()}));
+}

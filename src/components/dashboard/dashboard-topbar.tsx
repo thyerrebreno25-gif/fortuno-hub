@@ -1,4 +1,5 @@
 "use client";
+import {GlobalOperationTimer} from "@/modules/operations/global-timer";
 import { notifications as toastNotifications } from "@mantine/notifications";
 import {unlockMessageSound,messageSoundReady,freshMessageSound,playMessageBlip} from "@/modules/notifications/message-sound";
 import { notificationIds, popupBatch } from "@/modules/notifications/popup-state";
@@ -66,6 +67,7 @@ export function DashboardTopbar() {
   const activePopups=useRef<string[]>([]);
   const shownMemory=useRef<string[]>([]), readMemory=useRef<string[]>([]);
   const notificationStartedAt=useRef(0);
+  const soundCursor=useRef("initial");
   const whatsappMuted=useRef(false);
   const darkMode = colorScheme === "dark";
 
@@ -73,7 +75,7 @@ export function DashboardTopbar() {
     if(notificationBusy.current || document.visibilityState !== "visible" && !messageSoundReady()) return;
     notificationBusy.current=true;
     try {
-      const response = await fetch("/api/notifications", { cache: "no-store" });
+      const response = await fetch("/api/notifications?"+new URLSearchParams({whatsappSoundAfter:soundCursor.current}), { cache: "no-store" });
       const payload = await response.json();
       if (response.ok && Array.isArray(payload?.items)) {
         const scope=typeof payload.viewerKey === "string" ? payload.viewerKey : "";
@@ -88,7 +90,9 @@ export function DashboardTopbar() {
         readMemory.current=storedRead;setReadIds(current=>current.length===storedRead.length&&current.every((id,index)=>id===storedRead[index])?current:storedRead);
         whatsappMuted.current=Boolean(payload.whatsappNotificationsMuted);
         const batch=popupBatch<NotificationItem>(payload.items,storedShown,storedRead);
-        const soundId=freshMessageSound(payload.items.filter((item:NotificationItem)=>!storedShown.includes(item.id)&&!storedRead.includes(item.id)),notificationStartedAt.current);
+        const arrivals=Array.isArray(payload.whatsappSoundEvents)?payload.whatsappSoundEvents:payload.items.filter((item:NotificationItem)=>!storedShown.includes(item.id)&&!storedRead.includes(item.id));
+        const soundId=freshMessageSound(arrivals,Array.isArray(payload.whatsappSoundEvents)?0:notificationStartedAt.current);
+        if(typeof payload.whatsappSoundCursor === "string")soundCursor.current=payload.whatsappSoundCursor;
         if(soundId&&!whatsappMuted.current)void playMessageBlip(scope,soundId);
         shownMemory.current=batch.seen;
         if(batch.show.some(item=>item.href.startsWith("/reunioes"))) window.dispatchEvent(new Event("fortuno:calendar-changed"));
@@ -209,6 +213,7 @@ export function DashboardTopbar() {
       </div>
 
       <div className={styles.topbarActions}>
+        <GlobalOperationTimer/>
         <div className={styles.notificationWrapper} ref={notificationRef}>
           <button
             type="button"

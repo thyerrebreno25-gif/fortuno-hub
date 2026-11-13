@@ -1,6 +1,6 @@
 import { notificationAfterReset } from "@/modules/notifications/reset";
 import { operationStartedAt } from "@/modules/whatsapp/operation-start";
-import { whatsappNotifications } from "@/modules/whatsapp/notifications";
+import { whatsappNotifications,whatsappSoundEvents } from "@/modules/whatsapp/notifications";
 import { SERVICE_CENTER_MANAGER_ROLES } from "@/modules/atendimento/auth";
 import { activityNotifications } from "@/modules/operations/notifications";
 import { meetingNotifications } from "@/modules/meetings/notifications";
@@ -22,7 +22,7 @@ type NotificationItem = {
   originAt?:string;
 };
 
-export async function GET() {
+export async function GET(request:Request) {
   try {
     const member = await getAccountMember();
 
@@ -105,6 +105,8 @@ export async function GET() {
     const [meetingItems,activityItems]=await Promise.all([permissions.MEETINGS.canView ? meetingNotifications(member.organizationId,member.userId,now) : [],permissions.OPERATIONS.canView ? activityNotifications(member.organizationId,member.userId,now) : []]);
     const whatsappItems = permissions.WHATSAPP.canView ? await whatsappNotifications(member.organizationId, member.userId, SERVICE_CENTER_MANAGER_ROLES.has(member.role), now) : [];
     const whatsappPreference = permissions.WHATSAPP.canView ? await prisma.whatsAppOperatorPreference.findUnique({ where: { organizationId_userId: { organizationId: member.organizationId, userId: member.userId } }, select: { notificationsMuted: true } }) : null;
+    const soundAfter=new URL(request.url).searchParams.get("whatsappSoundAfter");
+    const soundEvents=permissions.WHATSAPP.canView&&!whatsappPreference?.notificationsMuted?await whatsappSoundEvents(member.organizationId,member.userId,permissions.WHATSAPP.canEdit||SERVICE_CENTER_MANAGER_ROLES.has(member.role),soundAfter,now):[];
     const items: NotificationItem[] = [...meetingItems,...activityItems,...whatsappItems.map(item => ({ ...item, popup: !whatsappPreference?.notificationsMuted }))];
 
     for (const item of imports) {
@@ -170,6 +172,7 @@ export async function GET() {
     return NextResponse.json({
       viewerKey: `${member.organizationId}:${member.userId}`,
       whatsappNotificationsMuted: Boolean(whatsappPreference?.notificationsMuted),
+      whatsappSoundEvents:soundEvents,whatsappSoundCursor:now.toISOString(),
       items: visibleItems.slice(0, 60),
       total: visibleItems.length,
     });

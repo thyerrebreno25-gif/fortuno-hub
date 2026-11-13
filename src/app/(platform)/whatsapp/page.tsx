@@ -1,4 +1,6 @@
 "use client";
+import {ComposerEmojiPicker} from "@/modules/whatsapp/emoji-picker";
+import {insertComposerText,type ComposerSelection} from "@/modules/whatsapp/composer-text";
 import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
 import {PaymentRequestsPanel} from "@/modules/whatsapp/payment-requests-panel";
@@ -242,6 +244,9 @@ export default function WhatsAppPage() {
   const [commentMode,setCommentMode]=useState(false),[comment,setComment]=useState(""),[quickRepliesOpened,setQuickRepliesOpened]=useState(false);
   const [replyTarget,setReplyTarget]=useState<{conversationId:string;quote:QuotedMessage}|null>(null);
   const replyInput=useRef<HTMLTextAreaElement>(null);
+  const [composerSelection,setComposerSelection]=useState<ComposerSelection>({start:0,end:0});
+  const rememberComposerSelection=(input:HTMLTextAreaElement)=>{const start=input.selectionStart,end=input.selectionEnd;setComposerSelection(current=>current.start===start&&current.end===end?current:{start,end});};
+  function insertInComposer(text:string,range=composerSelection){const result=insertComposerText(commentMode?comment:reply,text,range);if(!result)return;if(commentMode)setComment(result.value);else setReply(result.value);setComposerSelection({start:result.cursor,end:result.cursor});requestAnimationFrame(()=>{replyInput.current?.focus();replyInput.current?.setSelectionRange(result.cursor,result.cursor);});}
   const [historySync, setHistorySync] = useState<HistorySync | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
   const filterKey = JSON.stringify([view, chatKind, chatStatus, search.trim(), onlyUnread]);
@@ -784,7 +789,7 @@ export default function WhatsAppPage() {
               {selectedQuote&&!commentMode&&<div className={styles.replyComposerBar}><div><Text size="xs" c="dimmed" mb={3}>Respondendo à mensagem</Text><QuotedMessagePreview quote={selectedQuote}/></div><ActionIcon variant="subtle" color="gray" aria-label="Cancelar resposta à mensagem" onClick={()=>setReplyTarget(null)}><IconX size={17}/></ActionIcon></div>}
               {(detail.status !== "RESOLVED"||commentMode) ? (
                 <div className={`${styles.composer} ${commentMode?styles.commentComposer:""}`}>
-                  <div className={styles.composerTools}>{attachmentButton}{!commentMode&&detail.senderEmail.startsWith("wa-group:")&&detail.assignedTo?.id===bootstrap?.currentUser.id&&<MentionPicker ticketId={detail.id} value={reply} onChange={setReply}/>}<Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>{setReplyTarget(null);setCommentMode(v=>!v);}}><IconLock size={18}/></ActionIcon></Tooltip></div>
+                  <div className={styles.composerTools}>{attachmentButton}{!commentMode&&detail.senderEmail.startsWith("wa-group:")&&detail.assignedTo?.id===bootstrap?.currentUser.id&&<MentionPicker key={detail.id} ticketId={detail.id} value={reply} selection={composerSelection} onInsert={insertInComposer}/>}<ComposerEmojiPicker onInsert={emoji=>insertInComposer(emoji)} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))}/><Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>{setReplyTarget(null);setCommentMode(v=>!v);}}><IconLock size={18}/></ActionIcon></Tooltip></div>
                   <Textarea
                     ref={replyInput}
                     autosize
@@ -796,7 +801,8 @@ export default function WhatsAppPage() {
                     value={commentMode?comment:reply}
                     maxLength={5000}
                     disabled={mediaBusy||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap.currentUser.id)}
-                    onChange={(event) => commentMode?setComment(event.currentTarget.value):setReply(event.currentTarget.value)}
+                    onSelect={event=>rememberComposerSelection(event.currentTarget)}
+                    onChange={(event) => {rememberComposerSelection(event.currentTarget);if(commentMode)setComment(event.currentTarget.value);else setReply(event.currentTarget.value);}}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -843,7 +849,7 @@ export default function WhatsAppPage() {
       )}
 
       {contactInfoId && detail?.id === contactInfoId && selectedId === contactInfoId && <ChatInfoDrawer key={contactInfoId} id={contactInfoId} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} onClose={() => setContactInfoId(null)}/>}
-      {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setSection("INBOX");}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
+      {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setComposerSelection({start:text.length,end:text.length});setSection("INBOX");requestAnimationFrame(()=>{replyInput.current?.focus();replyInput.current?.setSelectionRange(text.length,text.length);});}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} operators={bootstrap.members} departmentId={detail.whatsappDepartmentId} departmentName={detail.whatsappDepartmentName} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
       {bootstrap?.canViewManagement&&<WhatsAppClosedGroupsAudit opened={closedGroupsOpened} onClose={()=>setClosedGroupsOpened(false)}/>}

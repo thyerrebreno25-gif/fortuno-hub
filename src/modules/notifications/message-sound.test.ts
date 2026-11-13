@@ -1,15 +1,12 @@
 import {afterEach,expect,it,vi} from "vitest";
-import {freshMessageSound,playMessageBlip,unlockMessageSound} from "./message-sound";
-afterEach(()=>vi.unstubAllGlobals());
-it("only chooses fresh inbound WhatsApp notifications, not old backlog or payments",()=>{
- const since=Date.parse("2026-11-12T12:00:00Z");
- expect(freshMessageSound([{id:"whatsapp-message-old",createdAt:"2026-11-11T12:00:00Z"},{id:"payment-request-new",createdAt:"2026-11-12T12:10:00Z"}],since)).toBeNull();
- expect(freshMessageSound([{id:"whatsapp-message-new",createdAt:"2026-11-12T12:10:00Z"}],since)).toBe("whatsapp-message-new");
-});
-it("requires browser audio unlock and plays a short blip once per message",async()=>{
+import {freshMessageSound} from "./message-sound";
+afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();});
+it("only chooses fresh inbound WhatsApp arrivals, not old backlog or payments",()=>{const since=Date.parse("2026-11-12T12:00:00Z");expect(freshMessageSound([{id:"whatsapp-message-old",createdAt:"2026-11-11T12:00:00Z"},{id:"payment-request-new",createdAt:"2026-11-12T12:10:00Z"}],since)).toBeNull();expect(freshMessageSound([{id:"whatsapp-message-new",createdAt:"2026-11-12T12:10:00Z"}],since)).toBe("whatsapp-message-new");});
+function mockAudio(state="running"){
  const tone={frequency:{setValueAtTime:vi.fn()},connect:vi.fn(),start:vi.fn(),stop:vi.fn(),disconnect:vi.fn()},gain={gain:{setValueAtTime:vi.fn(),linearRampToValueAtTime:vi.fn(),exponentialRampToValueAtTime:vi.fn()},connect:vi.fn(),disconnect:vi.fn()};
- const audio={state:"running",currentTime:2,destination:{},createGain:()=>gain,createOscillator:()=>tone};
- vi.stubGlobal("window",{AudioContext:class{constructor(){return audio;}}});vi.stubGlobal("AudioContext",class{constructor(){return audio;}});vi.stubGlobal("navigator",{});vi.stubGlobal("localStorage",{getItem:()=>null,setItem:vi.fn()});
- await playMessageBlip("test","first");expect(tone.start).not.toHaveBeenCalled();
- unlockMessageSound();await playMessageBlip("test","second");await playMessageBlip("test","second");expect(tone.start).toHaveBeenCalledOnce();expect(tone.stop).toHaveBeenCalledWith(2.25);
-});
+ const audio={state,currentTime:2,destination:{},createGain:()=>gain,createOscillator:()=>tone,resume:vi.fn(async()=>{audio.state="running";})};
+ vi.stubGlobal("window",{AudioContext:class{constructor(){return audio;}}});vi.stubGlobal("navigator",{});vi.stubGlobal("localStorage",{getItem:()=>null,setItem:vi.fn()});return {audio,tone,gain};
+}
+it("requires browser unlock and deduplicates arrivals even when the message was already read",async()=>{vi.resetModules();const {playMessageBlip,unlockMessageSound}=await import("./message-sound"),{tone}=mockAudio();await playMessageBlip("test","arrival");expect(tone.start).not.toHaveBeenCalled();await unlockMessageSound();await playMessageBlip("test","arrival");await playMessageBlip("test","arrival");expect(tone.start).toHaveBeenCalledOnce();expect(tone.stop).toHaveBeenCalledWith(2.33);});
+it("waits for suspended browser audio to resume before playing a test sound",async()=>{vi.resetModules();const {testMessageSound}=await import("./message-sound"),{audio,tone,gain}=mockAudio("suspended");expect(await testMessageSound()).toBe(true);expect(audio.resume).toHaveBeenCalledOnce();expect(tone.start).toHaveBeenCalledOnce();expect(gain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(.22,2.015);});
+it("reports browser blocking instead of claiming that a test sound played",async()=>{vi.resetModules();const {testMessageSound}=await import("./message-sound"),{audio,tone}=mockAudio("suspended");audio.resume.mockRejectedValueOnce(new Error("Audio blocked"));expect(await testMessageSound()).toBe(false);expect(tone.start).not.toHaveBeenCalled();});

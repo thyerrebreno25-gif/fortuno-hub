@@ -12,6 +12,6 @@ export async function getOperationMember() {
   });
   if (!member || member.role === "CLIENT") return null;
   const permissions = await getRolePermissions(member.organizationId, member.role);
-  return permissions.OPERATIONS.canView ? member : null;
+  return permissions.OPERATIONS.canView ? {...member,canEdit:permissions.OPERATIONS.canEdit} : null;
 }
 export const canManageOperations = (role: string) => ["MASTER", "ADMIN", "MANAGER"].includes(role);

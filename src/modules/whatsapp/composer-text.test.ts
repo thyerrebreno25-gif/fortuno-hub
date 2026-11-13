@@ -1,0 +1,6 @@
+import {expect,it} from "vitest";
+import {insertComposerText,mentionAtCursor} from "./composer-text";
+it("detects a mention after words or at the start, using the cursor rather than message end",()=>{expect(mentionAtCursor("Bom dia @Isa, pode conferir?",12)).toEqual({start:8,end:12,query:"Isa"});expect(mentionAtCursor("@Di obrigado",3)).toEqual({start:0,end:3,query:"Di"});expect(mentionAtCursor("Mensagem com @",14)).toEqual({start:13,end:14,query:""});});
+it("replaces a mention in the middle without dropping text before or after it",()=>{const value="Bom dia @Isa, pode conferir?",range=mentionAtCursor(value,12)!;expect(insertComposerText(value,"@5561999999999 ",range)?.value).toBe("Bom dia @5561999999999 , pode conferir?");});
+it("inserts an emoji at a cursor or selected range and preserves multiline text",()=>{expect(insertComposerText("Bom dia!\nTudo bem?","😊",{start:7,end:7})).toEqual({value:"Bom dia😊!\nTudo bem?",cursor:9});expect(insertComposerText("Olá mundo","👋",{start:4,end:9})?.value).toBe("Olá 👋");});
+it("ignores email addresses and honors the message length limit",()=>{expect(mentionAtCursor("financeiro@empresa.com",18)).toBeNull();expect(insertComposerText("a".repeat(5000),"😀",{start:5000,end:5000})).toBeNull();});

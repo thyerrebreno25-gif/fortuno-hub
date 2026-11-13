@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOperationMember } from "@/modules/operations/auth";
+import { getOperationMember,canManageOperations } from "@/modules/operations/auth";
 import { activityInclude, createEvent } from "@/modules/operations/activity";
 import { sendOperationCompletionEmail } from "@/modules/operations/email";
 
@@ -9,42 +9,30 @@ type Context = { params: Promise<{ id: string }> };
 type Member = NonNullable<Awaited<ReturnType<typeof getOperationMember>>>;
 
 async function finalizeActivity(id: string, member: Member, note?: string | null) {
-  const current = await prisma.operationActivity.findUnique({ where: { id }, include: activityInclude });
-  if (!current) return { error: "Atividade não encontrada.", status: 404 } as const;
-  if (current.status === "COMPLETED") return { activity: current } as const;
-
-  const missing = current.checklistItems.filter((item) => item.mandatory && !item.completed && !item.disregardedAt);
-  if (missing.length) {
-    return { error: `Conclua os itens obrigatórios: ${missing.map((item) => item.title).join(", ")}`, status: 400 } as const;
-  }
-  if (current.process.requiresAttachment && !current.attachments.length) {
-    return { error: "Esta atividade exige pelo menos um anexo.", status: 400 } as const;
-  }
-  const missingChecklistFiles = current.checklistItems.filter((item) => item.mandatory && item.requiresAttachment && !item.disregardedAt && !current.attachments.some((file) => file.checklistItemId === item.id));
-  if (missingChecklistFiles.length) {
-    return { error: `Anexe os arquivos obrigatórios: ${missingChecklistFiles.map((item) => item.title).join(", ")}`, status: 400 } as const;
-  }
-
-  const completedAt = new Date();
-  const openEntries = current.timeEntries.filter((entry) => !entry.endedAt);
-  for (const entry of openEntries) {
-    await prisma.operationTimeEntry.update({
-      where: { id: entry.id },
-      data: { endedAt: completedAt, seconds: Math.max(1, Math.floor((completedAt.getTime() - entry.startedAt.getTime()) / 1000)) },
-    });
-  }
-  if (openEntries.length) {
-    await createEvent(id, member.userId, "PAUSED", "Cronômetro encerrado automaticamente na conclusão da atividade.");
-  }
-
-  await prisma.operationActivity.update({
-    where: { id },
-    data: { status: "COMPLETED", completedAt, completionNote: note?.trim() || null },
+  const outcome=await prisma.$transaction(async tx=>{
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"operation-timer:"+member.userId}))`;
+    await tx.$queryRaw`SELECT id FROM "OperationActivity" WHERE id=${id} AND "organizationId"=${member.organizationId} FOR UPDATE`;
+    const current=await tx.operationActivity.findFirst({where:{id,organizationId:member.organizationId,deletedAt:null},include:activityInclude});
+    if(!current)return {error:"Atividade não encontrada.",status:404} as const;
+    if(!canManageOperations(member.role)&&current.responsibleId!==member.userId)return {error:"Você só pode concluir as atividades atribuídas a você.",status:403} as const;
+    if(current.status==="COMPLETED")return {activity:current,alreadyCompleted:true} as const;
+    if(current.status==="DISREGARDED")return {error:"Esta atividade foi desconsiderada.",status:409} as const;
+    const missing=current.checklistItems.filter(item=>item.mandatory&&!item.completed&&!item.disregardedAt);
+    if(missing.length)return {error:`Conclua os itens obrigatórios: ${missing.map(item=>item.title).join(", ")}`,status:400} as const;
+    if(current.process.requiresAttachment&&!current.attachments.length)return {error:"Esta atividade exige pelo menos um anexo.",status:400} as const;
+    const missingFiles=current.checklistItems.filter(item=>item.mandatory&&item.requiresAttachment&&!item.disregardedAt&&!current.attachments.some(file=>file.checklistItemId===item.id));
+    if(missingFiles.length)return {error:`Anexe os arquivos obrigatórios: ${missingFiles.map(item=>item.title).join(", ")}`,status:400} as const;
+    const completedAt=new Date(),openEntries=await tx.operationTimeEntry.findMany({where:{activityId:id,endedAt:null}});
+    for(const entry of openEntries)await tx.operationTimeEntry.updateMany({where:{id:entry.id,endedAt:null},data:{endedAt:completedAt,seconds:Math.max(0,Math.floor((+completedAt-+entry.startedAt)/1000))}});
+    if(openEntries.length)await tx.operationEvent.create({data:{activityId:id,userId:member.userId,type:"PAUSED",message:"Cronômetro encerrado automaticamente na conclusão da atividade."}});
+    await tx.operationActivity.update({where:{id},data:{status:"COMPLETED",completedAt,completionNote:note?.trim()||null}});
+    await tx.operationEvent.create({data:{activityId:id,userId:member.userId,type:"COMPLETED",message:`${member.user.name||member.user.email} concluiu a atividade.`}});
+    return {activity:await tx.operationActivity.findUnique({where:{id},include:activityInclude}),alreadyCompleted:false} as const;
   });
-  await createEvent(id, member.userId, "COMPLETED", `${member.user.name || member.user.email} concluiu a atividade.`);
-
-  const fresh = await prisma.operationActivity.findUnique({ where: { id }, include: activityInclude });
-  if (!fresh) return { error: "Atividade não encontrada.", status: 404 } as const;
+  if("error" in outcome)return outcome;
+  if(outcome.alreadyCompleted)return {activity:outcome.activity} as const;
+  const fresh=outcome.activity;if(!fresh)return {error:"Atividade não encontrada.",status:404} as const;
+  const completedAt=fresh.completedAt!;
   const recipients = [fresh.client.operationalEmail, ...(fresh.client.operationalEmailCc || "").split(",")]
     .map((value) => value?.trim()).filter(Boolean) as string[];
   const totalSeconds = fresh.timeEntries.reduce((sum, entry) => sum + Number(entry.seconds || 0), 0);
@@ -91,6 +79,7 @@ export async function PATCH(request: Request, context: Context) {
   const member = await getOperationMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   const { id } = await context.params;
+  if(member.canEdit===false)return NextResponse.json({error:"Sem permissão para alterar atividades."},{status:403});
   const body = (await request.json()) as Record<string, unknown>;
   const current = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId, deletedAt: null }, include: activityInclude });
   if (!current) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });

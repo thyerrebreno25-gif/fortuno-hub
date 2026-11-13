@@ -1,1 +1,7 @@
-import { NextResponse } from "next/server";import { prisma } from "@/lib/prisma";import { getOperationMember } from "@/modules/operations/auth";import { createEvent } from "@/modules/operations/activity";type C={params:Promise<{id:string}>};export async function POST(_:Request,c:C){const m=await getOperationMember();if(!m)return NextResponse.json({error:"Sessão inválida."},{status:401});const {id}=await c.params;const e=await prisma.operationTimeEntry.findFirst({where:{activityId:id,userId:m.userId,endedAt:null,activity:{organizationId:m.organizationId}},orderBy:{startedAt:'desc'}});if(!e)return NextResponse.json({error:"Nenhum cronômetro ativo."},{status:404});const end=new Date(),seconds=Math.max(1,Math.floor((end.getTime()-e.startedAt.getTime())/1000));const entry=await prisma.operationTimeEntry.update({where:{id:e.id},data:{endedAt:end,seconds}});await createEvent(id,m.userId,'PAUSED',`${m.user.name||m.user.email} pausou a atividade após ${Math.floor(seconds/60)}min ${seconds%60}s.`);return NextResponse.json({entry});}
+import {NextResponse} from "next/server";
+import {getOperationMember} from "@/modules/operations/auth";
+import {changeOperationTimer,OperationTimerError} from "@/modules/operations/timer-server";
+export async function POST(_:Request,{params}:{params:Promise<{id:string}>}){
+ const member=await getOperationMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
+ try{return NextResponse.json(await changeOperationTimer(member,(await params).id,"stop"));}catch(error){return NextResponse.json({error:error instanceof OperationTimerError?error.message:"Não foi possível atualizar o cronômetro."},{status:error instanceof OperationTimerError?error.status:500});}
+}
