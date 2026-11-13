@@ -372,6 +372,7 @@ model NotionConnection {
 }
 
 model User {
+  passwordRecoveryRequests PasswordRecoveryRequest[]
   resolvedWhatsappTickets ServiceTicket[] @relation("WhatsAppTicketResolver")
   avatar String?
   fathomConnections FathomConnection[]
@@ -2426,4 +2427,26 @@ model WhatsAppDepartment {
   tickets ServiceTicket[]
   @@unique([organizationId, nameKey])
   @@index([organizationId, active])
+}
+
+model PasswordRecoveryRequest {
+  id String @id @default(cuid())
+  userId String?
+  recipientHash String
+  ipHash String
+  status String @default("PENDING")
+  encryptedToken String?
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseUntil DateTime?
+  sentAt DateTime?
+  lastErrorCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User? @relation(fields:[userId],references:[id],onDelete:SetNull)
+  @@index([recipientHash,createdAt])
+  @@index([ipHash,createdAt])
+  @@index([createdAt])
+  @@index([status,nextAttemptAt])
+  @@index([userId])
 }

@@ -167,22 +167,14 @@ export default function RecoverPasswordPage() {
     setLoading(true);
     setError("");
     document.cookie=`${RECOVERY_INTENT_COOKIE}=1; Path=/; Max-Age=3600; SameSite=Lax; Secure`;
-    const redirectTo = `${window.location.origin}/recuperar-senha?recovery=1`;
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      normalizedEmail,
-      { redirectTo },
-    );
-    setLoading(false);
-
-    if (resetError) {
-      setError(
-        "Não foi possível enviar o e-mail agora. Aguarde alguns instantes e tente novamente.",
-      );
-      return;
-    }
-
-    setEmail(normalizedEmail);
-    setMode("sent");
+    try {
+      const response=await fetch("/api/auth/password-recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:normalizedEmail})});
+      const result=await response.json();
+      if(!response.ok){setError(result.error || "Não foi possível solicitar o e-mail agora. Tente novamente em alguns instantes.");return;}
+      setEmail(normalizedEmail);
+      setMode("sent");
+    } catch {setError("Não foi possível conectar ao envio de e-mail. Confira a conexão e tente novamente.");}
+    finally {setLoading(false);}
   }
 
   async function verifyAuthenticator(event: FormEvent<HTMLFormElement>) {
