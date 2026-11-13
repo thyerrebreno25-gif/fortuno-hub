@@ -2,10 +2,15 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({ teamMeeting: { updateMany: vi.fn() }, teamCalendarEvent: { findMany: vi.fn(), updateMany: vi.fn() }, googleCalendarConnection: { findMany:vi.fn(), findUnique: vi.fn(), update: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "token", encryptIntegrationSecret: (value: string) => value }));
-import { googleEventBody, googleEventId, reconcileGoogleDeletions, syncCalendarEvents } from "./google-calendar";
+import { googleEventBody, googleEventId, listGoogleBusy, reconcileGoogleDeletions, syncCalendarEvents } from "./google-calendar";
 const event = { id: "event", organizationId: "org", userId: "u", title: "Entrega", description: "", startsAt: new Date("2026-10-30T20:00:00Z"), endsAt: new Date("2026-10-30T20:30:00Z"), location: "", status: "ACTIVE", revision: 1, meetingId: "m", googleEventId: null };
 beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("GOOGLE_CALENDAR_CLIENT_ID", "id"); vi.stubEnv("GOOGLE_CALENDAR_CLIENT_SECRET", "secret"); vi.stubEnv("INTEGRATION_TOKEN_ENCRYPTION_KEY", "key"); db.googleCalendarConnection.findMany.mockResolvedValue([{organizationId:"org",userId:"u"}]); db.teamCalendarEvent.findMany.mockResolvedValue([event]); db.teamCalendarEvent.updateMany.mockResolvedValue({ count: 1 }); db.googleCalendarConnection.findUnique.mockResolvedValue({ id: "connection", status: "CONNECTED", expiresAt: new Date(Date.now() + 3600000), encryptedAccessToken: "encrypted", calendarId: "primary" }); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+it("reads only Google scheduling fields and excludes transparent/cancelled events",async()=>{
+ const fetchMock=vi.fn().mockResolvedValue(Response.json({items:[{start:{dateTime:"2026-11-13T09:00Z"},end:{dateTime:"2026-11-13T10:00Z"}},{transparency:"transparent",start:{date:"2026-11-13"},end:{date:"2026-11-14"}},{status:"cancelled"}]}));vi.stubGlobal("fetch",fetchMock);
+ expect(await listGoogleBusy("org","u",new Date("2026-11-13"),new Date("2026-11-14"))).toEqual([{startsAt:"2026-11-13T09:00Z",endsAt:"2026-11-13T10:00Z"}]);
+ expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get("fields")).toBe("nextPageToken,items(start,end,status,transparency)");
+});
 it("uses a deterministic Google-valid event ID and removes reminders after completion", () => {
   expect(googleEventId("event")).toMatch(/^[a-v0-9]{5,1024}$/);
   expect(googleEventId("event")).toBe(googleEventId("event"));

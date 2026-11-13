@@ -1,4 +1,5 @@
 "use client";
+import {AutomaticDraftReview} from "@/modules/whatsapp/automatic-draft-review";
 import {ComposerEmojiPicker} from "@/modules/whatsapp/emoji-picker";
 import {insertComposerText,type ComposerSelection} from "@/modules/whatsapp/composer-text";
 import { FilterPanel } from "@/components/filter-panel";
@@ -792,6 +793,8 @@ export default function WhatsAppPage() {
                   <div className={styles.composerTools}>{attachmentButton}{!commentMode&&detail.senderEmail.startsWith("wa-group:")&&detail.assignedTo?.id===bootstrap?.currentUser.id&&<MentionPicker key={detail.id} ticketId={detail.id} value={reply} selection={composerSelection} onInsert={insertInComposer}/>}<ComposerEmojiPicker onInsert={emoji=>insertInComposer(emoji)} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))}/><Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>{setReplyTarget(null);setCommentMode(v=>!v);}}><IconLock size={18}/></ActionIcon></Tooltip></div>
                   <Textarea
                     ref={replyInput}
+                    spellCheck
+                    lang="pt-BR"
                     autosize
                     minRows={1}
                     maxRows={5}
@@ -815,6 +818,7 @@ export default function WhatsAppPage() {
                       <IconSend size={19} />
                     </ActionIcon>
                   </Tooltip>
+                  <AutomaticDraftReview key={`${detail.id}:${commentMode}`} ticketId={detail.id} text={commentMode?comment:reply} internal={commentMode} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))} onApply={value=>{if(commentMode)setComment(value);else setReply(value);replyInput.current?.focus();}}/>
                 </div>
               ) : (
                 <div className={styles.resolvedBar}>

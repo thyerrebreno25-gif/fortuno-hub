@@ -30,8 +30,8 @@
 .contextBar { padding: 8px 12px; border-bottom: 1px solid var(--fortuno-line); background: var(--fortuno-surface-soft); display: grid; grid-template-columns: minmax(170px, 1.3fr) minmax(145px, 1fr) minmax(145px, 1fr) auto; gap: 10px; align-items: end; }
 .contextInfo { min-height: 40px; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
 .messagesFrame { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.messages { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; padding: 24px; background-color: #efeae2; background-image: url('/whatsapp-pattern.svg'); background-repeat: repeat; background-size: 320px 320px; }
-:global([data-mantine-color-scheme="dark"]) .messages { background-color: #0b141a; }
+.messages { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; padding: 24px; background-color: #f3f5f9; background-image: url('/fortuno-chat-pattern.svg'); background-repeat: repeat; background-size: 600px 480px; }
+:global([data-mantine-color-scheme="dark"]) .messages { background-color: #0c1728; background-image: url('/fortuno-chat-pattern-dark.svg'); }
 .newMessages { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); box-shadow: 0 3px 14px #0003; }
 .attachment { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin-top: 5px; max-width: 100%; }
 .imageButton { border: 0; padding: 0; background: transparent; cursor: zoom-in; border-radius: 8px; overflow: hidden; max-width: 100%; }

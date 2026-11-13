@@ -1,6 +1,6 @@
 "use client";
 import { FilterPanel } from "@/components/filter-panel";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Autocomplete, Badge, Button, Checkbox, Group, Loader, Modal, MultiSelect, Paper, Tabs, Select, SimpleGrid, Stack, TagsInput, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconPlus, IconRefresh } from "@tabler/icons-react";
@@ -9,6 +9,7 @@ import { MeetingReportPanel } from "./report-panel";
 import {FathomSettings,FathomMeetingPanel} from "./fathom-panel";
 import { RecordingCapture } from "./recording-capture";
 import { MeetingRecurrenceFields, recurrencePreview, recurrenceValue, type RecurrenceForm } from "./recurrence-fields";
+import { meetingPeriods } from "./list-filters";
 import { meetingTypes } from "./model";
 import { formatMeetingDate, inputToIso, jsonRequest, localDateInput, meetingRequest, meetingStatus, type Meeting, type MeetingAction, type MeetingOptions } from "./client";
 import styles from "./meetings.module.css";
@@ -18,6 +19,8 @@ const emptyForm = () => ({ responsibleId: "", title: "", type: "Alinhamento oper
 export function MeetingsPage() {
   const [options, setOptions] = useState<MeetingOptions | null>(null), [meetings, setMeetings] = useState<Summary[]>([]), [meeting, setMeeting] = useState<Meeting | null>(null);
   const [canManage, setCanManage] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [scope, setScope] = useState("mine"), [period, setPeriod] = useState("upcoming"), [from, setFrom] = useState(""), [to, setTo] = useState("");
+  const listSequence = useRef(0);
   const [q, setQ] = useState(""), [query, setQuery] = useState(""), [page, setPage] = useState(0), [hasMore, setHasMore] = useState(false);
   const [modal, setModal] = useState(false), [editing, setEditing] = useState(false), [form, setForm] = useState(emptyForm);
   const [actionModal, setActionModal] = useState(false), [editingAction, setEditingAction] = useState<MeetingAction | null>(null);
@@ -28,9 +31,12 @@ export function MeetingsPage() {
   const [trash,setTrash]=useState(false),[deleteOpen,setDeleteOpen]=useState(false);
   const report = (error: unknown) => notifications.show({ color: "red", title: "Central de reuniões", message: error instanceof Error ? error.message : "Falha ao concluir a ação." });
   const loadList = useCallback(async () => {
-    const result = await meetingRequest<{ meetings: Summary[]; hasMore: boolean }>(`/api/meetings?page=${page}&q=${encodeURIComponent(query)}${trash?"&deleted=1":""}`);
-    setMeetings(result.meetings); setHasMore(result.hasMore);
-  }, [page, query, trash]);
+    const sequence = ++listSequence.current;
+    if(period==="custom"&&(!from||!to)){setMeetings([]);setHasMore(false);return;}
+    const params = new URLSearchParams({page:String(page),q:query,scope,period,...(from?{from}:{}),...(to?{to}:{}),...(trash?{deleted:"1"}:{})});
+    const result = await meetingRequest<{ meetings: Summary[]; hasMore: boolean }>(`/api/meetings?${params}`);
+    if (sequence === listSequence.current) { setMeetings(result.meetings); setHasMore(result.hasMore); }
+  }, [page, query, trash, scope, period, from, to]);
   const openMeeting = useCallback(async (id: string, deleted = false) => {
     const result = await meetingRequest<{ meeting: Meeting; canManage: boolean }>(`/api/meetings?id=${encodeURIComponent(id)}${deleted?"&deleted=1":""}`);
     setMeeting(result.meeting); setCanManage(result.canManage);
@@ -81,7 +87,7 @@ export function MeetingsPage() {
     {error && <Alert color="red" withCloseButton onClose={() => setError("")}>{error}</Alert>}
     {!options && !error && <Loader />}
     {options && <div className={styles.layout}>
-      <Stack gap="sm"><FilterPanel title="Filtros de reuniões"><Group wrap="nowrap"><TextInput aria-label="Buscar reuniões" placeholder="Buscar reunião ou tipo" value={q} onChange={(event) => setQ(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { setPage(0); setQuery(q); } }} /><Button variant="light" onClick={() => { setPage(0); setQuery(q); }}>Buscar</Button></Group></FilterPanel>
+      <Stack gap="sm"><FilterPanel title="Filtros de reuniões" activeCount={Number(scope!=="mine")+Number(period!=="upcoming")+Number(Boolean(query))}><Stack gap="sm"><Select label="Participação" allowDeselect={false} value={scope} onChange={value=>{setScope(value||"mine");setPage(0);}} data={[{value:"mine",label:"Minhas reuniões"},{value:"all",label:"Todas as reuniões permitidas"},{value:"responsible",label:"Sou responsável"}]} /><Select label="Período" allowDeselect={false} value={period} onChange={value=>{setPeriod(value||"upcoming");setPage(0);}} data={meetingPeriods} />{period==="custom"&&<><TextInput type="date" label="De" value={from} onChange={event=>{setFrom(event.currentTarget.value);setPage(0);}}/><TextInput type="date" label="Até" value={to} onChange={event=>{setTo(event.currentTarget.value);setPage(0);}}/></>}<Group wrap="nowrap"><TextInput aria-label="Buscar reuniões" placeholder="Buscar reunião ou tipo" value={q} onChange={(event) => setQ(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") { setPage(0); setQuery(q); } }} /><Button variant="light" onClick={() => { setPage(0); setQuery(q); }}>Buscar</Button></Group></Stack></FilterPanel><Text size="xs" c="dimmed">{scope==="all"?"Todas as reuniões permitidas":scope==="responsible"?"Sob minha responsabilidade":"Minhas reuniões"} · {meetingPeriods.find(item=>item.value===period)?.label} · {period==="past"||trash?"Mais recentes primeiro":"Mais próximas primeiro"}</Text>
         <div className={styles.list}>{!meetings.length && <Paper p="md" withBorder><Text c="dimmed" size="sm">Nenhuma reunião neste filtro. Crie a primeira para organizar as entregas do squad.</Text></Paper>}{meetings.map((item) => <button key={item.id} className={styles.meetingButton} aria-pressed={meeting?.id === item.id} disabled={busy} onClick={() => void run(() => openMeeting(item.id,trash))}><Group justify="space-between"><Badge size="xs" variant="light">{item.type}</Badge><Badge size="xs" color={item.status === "CANCELLED" ? "gray" : item.status === "COMPLETED" ? "green" : "blue"}>{meetingStatus[item.status]}</Badge></Group><Text fw={750} size="sm">{item.title}</Text><Text size="xs" c="dimmed">{formatMeetingDate(item.startsAt)}</Text><Text size="xs">{item._count.participants} participantes · {item.actions.filter((action) => action.completedAt).length}/{item._count.actions} entregas</Text></button>)}</div>
         <Group justify="space-between"><Button size="xs" variant="subtle" disabled={!page || busy} onClick={() => setPage((value) => value - 1)}>Anterior</Button><Text size="xs">Página {page + 1}</Text><Button size="xs" variant="subtle" disabled={!hasMore || busy} onClick={() => setPage((value) => value + 1)}>Próxima</Button></Group>
       </Stack>

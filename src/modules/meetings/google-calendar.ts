@@ -157,3 +157,29 @@ export async function listGoogleEvents(organizationId: string, userId: string, s
   }
   throw new Error("Há muitos eventos externos neste intervalo. Selecione um período menor.");
 }
+
+// Uses the already granted calendar.events scope. Fetch only scheduling fields;
+// personal titles, descriptions, guests, links and locations never leave Google.
+export async function listGoogleBusy(organizationId: string, userId: string, start: Date, end: Date) {
+  const connection = await prisma.googleCalendarConnection.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
+  if (!connection || connection.status !== "CONNECTED") return null;
+  const token = await accessToken(connection);
+  const busy: Array<{ startsAt: string; endsAt: string }> = [];
+  let pageToken = "";
+  for (let page = 0; page < 10; page++) {
+    const params = new URLSearchParams({ timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: "true", maxResults: "250", fields: "nextPageToken,items(start,end,status,transparency)", ...(pageToken ? { pageToken } : {}) });
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(connection.calendarId)}/events?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000), cache: "no-store" });
+    if (!response.ok) throw new Error("Disponibilidade Google indisponível.");
+    const data = await response.json();
+    for (const event of data.items || []) {
+      if (event.status === "cancelled" || event.transparency === "transparent") continue;
+      const startsAt = event.start?.dateTime || `${event.start?.date}T00:00:00-03:00`;
+      const endsAt = event.end?.dateTime || `${event.end?.date}T00:00:00-03:00`;
+      if (!Number.isFinite(+new Date(startsAt)) || !Number.isFinite(+new Date(endsAt)) || +new Date(endsAt)<=+new Date(startsAt)) throw new Error("Disponibilidade Google inválida.");
+      busy.push({ startsAt, endsAt });
+    }
+    pageToken = data.nextPageToken || "";
+    if (!pageToken) return busy;
+  }
+  throw new Error("Selecione um período menor para consultar a disponibilidade.");
+}

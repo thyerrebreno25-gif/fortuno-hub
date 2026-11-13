@@ -1,8 +1,9 @@
+import { meetingListFilter } from "@/modules/meetings/list-filters";
 import {publicReportSelect,processMeetingReport} from "@/modules/meetings/reports";
 import {reportFingerprint} from "@/modules/meetings/report-model";
 import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { meetingAccess, meetingFailure, meetingScope, findMeeting } from "@/modules/meetings/auth";
+import { meetingAccess, meetingFailure, meetingScope, findMeeting, MeetingError } from "@/modules/meetings/auth";
 import { z } from "zod";
 import { saveMeeting, trashMeeting } from "@/modules/meetings/service";
 import { processMeetingBackground } from "@/modules/meetings/delivery";
@@ -33,7 +34,10 @@ export async function GET(request: Request) {
     }
     const page = Math.min(100, Math.max(0, Number(url.searchParams.get("page")) || 0));
     const q = (url.searchParams.get("q") || "").slice(0, 180);
-    const meetings = await prisma.teamMeeting.findMany({ where: { ...meetingScope(member, deleted), ...(q ? { AND: [{ OR: [{ title: { contains: q, mode: "insensitive" } }, { type: { contains: q, mode: "insensitive" } }] }] } : {}) }, include: { _count: { select: { participants: true, actions: true } }, actions: { select: { completedAt: true } } }, orderBy: [{ startsAt: "desc" }, { id: "desc" }], take: 51, skip: page * 50 });
+    let filters;
+    try { filters = meetingListFilter(url.searchParams, member.userId, deleted); }
+    catch { throw new MeetingError("Selecione um período válido para as reuniões."); }
+    const meetings = await prisma.teamMeeting.findMany({ where: { AND: [meetingScope(member, deleted), filters.personal, filters.dates], ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { type: { contains: q, mode: "insensitive" } }] } : {}) }, include: { _count: { select: { participants: true, actions: true } }, actions: { select: { completedAt: true } } }, orderBy: [{ startsAt: filters.direction }, { id: filters.direction }], take: 51, skip: page * 50 });
     return NextResponse.json({ meetings: meetings.slice(0, 50), hasMore: meetings.length > 50 });
   } catch (error) { return meetingFailure(error); }
 }
