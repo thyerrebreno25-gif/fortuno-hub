@@ -28,3 +28,8 @@ it("normalizes guest emails and rejects invalid external addresses", () => {
   expect(meetingInput.parse({ ...input, externalEmails: [" Cliente@Example.com ", "cliente@example.com"] }).externalEmails).toEqual(["cliente@example.com"]);
   expect(meetingInput.safeParse({ ...input, externalEmails: ["email invalido"] }).success).toBe(false);
 });
+
+it("grants the selected responsible collaborator access to manage the meeting",()=>{
+ expect(editableMeeting({userId:"b",role:"OPERATOR",isTeamLeader:false},{createdById:"master",responsibleId:"b"})).toBe(true);
+ expect(meetingInput.safeParse({...input,recurrence:{frequency:"DAILY",until:"2026-10-25"}}).success).toBe(false);
+});

@@ -377,6 +377,7 @@ model User {
   fathomConnections FathomConnection[]
   whatsappReadStates WhatsAppReadState[]
   createdMeetings TeamMeeting[] @relation("MeetingCreator")
+  responsibleMeetings TeamMeeting[] @relation("MeetingResponsible")
   meetingParticipations MeetingParticipant[]
   meetingActions MeetingActionItem[]
   meetingNotes MeetingNote[]
@@ -1987,6 +1988,10 @@ model TeamMeeting {
   deletedAt DateTime?
   id String @id @default(cuid())
   organizationId String
+  responsibleId String?
+  creationKey String?
+  creationHash String?
+  recurrenceData Json?
   createdById String
   title String
   type String @default("Semanal de squad")
@@ -2004,6 +2009,7 @@ model TeamMeeting {
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
   creator User @relation("MeetingCreator", fields:[createdById], references:[id], onDelete:Restrict)
+  responsible User? @relation("MeetingResponsible", fields:[responsibleId], references:[id], onDelete:SetNull)
   participants MeetingParticipant[]
   actions MeetingActionItem[]
   contributions MeetingNote[]
@@ -2011,6 +2017,9 @@ model TeamMeeting {
   events TeamCalendarEvent[]
   deliveries MeetingDelivery[]
   @@index([organizationId, startsAt])
+  @@index([organizationId, creationKey])
+  @@index([responsibleId])
+  @@unique([organizationId, creationKey, startsAt])
 }
 model MeetingParticipant {
   meetingId String

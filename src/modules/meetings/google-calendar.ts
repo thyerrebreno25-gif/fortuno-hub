@@ -70,7 +70,7 @@ export async function syncCalendarEvents(filter: { organizationId?: string; user
   const stale = new Date(Date.now()-5*60000);
   const events = await prisma.teamCalendarEvent.findMany({ where: { ...filter, AND:[{OR:connected.map(connection=>({organizationId:connection.organizationId,userId:connection.userId}))},{OR:[{googleSyncStatus:{in:["PENDING","ERROR"]}},{googleSyncStatus:"PROCESSING",updatedAt:{lt:stale}}]}] }, include: { meeting: true }, orderBy: { updatedAt: "asc" }, take: 40 });
   // Generate the shared call before syncing other participants.
-  events.sort((a, b) => Number(b.meeting?.createdById === b.userId) - Number(a.meeting?.createdById === a.userId));
+  events.sort((a, b) => Number((b.meeting?.responsibleId || b.meeting?.createdById) === b.userId) - Number((a.meeting?.responsibleId || a.meeting?.createdById) === a.userId));
   let synced = 0;
   const deadline = Date.now() + 45000;
   const connections = new Map<string, { connection: GoogleCalendarConnection; token: string } | null>();
@@ -90,7 +90,7 @@ export async function syncCalendarEvents(filter: { organizationId?: string; user
       const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(auth.connection.calendarId)}/events`;
       const headers = { Authorization: `Bearer ${auth.token}`, "Content-Type": "application/json" };
       const meeting = event.meeting;
-      const organizer = Boolean(meeting && !event.actionItemId && event.userId === meeting.createdById);
+      const organizer = Boolean(meeting && !event.actionItemId && event.userId === (meeting.responsibleId || meeting.createdById));
       const updates = organizer ? "all" : "none";
       const query = `sendUpdates=${updates}&conferenceDataVersion=1`;
       let response;

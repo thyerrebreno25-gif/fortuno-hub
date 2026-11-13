@@ -1,20 +1,47 @@
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { actionEvent, actionInput, editableMeeting, meetingInput } from "./model";
+import { meetingOccurrences } from "./recurrence";
 import { findMeeting, MeetingError, type MeetingMember } from "./auth";
 
 export async function saveMeeting(member: MeetingMember, body: unknown, id?: string) {
   const input = meetingInput.parse(body);
   const current = id ? await findMeeting(member, id) : null;
-  const participantIds = [...new Set([...input.participantIds, current?.createdById || member.userId])];
+  const responsibleId = input.responsibleId || current?.responsibleId || current?.createdById || member.userId;
+  const manager = ["MASTER", "ADMIN", "MANAGER"].includes(member.role);
+  if (responsibleId !== (current?.responsibleId || current?.createdById || member.userId) && !manager) throw new MeetingError("Somente gestores podem definir outro responsável pela reunião.", 403);
+  if (id && input.recurrence) throw new MeetingError("Edite cada ocorrência individualmente. Para gerar novas datas, use Criar reunião.");
+  const participantIds = [...new Set([...input.participantIds, responsibleId])];
   const members = await prisma.organizationMember.count({ where: { organizationId: member.organizationId, userId: { in: participantIds }, role: { not: "CLIENT" } } });
   if (members !== participantIds.length) throw new MeetingError("Selecione apenas colaboradores desta organização.");
   if (current && !editableMeeting(member, current)) throw new MeetingError("Somente o organizador ou um gestor pode editar esta reunião.", 403);
   const revision = id ? z.object({ revision: z.number().int().positive() }).parse(body).revision : 0;
-  const { participantIds: _ids, ...data } = input;
-  void _ids;
+  const { participantIds: _ids, recurrence, creationKey, responsibleId: _responsible, ...fields } = input;
+  void _ids; void _responsible;
+  const data = { ...fields, responsibleId };
+  if (!id) {
+    const occurrences = meetingOccurrences(input.startsAt, input.endsAt, recurrence);
+    if (recurrence && input.status !== "SCHEDULED") throw new MeetingError("Novas reuniões recorrentes devem estar agendadas.");
+    if (occurrences.length * participantIds.length > 3000) throw new MeetingError("Reduza o período ou os participantes para gerar até 3.000 compromissos por vez.");
+    const key = creationKey || randomUUID();
+    const hash = createHash("sha256").update(JSON.stringify({ data, participantIds: [...participantIds].sort(), recurrence: recurrence || null })).digest("hex");
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${member.organizationId}:meeting:${key}`}))`;
+      const existing = await tx.teamMeeting.findMany({ where: { organizationId: member.organizationId, creationKey: key }, orderBy: { startsAt: "asc" } });
+      if (existing.length) {
+        if (existing.some(meeting => meeting.createdById !== member.userId || meeting.creationHash !== hash)) throw new MeetingError("Esta solicitação já foi salva com outros dados. Reabra o formulário.", 409);
+        return { ...existing[0], createdCount: existing.length };
+      }
+      const meetings = await tx.teamMeeting.createManyAndReturn({ data: occurrences.map(dates => ({ ...data, ...dates, id: randomUUID(), organizationId: member.organizationId, createdById: member.userId, creationKey: key, creationHash: hash, ...(recurrence ? { recurrenceData: recurrence } : {}) })) });
+      meetings.sort((a,b) => +a.startsAt - +b.startsAt);
+      await tx.meetingParticipant.createMany({ data: meetings.flatMap(meeting => participantIds.map(userId => ({ meetingId: meeting.id, userId }))), skipDuplicates: true });
+      await tx.teamCalendarEvent.createMany({ data: meetings.flatMap(meeting => participantIds.map(userId => ({ organizationId: member.organizationId, userId, meetingId: meeting.id, sourceKey: `meeting:${meeting.id}`, title: meeting.title, description: meeting.agenda, startsAt: meeting.startsAt, endsAt: meeting.endsAt, location: meeting.location, status: meeting.status === "CANCELLED" ? "CANCELLED" : meeting.status === "COMPLETED" ? "COMPLETED" : "ACTIVE", googleSyncStatus: "PENDING" }))), skipDuplicates: true });
+      await tx.meetingDelivery.createMany({ data: meetings.flatMap(meeting => participantIds.map(userId => ({ organizationId: member.organizationId, userId, meetingId: meeting.id, dedupeKey: `meeting:${meeting.id}:${meeting.revision}:${userId}`, title: `Convite de reunião · ${meeting.title}`, body: `${meeting.type} · ${meeting.startsAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}${meeting.location ? ` · ${meeting.location}` : ""}` }))), skipDuplicates: true });
+      return { ...meetings[0], createdCount: meetings.length };
+    }, { timeout: 30000, maxWait: 10000 });
+  }
   return prisma.$transaction(async (tx) => {
     let meeting;
     if (id) {
@@ -25,9 +52,7 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
       if (!changed.count) throw new MeetingError("A reunião foi alterada. Reabra para carregar a versão atual.", 409);
       meeting = await tx.teamMeeting.findUniqueOrThrow({ where: { id } });
       await tx.meetingParticipant.deleteMany({ where: { meetingId: id, userId: { notIn: participantIds } } });
-    } else {
-      meeting = await tx.teamMeeting.create({ data: { ...data, organizationId: member.organizationId, createdById: member.userId } });
-    }
+    } else { throw new MeetingError("Informe a reunião."); }
     if (current?.fathomEnabled && !meeting.fathomEnabled) await tx.meetingReport.updateMany({where:{meetingId:meeting.id,includeRecordings:true,status:{in:["PENDING","PROCESSING","WAITING_AUDIO"]}},data:{includeRecordings:false,generation:randomUUID(),status:"PENDING",claimedAt:null,nextRunAt:new Date()}});
     await tx.meetingParticipant.createMany({ data: participantIds.map((userId) => ({ meetingId: meeting.id, userId })), skipDuplicates: true });
     await tx.teamCalendarEvent.updateMany({ where: { meetingId: meeting.id, actionItemId: null, userId: { notIn: participantIds } }, data: { status: "CANCELLED", googleSyncStatus: "PENDING", revision: { increment: 1 } } });
@@ -43,7 +68,7 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
     // Supersede invitation emails still waiting for delivery; only the latest details matter.
     await tx.meetingDelivery.updateMany({ where: { meetingId: meeting.id, actionItemId: null, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } });
     await tx.meetingDelivery.createMany({ data: participantIds.map((userId) => ({ organizationId: member.organizationId, userId, meetingId: meeting.id, dedupeKey: `${meeting.status === "CANCELLED" ? "meeting-cancelled" : "meeting"}:${meeting.id}:${meeting.revision}:${userId}`, title: `${meeting.status === "CANCELLED" ? "Reunião cancelada" : id ? "Reunião atualizada" : "Convite de reunião"} · ${meeting.title}`, body: `${meeting.type} · ${meeting.startsAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}${meeting.location ? ` · ${meeting.location}` : ""}` })), skipDuplicates: true });
-    return meeting;
+    return { ...meeting, createdCount: 1 };
   }, { timeout: 30000, maxWait: 10000 });
 }
 
@@ -104,7 +129,7 @@ export async function trashMeeting(member: MeetingMember, id: string, revision: 
 
 export async function ensurePersonalMeetingEvents(organizationId:string,userId:string) {
  return prisma.$transaction(async tx=>{
-  const where={organizationId,deletedAt:null,status:{not:"CANCELLED"},OR:[{createdById:userId},{participants:{some:{userId}}}],events:{none:{userId,actionItemId:null,sourceKey:{startsWith:"meeting:"}}}};
+  const where={organizationId,deletedAt:null,status:{not:"CANCELLED"},participants:{some:{userId}},events:{none:{userId,actionItemId:null,sourceKey:{startsWith:"meeting:"}}}};
   const candidates=await tx.teamMeeting.findMany({where,take:100,orderBy:{createdAt:"desc"},select:{id:true}});
   if(!candidates.length) return 0;
   // Serialize legacy-event repair with deletion and participant edits.

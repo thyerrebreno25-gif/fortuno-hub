@@ -47,6 +47,7 @@ export async function getRolePermissions(organizationId:string, role:string){
   const by = new Map(rows.map(r=>[r.moduleCode,r]));
   return Object.fromEntries(MODULE_CODES.map(module=>{
     const row = by.get(module);
-    return [module,row ? {canView:row.canView,canCreate:row.canCreate,canEdit:row.canEdit,canDelete:row.canDelete,canImport:row.canImport,canExport:row.canExport,canManage:row.canManage} : defaultPermission(role,module)];
+    const permissions = row ? {canView:row.canView,canCreate:row.canCreate,canEdit:row.canEdit,canDelete:row.canDelete,canImport:row.canImport,canExport:row.canExport,canManage:row.canManage} : defaultPermission(role,module);
+    return [module, role === "MASTER" && module === "MEETINGS" ? { ...permissions, canView: true, canCreate: true, canEdit: true } : permissions];
   })) as Record<ModuleCode,PermissionShape>;
 }

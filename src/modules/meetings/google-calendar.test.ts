@@ -48,8 +48,8 @@ it("never recreates a previously synchronized event deleted in Google", async ()
   expect(db.teamCalendarEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "CANCELLED" }) }));
 });
 
-it("creates a single Meet on the organizer event and invites external emails", async () => {
-  const meeting = { id: "m", createdById: "u", revision: 1, location: "Sala", generateMeet: true, meetLink: "", externalEmails: ["convidado@example.com"] };
+it("creates the Meet and external invitations on the selected responsible calendar rather than the Master creator", async () => {
+  const meeting = { id: "m", createdById: "master", responsibleId: "u", revision: 1, location: "Sala", generateMeet: true, meetLink: "", externalEmails: ["convidado@example.com"] };
   db.teamCalendarEvent.findMany.mockResolvedValue([{ ...event, actionItemId: null, meeting }]);
   db.teamMeeting.updateMany.mockResolvedValue({ count: 1 });
   const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 404 })).mockResolvedValueOnce(new Response(JSON.stringify({ hangoutLink: "https://meet.google.com/abc-defg-hij" })));

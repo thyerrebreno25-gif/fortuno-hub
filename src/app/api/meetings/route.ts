@@ -6,6 +6,7 @@ import { meetingAccess, meetingFailure, meetingScope, findMeeting } from "@/modu
 import { z } from "zod";
 import { saveMeeting, trashMeeting } from "@/modules/meetings/service";
 import { processMeetingBackground } from "@/modules/meetings/delivery";
+import { editableMeeting } from "@/modules/meetings/model";
 import { googleConfigured } from "@/modules/meetings/google-calendar";
 
 export async function GET(request: Request) {
@@ -14,20 +15,21 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     if (url.searchParams.get("view") === "options") {
       const members = await prisma.organizationMember.findMany({ where: { organizationId: member.organizationId, role: { not: "CLIENT" } }, select: { user: { select: { id: true, name: true, email: true } } }, orderBy: { user: { name: "asc" } } });
+      const connections = await prisma.googleCalendarConnection.findMany({ where: { organizationId: member.organizationId, status: "CONNECTED" }, select: { userId: true } });
       const google = await prisma.googleCalendarConnection.findUnique({ where: { organizationId_userId: { organizationId: member.organizationId, userId: member.userId } }, select: { status: true } });
-      return NextResponse.json({ googleConnected: google?.status === "CONNECTED", userId: member.userId, permissions, members: members.map((item) => item.user), emailConfigured: Boolean(process.env.RESEND_API_KEY), remindersConfigured: Boolean(process.env.CRON_SECRET), recordingConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), transcriptionConfigured: Boolean(process.env.OPENAI_API_KEY), googleConfigured: googleConfigured() });
+      return NextResponse.json({ canAssignResponsible: ["MASTER", "ADMIN", "MANAGER"].includes(member.role), connectedUserIds: connections.map(item => item.userId), googleConnected: google?.status === "CONNECTED", userId: member.userId, permissions, members: members.map((item) => item.user), emailConfigured: Boolean(process.env.RESEND_API_KEY), remindersConfigured: Boolean(process.env.CRON_SECRET), recordingConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), transcriptionConfigured: Boolean(process.env.OPENAI_API_KEY), googleConfigured: googleConfigured() });
     }
     const deleted = url.searchParams.get("deleted") === "1";
     const id = url.searchParams.get("id");
     if (id) {
       await findMeeting(member, id, deleted);
       const meeting = await prisma.teamMeeting.findFirstOrThrow({ where: { id, ...meetingScope(member, deleted) }, include: { fathomRecordings:{select:{id:true,title:true,playbackUrl:true,transcript:true,summary:true,actionItems:true,startsAt:true},orderBy:{startsAt:"asc"}}, report:{select:publicReportSelect}, creator: { select: { id: true, name: true } }, participants: { include: { user: { select: { id: true, name: true, email: true } } } }, actions: { include: { responsible: { select: { id: true, name: true, email: true } } }, orderBy: { dueAt: "asc" } }, contributions: { include: { author: { select: { name: true, email: true } } }, orderBy: { createdAt: "asc" } }, recordings: { select: { id: true, name: true, status: true, transcript: true, error: true, size: true, createdAt: true }, orderBy: { createdAt: "desc" } } } });
-      const integration = await prisma.teamCalendarEvent.findFirst({ where: { meetingId: meeting.id, userId: meeting.createdById, actionItemId: null, sourceKey:`meeting:${meeting.id}` }, select: { googleSyncStatus: true, syncError: true } });
+      const integration = await prisma.teamCalendarEvent.findFirst({ where: { meetingId: meeting.id, userId: meeting.responsibleId || meeting.createdById, actionItemId: null, sourceKey:`meeting:${meeting.id}` }, select: { googleSyncStatus: true, syncError: true } });
       const [events,connections]=await Promise.all([prisma.teamCalendarEvent.findMany({where:{organizationId:member.organizationId,meetingId:meeting.id,actionItemId:null,sourceKey:`meeting:${meeting.id}`},select:{userId:true,googleSyncStatus:true,syncError:true}}),prisma.googleCalendarConnection.findMany({where:{organizationId:member.organizationId,userId:{in:meeting.participants.map(person=>person.userId)}},select:{userId:true,status:true}})]);
       const calendarSync=meeting.participants.map(person=>({userId:person.userId,connected:connections.some(connection=>connection.userId===person.userId&&connection.status==="CONNECTED"),googleSyncStatus:events.find(event=>event.userId===person.userId)?.googleSyncStatus||"PENDING",syncError:events.find(event=>event.userId===person.userId)?.syncError||null}));
       if (!deleted && meeting.report && ["PENDING","WAITING_AUDIO","PROCESSING"].includes(meeting.report.status)) after(()=>processMeetingReport(meeting.id));
       const report = meeting.report ? {...meeting.report,outdated:Boolean(meeting.report.content && meeting.report.sourceHash !== reportFingerprint(meeting,meeting.report.includeRecordings))} : null;
-      return NextResponse.json({ meeting: { ...meeting, report, integration, calendarSync }, canManage: meeting.createdById === member.userId || ["MASTER", "ADMIN", "MANAGER"].includes(member.role) });
+      return NextResponse.json({ meeting: { ...meeting, report, integration, calendarSync }, canManage: editableMeeting(member, meeting) });
     }
     const page = Math.min(100, Math.max(0, Number(url.searchParams.get("page")) || 0));
     const q = (url.searchParams.get("q") || "").slice(0, 180);
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
     const { member } = await meetingAccess("MEETINGS", "canCreate");
     const meeting = await saveMeeting(member, await request.json());
     after(() => processMeetingBackground(member.organizationId));
-    return NextResponse.json({ meeting }, { status: 201 });
+    return NextResponse.json({ meeting, createdCount: meeting.createdCount }, { status: 201 });
   } catch (error) { return meetingFailure(error); }
 }
 export async function PATCH(request: Request) {

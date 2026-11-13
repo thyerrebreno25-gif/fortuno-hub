@@ -8,7 +8,8 @@ export class MeetingError extends Error { constructor(message: string, public st
 export async function meetingAccess(module: "MEETINGS" | "CALENDAR" = "MEETINGS", action: keyof PermissionShape = "canView") {
   const member = await getNoticeMember();
   if (!member) throw new MeetingError("Sessão inválida.", 401);
-  const permissions = (await getRolePermissions(member.organizationId, member.role))[module];
+  const configured = (await getRolePermissions(member.organizationId, member.role))[module];
+  const permissions = member.role === "MASTER" && module === "MEETINGS" ? { ...configured, canView: true, canCreate: true, canEdit: true } : configured;
   if (!permissions[action] || member.role === "CLIENT") throw new MeetingError("Seu perfil não permite esta ação.", 403);
   return { member, permissions };
 }

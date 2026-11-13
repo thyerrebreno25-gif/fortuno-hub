@@ -31,3 +31,9 @@ it("does not authenticate the cron by a forgeable User-Agent", async () => {
   const result = await cron(new Request("https://example.test/api/cron/meeting-reminders", { headers: { "user-agent": "vercel-cron/1.0" } }));
   expect(result.status).toBe(401);
 });
+
+it("allows the Master to create and edit meetings even with an old disabled module override",async()=>{
+ mocks.member.mockResolvedValue({...member,role:"MASTER"});mocks.permissions.mockResolvedValue({MEETINGS:{canView:false,canCreate:false,canEdit:false}});
+ expect((await meetingAccess("MEETINGS","canCreate")).permissions.canCreate).toBe(true);
+ expect((await meetingAccess("MEETINGS","canEdit")).permissions.canEdit).toBe(true);
+});
