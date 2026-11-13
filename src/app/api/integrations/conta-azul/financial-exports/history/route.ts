@@ -1,3 +1,4 @@
+import {whatsappFinancialDocuments} from "@/modules/whatsapp/financial-documents";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
   const batches = await prisma.contaAzulFinancialExport.findMany({
     where: { organizationId: member.organizationId, clientId, ...(exportModule ? { module: exportModule as "CREDIT_CARD_INVOICE" | "ACQUIRER" | "WHATSAPP" } : {}), ...(params.get("exportId") ? { id: params.get("exportId")! } : {}) },
     orderBy: { createdAt: "desc" }, take: 20,
-    select: { id: true, module: true, sourceName: true, status: true, financialAccountId: true, financialAccountName: true, settleRequested: true, lastError: true, createdAt: true, updatedAt: true, completedAt: true,
+    select: { id: true, metadata:true, module: true, sourceName: true, status: true, financialAccountId: true, financialAccountName: true, settleRequested: true, lastError: true, createdAt: true, updatedAt: true, completedAt: true,
       _count: { select: { lines: true } },
       lines: { orderBy: { createdAt: "asc" }, take: verify ? 20 : 100, skip: verify ? page * 20 : 0, select: { id: true, lineKey: true, description: true, direction: true, amount: true, competenceDate: true, dueDate: true, paymentDate: true, categoryName: true, contaAzulCategoryId: true, status: true, lastError: true, externalProtocolId: true, externalEventId: true, externalInstallmentId: true, externalSettlementId: true, metadata: true } },
     },
@@ -58,7 +59,8 @@ export async function GET(request: Request) {
       checks.push({ lineId: line.id, status: status === 404 ? "NOT_FOUND" : "UNAVAILABLE", message: status === 404 ? "O identificador salvo no Hub não foi encontrado no CA. Nenhum reenvio foi feito." : error instanceof Error ? error.message : "Não foi possível conferir este lançamento no CA." });
     }
   }
-  return NextResponse.json({ batches, checks, page, readOnly: true }, { headers: { "Cache-Control": "no-store" } });
+  const documents=await whatsappFinancialDocuments(member,batches);
+  return NextResponse.json({ batches, documents, checks, page, readOnly: true }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {

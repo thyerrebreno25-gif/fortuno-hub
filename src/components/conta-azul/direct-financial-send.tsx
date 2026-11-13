@@ -65,6 +65,8 @@ type Props = {
   useLineAccounts?: boolean;
   onSendingChange?: (sending: boolean) => void;
   destinationClients?: { value: string; label: string }[];
+  inline?: boolean;
+  onCancel?: () => void;
 };
 
 type OptionsResponse = {
@@ -104,10 +106,12 @@ export function DirectFinancialSend({
   useLineAccounts = false,
   onSendingChange,
   destinationClients,
+  inline = false,
+  onCancel,
 }: Props) {
   const notificationSuffix = useId();
   const sendNotificationId = `conta-azul-financial-${notificationSuffix}`;
-  const [opened, setOpened] = useState(false);
+  const [opened, setOpened] = useState(inline);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -117,6 +121,7 @@ export function DirectFinancialSend({
   const [technicalContactId, setTechnicalContactId] = useState<string | null>(null);
   const [technicalContactName, setTechnicalContactName] = useState<string | null>(null);
   const [financialAccountId, setFinancialAccountId] = useState<string | null>(null);
+  const [optionalCostCenterId,setOptionalCostCenterId]=useState<string|null>(null);
   const [settle, setSettle] = useState(module!=="WHATSAPP");
   const [counts, setCounts] = useState<ProgressCounts>(emptyCounts);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
@@ -208,8 +213,8 @@ export function DirectFinancialSend({
     return [...unique.values()];
   }, [lines, catalogs, clientId, useLineAccounts]);
 
-  const effectiveLines = useMemo(() => applyAllocationClassifications(lines, catalogs, clientId || "", useLineAccounts, categoryOverrides, costCenterOverrides),
-    [categoryOverrides, costCenterOverrides, lines, catalogs, clientId, useLineAccounts]);
+  const effectiveLines = useMemo(() => applyAllocationClassifications(lines, catalogs, clientId || "", useLineAccounts, categoryOverrides, costCenterOverrides).map(line => module === "WHATSAPP" ? {...line, costCenterName:options.costCenters?.find(c=>c.value===optionalCostCenterId)?.label||null} : line),
+    [categoryOverrides, costCenterOverrides, lines, catalogs, clientId, useLineAccounts, module, optionalCostCenterId, options.costCenters]);
 
   const unresolved = useMemo(() => {
     return {
@@ -229,7 +234,7 @@ export function DirectFinancialSend({
     : 0;
   const invalidAccounts = useLineAccounts ? invalidDestinationAllocationLines(effectiveLines, catalogs, clientId || "") : [];
   const allocationSummary = useLineAccounts ? summarizeDestinationAllocation(effectiveLines, catalogs, clientId || "") : [];
-  const canSend = !savingCategory && !categorySaveError && connected
+  const canSend = !disabled && !savingCategory && !categorySaveError && connected
     && (useLineAccounts ? invalidAccounts.length === 0 : Boolean(financialAccountId && options.financialAccounts?.some((account) => account.value === financialAccountId)))
     && unresolved.categories.length === 0
     && unresolved.costCenters.length === 0
@@ -289,7 +294,7 @@ export function DirectFinancialSend({
             financialAccountId: selectedAccountId,
             financialAccountName: account?.label || null,
             useLineAccounts,
-            settle,
+            settle: module === "WHATSAPP" && lines.length>1 ? false : settle,
             lines: effectiveLines,
           }),
         });
@@ -368,33 +373,7 @@ export function DirectFinancialSend({
     }
   }
 
-  return (
-    <>
-      <Button
-        variant="light"
-        leftSection={<IconCloudUpload size={18} />}
-        loading={sending}
-        disabled={disabled || !clientId || lines.length === 0 || sending}
-        onClick={() => {
-          setTechnicalContactId(null);
-          setTechnicalContactName(null);
-          setFinancialAccountId(null);
-          setCategoryOverrides({});
-          setCostCenterOverrides({});
-          setOpened(true);
-        }}
-      >
-        {sending
-          ? `Enviando ${counts.CREATED + counts.SETTLED}/${lines.length}...`
-          : "Enviar direto ao Conta Azul"}
-      </Button>
-
-      <Modal
-        opened={opened}
-        onClose={() => { if (!savingCategory) setOpened(false); }}
-        title="Enviar lançamentos ao Conta Azul"
-        size="lg"
-      >
+  const content = (
         <Stack>
           {loading ? (
             <Text c="dimmed">Validando a conexão e carregando os cadastros...</Text>
@@ -432,17 +411,17 @@ export function DirectFinancialSend({
                 <Text size="sm" c="dimmed">{lines.length} lançamento(s) em linhas separadas</Text>
               </Group>
 
-              <Alert
+              {module !== "WHATSAPP" && <Alert
                 color="blue"
-                title={module === "WHATSAPP"?"Lançamento da conversa":module === "ACQUIRER"
+                title={module === "ACQUIRER"
                   ? "Vínculo automático da adquirente"
                   : "Vínculo automático da fatura"}
               >
                 {useLineAccounts ? "Cada lançamento será direcionado para o cadastro/CNPJ e a conta escolhidos na fatura, inclusive na baixa. " : "Você escolhe somente a conta financeira. "}
-                {module === "WHATSAPP"?`O favorecido revisado é “${counterpartyHint}”. O Hub localizará ou criará seu cadastro no CA antes de criar o lançamento.`:module === "CREDIT_CARD_INVOICE"
+                {module === "CREDIT_CARD_INVOICE"
                   ? `O Fortuno Hub usará ${counterpartyHint ? `“${counterpartyHint}”` : "o banco selecionado"} como fornecedor das despesas, localizando ou criando esse cadastro automaticamente no Conta Azul.`
                   : `O Fortuno Hub usará a adquirente ${counterpartyHint ? `“${counterpartyHint}”` : "identificada no arquivo"} como fornecedor das taxas e despesas e como cliente das receitas, localizando ou criando o cadastro no CA.`}
-              </Alert>
+              </Alert>}
               {useLineAccounts ? <Stack gap="xs">
                 <Text fw={700}>Rateio por cadastro e conta</Text>
                 <ScrollArea><Table miw={750}>
@@ -464,27 +443,29 @@ export function DirectFinancialSend({
                 nothingFoundMessage="Nenhuma conta localizada"
                 required
               />}
+              {module === "WHATSAPP" && <Select label="Centro de custo" placeholder="Sem centro de custo" data={options.costCenters||[]} value={optionalCostCenterId} onChange={setOptionalCostCenterId} searchable clearable disabled={sending}/>}
               <Checkbox
-                checked={settle}
+                disabled={module === "WHATSAPP" && lines.length>1}
+                checked={settle && !(module === "WHATSAPP" && lines.length>1)}
                 onChange={(event) => setSettle(event.currentTarget.checked)}
                 label="Marcar os lançamentos como liquidados"
-                description={settle
+                description={settle && !(module === "WHATSAPP" && lines.length>1)
                   ? "O Fortuno Hub criará cada lançamento e registrará a baixa na data de pagamento."
                   : "Os lançamentos serão criados em aberto, sem baixa."}
               />
 
               {(categoryRequirements.length > 0 || costCenterRequirements.length > 0) && (
                 <Alert
-                  color={unresolved.categories.length || unresolved.costCenters.length ? "orange" : "blue"}
-                  icon={<IconAlertTriangle size={18} />}
-                  title="Classificações não localizadas"
+                  color={module === "WHATSAPP" ? "blue" : unresolved.categories.length || unresolved.costCenters.length ? "orange" : "blue"}
+                  icon={module === "WHATSAPP" ? undefined : <IconAlertTriangle size={18} />}
+                  title={module === "WHATSAPP" ? "Categoria no Conta Azul" : "Classificações não localizadas"}
                 >
                   <Stack gap={4}>
                     {categoryRequirements.map((requirement) => (
                       <Select
                         key={requirement.key}
-                        label={`${useLineAccounts ? `${requirement.clientName} — ` : ""}${requirement.name} (${requirement.direction === "RECEIVABLE" ? "receita" : "despesa"})`}
-                        description={module === "ACQUIRER" ? "A escolha será salva neste cliente para as próximas importações." : "Selecione uma categoria equivalente já existente no Conta Azul."}
+                        label={module === "WHATSAPP" ? (requirement.direction === "PAYABLE" ? "Categoria de despesa" : "Categoria de receita") : `${useLineAccounts ? `${requirement.clientName} — ` : ""}${requirement.name} (${requirement.direction === "RECEIVABLE" ? "receita" : "despesa"})`}
+                        description={module === "WHATSAPP" ? "Categorias do cliente conectado." : module === "ACQUIRER" ? "A escolha será salva neste cliente para as próximas importações." : "Selecione uma categoria equivalente já existente no Conta Azul."}
                         placeholder="Selecionar categoria existente"
                         data={(catalogs[requirement.clientId]?.categories || []).filter(
                           (option) => !option.type || option.type === categoryType(requirement.direction),
@@ -505,10 +486,10 @@ export function DirectFinancialSend({
                       description="Selecione um centro de custo existente no cadastro de destino." data={catalogs[requirement.clientId]?.costCenters || []}
                       value={costCenterOverrides[requirement.key] || null} searchable clearable
                       onChange={(value) => setCostCenterOverrides((current) => { const next = { ...current }; if (value) next[requirement.key] = value; else delete next[requirement.key]; return next; })} />)}
-                    <Text size="sm">
+                    {module !== "WHATSAPP" && <Text size="sm">
                       A API do Conta Azul não permite criar categorias. Você pode selecionar uma equivalente acima
                       ou cadastrá-la no Conta Azul e atualizar a lista.
-                    </Text>
+                    </Text>}
                     <Group gap="xs">
                       <Button
                         component="a"
@@ -546,7 +527,7 @@ export function DirectFinancialSend({
               )}
 
               <Group justify="flex-end">
-                <Button variant="default" disabled={savingCategory} onClick={() => setOpened(false)}>
+                <Button variant="default" disabled={savingCategory||sending} onClick={() => {if(inline)onCancel?.();else setOpened(false);}}>
                   Cancelar
                 </Button>
                 <Button
@@ -562,6 +543,36 @@ export function DirectFinancialSend({
           )}
           {optionsError && <Alert color="red">{optionsError}</Alert>}
         </Stack>
+  );
+  if(inline)return content;
+  return (
+    <>
+      <Button
+        variant="light"
+        leftSection={<IconCloudUpload size={18} />}
+        loading={sending}
+        disabled={disabled || !clientId || lines.length === 0 || sending}
+        onClick={() => {
+          setTechnicalContactId(null);
+          setTechnicalContactName(null);
+          setFinancialAccountId(null);
+          setCategoryOverrides({});
+          setCostCenterOverrides({});
+          setOpened(true);
+        }}
+      >
+        {sending
+          ? `Enviando ${counts.CREATED + counts.SETTLED}/${lines.length}...`
+          : "Enviar direto ao Conta Azul"}
+      </Button>
+
+      <Modal
+        opened={opened}
+        onClose={() => { if (!savingCategory) setOpened(false); }}
+        title="Enviar lançamentos ao Conta Azul"
+        size="lg"
+      >
+        {content}
       </Modal>
     </>
   );

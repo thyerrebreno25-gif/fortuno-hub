@@ -1,3 +1,5 @@
+import {paymentMethods,validWhatsAppFinancialLines} from "@/modules/whatsapp/financial-draft";
+import {whatsappFinancialSource} from "@/modules/whatsapp/payment-financial-source";
 import {validateWhatsAppFinancialSource,completeWhatsAppPaymentRequest} from "@/modules/whatsapp/payment-financial-source";
 import { resolveAcquirerContact } from "@/modules/conta-azul/acquirer-contact";
 import crypto from "node:crypto";
@@ -181,6 +183,7 @@ async function findOrCreateExport(input: {
               originalLineKey: line.lineKey,
               observation: line.observation || null,
               source: line.metadata || null,
+              ...(input.body.module === "WHATSAPP" ? {cleanObservation:true} : {}),
               ...(input.body.useLineAccounts ? {
                 financialAccountId: line.financialAccountId,
                 financialAccountName: line.financialAccountName || null,
@@ -265,7 +268,7 @@ async function resolveTechnicalContact(
     return findContaAzulOption(contaAzulOptions(peopleBody), candidateName);
   }
 
-  if (requestedContactId) {
+  if (requestedContactId && module !== "WHATSAPP") {
     const compatible = await compatiblePerson({
       value: requestedContactId,
       label: requestedContactName?.trim() || name,
@@ -331,7 +334,7 @@ async function findFinancialInstallment(input: {
     if (normalizeContaAzulLabel(String(candidate.descricao || "")) !== normalizeContaAzulLabel(input.description) || typeof candidate.id !== "string") continue;
     const detail = await contaAzulRequest<unknown>(input.clientId, "/v1/financeiro/eventos-financeiros/parcelas/" + candidate.id);
     const record = metadataRecord(detail);
-    if (input.reference && !String(record.nota || "").includes(input.reference)) continue;
+    if (input.reference && ![record.referencia_externa,metadataRecord(record.evento).referencia_externa,candidate.referencia_externa].some(value=>value===input.reference) && !String(record.nota||"").includes(input.reference)) continue;
     if (input.eventId && metadataRecord(record.evento).id !== input.eventId) continue;
     confirmFinancialInstallment(detail, { ...input, competenceDate: dateOnly(input.competenceDate), dueDate: dateOnly(input.dueDate) });
     matching.push(candidate.id);
@@ -385,6 +388,11 @@ function exportResumeError(batch: Awaited<ReturnType<typeof findOrCreateExport>>
       || normalizeContaAzulLabel(line.categoryName) !== normalizeContaAzulLabel(target.categoryName)
       || normalizeContaAzulLabel(line.costCenterName || "") !== normalizeContaAzulLabel(target.costCenterName || "");
   })) return "Os dados diferem da tentativa anterior deste arquivo. Consulte Envios ao CA para conferir valores, datas e classificações antes de retomar.";
+  if(body.module === "WHATSAPP") {
+    const savedCounterparty=metadataRecord(batch.metadata).counterpartyHint;
+    if(typeof savedCounterparty === "string" && normalizeContaAzulLabel(savedCounterparty)!==normalizeContaAzulLabel(body.counterpartyHint||""))return "O favorecido difere da tentativa anterior. Retome os dados salvos no histórico.";
+    if(batch.lines.some(line=>{const target=requested.get(line.lineKey)!,saved=metadataRecord(line.metadata),source=metadataRecord(saved.source);return String(saved.observation||"")!==(target.observation||"")||String(source.paymentMethod||"OUTRO")!==String(target.metadata?.paymentMethod||"OUTRO")||JSON.stringify(Array.isArray(source.whatsappAttachmentIds)?[...source.whatsappAttachmentIds].sort():[])!==JSON.stringify(Array.isArray(target.metadata?.whatsappAttachmentIds)?[...target.metadata.whatsappAttachmentIds].sort():[]);} ))return "As observações, a forma de pagamento ou os documentos diferem da tentativa anterior. Retome os dados salvos no histórico.";
+  }
   if (batch.lines.some((line) => {
     const target = requested.get(line.lineKey)!;
     return exportLineFinancialAccount(line.metadata, batch.financialAccountId) !== (target.financialAccountId || body.financialAccountId)
@@ -443,13 +451,14 @@ async function createPendingLines(input: {
       competenceDate: dateOnly(line.competenceDate),
       dueDate: dateOnly(line.dueDate),
       description: line.description,
-      observation: reference + " | " + observation,
+      observation: metadata.cleanObservation ? String(metadata.observation || "") : reference + " | " + observation,
       amount: Number(line.amount),
       contactId: destination.contactIds[line.direction],
       financialAccountId,
       categoryId: category.value,
       costCenterId: costCenter?.value,
       externalReference: reference,
+      paymentMethod: paymentMethods.find(method=>method.value===metadataRecord(metadata.source).paymentMethod)?.value,
     };
     const directPayload = buildDirectFinancialEventPayload(payloadInput);
     const directEndpoint = line.direction === "RECEIVABLE"
@@ -482,7 +491,7 @@ async function createPendingLines(input: {
           response = await contaAzulRequest<unknown>(destinationClientId, directEndpoint, { method: "POST", body: JSON.stringify(directPayload) });
         } catch (error) {
           const status = contaAzulErrorStatus(error);
-          if (status === 404 || status === 405) { await input.assertLease(); response = await contaAzulRequest<unknown>(destinationClientId, legacyEndpoint, { method: "POST", body: JSON.stringify(buildFinancialEventPayload(payloadInput)) }); }
+          if ((status === 404 || status === 405) && !metadata.cleanObservation) { await input.assertLease(); response = await contaAzulRequest<unknown>(destinationClientId, legacyEndpoint, { method: "POST", body: JSON.stringify(buildFinancialEventPayload(payloadInput)) }); }
           else throw error;
         }
       }
@@ -665,7 +674,7 @@ export async function POST(request: Request) {
     if (typeof metadata.originalSourceKey !== "string" || saved.lines.some((line) => typeof metadataRecord(line.metadata).originalLineKey !== "string")) return NextResponse.json({ error: "Os dados originais deste envio não estão completos. Reabra a revisão do arquivo original." }, { status: 409 });
     const useLineAccounts = Boolean(metadata.useLineAccounts);
     incoming = { clientId: saved.clientId, module: saved.module, sourceKey: metadata.originalSourceKey, sourceName: saved.sourceName, contactId: saved.contactId, contactName: saved.contactName, counterpartyHint: typeof metadata.counterpartyHint === "string" ? metadata.counterpartyHint : saved.module === "ACQUIRER" ? null : saved.contactName || saved.financialAccountName, financialAccountId: saved.financialAccountId, financialAccountName: saved.financialAccountName, settle: saved.settleRequested, useLineAccounts,
-      lines: saved.lines.map((line) => ({ lineKey: String(metadataRecord(line.metadata).originalLineKey), direction: line.direction, competenceDate: dateOnly(line.competenceDate), dueDate: dateOnly(line.dueDate), paymentDate: line.paymentDate ? dateOnly(line.paymentDate) : null, description: line.description, amount: Number(line.amount), categoryName: line.categoryName, costCenterName: line.costCenterName, observation: String(metadataRecord(line.metadata).observation || ""),
+      lines: saved.lines.map((line) => ({ lineKey: String(metadataRecord(line.metadata).originalLineKey), direction: line.direction, competenceDate: dateOnly(line.competenceDate), dueDate: dateOnly(line.dueDate), paymentDate: line.paymentDate ? dateOnly(line.paymentDate) : null, description: line.description, amount: Number(line.amount), categoryName: line.categoryName, costCenterName: line.costCenterName, observation: String(metadataRecord(line.metadata).observation || ""), metadata: metadataRecord(metadataRecord(line.metadata).source),
         ...(useLineAccounts ? { financialAccountId: exportLineFinancialAccount(line.metadata, saved.financialAccountId), destinationClientId: exportLineDestinationClient(line.metadata, saved.clientId) } : {}),
       })),
     };
@@ -676,7 +685,10 @@ export async function POST(request: Request) {
   }
   const requestedBody = parsed.data;
   if(requestedBody.module==="WHATSAPP"){
-    if(!requestedBody.counterpartyHint?.trim()||requestedBody.lines.length!==1||!await validateWhatsAppFinancialSource(member,requestedBody.clientId,requestedBody.sourceKey))return NextResponse.json({error:"Vincule o cliente e assuma o chamado antes de criar o lançamento. Informe também o favorecido."},{status:403});
+    const source=whatsappFinancialSource(requestedBody.sourceKey);
+    if(!source||!requestedBody.counterpartyHint?.trim()||!validWhatsAppFinancialLines(source.messageId,requestedBody.lines,requestedBody.settle))return NextResponse.json({error:"Revise o favorecido, as datas e a repetição do lançamento desta mensagem."},{status:400});
+    const attachments=requestedBody.lines.flatMap(line=>Array.isArray(line.metadata?.whatsappAttachmentIds)?line.metadata.whatsappAttachmentIds:[]);
+    if(attachments.some(id=>typeof id!=="string")||attachments.length>600||!await validateWhatsAppFinancialSource(member,requestedBody.clientId,requestedBody.sourceKey,[...new Set(attachments)] as string[]))return NextResponse.json({error:"Vincule o cliente, assuma o chamado e use apenas anexos da mensagem selecionada."},{status:403});
   }
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -791,7 +803,7 @@ export async function POST(request: Request) {
       contactName: primaryContact.label,
     };
   } catch (error) {
-    const context = requestedBody.module === "ACQUIRER" ? "da adquirente" : "da fatura";
+    const context = requestedBody.module === "WHATSAPP" ? "do favorecido" : requestedBody.module === "ACQUIRER" ? "da adquirente" : "da fatura";
     return NextResponse.json({
       error: error instanceof Error
         ? `Não foi possível preparar o vínculo técnico ${context}: ${error.message}`

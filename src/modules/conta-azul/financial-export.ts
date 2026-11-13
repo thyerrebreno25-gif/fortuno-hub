@@ -123,6 +123,7 @@ export type FinancialEventPayloadInput = {
   categoryId: string;
   costCenterId?: string | null;
   externalReference?: string | null;
+  paymentMethod?: string;
 };
 
 export function buildFinancialEventPayload(input: FinancialEventPayloadInput) {
@@ -160,7 +161,7 @@ export function buildFinancialEventPayload(input: FinancialEventPayloadInput) {
             desconto: 0,
             taxa: 0,
           },
-          metodo_pagamento: "OUTRO",
+          metodo_pagamento: input.paymentMethod || "OUTRO",
         },
       ],
     },

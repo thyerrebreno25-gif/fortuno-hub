@@ -1,3 +1,4 @@
+vi.mock("@/modules/whatsapp/financial-documents",()=>({whatsappFinancialDocuments:async()=>({})}));
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ member: vi.fn(), permission: vi.fn(), client: vi.fn(), batches: vi.fn(), request: vi.fn(), batch: vi.fn(), update: vi.fn(), audit: vi.fn(), lease: vi.fn() }));
 vi.mock("@/lib/prisma", () => { const tx = { contaAzulFinancialExport: { findMany: mocks.batches, findFirst: mocks.batch, update: vi.fn() }, contaAzulFinancialExportLine: { update: mocks.update }, auditLog: { create: mocks.audit }, documentImportDispatchLease: { upsert: vi.fn(), updateMany: mocks.lease, findFirst: vi.fn(async () => ({})) } }; return { prisma: { ...tx, $transaction: async (run: (tx: unknown) => unknown) => run(tx) } }; });

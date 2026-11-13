@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { Alert, Badge, Button, Checkbox, Group, Modal, Paper, ScrollArea, Select, Stack, Table, Text } from "@mantine/core";
+import { Anchor, Alert, Badge, Button, Checkbox, Group, Modal, Paper, ScrollArea, Select, Stack, Table, Text } from "@mantine/core";
 import { beginSessionKeepAlive } from "@/modules/session/client-activity";
 type Line = { id: string; description: string; amount: string | number; dueDate: string; status: string; lastError: string | null; externalInstallmentId: string | null };
 type Batch = { id: string; sourceName: string; status: string; financialAccountName: string | null; settleRequested: boolean; createdAt: string; lastError: string | null; _count: { lines: number }; lines: Line[] };
@@ -8,6 +8,7 @@ type Check = { lineId: string; status: string; message: string };
 const labels: Record<string, string> = { PENDING: "Aguardando envio", CREATED: "Criação registrada", SETTLED: "Baixa registrada", FAILED: "Falha", PROCESSING: "Em processamento", PARTIAL: "Parcial", COMPLETED: "Concluído no histórico" };
 export function FinancialExportHistory({ clientId, clients, exportModule }: { clientId: string | null; clients: { value: string; label: string }[]; exportModule: "CREDIT_CARD_INVOICE" | "ACQUIRER" | "WHATSAPP" }) {
   const [opened, setOpened] = useState(false), [selected, setSelected] = useState<string | null>(null), [batches, setBatches] = useState<Batch[]>([]), [checks, setChecks] = useState<Record<string, Check>>({}), [pages, setPages] = useState<Record<string, number>>({}), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [documents,setDocuments]=useState<Record<string,Array<{name:string;url:string}>>>({});
   const generation = useRef(0);
   const [operation, setOperation] = useState<{ batch: Batch; kind: "PREPARE" | "SEND" } | null>(null), [confirmed, setConfirmed] = useState(false), [notice, setNotice] = useState("");
   async function load(id: string | null, batch?: Batch) {
@@ -21,6 +22,7 @@ export function FinancialExportHistory({ clientId, clients, exportModule }: { cl
       const body = await response.json();
       if (run !== generation.current) return;
       if (!response.ok) throw new Error(body.error || "Não foi possível consultar os envios.");
+      setDocuments(previous=>({...previous,...body.documents}));
       if (batch) {
         setChecks((previous) => ({ ...previous, ...Object.fromEntries((body.checks || []).map((check: Check) => [check.lineId, check])) }));
         setPages((previous) => ({ ...previous, [batch.id]: page + 1 }));
@@ -72,6 +74,7 @@ export function FinancialExportHistory({ clientId, clients, exportModule }: { cl
       {selected && !busy && !batches.length && <Text>Nenhum envio registrado para este cliente neste módulo.</Text>}
       {batches.map((batch) => <Paper key={batch.id} withBorder p="md"><Stack gap="sm">
         <Group justify="space-between"><div><Text fw={700}>{batch.sourceName}</Text><Text size="xs" c="dimmed">{new Date(batch.createdAt).toLocaleString("pt-BR")} · {batch.financialAccountName || "Conta não informada"} · {batch._count.lines} lançamento(s)</Text></div><Badge color={batch.status === "COMPLETED" ? "blue" : "orange"}>{labels[batch.status] || batch.status}</Badge></Group>
+        {documents[batch.id]?.length>0&&<Group gap="sm"><Text size="xs" c="dimmed">Documentos no Hub:</Text>{documents[batch.id].map(file=><Anchor key={file.url} size="xs" href={file.url} target="_blank" rel="noreferrer">{file.name}</Anchor>)}</Group>}
         {batch.lastError && <Alert color="orange">{batch.lastError}</Alert>}
         <Group><Button variant="light" loading={busy} disabled={busy || Boolean(operation) || (pages[batch.id] || 0) * 20 >= batch._count.lines} onClick={() => void load(selected, batch)}>{pages[batch.id] ? "Conferir próximos 20 no CA" : "Conferir no CA"}</Button><Text size="xs" c="dimmed">{Math.min((pages[batch.id] || 0) * 20, batch._count.lines)} de {batch._count.lines} consultados</Text></Group>
         <Group>{batch.status !== "COMPLETED" && <Button variant="default" disabled={busy || Boolean(operation)} onClick={() => { setConfirmed(false); setOperation({ batch, kind: "SEND" }); }}>Retomar envio salvo</Button>}{batch.lines.some((line) => line.status === "FAILED" || checks[line.id]?.status === "NOT_FOUND") && <Button variant="subtle" color="orange" disabled={busy || Boolean(operation)} onClick={() => { setConfirmed(false); setOperation({ batch, kind: "PREPARE" }); }}>Preparar itens não localizados</Button>}</Group>

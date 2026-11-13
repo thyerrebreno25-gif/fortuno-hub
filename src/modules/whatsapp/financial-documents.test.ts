@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({messages:vi.fn(),permission:vi.fn(),account:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{serviceMessage:{findMany:m.messages}}}));
+vi.mock("@/modules/atendimento/auth",()=>({getWhatsAppPermission:m.permission}));
+vi.mock("./account-scope",()=>({currentWhatsAppAccount:m.account,accountMessageWhere:()=>({providerMetadata:{path:["accountPhone"],equals:"5511"}})}));
+vi.mock("./payment-financial-source",()=>({whatsappFinancialSource:(key:string)=>key==="whatsapp:message"?{messageId:"message"}:null}));
+import {whatsappFinancialDocuments} from "./financial-documents";
+const batch={id:"batch",module:"WHATSAPP",metadata:{originalSourceKey:"whatsapp:message"},lines:[{metadata:{source:{whatsappAttachmentIds:["selected-file","forged"]}}}]};
+const member={organizationId:"org",role:"OPERATOR"};
+beforeEach(()=>{vi.resetAllMocks();m.permission.mockResolvedValue({canView:true});m.account.mockResolvedValue({where:{organizationId:"org",recipientEmail:"wa-account:c:5511"},connection:{phone:"5511"}});m.messages.mockResolvedValue([{id:"message",ticketId:"ticket",attachments:[{id:"selected-file",name:"Boleto.pdf"},{id:"not-selected",name:"Outro.pdf"}]}]);});
+it("only exposes selected source documents within the current organization and WhatsApp account",async()=>{expect(await whatsappFinancialDocuments(member,[batch])).toEqual({batch:[{name:"Boleto.pdf",url:"/api/whatsapp/ticket/attachments/selected-file"}]});expect(m.messages.mock.calls[0][0].where).toMatchObject({id:{in:["message"]},ticket:{organizationId:"org",recipientEmail:"wa-account:c:5511"},providerMetadata:{path:["accountPhone"],equals:"5511"}});});
+it("does not disclose names or document links without WhatsApp permission",async()=>{m.permission.mockResolvedValueOnce({canView:false});expect(await whatsappFinancialDocuments(member,[batch])).toEqual({});expect(m.messages).not.toHaveBeenCalled();});
+it("does not query WhatsApp for unrelated financial modules",async()=>{expect(await whatsappFinancialDocuments(member,[{...batch,module:"ACQUIRER"}])).toEqual({});expect(m.permission).not.toHaveBeenCalled();expect(m.messages).not.toHaveBeenCalled();});

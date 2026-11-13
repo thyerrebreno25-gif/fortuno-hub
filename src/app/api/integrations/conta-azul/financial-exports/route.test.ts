@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     contaAzulFinancialExportLine: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn(), findFirst: vi.fn() },
   },
 }));
-vi.mock("@/modules/whatsapp/payment-financial-source",()=>({validateWhatsAppFinancialSource:mocks.source,completeWhatsAppPaymentRequest:mocks.completePayment}));
+vi.mock("@/modules/whatsapp/payment-financial-source",()=>({whatsappFinancialSource:(key:string)=>/^whatsapp:([a-zA-Z0-9_-]+)$/.test(key)?{messageId:key.slice(9)}:null,validateWhatsAppFinancialSource:mocks.source,completeWhatsAppPaymentRequest:mocks.completePayment}));
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.db }));
 vi.mock("@/modules/permissions/permissions", () => ({ getRolePermissions: mocks.permission }));
 vi.mock("@/modules/purchase-invoices/server/auth", () => ({ getPurchaseInvoiceMember: mocks.member, findAuthorizedClient: mocks.client }));
@@ -336,6 +336,24 @@ it("retoma a partir dos dados salvos sem exigir novo upload nem recriar itens co
 });
 
 describe("lançamento revisado a partir do WhatsApp",()=>{
- it("creates one pending payable, attributes the origin and does not duplicate on resume",async()=>{const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor revisado",lines:[body(false,false).lines[0]]};const first=await send(data);expect(first.status).toBe(200);expect((await first.json()).done).toBe(true);expect(mocks.source).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org1",userId:"user1"}),"client1","whatsapp:message");expect(financialCreates()).toHaveLength(1);expect(settlementCreates()).toHaveLength(0);expect(mocks.completePayment).toHaveBeenCalledWith("whatsapp:message","org1","user1","export1");expect((await(await send(data)).json()).alreadyRecorded).toBe(true);expect(financialCreates()).toHaveLength(1);});
- it("rejects an unowned or unrelated conversation before querying Conta Azul",async()=>{mocks.source.mockResolvedValue(false);const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",lines:[body(false,false).lines[0]]};expect((await send(data)).status).toBe(403);expect(mocks.request).not.toHaveBeenCalled();});
+ it("creates one pending payable, attributes the origin and does not duplicate on resume",async()=>{const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor revisado",lines:[{...body(false,false).lines[0],lineKey:"message"}]};const first=await send(data);expect(first.status).toBe(200);expect((await first.json()).done).toBe(true);expect(mocks.source).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org1",userId:"user1"}),"client1","whatsapp:message",[]);expect(financialCreates()).toHaveLength(1);expect(settlementCreates()).toHaveLength(0);expect(mocks.completePayment).toHaveBeenCalledWith("whatsapp:message","org1","user1","export1");expect((await(await send(data)).json()).alreadyRecorded).toBe(true);expect(financialCreates()).toHaveLength(1);});
+ it("rejects an unowned or unrelated conversation before querying Conta Azul",async()=>{mocks.source.mockResolvedValue(false);const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor revisado",lines:[{...body(false,false).lines[0],lineKey:"message"}]};expect((await send(data)).status).toBe(403);expect(mocks.request).not.toHaveBeenCalled();});
 });
+
+
+it("keeps reviewed WhatsApp observations clean and uses a separate external reference for deduplication",async()=>{
+ const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor",lines:[{...body(false,false).lines[0],lineKey:"message",observation:"Pagamento do serviço. PIX: fornecedor@exemplo.com",metadata:{paymentMethod:"PIX_PAGAMENTO_INSTANTANEO",whatsappAttachmentIds:[]}}]};
+ const response=await send(data);expect(response.status).toBe(200);expect((await response.json()).done).toBe(true);
+ const payload=JSON.parse(financialCreates()[0][2].body);expect(payload.observacao).toBe(data.lines[0].observation);expect(payload.condicao_pagamento.parcelas[0].nota).toBe(data.lines[0].observation);expect(payload.referencia_externa).toMatch(/^FORTUNO-/);expect(payload.condicao_pagamento.parcelas[0].metodo_pagamento).toBe("PIX_PAGAMENTO_INSTANTANEO");
+ expect(payload.observacao).not.toContain("FORTUNO-");expect(payload.observacao).not.toContain("Origem:");
+});
+it("creates and safely resumes all reviewed monthly occurrences from the same message",async()=>{
+ const {buildWhatsAppFinancialLines}=await import("@/modules/whatsapp/financial-draft");
+ const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor",lines:buildWhatsAppFinancialLines("message",{...body(false,false).lines[0],direction:"PAYABLE",competenceDate:"2026-01-31",dueDate:"2026-01-31"},{frequency:"MONTHLY",interval:1,count:3})};
+ expect((await(await send(data)).json()).done).toBe(true);expect(financialCreates()).toHaveLength(3);expect(financialCreates().map(call=>JSON.parse(call[2].body).condicao_pagamento.parcelas[0].data_vencimento)).toEqual(["2026-01-31","2026-02-28","2026-03-31"]);expect((await(await send(data)).json()).alreadyRecorded).toBe(true);expect(financialCreates()).toHaveLength(3);
+});
+it("rejects repeat dates or keys forged outside the selected WhatsApp source",async()=>{
+ const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor",lines:[{...body(false,false).lines[0],lineKey:"another-message"}]};expect((await send(data)).status).toBe(400);expect(mocks.request).not.toHaveBeenCalled();
+});
+
+it("preserves reviewed WhatsApp counterparty and observations after an attempted send",async()=>{const data={...body(false,false),module:"WHATSAPP",sourceKey:"whatsapp:message",counterpartyHint:"Fornecedor",lines:[{...body(false,false).lines[0],lineKey:"message",observation:"Instrução validada"}]};expect((await send(data)).status).toBe(200);expect((await send({...data,counterpartyHint:"Outro"})).status).toBe(409);expect((await send({...data,lines:[{...data.lines[0],observation:"Instrução diferente"}]})).status).toBe(409);expect(financialCreates()).toHaveLength(1);});
