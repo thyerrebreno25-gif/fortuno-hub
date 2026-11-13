@@ -522,3 +522,64 @@
 :global(html[data-mantine-color-scheme="dark"]) .emailIframe {
   background: var(--fortuno-surface);
 }
+
+/* Mail workspace: folders, client navigation, message list and persistent reading pane. */
+.page { height:calc(100dvh - 88px); min-height:500px; padding:0; gap:0; }
+.mailHeader {display:flex;align-items:center;gap:18px;padding:10px 16px;min-height:64px;border:1px solid var(--fortuno-line,#dfe6ee);border-bottom:0;background:var(--mantine-color-body);border-radius:12px 12px 0 0;flex-shrink:0;}
+.mailTitle {font-size:21px;letter-spacing:-.6px;white-space:nowrap;}
+.mailSearch {width:min(620px,65%);margin-inline:auto;min-width:180px;}
+.mailSearch input {background:var(--fortuno-surface-soft,#f3f6fa);border-color:transparent;border-radius:7px;}
+.mailToolbar {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px;background:var(--mantine-color-body);border:1px solid var(--fortuno-line,#dfe6ee);flex-shrink:0;}
+.outlookLayout {flex:1;min-height:0;min-width:0;display:grid;grid-template-columns:210px clamp(280px,25vw,350px) minmax(0,1fr);border:1px solid var(--fortuno-line,#dfe6ee);border-top:0;border-radius:0 0 12px 12px;overflow:hidden;background:var(--mantine-color-body);}
+.outlookLayout.sidebarHidden {grid-template-columns:clamp(280px,28vw,360px) minmax(0,1fr);}
+.mailFolders {min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto;padding:12px 8px 8px;border-right:1px solid var(--fortuno-line,#dfe6ee);background:var(--fortuno-surface-soft,#f6f8fb);}
+.folderHeading {font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.9px;color:var(--fortuno-muted,#68778d);padding:2px 12px 8px;}
+.folderList {display:flex;flex-direction:column;gap:3px;}
+.folderButton,.clientButton {width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:8px;border-radius:5px;padding:8px 10px;line-height:1.35;}
+.folderButton {font-size:13px;min-height:36px;}
+.folderButton:hover,.clientButton:hover {background:var(--fortuno-surface-raised,#eaf1f9);}
+.folderActive,.clientActive {background:var(--mantine-color-blue-light)!important;color:var(--mantine-color-blue-light-color);font-weight:700;}
+.folderCount {font-size:11px;min-width:18px;text-align:right;color:var(--fortuno-muted,#68778d);font-variant-numeric:tabular-nums;}
+.clientSectionTitle {display:flex;align-items:center;gap:7px;border:0;background:transparent;color:inherit;cursor:pointer;font-size:12px;font-weight:750;width:100%;padding:16px 8px 10px;}
+.clientSectionTitle span {flex:1;text-align:left;}
+.clientNavigation {display:flex;flex-direction:column;min-height:100px;flex:1;gap:8px;}
+.clientNavigation>div:first-child {margin:0 4px;}
+.clientScroll {flex:1;min-height:0;}
+.clientButton {font-size:12px;padding:9px 8px;min-height:38px;}
+.clientButton>span {overflow-wrap:anywhere;min-width:0;}
+.clientButton small {color:var(--fortuno-muted,#68778d);font-variant-numeric:tabular-nums;}
+.mailList {display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--fortuno-line,#dfe6ee);}
+.mailListHeading {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;border-bottom:1px solid var(--fortuno-line,#dfe6ee);min-height:65px;flex-shrink:0;}
+.mailListHeading>div {min-width:0;}
+.mailListScroll {flex:1;min-height:0;}
+.mailRow {display:block;width:100%;min-height:112px;text-align:left;padding:13px 15px;border:0;border-bottom:1px solid var(--fortuno-line,#e6ebf2);background:var(--mantine-color-body);color:inherit;cursor:pointer;box-shadow:inset 3px 0 transparent;}
+.mailRow:hover {background:var(--fortuno-surface-soft,#f6f8fc);}
+.mailRowSelected {background:var(--mantine-color-blue-light)!important;box-shadow:inset 3px 0 var(--mantine-color-blue-6);}
+.mailRow:focus-visible,.folderButton:focus-visible,.clientButton:focus-visible {outline:2px solid var(--mantine-color-blue-6);outline-offset:-2px;}
+.mailRowTop {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+.sender {font-size:13px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mailRowTop time {font-size:10px;white-space:nowrap;color:var(--fortuno-muted,#68778d);flex-shrink:0;}
+.mailRowSubject {margin-bottom:3px;}
+.mailRowBottom {display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;}
+.mailRowBottom>p {min-width:0;}
+.statusDot {width:7px;height:7px;border-radius:50%;background:var(--mantine-color-blue-6);flex-shrink:0;}
+.statusDot[data-status="RESOLVED"] {background:var(--mantine-color-teal-6);}
+.statusDot[data-status="WAITING_CUSTOMER"],.statusDot[data-status="WAITING_INTERNAL"] {background:var(--mantine-color-yellow-7);}
+.statusDot[data-status="SPAM"] {background:var(--mantine-color-gray-6);}
+.mailPagination {border-top:1px solid var(--fortuno-line,#dfe6ee);padding:10px;flex-shrink:0;}
+.readingPane,.readingFrame {min-width:0;min-height:0;height:100%;overflow:hidden;}
+.readingEmpty {height:100%;padding:28px;background:var(--fortuno-surface-soft,#f7f9fc);}
+.envelopeIllustration {display:grid;place-items:center;width:106px;height:106px;background:var(--mantine-color-blue-light);color:var(--mantine-color-blue-6);border-radius:26px;margin-bottom:8px;}
+.readingInline {height:100%;min-height:0;display:flex;flex-direction:column;background:var(--fortuno-surface-soft,#f7f9fc);}
+.readingInline .emailTopbar {height:auto;min-height:58px;flex-shrink:0;padding:10px 16px;}
+.readingInline .emailTopbar>div:first-child {min-width:0;flex:1;}
+.readingInline .emailTopbar>div:last-child {flex-shrink:0;}
+.readingInline .emailContentGrid {flex:1;min-height:0;height:0;display:grid;grid-template-columns:minmax(0,1fr);overflow:hidden;}
+.readingInline .emailMain {min-height:0;height:100%;border-right:0;}
+.readingInline .emailMainInner {padding:22px 20px 36px;}
+.readingInline .emailSubject {font-size:22px;line-height:1.3;overflow-wrap:anywhere;}
+.readingInline .messageHeader {flex-wrap:wrap;gap:8px;}
+.analyticsWorkspace {flex:1;min-height:0;overflow:auto;padding:18px;}
+@media(max-width:1280px) and (min-width:1101px) {.outlookLayout {grid-template-columns:180px 270px minmax(0,1fr);}.outlookLayout.sidebarHidden {grid-template-columns:290px minmax(0,1fr);}.readingInline .emailMainInner {padding:18px 12px 30px;}}
+@media(max-width:1100px) {.outlookLayout {grid-template-columns:210px minmax(0,1fr);}.outlookLayout.sidebarHidden {grid-template-columns:minmax(0,1fr);}.readingPane {display:none;}.hasSelection .mailList {display:none;}.hasSelection .readingPane {display:block;}.mailRow {min-height:100px;}}
+@media(max-width:650px) {.page {height:calc(100dvh - 80px);min-height:480px;}.mailHeader {gap:8px;padding:10px 8px;}.mailTitle {font-size:17px;}.mailHeader :global(.mantine-ThemeIcon-root) {display:none;}.mailSearch {min-width:90px;flex:1;}.mailHeader>div:last-child {gap:0;}.outlookLayout {grid-template-columns:150px minmax(0,1fr);}.hasSelection {grid-template-columns:minmax(0,1fr);}.hasSelection .mailFolders {display:none;}.folderButton {font-size:11px;gap:4px;padding-inline:6px;}.clientButton {font-size:11px;grid-template-columns:minmax(0,1fr) auto;}.clientButton>svg {display:none;}.mailToolbar {padding:7px 6px;}.readingInline .emailTopbar {padding:8px;}.readingInline .emailTopbar :global(.mantine-ThemeIcon-root) {display:none;}.readingInline .emailSubject {font-size:20px;}}

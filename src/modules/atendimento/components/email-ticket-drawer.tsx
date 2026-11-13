@@ -41,8 +41,10 @@ import {
   IconUnderline,
   IconUser,
   IconX,
+  IconAdjustmentsHorizontal,
 } from "@tabler/icons-react";
 import {
+  type ReactNode,
   useMemo,
   useRef,
   useState,
@@ -94,6 +96,7 @@ function htmlToText(value: string) {
 
 export function EmailTicketDrawer({
   opened,
+  inline = false,
   loading,
   ticket,
   bootstrap,
@@ -106,6 +109,7 @@ export function EmailTicketDrawer({
   onClose,
 }: {
   opened: boolean;
+  inline?: boolean;
   loading: boolean;
   ticket: Any | null;
   bootstrap: Any;
@@ -121,6 +125,7 @@ export function EmailTicketDrawer({
   const canEditTicket = Boolean(bootstrap?.permission?.canEdit && (canManage || ticket?.assignedTo?.id === bootstrap?.currentUser?.id));
   const messages = useMemo(()=>ticket?.messages || [],[ticket?.messages]);
 
+  const [detailsOpened,setDetailsOpened]=useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
 
   const [replyHtml, setReplyHtml] = useState("");
@@ -250,22 +255,287 @@ export function EmailTicketDrawer({
     }
   }
 
+  const detailsPanel=ticket?(            <aside className={styles.ticketPanel}>
+              <ScrollArea h={inline?"100%":"calc(100vh - 58px)"}>
+                <Stack p="md" gap="md">
+                  <div>
+                    <Text
+                      size="xs"
+                      fw={800}
+                      c="dimmed"
+                      tt="uppercase"
+                    >
+                      Atendimento
+                    </Text>
+
+                    <Text fw={700} mt={2}>
+                      Dados do chamado
+                    </Text>
+                  </div>
+
+                  <Stack gap="sm">
+                    <Select
+                      label="Cliente"
+                      size="sm"
+                      clearable
+                      searchable
+                      disabled={!canManage}
+                      data={clientOptions}
+                      value={ticket.client?.id || null}
+                      onChange={(value) =>
+                        void updateTicket("client", {
+                          clientId: value,
+                        })
+                      }
+                    />
+
+                    {canManage && ticket.client?.id && <Button variant="light" size="xs" loading={saving} onClick={() => void updateTicket("rememberSender")}>Usar remetente como referência deste cliente</Button>}
+
+                    <Select
+                      label="Responsável"
+                      size="sm"
+                      clearable
+                      searchable
+                      disabled={!canManage}
+                      data={memberOptions}
+                      value={ticket.assignedTo?.id || null}
+                      onChange={(value) =>
+                        void updateTicket("assign", {
+                          assignedToId: value,
+                        })
+                      }
+                    />
+
+                    <Select
+                      label="Prioridade"
+                      disabled={!canEditTicket}
+                      size="sm"
+                      data={[
+                        {
+                          value: "LOW",
+                          label: "Baixa",
+                        },
+                        {
+                          value: "MEDIUM",
+                          label: "Média",
+                        },
+                        {
+                          value: "HIGH",
+                          label: "Alta",
+                        },
+                        {
+                          value: "CRITICAL",
+                          label: "Crítica",
+                        },
+                      ]}
+                      value={ticket.priority}
+                      onChange={(value) =>
+                        value &&
+                        void updateTicket("priority", {
+                          priority: value,
+                        })
+                      }
+                    />
+                  </Stack>
+
+                  {canManage && !ticket.assignedTo && (
+                    <Button
+                      variant="light"
+                      size="sm"
+                      leftSection={<IconUser size={15} />}
+                      loading={saving}
+                      onClick={() =>
+                        void updateTicket("assign", {
+                          assignedToId:
+                            bootstrap.currentUser.id,
+                        })
+                      }
+                    >
+                      Assumir
+                    </Button>
+                  )}
+
+                  <Divider />
+
+                  <Stack gap={7}>
+                    <Text
+                      size="xs"
+                      fw={800}
+                      c="dimmed"
+                      tt="uppercase"
+                    >
+                      Status
+                    </Text>
+
+                    {ticket.status !== "IN_PROGRESS" &&
+                      ticket.status !== "RESOLVED" &&
+                      ticket.status !== "SPAM" && (
+                        <Button disabled={!canEditTicket}
+                          variant="light"
+                          size="sm"
+                          onClick={() =>
+                            void updateTicket("status", {
+                              status: "IN_PROGRESS",
+                            })
+                          }
+                        >
+                          Em atendimento
+                        </Button>
+                      )}
+
+                    <Button disabled={!canEditTicket}
+                      variant="light"
+                      color="yellow"
+                      size="sm"
+                      onClick={() =>
+                        void updateTicket("status", {
+                          status: "WAITING_CUSTOMER",
+                        })
+                      }
+                    >
+                      Aguardando cliente
+                    </Button>
+
+                    <Button disabled={!canEditTicket}
+                      variant="light"
+                      color="orange"
+                      size="sm"
+                      onClick={() =>
+                        void updateTicket("status", {
+                          status: "WAITING_INTERNAL",
+                        })
+                      }
+                    >
+                      Aguardando interno
+                    </Button>
+
+                    {ticket.status !== "RESOLVED" ? (
+                      <Button disabled={!canEditTicket}
+                        color="green"
+                        variant="light"
+                        size="sm"
+                        leftSection={
+                          <IconCircleCheck size={15} />
+                        }
+                        onClick={() =>
+                          void updateTicket("status", {
+                            status: "RESOLVED",
+                          })
+                        }
+                      >
+                        Resolver
+                      </Button>
+                    ) : (
+                      <Button disabled={!canEditTicket}
+                        variant="light"
+                        size="sm"
+                        leftSection={
+                          <IconArrowBackUp size={15} />
+                        }
+                        onClick={() =>
+                          void updateTicket("status", {
+                            status: "IN_PROGRESS",
+                          })
+                        }
+                      >
+                        Reabrir
+                      </Button>
+                    )}
+
+                    {ticket.status !== "SPAM" ? (
+                      <Button disabled={!canEditTicket}
+                        color="gray"
+                        variant="subtle"
+                        size="sm"
+                        leftSection={
+                          <IconAlertTriangle size={15} />
+                        }
+                        onClick={() =>
+                          void updateTicket("status", {
+                            status: "SPAM",
+                          })
+                        }
+                      >
+                        Marcar como spam
+                      </Button>
+                    ) : (
+                      <Button disabled={!canEditTicket}
+                        variant="light"
+                        size="sm"
+                        onClick={() =>
+                          void updateTicket("status", {
+                            status: "NEW",
+                          })
+                        }
+                      >
+                        Não é spam
+                      </Button>
+                    )}
+                  </Stack>
+
+                  {ticket.history?.length > 0 && (
+                    <>
+                      <Divider />
+
+                      <div>
+                        <Text
+                          size="xs"
+                          fw={800}
+                          c="dimmed"
+                          tt="uppercase"
+                          mb="xs"
+                        >
+                          Histórico
+                        </Text>
+
+                        <Stack gap="sm">
+                          {ticket.history
+                            .slice(0, 6)
+                            .map((item: Any) => (
+                              <Group
+                                key={item.id}
+                                gap="xs"
+                                align="flex-start"
+                                wrap="nowrap"
+                              >
+                                <ThemeIcon
+                                  size={24}
+                                  radius="xl"
+                                  variant="light"
+                                >
+                                  <IconClock size={12} />
+                                </ThemeIcon>
+
+                                <div>
+                                  <Text size="xs" fw={600}>
+                                    {item.message}
+                                  </Text>
+
+                                  <Text size="xs" c="dimmed">
+                                    {formatDate(item.createdAt)}
+                                  </Text>
+                                </div>
+                              </Group>
+                            ))}
+                        </Stack>
+                      </div>
+                    </>
+                  )}
+                </Stack>
+              </ScrollArea>
+            </aside>):null;
+
   return (
-    <Drawer
+    <EmailTicketFrame inline={inline}
       opened={opened}
       onClose={onClose}
-      position="right"
-      size="98%"
-      padding={0}
-      withCloseButton={false}
-      classNames={{ body: styles.emailDrawerBody }}
     >
       {loading ? (
         <Group justify="center" py={120}>
           <Loader />
         </Group>
       ) : !ticket ? null : (
-        <div className={styles.emailView}>
+        <div className={`${styles.emailView} ${inline?styles.readingInline:""}`}>
           <header className={styles.emailTopbar}>
             <Group gap="sm" wrap="nowrap">
               <ThemeIcon size={34} radius="xl" variant="light">
@@ -288,7 +558,8 @@ export function EmailTicketDrawer({
               </div>
             </Group>
 
-            <Group gap="xs">
+            <Group gap="xs" wrap="nowrap">
+              {inline&&<Tooltip label="Dados do atendimento"><ActionIcon variant="subtle" aria-label="Dados do atendimento" onClick={()=>setDetailsOpened(true)}><IconAdjustmentsHorizontal size={18}/></ActionIcon></Tooltip>}
               <Badge
                 size="md"
                 variant="light"
@@ -311,7 +582,7 @@ export function EmailTicketDrawer({
 
           <div className={styles.emailContentGrid}>
             <main className={styles.emailMain}>
-              <ScrollArea h="calc(100vh - 58px)">
+              <ScrollArea h={inline?"100%":"calc(100vh - 58px)"}>
                 <div className={styles.emailMainInner}>
                   <div className={styles.subjectBlock}>
                     <Title
@@ -775,278 +1046,16 @@ export function EmailTicketDrawer({
               </ScrollArea>
             </main>
 
-            <aside className={styles.ticketPanel}>
-              <ScrollArea h="calc(100vh - 58px)">
-                <Stack p="md" gap="md">
-                  <div>
-                    <Text
-                      size="xs"
-                      fw={800}
-                      c="dimmed"
-                      tt="uppercase"
-                    >
-                      Atendimento
-                    </Text>
+            {inline?<Drawer opened={detailsOpened} onClose={()=>setDetailsOpened(false)} title="Dados do atendimento" position="right" size={360} padding={0} styles={{body:{height:"calc(100dvh - 64px)"}}}>{detailsPanel}</Drawer>:detailsPanel}
 
-                    <Text fw={700} mt={2}>
-                      Dados do chamado
-                    </Text>
-                  </div>
-
-                  <Stack gap="sm">
-                    <Select
-                      label="Cliente"
-                      size="sm"
-                      clearable
-                      searchable
-                      disabled={!canManage}
-                      data={clientOptions}
-                      value={ticket.client?.id || null}
-                      onChange={(value) =>
-                        void updateTicket("client", {
-                          clientId: value,
-                        })
-                      }
-                    />
-
-                    {canManage && ticket.client?.id && <Button variant="light" size="xs" loading={saving} onClick={() => void updateTicket("rememberSender")}>Usar remetente como referência deste cliente</Button>}
-
-                    <Select
-                      label="Responsável"
-                      size="sm"
-                      clearable
-                      searchable
-                      disabled={!canManage}
-                      data={memberOptions}
-                      value={ticket.assignedTo?.id || null}
-                      onChange={(value) =>
-                        void updateTicket("assign", {
-                          assignedToId: value,
-                        })
-                      }
-                    />
-
-                    <Select
-                      label="Prioridade"
-                      disabled={!canEditTicket}
-                      size="sm"
-                      data={[
-                        {
-                          value: "LOW",
-                          label: "Baixa",
-                        },
-                        {
-                          value: "MEDIUM",
-                          label: "Média",
-                        },
-                        {
-                          value: "HIGH",
-                          label: "Alta",
-                        },
-                        {
-                          value: "CRITICAL",
-                          label: "Crítica",
-                        },
-                      ]}
-                      value={ticket.priority}
-                      onChange={(value) =>
-                        value &&
-                        void updateTicket("priority", {
-                          priority: value,
-                        })
-                      }
-                    />
-                  </Stack>
-
-                  {canManage && !ticket.assignedTo && (
-                    <Button
-                      variant="light"
-                      size="sm"
-                      leftSection={<IconUser size={15} />}
-                      loading={saving}
-                      onClick={() =>
-                        void updateTicket("assign", {
-                          assignedToId:
-                            bootstrap.currentUser.id,
-                        })
-                      }
-                    >
-                      Assumir
-                    </Button>
-                  )}
-
-                  <Divider />
-
-                  <Stack gap={7}>
-                    <Text
-                      size="xs"
-                      fw={800}
-                      c="dimmed"
-                      tt="uppercase"
-                    >
-                      Status
-                    </Text>
-
-                    {ticket.status !== "IN_PROGRESS" &&
-                      ticket.status !== "RESOLVED" &&
-                      ticket.status !== "SPAM" && (
-                        <Button disabled={!canEditTicket}
-                          variant="light"
-                          size="sm"
-                          onClick={() =>
-                            void updateTicket("status", {
-                              status: "IN_PROGRESS",
-                            })
-                          }
-                        >
-                          Em atendimento
-                        </Button>
-                      )}
-
-                    <Button disabled={!canEditTicket}
-                      variant="light"
-                      color="yellow"
-                      size="sm"
-                      onClick={() =>
-                        void updateTicket("status", {
-                          status: "WAITING_CUSTOMER",
-                        })
-                      }
-                    >
-                      Aguardando cliente
-                    </Button>
-
-                    <Button disabled={!canEditTicket}
-                      variant="light"
-                      color="orange"
-                      size="sm"
-                      onClick={() =>
-                        void updateTicket("status", {
-                          status: "WAITING_INTERNAL",
-                        })
-                      }
-                    >
-                      Aguardando interno
-                    </Button>
-
-                    {ticket.status !== "RESOLVED" ? (
-                      <Button disabled={!canEditTicket}
-                        color="green"
-                        variant="light"
-                        size="sm"
-                        leftSection={
-                          <IconCircleCheck size={15} />
-                        }
-                        onClick={() =>
-                          void updateTicket("status", {
-                            status: "RESOLVED",
-                          })
-                        }
-                      >
-                        Resolver
-                      </Button>
-                    ) : (
-                      <Button disabled={!canEditTicket}
-                        variant="light"
-                        size="sm"
-                        leftSection={
-                          <IconArrowBackUp size={15} />
-                        }
-                        onClick={() =>
-                          void updateTicket("status", {
-                            status: "IN_PROGRESS",
-                          })
-                        }
-                      >
-                        Reabrir
-                      </Button>
-                    )}
-
-                    {ticket.status !== "SPAM" ? (
-                      <Button disabled={!canEditTicket}
-                        color="gray"
-                        variant="subtle"
-                        size="sm"
-                        leftSection={
-                          <IconAlertTriangle size={15} />
-                        }
-                        onClick={() =>
-                          void updateTicket("status", {
-                            status: "SPAM",
-                          })
-                        }
-                      >
-                        Marcar como spam
-                      </Button>
-                    ) : (
-                      <Button disabled={!canEditTicket}
-                        variant="light"
-                        size="sm"
-                        onClick={() =>
-                          void updateTicket("status", {
-                            status: "NEW",
-                          })
-                        }
-                      >
-                        Não é spam
-                      </Button>
-                    )}
-                  </Stack>
-
-                  {ticket.history?.length > 0 && (
-                    <>
-                      <Divider />
-
-                      <div>
-                        <Text
-                          size="xs"
-                          fw={800}
-                          c="dimmed"
-                          tt="uppercase"
-                          mb="xs"
-                        >
-                          Histórico
-                        </Text>
-
-                        <Stack gap="sm">
-                          {ticket.history
-                            .slice(0, 6)
-                            .map((item: Any) => (
-                              <Group
-                                key={item.id}
-                                gap="xs"
-                                align="flex-start"
-                                wrap="nowrap"
-                              >
-                                <ThemeIcon
-                                  size={24}
-                                  radius="xl"
-                                  variant="light"
-                                >
-                                  <IconClock size={12} />
-                                </ThemeIcon>
-
-                                <div>
-                                  <Text size="xs" fw={600}>
-                                    {item.message}
-                                  </Text>
-
-                                  <Text size="xs" c="dimmed">
-                                    {formatDate(item.createdAt)}
-                                  </Text>
-                                </div>
-                              </Group>
-                            ))}
-                        </Stack>
-                      </div>
-                    </>
-                  )}
-                </Stack>
-              </ScrollArea>
-            </aside>
           </div>
         </div>
       )}
-    </Drawer>
+    </EmailTicketFrame>
   );
+}
+
+function EmailTicketFrame({inline,opened,onClose,children}:{inline:boolean;opened:boolean;onClose:()=>void;children:ReactNode}){
+ if(inline)return <section className={styles.readingFrame} aria-label="Leitura do e-mail">{opened&&children}</section>;
+ return <Drawer opened={opened} onClose={onClose} position="right" size="98%" padding={0} withCloseButton={false} classNames={{body:styles.emailDrawerBody}}>{children}</Drawer>;
 }

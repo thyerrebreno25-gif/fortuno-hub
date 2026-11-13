@@ -514,6 +514,7 @@
 
 .content.mailContent {
   padding: 12px;
+  min-width: 0;
 }
 
 .pageHeading {
