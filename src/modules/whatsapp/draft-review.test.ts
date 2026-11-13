@@ -1,13 +1,44 @@
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
-import { reviewWhatsAppDraft,sameDraftFacts } from "./draft-review";
-const mock=vi.fn();
-beforeEach(()=>{vi.resetAllMocks();vi.stubEnv("OPENAI_API_KEY","unit-key");vi.stubGlobal("fetch",mock);});
-afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
-it("preserves numeric facts, links, email addresses and WhatsApp mentions",()=>{expect(sameDraftFacts("@123 pagar R$ 50,00 dia 15/11","@123, pagar R$ 50,00, dia 15/11.")).toBe(true);expect(sameDraftFacts("PIX a@b.com R$ 50,00","PIX c@b.com R$ 55,00")).toBe(false);});
-it("reviews only the draft, without tools, history, storage or automatic sending",async()=>{mock.mockResolvedValue(Response.json({output_text:JSON.stringify({corrected:"Olá, tudo bem?",suggestions:["Olá! Tudo bem?"]})}));expect(await reviewWhatsAppDraft("ola tudo bem")).toEqual({corrected:"Olá, tudo bem?",suggestions:["Olá! Tudo bem?"]});const body=JSON.parse(mock.mock.calls[0][1].body);expect(body.store).toBe(false);expect(body.tools).toBeUndefined();expect(body.previous_response_id).toBeUndefined();expect(body.text.format.strict).toBe(true);});
-it("rejects numeric changes and discards suggestions with fabricated financial facts",async()=>{mock.mockResolvedValueOnce(Response.json({output_text:JSON.stringify({corrected:"Pagar 500.",suggestions:[]})}));await expect(reviewWhatsAppDraft("pagar 50")).rejects.toThrow("alterou");mock.mockResolvedValueOnce(Response.json({output_text:JSON.stringify({corrected:"Pagar 50.",suggestions:["Pagar 100."]})}));expect((await reviewWhatsAppDraft("pagar 50")).suggestions).toEqual([]);});
-it("reports unavailable credit/configuration without modifying or sending the draft",async()=>{mock.mockResolvedValue(new Response("private provider body",{status:429}));await expect(reviewWhatsAppDraft("olá")).rejects.toThrow("saldo");vi.stubEnv("OPENAI_API_KEY","");await expect(reviewWhatsAppDraft("olá")).rejects.toThrow("configuração");});
-it("distinguishes financial quota from temporary processing limits",async()=>{
- mock.mockResolvedValueOnce(Response.json({error:{code:"insufficient_quota",message:"private"}},{status:429}));await expect(reviewWhatsAppDraft("olá")).rejects.toThrow("cota financeira");
- mock.mockResolvedValueOnce(Response.json({error:{code:"rate_limit_exceeded"}},{status:429}));await expect(reviewWhatsAppDraft("olá")).rejects.toThrow("temporário");
+import { reviewWhatsAppDraft } from "./draft-review";
+const network=vi.fn(()=>{throw Error("Local review must never use a network");});
+beforeEach(()=>{network.mockClear();vi.stubGlobal("fetch",network);vi.stubEnv("OPENAI_API_KEY","");});
+afterEach(()=>{expect(network).not.toHaveBeenCalled();vi.unstubAllGlobals();vi.unstubAllEnvs();});
+it("reviews greetings, accents and punctuation locally without an API key",()=>{
+ expect(reviewWhatsAppDraft("ola tudo bem podemos conversar amanha").corrected).toBe("Olá, tudo bem? Podemos conversar amanhã?");
+ expect(reviewWhatsAppDraft("vc pode enviar as informacoes amanha").corrected).toBe("Você pode enviar as informações amanhã?");
+ expect(reviewWhatsAppDraft("ola tudo bem").corrected).toBe("Olá, tudo bem?");
+});
+it("cleans spaces, abbreviations and high-confidence agreement errors",()=>{
+ expect(reviewWhatsAppDraft("segue em anexo os comprovantes ,confirme pfv").corrected).toBe("Seguem em anexo os comprovantes, confirme por favor");
+ expect(reviewWhatsAppDraft("recebi  a mesnagem;obrigado!").corrected).toBe("Recebi a mensagem; obrigado!");
+});
+it("does not change financial amounts, dates, PIX keys, links, email addresses or mentions",()=>{
+ const values=["R$ 1.234,56","15/11/2026","09:30","+55 61 99999-6882","https://exemplo.com/amanha?valor=50,00","financeiro@voce.com.br","@5511999999999","30.731.785/0001-33","abc123-Nao","f47ac10b-58cc-4372-a567-0e02b2c3d479"];
+ const source="ola, conferir "+values.join(" • ");
+ const result=reviewWhatsAppDraft(source);
+ for(const value of values){expect(result.corrected).toContain(value);result.suggestions.forEach(item=>expect(item).toContain(value));}
+});
+it("never appends punctuation to the end of a protected URL, email or identifier",()=>{
+ for(const value of ["https://site.com/teste","contato@site.com","@55119999","12345"]){expect(reviewWhatsAppDraft("voce pode conferir "+value).corrected).toBe("Você pode conferir "+value);}
+});
+it("keeps names, acronyms, intentional uppercase text, code blocks and ambiguous words",()=>{
+ const source="FORTUNO Ana João MES VOCE esta e por PIX\n```nao  ola amanha```\n`vc nao`";
+ expect(reviewWhatsAppDraft(source).corrected).toBe(source);
+});
+it("keeps multi-line lists and protected code indentation",()=>{
+ expect(reviewWhatsAppDraft("ola\n- confirmar amanha\n- enviar informacoes").corrected).toBe("Olá\n- confirmar amanhã\n- enviar informações");
+});
+it("offers optional polite wording without adding dates, commitments or financial facts",()=>{
+ expect(reviewWhatsAppDraft("envie o comprovante de R$ 50,00").suggestions).toContain("Por favor, envie o comprovante de R$ 50,00");
+ expect(reviewWhatsAppDraft("ola tudo bem").suggestions).toContain("Olá! Tudo bem?");
+ expect(reviewWhatsAppDraft("envie por favor o comprovante").suggestions).toEqual([]);
+});
+it("bounds pasted text and does not interpret placeholder-looking input",()=>{
+ const long="nao ".repeat(1300);expect(reviewWhatsAppDraft(long)).toEqual({corrected:long,suggestions:[]});
+ const sentinels="nao \uE0000\uE001";expect(reviewWhatsAppDraft(sentinels)).toEqual({corrected:sentinels,suggestions:[]});
+});
+
+it("does not expand a message past the composer limit or rewrite labeled payment identifiers",()=>{
+ const long="vc ".repeat(1600);const result=reviewWhatsAppDraft(long);expect(result.corrected.length).toBeLessThanOrEqual(5000);expect(result.suggestions.every(item=>item.length<=5000)).toBe(true);
+ expect(reviewWhatsAppDraft("ola, PIX: nao").corrected).toBe("Olá, PIX: nao");
 });

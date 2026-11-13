@@ -818,7 +818,7 @@ export default function WhatsAppPage() {
                       <IconSend size={19} />
                     </ActionIcon>
                   </Tooltip>
-                  <AutomaticDraftReview key={`${detail.id}:${commentMode}`} ticketId={detail.id} text={commentMode?comment:reply} internal={commentMode} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))} onApply={value=>{if(commentMode)setComment(value);else setReply(value);replyInput.current?.focus();}}/>
+                  <AutomaticDraftReview key={`${detail.id}:${commentMode}`} text={commentMode?comment:reply} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))} onApply={value=>{if(commentMode)setComment(value);else setReply(value);replyInput.current?.focus();}}/>
                 </div>
               ) : (
                 <div className={styles.resolvedBar}>
