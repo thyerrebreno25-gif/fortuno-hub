@@ -95,6 +95,8 @@ export default function AtendimentoPage() {
   const [sidebarHidden,setSidebarHidden]=useState(false);
   const [clientsExpanded,setClientsExpanded]=useState(true);
   const [refreshing,setRefreshing]=useState(false);
+  const [classifying,setClassifying]=useState(false);
+  const [classificationNotice,setClassificationNotice]=useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Any | null>(null);
   useUsageClient(selected?.client?.id);
@@ -288,6 +290,7 @@ export default function AtendimentoPage() {
   const canEditSelected=Boolean(bootstrap?.permission?.canEdit&&(bootstrap?.currentUser?.canManage||selected?.assignedTo?.id===bootstrap?.currentUser?.id));
   const folderLabel=views.find(row=>row[0]===view)?.[1]||"Caixa de entrada";
   const selectedClientName=clientId==="UNIDENTIFIED"?"Cliente não identificado":bootstrap?.clients?.find((client:Any)=>client.id===clientId)?.name;
+  async function identifyClients(){if(classifying)return;setClassifying(true);setError("");try{const response=await fetch("/api/atendimento/routing/reprocess",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível identificar os clientes.");setClassificationNotice(`${result.changed} e-mail(s) reclassificado(s) entre ${result.checked} verificado(s). Vínculos revisados pela equipe foram preservados.`);await loadTickets();}catch(e){setError(e instanceof Error?e.message:"Não foi possível identificar os clientes.");}finally{setClassifying(false);}}
   async function refreshMailbox(){if(refreshing)return;setRefreshing(true);setError("");try{const r=await fetch("/api/atendimento/gmail/sync",{method:"POST"});const b=await r.json();if(!r.ok)throw new Error(b.error||"Não foi possível atualizar o Gmail.");await loadTickets();}catch(e){setError(e instanceof Error?e.message:"Não foi possível atualizar os e-mails.");}finally{setRefreshing(false);}}
   if (loading) {
     return (
@@ -318,11 +321,13 @@ export default function AtendimentoPage() {
           {bootstrap.currentUser?.canManage&&<Tooltip label={analyticsOpen?"Voltar à caixa":"Análise de e-mails"}><ActionIcon variant={analyticsOpen?"light":"subtle"} size="lg" aria-label="Análise de e-mails" onClick={()=>setAnalyticsOpen(value=>!value)}><IconChartBar size={21}/></ActionIcon></Tooltip>}
           <Menu position="bottom-end" width={255} shadow="md"><Menu.Target><ActionIcon size="lg" variant="subtle" aria-label="Opções dos e-mails"><IconDotsVertical size={21}/></ActionIcon></Menu.Target><Menu.Dropdown>
             <Menu.Item onClick={()=>setConnectionOpen(true)}>Conexão Gmail</Menu.Item>
+            {bootstrap.currentUser?.canManage&&bootstrap.permission?.canEdit&&<Menu.Item disabled={classifying} onClick={()=>void identifyClients()}>Identificar clientes dos e-mails</Menu.Item>}
             {bootstrap.permission?.canManage&&<><Menu.Divider/><Menu.Item disabled={saving} onClick={()=>setArchiveAction(view==="ARCHIVED"?"restore":"archive")}>{view==="ARCHIVED"?"Restaurar arquivados":"Arquivar todos os e-mails"}</Menu.Item>{view==="ARCHIVED"&&<Menu.Item color="red" onClick={()=>{setDeleteConfirmation("");setArchiveAction("delete");}}>Excluir todos os arquivados</Menu.Item>}</>}
             {bootstrap.permission?.canCreate&&bootstrap.currentUser?.canManage&&<><Menu.Divider/><Menu.Item onClick={()=>setNewOpen(true)}>Simular e-mail para teste</Menu.Item></>}
           </Menu.Dropdown></Menu>
         </Group>
       </header>
+      {classificationNotice&&<Alert color="teal" withCloseButton onClose={()=>setClassificationNotice("")}>{classificationNotice}</Alert>}
       {error&&<Alert color="red" withCloseButton onClose={()=>setError("")}>{error}</Alert>}
       <Modal opened={connectionOpen} onClose={()=>setConnectionOpen(false)} title="Conexão Gmail" size="lg"><GmailConnectionCard/></Modal>
       {analyticsOpen&&bootstrap.currentUser?.canManage?<div className={styles.analyticsWorkspace}><EmailAnalyticsPanel clients={clientOptions}/></div>:<>

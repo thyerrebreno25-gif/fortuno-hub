@@ -127,3 +127,38 @@ describe("classificação e roteamento do Atendimento", () => {
     expect(result.clientId).toBeNull();
   });
 });
+
+
+describe("identificação automática do cliente do e-mail", () => {
+  beforeEach(() => { vi.clearAllMocks(); database.findMember.mockResolvedValue({ userId: "member" }); database.findIdentities.mockResolvedValue([]); });
+  const classify = (textBody: string, senderEmail = "cobranca@fornecedor.test", extra = {}) => classifyAndRouteEmail({ organizationId: "org-1", senderEmail, subject: "Documento financeiro", textBody, ...extra });
+  it("reconhece o nome sem o sufixo jurídico e entidades HTML", async () => {
+    database.findClients.mockResolvedValue([{ ...abismoClient, name: "Café Vitória LTDA", serviceAliases: null }]);
+    expect((await classify("Tomador: Caf&eacute; Vit&oacute;ria\nSegue boleto")).clientId).toBe(abismoClient.id);
+  });
+  it("não adivinha uma marca compartilhada por duas empresas", async () => {
+    database.findClients.mockResolvedValue([{ ...abismoClient, name: "Abismo Turismo LTDA", serviceAliases: null }, { ...abismoClient, id: "other", name: "Abismo Turismo EIRELI", serviceAliases: null }]);
+    expect((await classify("Cliente: Abismo Turismo\nBoleto")).clientId).toBeNull();
+  });
+  it("identifica o domínio profissional exclusivo", async () => {
+    database.findClients.mockResolvedValue([{ ...abismoClient, operationalEmail: "contato@anhumas.test" }]);
+    expect((await classify("Segue documento", "novo@anhumas.test")).clientId).toBe(abismoClient.id);
+  });
+  it("não usa domínio público nem domínio compartilhado como identidade", async () => {
+    database.findClients.mockResolvedValue([{ ...abismoClient, operationalEmail: "contato@gmail.com" }]);
+    expect((await classify("Documento", "outro@gmail.com")).clientId).toBeNull();
+    database.findClients.mockResolvedValue([{ ...abismoClient, operationalEmail: "a@empresa.test" }, { ...abismoClient, id: "other", operationalEmail: "b@empresa.test" }]);
+    expect((await classify("Documento", "novo@empresa.test")).clientId).toBeNull();
+  });
+  it("prefere o cliente explicitamente cobrado ao CNPJ do fornecedor", async () => {
+    database.findClients.mockResolvedValue([abismoClient, { ...abismoClient, id: "issuer", name: "Fornecedor Tecnologia", document: "99888777000166", serviceAliases: null }]);
+    const result = await classify("Cliente: Abismo Anhumas\nSua fatura está disponível.\nEmitente CNPJ 99.888.777/0001-66");
+    expect(result.clientId).toBe(abismoClient.id);
+  });
+  it("usa o destinatário exclusivo e mantém destinatários compartilhados em revisão", async () => {
+    database.findClients.mockResolvedValue([{ ...abismoClient, operationalEmail: "cliente@destino.test" }]);
+    expect((await classify("Documento", undefined, { recipientEmails: ["cliente@destino.test"] })).clientId).toBe(abismoClient.id);
+    database.findClients.mockResolvedValue([{ ...abismoClient, operationalEmail: "geral@destino.test" }, { ...abismoClient, id: "other", operationalEmail: "geral@destino.test" }]);
+    expect((await classify("Documento", undefined, { recipientEmails: ["geral@destino.test"] })).clientId).toBeNull();
+  });
+});

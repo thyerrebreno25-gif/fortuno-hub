@@ -1,3 +1,5 @@
+import {getWhatsAppPermission} from "@/modules/atendimento/auth";
+import {withinWhatsAppReturnWindow} from "./finalization";
 import {isContactName} from "./contact-name";
 import {callLabel, mergeCall, type WhatsAppCall} from "./call-core";
 import {detectPaymentRequest} from "./payment-core";
@@ -77,15 +79,20 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     const scope = { organizationId: connection.organizationId, source: "WHATSAPP_API" as const, senderEmail: address, mergedIntoId: null, recipientEmail: recipient };
     const closed = event.historical ? await tx.serviceTicket.findFirst({ where: { ...scope, status: "RESOLVED", resolvedAt: { gte: timestamp } }, orderBy: { resolvedAt: "asc" } }) : null;
     const active = closed || await tx.serviceTicket.findFirst({ where: { ...scope, status: { notIn: ["RESOLVED", "SPAM"] } }, orderBy: { lastMessageAt: "desc" } }) || await tx.serviceTicket.findFirst({where:{...scope,status:"RESOLVED",isSpam:false},orderBy:{lastMessageAt:"desc"}});
-    const reopening=Boolean(active?.status==="RESOLVED"&&!event.historical&&!event.fromMe&&(!active.resolvedAt||timestamp>active.resolvedAt));
+    const reopening=Boolean(active?.status==="RESOLVED"&&!event.historical&&!event.fromMe&&(!active.resolvedAt||timestamp>=active.resolvedAt));
+    let returnToId:string|null=null;
+    if(reopening&&active?.resolvedById&&withinWhatsAppReturnWindow(active.resolvedAt,timestamp)){
+      const finisher=await tx.organizationMember.findFirst({where:{organizationId:connection.organizationId,userId:active.resolvedById,role:{not:"CLIENT"}},select:{role:true}});
+      if(finisher){const permission=await getWhatsAppPermission(connection.organizationId,finisher.role);if(permission.canView&&permission.canEdit)returnToId=active.resolvedById;}
+    }
     if (event.fromMe && !active && !event.historical && !event.call) return;
-    const automatic = !reopening && active?.status!=="RESOLVED" && !event.fromMe && !event.historical && (!active || timestamp >= active.lastMessageAt) && (!active || mayAutomaticallyRoute(active, classification.area));
+    const automatic = !reopening && active?.status!=="RESOLVED" && !event.fromMe && !event.historical && (!active || timestamp >= active.lastMessageAt) && (!active || !active.assignedToId&&mayAutomaticallyRoute(active, classification.area));
     const routingReason = AUTOMATIC_WHATSAPP_PREFIX + routing.reason + " " + classification.reason;
     const name = chatName || (event.group || event.fromMe ? active?.senderName : event.senderName) || identifier;
     const ticket = active ? await tx.serviceTicket.update({ where: { id: active.id }, data: {
       updatedAt: new Date(),
-      ...(reopening?{status:"NEW" as const,assignedToId:null,assignedAt:null,firstResponseAt:null,resolvedAt:null,receivedAt:timestamp,routingReason:"Conversa reaberta por nova mensagem do cliente; aguardando atendimento."}:{}),
-      ...(automatic ? { clientId: routing.clientId || active.clientId, whatsappDepartmentId:null,whatsappDepartmentName:null,routingArea: classification.area, routingSquad: routing.routingSquad, routingReason, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null, status: routing.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
+      ...(reopening?{status:returnToId?"IN_PROGRESS" as const:"NEW" as const,assignedToId:returnToId,assignedAt:returnToId?timestamp:null,firstResponseAt:null,resolvedAt:null,receivedAt:timestamp,...(!returnToId?{whatsappDepartmentId:null,whatsappDepartmentName:null}:{}),routingReason:returnToId?"Conversa retomada em até 10 minutos com quem finalizou o chamado.":"Conversa reaberta na fila de atendimento; nova mensagem após a finalização."}:{}),
+      ...(automatic ? { clientId: routing.clientId || active.clientId, whatsappDepartmentId:null,whatsappDepartmentName:null,routingArea: classification.area, routingSquad: routing.routingSquad, routingReason, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0, assignedToId: null, assignedAt: null, status: "NEW" as const } : {}),
       recipientEmail: recipient,
       ...(event.historical && timestamp < active.receivedAt ? { receivedAt: timestamp } : {}),
       ...(!automatic && !event.fromMe && timestamp >= active.lastMessageAt && active.status === "WAITING_CUSTOMER" ? { status: active.assignedToId ? "IN_PROGRESS" as const : "NEW" as const } : {}),
@@ -94,11 +101,11 @@ export async function receiveMessage(connection: Connection, event: Extract<Even
     } }) : await tx.serviceTicket.create({ data: {
       organizationId: connection.organizationId, source: "WHATSAPP_API", clientId: routing.clientId,
       routingArea: classification.area, routingSquad: routing.routingSquad, routingConfidence: routing.clientId && !routing.ambiguous ? 100 : 0,
-      routingReason, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? timestamp : null,
+      routingReason, assignedToId: null, assignedAt: null,
       externalThreadId: externalMessageId, subject: name, senderName: name, senderEmail: address, recipientEmail: recipient,
-      snippet: event.body.slice(0, 220), status: event.fromMe ? "WAITING_CUSTOMER" : routing.assignedToId ? "IN_PROGRESS" : "NEW", receivedAt: timestamp, lastMessageAt: timestamp,
+      snippet: event.body.slice(0, 220), status: event.fromMe ? "WAITING_CUSTOMER" : "NEW", receivedAt: timestamp, lastMessageAt: timestamp,
     } });
-    if(reopening&&active)await tx.serviceTicketHistory.create({data:{ticketId:ticket.id,type:"WHATSAPP_REOPENED",message:"Nova mensagem reabriu a mesma conversa na fila.",metadata:{previousAssignedToId:active.assignedToId,previousReceivedAt:active.receivedAt.toISOString(),previousFirstResponseAt:active.firstResponseAt?.toISOString()||null,previousResolvedAt:active.resolvedAt?.toISOString()||null}}});
+    if(reopening&&active)await tx.serviceTicketHistory.create({data:{ticketId:ticket.id,type:"WHATSAPP_REOPENED",message:returnToId?"Nova mensagem em até 10 minutos retomou o atendimento com quem o finalizou.":"Nova mensagem reabriu a mesma conversa na fila.",metadata:{assignedToId:returnToId,returnWindowMinutes:10,previousResolvedById:active.resolvedById||null,previousAssignedToId:active.assignedToId,previousReceivedAt:active.receivedAt.toISOString(),previousFirstResponseAt:active.firstResponseAt?.toISOString()||null,previousResolvedAt:active.resolvedAt?.toISOString()||null}}});
     if (active && automatic && (active.assignedToId !== routing.assignedToId || active.clientId !== routing.clientId || active.routingArea !== classification.area)) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_AUTOMATIC_ROUTING", message: routingReason, metadata: { previousAssignedToId: active.assignedToId, assignedToId: routing.assignedToId, clientId: routing.clientId, routingArea: classification.area } } });
     const message = await tx.serviceMessage.create({ data: {
       ticketId: ticket.id, externalMessageId, direction: event.fromMe ? "OUTBOUND" : "INBOUND",

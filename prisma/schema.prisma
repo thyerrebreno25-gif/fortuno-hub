@@ -372,6 +372,7 @@ model NotionConnection {
 }
 
 model User {
+  resolvedWhatsappTickets ServiceTicket[] @relation("WhatsAppTicketResolver")
   avatar String?
   fathomConnections FathomConnection[]
   whatsappReadStates WhatsAppReadState[]
@@ -1844,6 +1845,8 @@ model ServiceTicket {
   mergedIntoId      String?
   organizationId    String
   clientId          String?
+  resolvedById String?
+  resolvedBy User? @relation("WhatsAppTicketResolver",fields:[resolvedById],references:[id],onDelete:SetNull)
   whatsappDepartmentId String?
   whatsappDepartmentName String?
   whatsappDepartment WhatsAppDepartment? @relation(fields: [whatsappDepartmentId], references: [id], onDelete: SetNull)

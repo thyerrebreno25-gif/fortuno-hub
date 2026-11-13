@@ -1,0 +1,10 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),find:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{organizationMember:{findFirst:m.find}}}));
+vi.mock("@/modules/operations/auth",()=>({getOperationMember:m.member,canManageOperations:(role:string)=>["MASTER","ADMIN","MANAGER"].includes(role)}));
+import {GET} from "./route";
+const get=()=>GET(new Request("https://hub.test/avatar"),{params:Promise.resolve({id:"person"})});
+beforeEach(()=>{vi.resetAllMocks();m.member.mockResolvedValue({organizationId:"org",role:"MASTER"});m.find.mockResolvedValue({user:{avatar:"data:image/png;base64,aGk="}});});
+it("blocks operators and unauthenticated users before looking up a photo",async()=>{m.member.mockResolvedValueOnce(null);expect((await get()).status).toBe(403);m.member.mockResolvedValueOnce({organizationId:"org",role:"OPERATOR"});expect((await get()).status).toBe(403);expect(m.find).not.toHaveBeenCalled();});
+it("serves a private photo only from the manager's organization",async()=>{const response=await get();expect(response.status).toBe(200);expect(m.find).toHaveBeenCalledWith(expect.objectContaining({where:{organizationId:"org",userId:"person",role:{not:"CLIENT"}}}));expect(response.headers.get("cache-control")).toBe("private, max-age=300");expect(await response.text()).toBe("hi");});
+it("does not return remote or missing avatars",async()=>{m.find.mockResolvedValueOnce({user:{avatar:"https://other.test/photo"}});expect((await get()).status).toBe(404);});

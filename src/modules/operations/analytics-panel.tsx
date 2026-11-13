@@ -1,4 +1,6 @@
 "use client";
+import {OperationsWorkloadPanel} from "./workload-panel";
+import type {OperatorWorkload} from "./workload";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Alert, Badge, Button, Group, Loader, Pagination, Paper, ScrollArea, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput, Title } from "@mantine/core";
 import { IconArrowRight, IconDownload, IconRefresh } from "@tabler/icons-react";
@@ -6,7 +8,7 @@ import { brazilDay, shiftDay, type AnalyticsGroup, type OperationsAnalytics } fr
 import styles from "./analytics-panel.module.css";
 import { CollapsibleOperationFilters } from "./collapsible-filters";
 type Options = { clients: Array<{ id: string; name: string }>; operators: Array<{ id: string; name: string }>; processes: Array<{ id: string; name: string }>; teams: string[] };
-type Data = OperationsAnalytics & { options: Options; ownOnly: boolean; currentUserId: string };
+type Data = OperationsAnalytics & {workload:OperatorWorkload[]; options: Options; ownOnly: boolean; currentUserId: string };
 const emptyOptions: Options = { clients: [], operators: [], processes: [], teams: [] };
 const time = (seconds: number, precise = false) => `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds % 3600 / 60)).padStart(2, "0")}m${precise ? ` ${String(Math.floor(seconds % 60)).padStart(2, "0")}s` : ""}`;
 const dateLabel = (value: string) => value.slice(0, 10).split("-").reverse().join("/");
@@ -111,6 +113,7 @@ export function OperationsAnalyticsPanel({ onOpenActivity, onOpenActivities }: {
     {error && <Alert color="red" title="Não foi possível carregar o painel">{error}</Alert>}
     {!data && loading && <Group justify="center" py={70}><Loader /><Text c="dimmed">Calculando indicadores da operação…</Text></Group>}
     {data && <>
+      <OperationsWorkloadPanel rows={data.workload||[]} onInspect={(id,name)=>drill("operator",id,name)}/>
       <SimpleGrid cols={{ base: 2, lg: 3, xl: 6 }}>{metrics.map((metric) => <div className={styles.metric} key={metric.label} style={{ "--accent": metric.color } as CSSProperties}><Text size="sm" c="dimmed">{metric.label}</Text><div className={styles.metricValue}>{metric.value}</div><Text size="xs" c="dimmed">{metric.detail}</Text></div>)}</SimpleGrid>
       {data.summary.longRunningTimers > 0 && <Alert color="orange" title="Confira os cronômetros em aberto">{data.summary.longRunningTimers} cronômetro(s) estão ativos há mais de 12 horas. O tempo continua entrando como provisório até a pausa; confira se foram esquecidos ligados.</Alert>}
       {!data.summary.seconds && <Group justify="space-between"><Text size="sm" c="dimmed">Sem tempo apontado neste período.</Text><Button variant="subtle" size="xs" onClick={onOpenActivities}>Abrir atividades</Button></Group>}

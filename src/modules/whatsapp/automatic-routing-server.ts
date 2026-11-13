@@ -20,12 +20,12 @@ export async function reconcileQueuedWhatsapp(account: WhatsAppAccount) {
     const routing = await resolveWhatsappRouting({ organizationId: account.organizationId, kind: channel.kind, identifier: channel.externalId, displayName: ticket.senderName || ticket.subject, requestedClientId: ticket.clientId, routingArea: area });
     if (!routing.clientId) continue;
     const reason = AUTOMATIC_WHATSAPP_PREFIX + routing.reason + " " + classified.reason;
-    if (ticket.clientId === routing.clientId && ticket.routingArea === area && ticket.routingReason === reason && ticket.routingSquad === routing.routingSquad && !routing.assignedToId) continue;
+    if (ticket.clientId === routing.clientId && ticket.routingArea === area && ticket.routingReason === reason && ticket.routingSquad === routing.routingSquad) continue;
     await prisma.$transaction(async tx => {
       const current = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "WhatsAppConnection" WHERE id = ${account.id} AND phone = ${account.phone} AND status = 'CONNECTED' FOR SHARE`;
       if (!current.length) return;
-      const changed = await tx.serviceTicket.updateMany({ where: { ...accountTicketWhere(account.organizationId, account), id: ticket.id, updatedAt: ticket.updatedAt, assignedToId: null, status: { notIn: ["RESOLVED", "SPAM"] } }, data: { clientId: routing.clientId, routingArea: area, routingSquad: routing.routingSquad, routingReason: reason, routingConfidence: 100, assignedToId: routing.assignedToId, assignedAt: routing.assignedToId ? new Date() : null, status: routing.assignedToId ? "IN_PROGRESS" : "NEW" } });
-      if (changed.count) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_AUTOMATIC_ROUTING", message: routing.assignedToId ? "Atendimento direcionado pelo cliente e pela área responsável." : "Cliente identificado; aguardando responsável ou triagem da área.", metadata: { clientId: routing.clientId, assignedToId: routing.assignedToId, routingArea: area } } });
+      const changed = await tx.serviceTicket.updateMany({ where: { ...accountTicketWhere(account.organizationId, account), id: ticket.id, updatedAt: ticket.updatedAt, assignedToId: null, status: { notIn: ["RESOLVED", "SPAM"] } }, data: { clientId: routing.clientId, routingArea: area, routingSquad: routing.routingSquad, routingReason: reason, routingConfidence: 100, status: "NEW" } });
+      if (changed.count) await tx.serviceTicketHistory.create({ data: { ticketId: ticket.id, type: "WHATSAPP_AUTOMATIC_ROUTING", message: "Cliente identificado; chamado permanece na fila de atendimento.", metadata: { clientId: routing.clientId, assignedToId: null, routingArea: area } } });
     });
   }
   batches.set(key, { until: Date.now() + 60000, cursor: tickets.length === 50 ? tickets.at(-1)?.id : undefined });

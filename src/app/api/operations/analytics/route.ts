@@ -1,3 +1,4 @@
+import {buildOperatorWorkload} from "@/modules/operations/workload";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -6,12 +7,13 @@ import { getOperationMember } from "@/modules/operations/auth";
 import { analyticsPeriod, brazilDay, buildOperationsAnalytics, precedingPeriod, shiftDay } from "@/modules/operations/analytics";
 export const maxDuration = 60;
 const person = { id: true, name: true, email: true } as const;
-const activitySelect = { id: true, title: true, status: true, scheduledDate: true, createdAt: true, dueAt: true, completedAt: true, responsibleId: true, team: true, clientCluster: true, client: { select: { id: true, name: true, cluster: true } }, process: { select: { id: true, name: true } }, responsible: { select: person } } as const;
+const activitySelect = {subjectToFine:true, id: true, title: true, status: true, scheduledDate: true, createdAt: true, dueAt: true, completedAt: true, responsibleId: true, team: true, clientCluster: true, client: { select: { id: true, name: true, cluster: true } }, process: { select: { id: true, name: true } }, responsible: { select: person } } as const;
 const filters = z.object({ from: z.string().optional(), to: z.string().optional(), clientId: z.string().max(100).optional(), operatorId: z.string().max(100).optional(), processId: z.string().max(100).optional(), team: z.string().max(200).optional(), cluster: z.enum(["A", "B", "C"]).optional() });
 export async function GET(request: Request) {
   try {
     const member = await getOperationMember();
     if (!member) return NextResponse.json({ error: "Sessão inválida ou sem permissão para consultar a operação." }, { status: 403 });
+    if(!["MASTER","ADMIN","MANAGER"].includes(member.role))return NextResponse.json({error:"O painel de tempo é restrito à gestão."},{status:403});
     const params = filters.parse(Object.fromEntries(new URL(request.url).searchParams)), today = brazilDay();
     let period;
     try { period = analyticsPeriod(params.from || `${today.slice(0, 7)}-01`, params.to || today); }
@@ -32,7 +34,7 @@ export async function GET(request: Request) {
     ]);
     if (activities.length > 20000 || entries.length > 100000) return NextResponse.json({ error: "O período possui muitos registros. Reduza as datas ou filtre um cliente ou operador para consultar os totais completos." }, { status: 422 });
     const analytics = buildOperationsAnalytics(activities, entries, period, new Date(), operatorId);
-    const result = { ...analytics, options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: teams.map((item) => item.team).filter((team): team is string => Boolean(team)) }, ownOnly, currentUserId: member.userId };
+    const result = { ...analytics,workload:buildOperatorWorkload(activities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: teams.map((item) => item.team).filter((team): team is string => Boolean(team)) }, ownOnly, currentUserId: member.userId };
     if (Buffer.byteLength(JSON.stringify(result), "utf8") > 4000000) return NextResponse.json({ error: "O detalhamento deste período é muito extenso. Filtre por cliente, operador ou um período menor para obter o relatório completo." }, { status: 422 });
     return NextResponse.json(result);
   } catch (error) {

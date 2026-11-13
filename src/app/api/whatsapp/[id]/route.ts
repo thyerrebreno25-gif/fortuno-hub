@@ -1,3 +1,4 @@
+import {finalizationNote} from "@/modules/whatsapp/finalization";
 import {repairCallPlaceholders} from "@/modules/whatsapp/uazapi-events";
 import {reopenWhatsAppCall,ReopenWhatsAppError} from "@/modules/whatsapp/reopen";
 import {findReplyTarget,ReplyTargetError} from "@/modules/whatsapp/reply-target";
@@ -20,7 +21,7 @@ import {
 } from "@/modules/whatsapp/core";
 import { whatsappConnection, sendUazapiText } from "@/modules/whatsapp/uazapi-server";
 import { object } from "@/modules/whatsapp/uazapi";
-import { eligibleWhatsappResponsible, getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
+import { getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
 import { chatLock } from "@/modules/whatsapp/merge";
 import { transferWhatsappTicket, WhatsAppTransferError } from "@/modules/whatsapp/transfer";
 
@@ -169,12 +170,7 @@ export async function PATCH(request: Request, context: Context) {
     }
 
     const channel = parseWhatsappChannelAddress(current.senderEmail);
-    const automaticAssignee = await eligibleWhatsappResponsible(
-      member.organizationId,
-      client,
-      current.routingArea,
-    );
-    const assignedToId = current.assignedToId || automaticAssignee;
+    const assignedToId = current.assignedToId;
 
     await prisma.$transaction([
       prisma.clientWhatsAppIdentity.upsert({
@@ -223,22 +219,7 @@ export async function PATCH(request: Request, context: Context) {
       return NextResponse.json({ error: "Área inválida." }, { status: 400 });
     }
     const routingArea = requestedArea as WhatsAppRoutingArea;
-    let automaticAssignee: string | null = null;
-
-    if (current.clientId) {
-      const client = await prisma.client.findUnique({
-        where: { id: current.clientId },
-        select: {
-          operationLeaderId: true,
-          payableResponsibleId: true,
-          receivableResponsibleId: true,
-          generalResponsibleId: true,
-        },
-      });
-      if (client) automaticAssignee = await eligibleWhatsappResponsible(member.organizationId, client, routingArea);
-    }
-
-    const assignedToId = current.assignedToId || automaticAssignee;
+    const assignedToId = current.assignedToId;
     await prisma.$transaction([
       prisma.serviceTicket.update({
         where: { id, mergedIntoId: null },
@@ -256,7 +237,7 @@ export async function PATCH(request: Request, context: Context) {
           userId: member.userId,
           type: "WHATSAPP_AREA_CHANGED",
           message: "Área do atendimento atualizada.",
-          metadata: { routingArea, automaticAssignee },
+          metadata: { routingArea, automaticAssignee:null },
         },
       }),
     ]);
@@ -375,20 +356,14 @@ export async function PATCH(request: Request, context: Context) {
       );
     }
     const now = new Date();
-    await prisma.$transaction([
-      prisma.serviceTicket.update({
-        where: { id, mergedIntoId: null },
-        data: { status: "RESOLVED", resolvedAt: now },
-      }),
-      prisma.serviceTicketHistory.create({
-        data: {
-          ticketId: id,
-          userId: member.userId,
-          type: "WHATSAPP_RESOLVED",
-          message: "Atendimento finalizado.",
-        },
-      }),
-    ]);
+    const changed=await prisma.$transaction(async tx=>{
+      const updated=await tx.serviceTicket.updateMany({where:{id,organizationId:member.organizationId,recipientEmail:current.recipientEmail,mergedIntoId:null,assignedToId:current.assignedToId,status:{notIn:["RESOLVED","SPAM"]}},data:{status:"RESOLVED",resolvedAt:now,resolvedById:member.userId}});
+      if(!updated.count)return false;
+      await tx.serviceTicketHistory.create({data:{ticketId:id,userId:member.userId,type:"WHATSAPP_RESOLVED",message:"Atendimento finalizado."}});
+      await tx.serviceMessage.create({data:finalizationNote(id,member,now,current.recipientEmail?.split(":").at(-1))});
+      return true;
+    });
+    if(!changed)return NextResponse.json({error:"O chamado foi alterado por outro colaborador. Atualize a conversa."},{status:409});
   } else if (action === "satisfaction") {
     return NextResponse.json({error:"A satisfação é registrada pelo cliente no link da pesquisa."},{status:410});
   } else {

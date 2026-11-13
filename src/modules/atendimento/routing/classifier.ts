@@ -41,8 +41,17 @@ type ClientForRouting = {
   serviceAliases: string | null;
 };
 
+function decodeEmailEntities(value: string) {
+  const named: Record<string, string> = { amp: "&", nbsp: " ", quot: '"', apos: "'", lt: "<", gt: ">", aacute: "á", agrave: "à", acirc: "â", atilde: "ã", eacute: "é", ecirc: "ê", iacute: "í", oacute: "ó", ocirc: "ô", otilde: "õ", uacute: "ú", uuml: "ü", ccedil: "ç" };
+  return value.replace(/&([a-z]+);/gi, (all, name: string) => { const decoded = named[name.toLowerCase()]; return decoded ? name[0] === name[0].toUpperCase() ? decoded.toUpperCase() : decoded : all; })
+    .replace(/&#(x[0-9a-f]{1,6}|[0-9]{1,7});/gi, (all, number: string) => { const n = number[0].toLowerCase() === "x" ? parseInt(number.slice(1), 16) : Number(number); return n > 31 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : all; });
+}
+const publicDomains=new Set(["gmail.com","googlemail.com","hotmail.com","outlook.com","live.com","yahoo.com","yahoo.com.br","icloud.com","uol.com.br","bol.com.br","terra.com.br","fortunogestao.com.br","asaas.com","irecebi.com.br","contaazul.com"]);
+const domainOf=(email:string)=>email.toLowerCase().split("@").at(-1)||"";
+const legalNameCore=(value:string)=>normalize(value).replace(/\b(?:ltda|limitada|eireli|me|epp|sociedade|individual|simples|de|da|do|dos|das|e)\b/g," ").replace(/\s+/g," ").trim();
+const usefulCore=(value:string)=>value.length>=5&&value.split(" ").some(word=>word.length>=3&&!["servicos","comercio","consultoria","advocacia","marketing","investimentos","logistica","engenharia","agropecuaria","estudio","criativo"].includes(word));
 const normalize = (value: string) =>
-  String(value || "")
+  decodeEmailEntities(String(value || ""))
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -208,6 +217,12 @@ export async function classifyAndRouteEmail(
     identityMap.set(email, clientIds);
   }
 
+  const coreOwners=new Map<string,Set<string>>(),domainOwners=new Map<string,Set<string>>(),recipientOwners=new Map<string,Set<string>>();
+  const add=(map:Map<string,Set<string>>,key:string,id:string)=>{const ids=map.get(key)||new Set<string>();ids.add(id);map.set(key,ids);};
+  for(const client of clients){for(const alias of aliasesFor(client)){const core=legalNameCore(alias);if(usefulCore(core))add(coreOwners,core,client.id);}for(const email of [client.operationalEmail||"",...(client.operationalEmailCc||"").split(",")].map(e=>e.trim().toLowerCase()).filter(Boolean)){add(recipientOwners,email,client.id);if(!publicDomains.has(domainOf(email)))add(domainOwners,domainOf(email),client.id);}}
+  for(const identity of identities){const domain=domainOf(identity.normalizedEmail);if(domain&&!publicDomains.has(domain))add(domainOwners,domain,identity.clientId);}
+  const partyText=decodeEmailEntities(input.textBody||input.htmlBody?.replace(/<[^>]+>/g," ")||"").slice(0,30000);
+  const partyContexts=[...partyText.matchAll(/(?:\bol[aá]\b|\bprezad[oa]s?\b|\bcliente\b|\btomador\b|\bsacado\b|\bpagador\b)\s*[,::–-]?\s*([^\r\n;!?]{2,140})/giu)].map(match=>normalize(match[1]));
   const candidates = clients
     .map((client) => {
       let score = 0;
@@ -236,14 +251,19 @@ export async function classifyAndRouteEmail(
       }
 
       if (knownEmails.some((email) => recipients.has(email))) {
-        score += 10;
-        reasons.push("destinatário conhecido");
+        const unique=knownEmails.some(email=>recipients.has(email)&&recipientOwners.get(email)?.size===1);
+        score += unique?35:10;reasons.push(unique?"destinatário exclusivo do cliente":"destinatário compartilhado");
       }
+      const domainClients=domainOwners.get(domainOf(sender));
+      if(domainClients?.size===1&&domainClients.has(client.id)&&!identityClients?.has(client.id)&&!knownEmails.includes(sender)){score+=28;reasons.push("domínio corporativo exclusivo do cliente");}
 
       let aliasScore = 0;
-      for (const rawAlias of aliasesFor(client)) {
+      const names=[...aliasesFor(client),...aliasesFor(client).map(legalNameCore).filter(core=>usefulCore(core)&&coreOwners.get(core)?.size===1)];
+      let partyScore=0;
+      for (const rawAlias of [...new Set(names)]) {
         const alias = normalize(rawAlias);
         if (!alias || alias.length < 5) continue;
+        if(partyContexts.some(context=>context===alias||context.startsWith(alias+" "))){partyScore=45;reasons.push(`cliente/tomador identificado no conteúdo: ${rawAlias}`);}
 
         if ((` ${subject} `).includes(` ${alias} `)) {
           aliasScore = Math.max(aliasScore, 38);
@@ -254,7 +274,7 @@ export async function classifyAndRouteEmail(
         }
       }
 
-      score += aliasScore;
+      score += aliasScore+partyScore;
       const document = compactDocument(client.document);
       const rawText = fullText;
       const documentFound = document.length >= 11 && new RegExp(`(?<!\\d)${document.split("").join("[.\\s/\\-]*")}(?!\\d)`).test(rawText);

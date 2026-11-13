@@ -41,9 +41,7 @@ export async function resolveWhatsappRouting(input: {
       externalId,
       clientId: client?.id ?? null,
       routingSquad: client?.serviceSquad ?? null,
-      assignedToId: client
-        ? await eligibleWhatsappResponsible(input.organizationId, client, input.routingArea)
-        : null,
+      assignedToId: null,
       reason: client ? "Cliente vinculado ao atendimento." : "Cliente inválido.",
       ambiguous: false,
     };
@@ -80,7 +78,7 @@ export async function resolveWhatsappRouting(input: {
     })) : null;
     const client = matched?.client;
     return { externalId, clientId: client?.id || null, routingSquad: client?.serviceSquad || null,
-      assignedToId: client ? await eligibleWhatsappResponsible(input.organizationId, client, input.routingArea) : null,
+      assignedToId: null,
       reason: unique.length > 1 ? "Contato vinculado a mais de um cliente; aguardando seleção." : matched?.reason || "Contato ainda não vinculado a um cliente.",
       ambiguous: unique.length > 1 || Boolean(matched?.ambiguous),
     };
@@ -91,7 +89,7 @@ export async function resolveWhatsappRouting(input: {
     externalId,
     clientId: match.clientId,
     routingSquad: match.client.serviceSquad,
-    assignedToId: await eligibleWhatsappResponsible(input.organizationId, match.client, input.routingArea),
+    assignedToId: null,
     reason: "Cliente reconhecido pelo contato do WhatsApp.",
     ambiguous: false,
   };

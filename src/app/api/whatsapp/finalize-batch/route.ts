@@ -1,3 +1,4 @@
+import {finalizationNote} from "@/modules/whatsapp/finalization";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -39,8 +40,10 @@ export async function POST(request:Request) {
   // Compare the reviewed versions atomically: new messages, transfers and prior
   // closures invalidate a row instead of silently closing a changed conversation.
   const closed=await prisma.$transaction(async tx=>{
-    const rows=await tx.serviceTicket.updateManyAndReturn({where:{...base,OR:snapshots.map(t=>({id:t.id,updatedAt:new Date(t.updatedAt)}))},data:{status:"RESOLVED",resolvedAt:new Date()},select:{id:true}});
+    const now=new Date();
+    const rows=await tx.serviceTicket.updateManyAndReturn({where:{...base,OR:snapshots.map(t=>({id:t.id,updatedAt:new Date(t.updatedAt)}))},data:{status:"RESOLVED",resolvedAt:now,resolvedById:member.userId},select:{id:true}});
     if(rows.length)await tx.serviceTicketHistory.createMany({data:rows.map(t=>({ticketId:t.id,userId:member.userId,type:"WHATSAPP_RESOLVED",message:"Atendimento finalizado em lote."}))});
+    if(rows.length)await tx.serviceMessage.createMany({data:rows.map(t=>finalizationNote(t.id,member,now,account.connection?.phone||account.recipient?.split(":").at(-1)))});
     return rows;
   });
   return NextResponse.json({closedIds:closed.map(t=>t.id),skipped:snapshots.length-closed.length});

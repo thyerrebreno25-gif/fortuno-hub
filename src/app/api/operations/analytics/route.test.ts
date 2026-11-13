@@ -23,16 +23,10 @@ it("scopes both workload and time to the organization, excludes deleted records 
   expect(mocks.entries.mock.calls[0][0].where).toMatchObject({ userId: "person", activity: { organizationId: "org", deletedAt: null, clientId: "c" } });
   expect(mocks.entries.mock.calls[0][0].where.startedAt.lt.toISOString()).toBe("2026-10-28T03:00:00.000Z");
 });
-it("restricts operators to their authored time and prevents selecting another operator", async () => {
-  mocks.member.mockResolvedValue({ userId: "u", organizationId: "org", role: "OPERATOR" });
-  expect((await GET(request("&operatorId=other"))).status).toBe(403);
-  expect(mocks.entries).not.toHaveBeenCalled();
-  const response = await GET(request()); expect(response.status).toBe(200);
-  expect((await response.json()).ownOnly).toBe(true);
-  expect(mocks.activities.mock.calls[0][0].where.responsibleId).toBe("u");
-  expect(mocks.entries.mock.calls[0][0].where.userId).toBe("u");
-  expect(mocks.members.mock.calls[0][0].where.userId).toBe("u");
+it("denies the time panel to operators even when they request only their own time",async()=>{
+ mocks.member.mockResolvedValue({userId:"u",organizationId:"org",role:"OPERATOR"});expect((await GET(request())).status).toBe(403);expect((await GET(request("&operatorId=u"))).status).toBe(403);expect(mocks.entries).not.toHaveBeenCalled();expect(mocks.activities).not.toHaveBeenCalled();
 });
+
 it("returns an explicit error rather than incomplete totals for oversized periods", async () => {
   mocks.activities.mockResolvedValueOnce(Array(20001).fill({}));
   expect((await GET(request())).status).toBe(422);

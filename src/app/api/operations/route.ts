@@ -27,7 +27,7 @@ export async function GET(request:Request){
   prisma.client.findMany({where:{organizationId:member.organizationId,active:true},orderBy:{name:"asc"},select:{id:true,name:true,operationalEmail:true,cluster:true,operationLeaderId:true}}),
   prisma.operationProcess.findMany({where:{organizationId:member.organizationId,active:true},orderBy:{name:"asc"},include:{checklistTemplates:{orderBy:{position:"asc"}}}}),
   prisma.organizationMember.findMany({where:{organizationId:member.organizationId},include:{user:{select:{id:true,name:true,email:true}}},orderBy:{createdAt:"asc"}}),
-  prisma.operationClientProcess.findMany({where:{client:{organizationId:member.organizationId},active:true},include:{client:{select:{id:true,name:true,cluster:true}},process:{select:{id:true,name:true}},responsible:{select:{id:true,name:true,email:true}}},orderBy:{updatedAt:"desc"}}),
+  ["MASTER","ADMIN","MANAGER"].includes(member.role)?prisma.operationClientProcess.findMany({where:{client:{organizationId:member.organizationId},active:true},include:{client:{select:{id:true,name:true,cluster:true}},process:{select:{id:true,name:true}},responsible:{select:{id:true,name:true,email:true}}},orderBy:{updatedAt:"desc"}}):Promise.resolve([]),
   prisma.operationActivity.count({where:{organizationId:member.organizationId,deletedAt:null,scheduledDate:{lt:parseDateStart(new Date().toISOString().slice(0,10))},status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...(responsibleId?{responsibleId}:{})}}),
  ]);
  return NextResponse.json({activities,clients,processes,members:members.map(m=>m.user),configurations,overdueCount,currentUserId:member.userId,currentRole:member.role,canManage:["MASTER","ADMIN","MANAGER"].includes(member.role),canDelete:["MASTER","ADMIN","MANAGER"].includes(member.role)});

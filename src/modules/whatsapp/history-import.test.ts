@@ -17,12 +17,12 @@ beforeEach(() => {
   m.transaction.mockImplementation(async (fn) => fn({ $queryRaw: vi.fn(async () => [{ id: "c" }]), $executeRaw: m.lock, serviceMessage: { findFirst: m.duplicate, create: m.createMessage }, serviceTicket: { findFirst: m.findTicket, update: m.updateTicket, create: m.createTicket }, serviceAttachment: { create: m.createMedia }, serviceTicketHistory: { create: m.history } }));
 });
 describe("Importing missed WhatsApp messages safely", () => {
-  it.each([["Pagar boleto do fornecedor", "ACCOUNTS_PAYABLE", "payable"], ["Emitir boleto para o cliente", "ACCOUNTS_RECEIVABLE", "receivable"]])("routes live financial messages using their specific area: %s", async (body, area, owner) => {
+  it.each([["Pagar boleto do fornecedor", "ACCOUNTS_PAYABLE"], ["Emitir boleto para o cliente", "ACCOUNTS_RECEIVABLE"]])("identifies the area but keeps live financial messages in the queue: %s", async (body, area) => {
     m.findTicket.mockResolvedValue({ ...active, assignedToId: null });
     m.route.mockImplementation(async input => ({ clientId: "client", assignedToId: input.routingArea === "ACCOUNTS_PAYABLE" ? "payable" : "receivable", reason: "Cliente", ambiguous: false }));
     await receiveMessage(connection, { ...event, historical: false, fromMe: false, body });
     expect(m.route.mock.calls[0][0].routingArea).toBe(area);
-    expect(m.updateTicket.mock.calls[0][0].data).toMatchObject({ assignedToId: owner, routingArea: area });
+    expect(m.updateTicket.mock.calls[0][0].data).toMatchObject({ assignedToId: null, routingArea: area });
   });
   it("preserves a manual assignee on a new inbound financial message", async () => {
     await receiveMessage(connection, { ...event, historical: false, fromMe: false, body: "Emitir boleto para o cliente" });
