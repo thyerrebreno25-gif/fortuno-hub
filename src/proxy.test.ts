@@ -130,5 +130,7 @@ it("keeps valid, expired and MFA recovery links public instead of sending them t
 
 it("lets only the exact public recovery endpoint handle its own origin and rate limits",async()=>{
  expect((await proxy(new NextRequest("https://example.test/api/auth/password-recovery",{method:"POST"}))).headers.get("x-middleware-next")).toBe("1");
+ expect((await proxy(new NextRequest("https://example.test/api/auth/password-recovery/complete",{method:"POST"}))).headers.get("x-middleware-next")).toBe("1");
+ expect((await proxy(new NextRequest("https://example.test/api/auth/password-recovery/complete/admin"))).headers.get("location")).toBe("https://example.test/login");
  expect((await proxy(new NextRequest("https://example.test/api/auth/password-recovery-admin"))).headers.get("location")).toBe("https://example.test/login");
 });

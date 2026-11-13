@@ -2,13 +2,12 @@
 
 import Image from "next/image";
 import { FortunoWordmark } from "@/components/fortuno-brand";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconArrowLeft,
   IconAt,
   IconCheck,
-  IconDeviceMobile,
   IconEye,
   IconEyeOff,
   IconLock,
@@ -16,148 +15,49 @@ import {
   IconShieldCheck,
 } from "@tabler/icons-react";
 import {RECOVERY_INTENT_COOKIE} from "@/lib/auth/recovery-return";
-import { createRecoveryClient } from "@/lib/supabase/client";
+import { recoveryPasswordToken } from "@/lib/auth/recovery-password-token";
 import loginStyles from "@/app/login/login.module.css";
 import styles from "./recuperar-senha.module.css";
 
 type RecoveryMode =
   | "request"
   | "sent"
-  | "preparing"
-  | "authenticator"
   | "password"
   | "success"
   | "invalid";
 
-function recoveryTokens() {
-  const currentUrl = new URL(window.location.href);
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-
-  return {
-    tokenHash: currentUrl.searchParams.get("token_hash") ?? "",
-    tokenType: currentUrl.searchParams.get("type") ?? "",
-    code: currentUrl.searchParams.get("code") ?? "",
-    recovery: currentUrl.searchParams.get("recovery") === "1",
-    accessToken: hash.get("access_token") ?? "",
-    refreshToken: hash.get("refresh_token") ?? "",
-    hashType: hash.get("type") ?? "",
-    failed: Boolean(currentUrl.searchParams.get("error")||currentUrl.searchParams.get("error_code")||hash.get("error")||hash.get("error_code")),
-  };
-}
-
-function friendlyMfaError(message: string) {
-  const normalized = message.toLowerCase();
-  if (
-    normalized.includes("invalid") ||
-    normalized.includes("expired") ||
-    normalized.includes("challenge")
-  ) {
-    return "Código inválido ou expirado. Confira o autenticador e tente novamente.";
-  }
-  return "Não foi possível validar o código do autenticador. Tente novamente.";
-}
-
 export default function RecoverPasswordPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createRecoveryClient(), []);
 
   const [mode, setMode] = useState<RecoveryMode>("request");
   const [email, setEmail] = useState("");
-  const [factorId, setFactorId] = useState("");
-  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const recoveryAttempt=useRef<Promise<{userEmail:string;factorId:string|null}>|null>(null);
+  const recoveryToken = useRef<string | null>(null);
   useEffect(() => {
     let active = true;
-
-    async function prepareRecovery() {
-      const tokens = recoveryTokens();
-      const hasRecoveryPayload = Boolean(
-        tokens.tokenHash ||
-          tokens.code ||
-          tokens.accessToken ||
-          tokens.recovery ||
-          tokens.hashType === "recovery" || tokens.failed,
-      );
-      if (!hasRecoveryPayload) return;
-
-      setMode("preparing");
-      setError("");
-
-      try {
-        if(!recoveryAttempt.current)recoveryAttempt.current=(async()=>{
-          if(tokens.failed)throw new Error("expired-link");
-        if (tokens.tokenHash) {
-          if (tokens.tokenType !== "recovery") {
-            throw new Error("invalid-recovery-type");
-          }
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: tokens.tokenHash,
-            type: "recovery",
-          });
-          if (verifyError) throw verifyError;
-        } else if (tokens.code) {
-          const { error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(tokens.code);
-          if (exchangeError) throw exchangeError;
-        } else if (tokens.accessToken && tokens.refreshToken) {
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: tokens.accessToken,
-            refresh_token: tokens.refreshToken,
-          });
-          if (sessionError) throw sessionError;
-        }
-
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        if (userError || !user) throw userError || new Error("missing-user");
-
-        const { data: factors, error: factorsError } =
-          await supabase.auth.mfa.listFactors();
-        if (factorsError || !factors) {
-          throw factorsError || new Error("missing-factors");
-        }
-
-        const verifiedFactor = factors.totp.find(
-          (factor) => factor.status === "verified",
-        );
-          return {userEmail:user.email||"sua conta",factorId:verifiedFactor?.id||null};
-        })();
-        const recovered=await recoveryAttempt.current;
-        document.cookie=`${RECOVERY_INTENT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; Secure`;
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname,
-        );
-
-        if (active) {
-          setEmail(recovered.userEmail);
-          setFactorId(recovered.factorId||"");
-          setMode(recovered.factorId?"authenticator":"password");
-        }
-      } catch {
-        if (active) {
-          setError(
-            "O link de recuperação é inválido ou expirou. Solicite um novo e-mail para continuar.",
-          );
-          setMode("invalid");
-        }
+    // Read and clear the browser URL after hydration, without consuming its token.
+    queueMicrotask(() => {
+      if (!active) return;
+      const currentUrl = new URL(window.location.href);
+      const hasPayload = Boolean(currentUrl.search || currentUrl.hash);
+      if (!hasPayload) return;
+      const token = recoveryPasswordToken(currentUrl.href);
+      recoveryToken.current = token;
+      document.cookie=`${RECOVERY_INTENT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; Secure`;
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (token) setMode("password");
+      else {
+        setError("O link de recuperação é inválido, expirou ou pertence ao fluxo antigo. Solicite um novo e-mail para continuar.");
+        setMode("invalid");
       }
-    }
-
-    void prepareRecovery();
-    return () => {
-      active = false;
-    };
-  }, [supabase]);
+    });
+    return () => { active = false; };
+  }, []);
 
   async function requestRecovery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -177,37 +77,12 @@ export default function RecoverPasswordPage() {
     finally {setLoading(false);}
   }
 
-  async function verifyAuthenticator(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const normalizedCode = code.replace(/\D/g, "").slice(0, 6);
-    if (normalizedCode.length !== 6 || !factorId) {
-      setError("Informe os 6 números exibidos no aplicativo autenticador.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    const { error: verifyError } =
-      await supabase.auth.mfa.challengeAndVerify({
-        factorId,
-        code: normalizedCode,
-      });
-    setLoading(false);
-
-    if (verifyError) {
-      setError(friendlyMfaError(verifyError.message));
-      return;
-    }
-
-    setMode("password");
-  }
-
   async function savePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
-    if (password.length < 8) {
-      setError("A nova senha deve possuir pelo menos 8 caracteres.");
+    if (password.length < 8 || password.length > 128) {
+      setError("A nova senha deve possuir de 8 a 128 caracteres.");
       return;
     }
     if (password !== confirmPassword) {
@@ -216,26 +91,28 @@ export default function RecoverPasswordPage() {
     }
 
     setLoading(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    if (updateError) {
-      setLoading(false);
-      setError(
-        updateError.message || "Não foi possível atualizar a senha desta conta.",
-      );
-      return;
-    }
-
-    await supabase.auth.signOut({ scope: "global" });
-    setLoading(false);
-    setMode("success");
+    try {
+      const response = await fetch("/api/auth/password-recovery/complete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenHash: recoveryToken.current, password }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result.error || "Não foi possível atualizar a senha.");
+        if (result.invalidLink) { recoveryToken.current = null; setMode("invalid"); }
+        return;
+      }
+      recoveryToken.current = null;
+      setPassword(""); setConfirmPassword("");
+      setMode("success");
+    } catch {
+      setError("Não foi possível confirmar a alteração. Solicite um novo link antes de tentar novamente.");
+      recoveryToken.current = null;
+      setMode("invalid");
+    } finally { setLoading(false); }
   }
 
-  const currentStep =
-    mode === "request" || mode === "sent"
-      ? 1
-      : mode === "authenticator" || mode === "preparing" || mode === "invalid"
-        ? 2
-        : 3;
+  const currentStep = mode === "request" || mode === "sent" ? 1 : mode === "success" ? 3 : 2;
 
   return (
     <main className={loginStyles.page}>
@@ -292,8 +169,8 @@ export default function RecoverPasswordPage() {
                 <span>RECUPERAR SENHA</span>
                 <h1>Confirme seu e-mail</h1>
                 <p>
-                  Enviaremos um link seguro para criar uma nova senha. Se sua conta
-                  possui autenticador, também confirmaremos o código.
+                  Enviaremos um link seguro para criar uma nova senha. Você não precisa
+                  do código do autenticador para redefini-la.
                 </p>
               </div>
               <form className={loginStyles.form} onSubmit={requestRecovery}>
@@ -342,67 +219,12 @@ export default function RecoverPasswordPage() {
             </RecoveryMessage>
           )}
 
-          {mode === "preparing" && (
-            <RecoveryMessage
-              icon={<span className={loginStyles.spinner} />}
-              title="Confirmando seu e-mail..."
-              description="Aguarde enquanto validamos o link de recuperação."
-            />
-          )}
-
-          {mode === "authenticator" && (
-            <>
-              <div className={loginStyles.welcome}>
-                <span>SEGUNDA ETAPA</span>
-                <h1>Confirme o autenticador</h1>
-                <p>
-                  Abra o aplicativo autenticador vinculado a {email} e informe
-                  o código atual.
-                </p>
-              </div>
-              <form className={loginStyles.form} onSubmit={verifyAuthenticator}>
-                <div className={loginStyles.field}>
-                  <label htmlFor="recovery-code">Código do autenticador</label>
-                  <div className={`${loginStyles.inputContainer} ${styles.codeInput}`}>
-                    <IconDeviceMobile aria-hidden="true" />
-                    <input
-                      id="recovery-code"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      value={code}
-                      onChange={(event) =>
-                        setCode(
-                          event.currentTarget.value.replace(/\D/g, "").slice(0, 6),
-                        )
-                      }
-                      placeholder="000000"
-                      required
-                      disabled={loading}
-                      autoFocus
-                    />
-                  </div>
-                </div>
-                {error && <RecoveryError message={error} />}
-                <button
-                  type="submit"
-                  className={loginStyles.submitButton}
-                  disabled={loading || code.length !== 6}
-                >
-                  {loading ? "Validando..." : "Validar código"}
-                </button>
-              </form>
-            </>
-          )}
-
           {mode === "password" && (
             <>
               <div className={loginStyles.welcome}>
                 <span>ÚLTIMA ETAPA</span>
                 <h1>Crie a nova senha</h1>
-                <p>Use pelo menos 8 caracteres e confirme a senha abaixo.</p>
+                <p>Use de 8 a 128 caracteres e confirme a senha abaixo.</p>
               </div>
               <form className={loginStyles.form} onSubmit={savePassword}>
                 <PasswordField
