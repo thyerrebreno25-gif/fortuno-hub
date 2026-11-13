@@ -12,6 +12,8 @@ if (!connectionString) {
     await client.connect();
     await client.query("BEGIN");
     await client.query("SET LOCAL lock_timeout = '20s'");
+    // Shared tables are touched by multiple setup modules and Vercel projects.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-schema-setup-global-v1'))");
     await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-management-v1'))");
     await client.query(await readFile(new URL("../prisma/migrations/20261027000000_management/migration.sql", import.meta.url), "utf8"));
     await client.query(await readFile(new URL("../prisma/migrations/20261027010000_management_sync/migration.sql", import.meta.url), "utf8"));
