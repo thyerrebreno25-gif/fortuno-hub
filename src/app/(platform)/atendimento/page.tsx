@@ -318,7 +318,7 @@ export default function AtendimentoPage() {
           {bootstrap.currentUser?.canManage&&<Tooltip label={analyticsOpen?"Voltar à caixa":"Análise de e-mails"}><ActionIcon variant={analyticsOpen?"light":"subtle"} size="lg" aria-label="Análise de e-mails" onClick={()=>setAnalyticsOpen(value=>!value)}><IconChartBar size={21}/></ActionIcon></Tooltip>}
           <Menu position="bottom-end" width={255} shadow="md"><Menu.Target><ActionIcon size="lg" variant="subtle" aria-label="Opções dos e-mails"><IconDotsVertical size={21}/></ActionIcon></Menu.Target><Menu.Dropdown>
             <Menu.Item onClick={()=>setConnectionOpen(true)}>Conexão Gmail</Menu.Item>
-            {bootstrap.permission?.canManage&&<><Menu.Divider/><Menu.Item disabled={saving} onClick={()=>setArchiveAction(view==="ARCHIVED"?"restore":"archive")}>{view==="ARCHIVED"?"Restaurar arquivados":"Arquivar caixa atual"}</Menu.Item>{view==="ARCHIVED"&&<Menu.Item color="red" onClick={()=>{setDeleteConfirmation("");setArchiveAction("delete");}}>Excluir todos os arquivados</Menu.Item>}</>}
+            {bootstrap.permission?.canManage&&<><Menu.Divider/><Menu.Item disabled={saving} onClick={()=>setArchiveAction(view==="ARCHIVED"?"restore":"archive")}>{view==="ARCHIVED"?"Restaurar arquivados":"Arquivar todos os e-mails"}</Menu.Item>{view==="ARCHIVED"&&<Menu.Item color="red" onClick={()=>{setDeleteConfirmation("");setArchiveAction("delete");}}>Excluir todos os arquivados</Menu.Item>}</>}
             {bootstrap.permission?.canCreate&&bootstrap.currentUser?.canManage&&<><Menu.Divider/><Menu.Item onClick={()=>setNewOpen(true)}>Simular e-mail para teste</Menu.Item></>}
           </Menu.Dropdown></Menu>
         </Group>
