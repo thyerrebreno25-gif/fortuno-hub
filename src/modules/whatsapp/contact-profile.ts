@@ -1,4 +1,5 @@
 import "server-only";
+import {createHash} from "node:crypto";
 import {unstable_cache} from "next/cache";
 import {Prisma} from "@/generated/prisma/client";
 import {enrichGroupMemberNames,memberAliases,type GroupMember} from "./group-members";
@@ -9,8 +10,10 @@ import {chatProfile} from "./chat-info";
 import {isContactName} from "./contact-name";
 import type {whatsappConnection} from "./uazapi-server";
 type Connection=NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>;
-export async function resolvedChatProfile(connection:Connection,externalId:string,group:boolean){
-  return unstable_cache(async()=>chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),group?"/group/info":"/chat/details",group?{groupjid:externalId}:{number:externalId,preview:false}),group),["whatsapp-chat-info-v2",connection.organizationId,connection.id,connection.instanceId,connection.phone||"",externalId],{revalidate:120})();
+export function chatProfileTag(connection:Pick<Connection,"id"|"phone">,externalId:string){return "wa-profile-"+createHash("sha256").update([connection.id,connection.phone,externalId].join(":" )).digest("hex");}
+export async function resolvedChatProfile(connection:Connection,externalId:string,group:boolean,refresh=false){
+  if(group&&refresh)return chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/group/info",{groupjid:externalId,force:true}),true);
+  return unstable_cache(async()=>chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),group?"/group/info":"/chat/details",group?{groupjid:externalId}:{number:externalId,preview:false}),group),["whatsapp-chat-info-v3",connection.organizationId,connection.id,connection.instanceId,connection.phone||"",externalId],{revalidate:120,tags:[chatProfileTag(connection,externalId)]})();
 }
 export async function rememberChatName(connection:Connection,senderEmail:string,name:string|null){
   if(!connection.phone || !name || !isContactName(name))return;

@@ -6,7 +6,7 @@ export function chatProfile(body:unknown,group:boolean){
  const count=Number(row.ParticipantCount);
  const created=typeof row.GroupCreated==="string"?Date.parse(row.GroupCreated):NaN;
  const participants=group?groupMembers(row.Participants||row.participants,row.participant_profiles||root.participant_profiles):[];
- return {participants,participantsAvailable:group&&(Array.isArray(row.Participants)||Array.isArray(row.participants)),name:text(group?row.Name||row.name:row.name||row.wa_contactName||row.wa_name,250)||null,
+ return {accountIsAdmin:group&&row.OwnerIsAdmin===true,ownerId:group?text(row.OwnerPN||row.OwnerJID,150)||null:null,participants,participantsAvailable:group&&(Array.isArray(row.Participants)||Array.isArray(row.participants)),name:text(group?row.Name||row.name:row.name||row.wa_contactName||row.wa_name,250)||null,
  description:group?(row.TopicDeleted===true?null:text(row.Topic,10000)||null):text(row.about||row.wa_about,2000)||null,
  memberCount:group?(row.ParticipantCount!==undefined&&row.ParticipantCount!==null&&Number.isSafeInteger(count)&&count>=0?count:Array.isArray(row.Participants)?row.Participants.length:null):null,
  createdAt:Number.isFinite(created)?new Date(created).toISOString():null,

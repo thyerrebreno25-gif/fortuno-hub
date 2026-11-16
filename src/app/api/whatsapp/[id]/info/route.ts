@@ -7,11 +7,12 @@ import {resolveWhatsappTicketId} from "@/modules/whatsapp/server";
 import {parseWhatsappChannelAddress} from "@/modules/whatsapp/core";
 import {whatsappConnection} from "@/modules/whatsapp/uazapi-server";
 import {mediaKind} from "@/modules/whatsapp/media";
+import {canManageGroupInHub,groupAccountIsAdmin} from "@/modules/whatsapp/group-management-policy";
 export async function GET(request:Request,context:{params:Promise<{id:string}>}){
  const member=await getServiceCenterMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
  const permission=await getWhatsAppPermission(member.organizationId,member.role);if(!permission.canView)return NextResponse.json({error:"Sem permissão."},{status:403});
  const {id}=await context.params,ticketId=await resolveWhatsappTicketId(id,member.organizationId);
- const ticket=await prisma.serviceTicket.findFirst({where:{id:ticketId,...(await currentWhatsAppAccount(member.organizationId)).where},select:{id:true,senderEmail:true,senderName:true,recipientEmail:true,subject:true,client:{select:{name:true}},assignedTo:{select:{name:true,email:true}}}});
+ const ticket=await prisma.serviceTicket.findFirst({where:{id:ticketId,...(await currentWhatsAppAccount(member.organizationId)).where},select:{id:true,senderEmail:true,senderName:true,recipientEmail:true,subject:true,assignedToId:true,status:true,client:{select:{name:true}},assignedTo:{select:{name:true,email:true}}}});
  if(!ticket)return NextResponse.json({error:"Conversa não encontrada."},{status:404});
  const params=new URL(request.url).searchParams,section=params.get("section")||"profile",page=Number(params.get("page")||1);
  if(!["profile","files"].includes(section)||!Number.isSafeInteger(page)||page<1||page>100000)return NextResponse.json({error:"Filtro inválido."},{status:400});
@@ -24,9 +25,11 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
  const local={ticketId:ticket.id,name:ticket.senderName||ticket.subject,group,identifier:channel.externalId,client:ticket.client?.name||null,operator:ticket.assignedTo?.name||ticket.assignedTo?.email||null};
  if(!connection?.phone||connection.status!=="CONNECTED"||connection.expiresAt&&connection.expiresAt<new Date()||ticket.recipientEmail!==`wa-account:${connection.id}:${connection.phone}`)return NextResponse.json({...local,profile:null,warning:"Dados do WhatsApp indisponíveis: a conversa não pertence à conta atualmente conectada ou a conexão está inativa."});
  try{
-  const baseProfile=await resolvedChatProfile(connection,channel.externalId,group);
+  const baseProfile=await resolvedChatProfile(connection,channel.externalId,group,params.get("refresh")==="1");
   const profile=group?{...baseProfile,participants:await resolvedGroupMemberNames(connection,channel.externalId,baseProfile.participants).catch(()=>baseProfile.participants)}:baseProfile;
   await rememberChatName(connection,ticket.senderEmail,profile.name);
-  return NextResponse.json({...local,profile});
+  const hubAllowed=canManageGroupInHub(member.role,permission,member.userId,ticket);
+  const memberManagement=group?{allowed:hubAllowed&&groupAccountIsAdmin(profile,connection.phone),phone:connection.phone,reason:!hubAllowed?"Assuma o chamado ou solicite a alteração a um gestor.":!groupAccountIsAdmin(profile,connection.phone)?"O número conectado precisa ser administrador deste grupo.":null}:null;
+  return NextResponse.json({...local,profile,memberManagement},{headers:{"Cache-Control":"private, no-store"}});
  }catch{return NextResponse.json({...local,profile:null,warning:"Não foi possível atualizar as informações no WhatsApp. As mídias sincronizadas continuam disponíveis."});}
 }

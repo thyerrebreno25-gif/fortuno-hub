@@ -29,3 +29,15 @@ it("resolves members by exact aliases in this organization, number and group, pr
  expect(m.directory.mock.calls[0][0].where).toMatchObject({organizationId:"org",connectionId:"conn",accountPhone:"5511888888888",active:true,kind:"CONTACT"});
  expect(m.senders.mock.calls[0][0].values).toEqual(expect.arrayContaining(["org","wa-account:conn:5511888888888","wa-group:120363000@g.us"]));
 });
+
+it("only offers member management to the assigned operator or manager when the connected account is admin",async()=>{
+ m.permission.mockResolvedValue({canView:true,canEdit:true});
+ m.ticket.mockResolvedValue({id:"ticket",senderName:"Grupo",subject:"Grupo",senderEmail:"wa-group:120363000@g.us",recipientEmail:"wa-account:conn:5511888888888",assignedToId:"operator",status:"IN_PROGRESS",client:null,assignedTo:null});
+ m.request.mockResolvedValue({Name:"Grupo",OwnerIsAdmin:true});
+ expect((await(await get()).json()).memberManagement).toMatchObject({allowed:true,phone:"5511888888888"});
+ m.permission.mockResolvedValue({canView:true,canEdit:false});expect((await(await get()).json()).memberManagement.allowed).toBe(false);
+ m.permission.mockResolvedValue({canView:true,canEdit:true});m.request.mockResolvedValue({Name:"Grupo"});expect((await(await get()).json()).memberManagement.allowed).toBe(false);
+});
+it("explicit member refresh bypasses the local profile cache and asks WhatsApp for current members",async()=>{
+ await get("?refresh=1");expect(m.request.mock.calls[0][3]).toEqual({groupjid:"120363000@g.us",force:true});
+});
