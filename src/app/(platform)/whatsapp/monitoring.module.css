@@ -37,3 +37,7 @@
 .emptyCell { padding: 28px !important; text-align: center; color: var(--fortuno-muted); }.waitTime, .dangerTime { display: inline-flex; padding: 4px 8px; border-radius: 20px; font-weight: 800; font-size: 10px; background: color-mix(in srgb, #228be6 10%, transparent); color: #1971c2; }.dangerTime { background: color-mix(in srgb, #fa5252 12%, transparent); color: #e03131; }.noChart { min-height: 210px; display: grid; place-items: center; color: var(--fortuno-muted); font-size: 13px; }
 @media (max-width: 1250px) { .filters > :global(.mantine-Group-root) { align-items: flex-end; }.primaryGrid, .secondaryGrid, .tableGrid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .quickPeriods { margin-left: 0; width: 100%; }.filters > :global(.mantine-Group-root) { align-items: stretch; }.filters :global(.mantine-InputWrapper-root) { flex: 1 1 145px; }.donutLayout { grid-template-columns: 1fr; height: auto; justify-items: center; }.donutLegend { width: 100%; }.chartBody { padding-inline: 10px; }.agentRow { grid-template-columns: minmax(120px, 1fr) 1fr 24px; } }
+
+.attentionScroll { max-height: min(300px, 34vh); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.attentionScroll th { position: sticky; top: 0; z-index: 1; }
+.attentionScroll:focus-visible { outline: 2px solid var(--mantine-color-blue-6); outline-offset: -2px; }

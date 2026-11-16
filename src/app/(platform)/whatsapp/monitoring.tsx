@@ -188,7 +188,7 @@ export function WhatsAppMonitoring({
               <div><Text fw={850}>Atendimentos que precisam de atenção</Text><Text size="xs" c="dimmed">Chamados abertos agora, inclusive os iniciados antes do período selecionado. Espera desde o início das mensagens ainda sem resposta.</Text></div>
               <Group gap="xs"><Badge color={data.summary.longestCurrentWaitMinutes > 60 ? "red" : "blue"} variant="light">Maior espera: {duration(data.summary.longestCurrentWaitMinutes)}</Badge></Group>
             </div>
-            <div className={styles.tableScroll}>
+            <div className={`${styles.tableScroll} ${styles.attentionScroll}`} role="region" aria-label="Atendimentos que precisam de atenção" tabIndex={0}>
               <table>
                 <thead><tr><th>Contato</th><th>Cliente</th><th>Responsável</th><th>Status</th><th>Última mensagem</th><th>Sem resposta / risco</th><th></th></tr></thead>
                 <tbody>
