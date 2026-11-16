@@ -13,7 +13,7 @@ type Connection=NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>;
 export function chatProfileTag(connection:Pick<Connection,"id"|"phone">,externalId:string){return "wa-profile-"+createHash("sha256").update([connection.id,connection.phone,externalId].join(":" )).digest("hex");}
 export async function resolvedChatProfile(connection:Connection,externalId:string,group:boolean,refresh=false){
   if(group&&refresh)return chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/group/info",{groupjid:externalId,force:true}),true);
-  return unstable_cache(async()=>chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),group?"/group/info":"/chat/details",group?{groupjid:externalId}:{number:externalId,preview:false}),group),["whatsapp-chat-info-v3",connection.organizationId,connection.id,connection.instanceId,connection.phone||"",externalId],{revalidate:120,tags:[chatProfileTag(connection,externalId)]})();
+  return unstable_cache(async()=>chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),group?"/group/info":"/chat/details",group?{groupjid:externalId}:{number:externalId,preview:false}),group),["whatsapp-chat-info-v4",connection.organizationId,connection.id,connection.instanceId,connection.phone||"",externalId],{revalidate:120,tags:[chatProfileTag(connection,externalId)]})();
 }
 export async function rememberChatName(connection:Connection,senderEmail:string,name:string|null){
   if(!connection.phone || !name || !isContactName(name))return;
@@ -21,7 +21,7 @@ export async function rememberChatName(connection:Connection,senderEmail:string,
   await prisma.serviceTicket.updateMany({where:{organizationId:connection.organizationId,source:"WHATSAPP_API",recipientEmail:`wa-account:${connection.id}:${connection.phone}`,senderEmail,OR:[{senderName:{not:name}},{subject:{not:name}},{senderName:null}]},data:{senderName:name!,subject:name!,updatedAt:new Date()}});
 }
 
-export async function resolvedGroupMemberNames(connection:Connection,groupJid:string,members:GroupMember[]){
+export async function resolvedGroupMemberNames(connection:Connection,groupJid:string,members:GroupMember[],lookupMissing=false){
  if(!members.length||!connection.phone)return members;
  const ids=[...new Set(members.flatMap(memberAliases))];
  const [directory,senders]=await Promise.all([
@@ -32,5 +32,15 @@ export async function resolvedGroupMemberNames(connection:Connection,groupJid:st
     AND m.direction::text='INBOUND' AND m."fromName" IS NOT NULL AND COALESCE(m."providerMetadata"->>'senderJid',m."providerMetadata"->>'sender')=ANY(${ids}::text[])
    ORDER BY COALESCE(m."providerMetadata"->>'senderJid',m."providerMetadata"->>'sender'),m."receivedAt" DESC,m.id DESC`)
  ]);
- return enrichGroupMemberNames(members,new Map(directory.map(row=>[row.externalId,row.displayName])),new Map(senders.map(row=>[row.sender,row.name])));
+ const result=enrichGroupMemberNames(members,new Map(directory.map(row=>[row.externalId,row.displayName])),new Map(senders.map(row=>[row.sender,row.name])));
+ if(lookupMissing){
+  // Individual profile reads are bounded and limited to two concurrent lookups.
+  const unknown=result.filter(row=>!row.name&&row.phone).slice(0,6);
+  for(let index=0;index<unknown.length;index+=2)await Promise.allSettled(unknown.slice(index,index+2).map(async row=>{
+   const profile=await unstable_cache(async()=>chatProfile(await uazapiRequest(connection.serverUrl,decryptIntegrationSecret(connection.tokenEncrypted),"/chat/details",{number:row.phone!,preview:true},{timeoutMs:3500}),false),["wa-member-name-v1",connection.organizationId,connection.id,connection.instanceId,connection.phone||"",row.phone!],{revalidate:120})();
+   if(isContactName(profile.name))row.name=profile.name;
+   row.photo ||=profile.photo;
+  }));
+ }
+ return result;
 }

@@ -1,3 +1,4 @@
+import type {monitoringInsights} from "./monitoring-insights";
 export type Breakdown = {
   id: string;
   name: string;
@@ -11,6 +12,8 @@ export type Breakdown = {
 };
 
 export type MonitoringData = {
+  insights?:ReturnType<typeof monitoringInsights>;
+  coverage?:{conversationLimitReached:boolean;messageLimitReached:boolean;liveLimitReached:boolean};
   operationStartedAt?: string|null;
   period: { from: string; to: string; days: number };
   summary: {

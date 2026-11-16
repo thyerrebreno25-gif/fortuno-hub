@@ -8,6 +8,7 @@ import {parseWhatsappChannelAddress} from "@/modules/whatsapp/core";
 import {whatsappConnection} from "@/modules/whatsapp/uazapi-server";
 import {mediaKind} from "@/modules/whatsapp/media";
 import {canManageGroupInHub,groupAccountIsAdmin} from "@/modules/whatsapp/group-management-policy";
+export const maxDuration=60;
 export async function GET(request:Request,context:{params:Promise<{id:string}>}){
  const member=await getServiceCenterMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
  const permission=await getWhatsAppPermission(member.organizationId,member.role);if(!permission.canView)return NextResponse.json({error:"Sem permissão."},{status:403});
@@ -26,10 +27,10 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
  if(!connection?.phone||connection.status!=="CONNECTED"||connection.expiresAt&&connection.expiresAt<new Date()||ticket.recipientEmail!==`wa-account:${connection.id}:${connection.phone}`)return NextResponse.json({...local,profile:null,warning:"Dados do WhatsApp indisponíveis: a conversa não pertence à conta atualmente conectada ou a conexão está inativa."});
  try{
   const baseProfile=await resolvedChatProfile(connection,channel.externalId,group,params.get("refresh")==="1");
-  const profile=group?{...baseProfile,participants:await resolvedGroupMemberNames(connection,channel.externalId,baseProfile.participants).catch(()=>baseProfile.participants)}:baseProfile;
+  const profile=group?{...baseProfile,participants:await resolvedGroupMemberNames(connection,channel.externalId,baseProfile.participants,params.get("members")==="1").catch(()=>baseProfile.participants)}:baseProfile;
   await rememberChatName(connection,ticket.senderEmail,profile.name);
   const hubAllowed=canManageGroupInHub(member.role,permission,member.userId,ticket);
-  const memberManagement=group?{allowed:hubAllowed&&groupAccountIsAdmin(profile,connection.phone),phone:connection.phone,reason:!hubAllowed?"Assuma o chamado ou solicite a alteração a um gestor.":!groupAccountIsAdmin(profile,connection.phone)?"O número conectado precisa ser administrador deste grupo.":null}:null;
+  const memberManagement=group?{canSaveContact:hubAllowed,allowed:hubAllowed&&groupAccountIsAdmin(profile,connection.phone),phone:connection.phone,reason:!hubAllowed?"Assuma o chamado ou solicite a alteração a um gestor.":!groupAccountIsAdmin(profile,connection.phone)?"O número conectado precisa ser administrador deste grupo.":null}:null;
   return NextResponse.json({...local,profile,memberManagement},{headers:{"Cache-Control":"private, no-store"}});
  }catch{return NextResponse.json({...local,profile:null,warning:"Não foi possível atualizar as informações no WhatsApp. As mídias sincronizadas continuam disponíveis."});}
 }

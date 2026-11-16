@@ -6,12 +6,12 @@ import type { getWhatsappTicket } from "./server";
 export class WhatsAppTransferError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
-const schema=z.object({mode:z.literal("OPERATOR").default("OPERATOR"),clientId:z.string().min(1).optional(),assignedToId:z.string().min(1),routingArea:z.enum(["ACCOUNTS_PAYABLE","ACCOUNTS_RECEIVABLE","GENERAL"]),departmentId:z.string().min(1).max(100).optional(),note:z.string().trim().max(1000).optional()});
+export const transferInput=z.object({mode:z.literal("OPERATOR").default("OPERATOR"),clientId:z.string().min(1).optional(),assignedToId:z.string().min(1),routingArea:z.enum(["ACCOUNTS_PAYABLE","ACCOUNTS_RECEIVABLE","GENERAL"]),departmentId:z.string().min(1).max(100).optional(),note:z.string().trim().max(1000).optional()});
 
-type Current = NonNullable<Awaited<ReturnType<typeof getWhatsappTicket>>>;
+type Current = Pick<NonNullable<Awaited<ReturnType<typeof getWhatsappTicket>>>,"id"|"organizationId"|"status"|"assignedToId"|"clientId"|"routingArea"|"whatsappDepartmentId"|"recipientEmail"> & {whatsappDepartmentName?:string|null};
 type Actor = { organizationId: string; userId: string; user: { name: string | null; email: string } };
-export async function transferWhatsappTicket(current: Current, actor: Actor, canManage: boolean, body: unknown) {
-  const parsed = schema.safeParse(body);
+export async function transferWhatsappTicket(current: Current, actor: Actor, canManage: boolean, body: unknown, expectedUpdatedAt?:Date) {
+  const parsed = transferInput.safeParse(body);
   if (!parsed.success) throw new WhatsAppTransferError(400, "Selecione o setor, o colaborador e revise a observação da transferência.");
   const input = parsed.data;
   if (current.organizationId !== actor.organizationId) throw new WhatsAppTransferError(404, "Atendimento não encontrado.");
@@ -30,7 +30,7 @@ export async function transferWhatsappTicket(current: Current, actor: Actor, can
   const note = input.note || "";
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    const changed = await tx.serviceTicket.updateMany({ where: { id: current.id, organizationId: actor.organizationId, mergedIntoId: null, assignedToId: current.assignedToId, clientId: current.clientId, status: { notIn: ["RESOLVED", "SPAM"] } }, data: {
+    const changed = await tx.serviceTicket.updateMany({ where: { id: current.id, organizationId: actor.organizationId, ...(current.recipientEmail?{recipientEmail:current.recipientEmail}:{}),...(expectedUpdatedAt?{updatedAt:expectedUpdatedAt}:{}), mergedIntoId: null, assignedToId: current.assignedToId, clientId: current.clientId, status: { notIn: ["RESOLVED", "SPAM"] } }, data: {
       assignedToId, assignedAt: now, status: "IN_PROGRESS",
       routingArea: area, whatsappDepartmentId:department?.id||null,whatsappDepartmentName:department?.name||null,
       routingReason: `Transferido manualmente para ${targetName} · ${areaName}.`,

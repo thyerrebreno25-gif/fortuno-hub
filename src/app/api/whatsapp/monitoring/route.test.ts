@@ -1,3 +1,4 @@
+vi.mock("@/modules/whatsapp/monitoring-live",()=>({liveMonitoringTickets:vi.fn(async()=>[])}));
 import {beforeEach,expect,it,vi} from "vitest";
 vi.mock("@/modules/whatsapp/operation-start",()=>({operationStartedAt:async()=>null}));
 const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),tickets:vi.fn(),history:vi.fn()}));

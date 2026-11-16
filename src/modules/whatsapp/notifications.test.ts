@@ -1,4 +1,5 @@
-vi.mock("./payment-requests",()=>({paymentRequestNotifications:async()=>[]}));
+const paymentNotifications=vi.hoisted(()=>vi.fn(async()=>[]));
+vi.mock("./payment-requests",()=>({paymentRequestNotifications:paymentNotifications}));
 vi.mock("server-only", () => ({}));
 import { beforeEach, expect, it, vi } from "vitest";
 const query = vi.hoisted(() => vi.fn());
@@ -22,3 +23,5 @@ it("uses stable message ids and opens the precise conversation without exposing 
 
 it("detects live arrival sounds independently of read markers, including the operator queue",async()=>{query.mockResolvedValue([{id:"new",arrivedAt:new Date("2026-11-13T12:00:00Z")}]);expect(await whatsappSoundEvents("org","operator",true,"2026-11-13T11:59:55Z",new Date("2026-11-13T12:00:01Z"))).toEqual([{id:"whatsapp-message-new",createdAt:"2026-11-13T12:00:00.000Z"}]);const sql=query.mock.calls[0][0];expect(sql.sql).not.toContain("WhatsAppReadState");expect(sql.sql).toContain('m."createdAt"');expect(sql.sql).toContain("m.direction::text='INBOUND'");expect(sql.sql).toContain("'historical'");expect(sql.values).toContain("operator");expect(sql.values).toContain("org");expect(sql.values).toContain(true);});
 it("does not replay a backlog on first load and limits sound lookups to two minutes",async()=>{await whatsappSoundEvents("org","operator",true,"initial");expect(query).not.toHaveBeenCalled();const now=new Date("2026-11-13T12:00:00Z");await whatsappSoundEvents("org","operator",false,"2025-01-01T00:00:00Z",now);expect(query.mock.calls[0][0].values).toContainEqual(new Date("2026-11-13T11:58:00Z"));});
+
+it("does not grant managerial payment visibility just because the operator receives queue message alerts",async()=>{await whatsappNotifications("org","operator",true,new Date("2026-11-16T12:00:00Z"),false);expect(paymentNotifications).toHaveBeenCalledWith("org","operator",false);expect(query.mock.calls[0][0].values).toContain(true);});

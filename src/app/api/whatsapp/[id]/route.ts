@@ -1,3 +1,4 @@
+import {namedMentions} from "@/modules/whatsapp/mentions";
 import {finalizationNote} from "@/modules/whatsapp/finalization";
 import {repairCallPlaceholders} from "@/modules/whatsapp/uazapi-events";
 import {reopenWhatsAppCall,ReopenWhatsAppError} from "@/modules/whatsapp/reopen";
@@ -285,7 +286,13 @@ export async function PATCH(request: Request, context: Context) {
         const metadata = object(latestInbound?.providerMetadata);
         const connection = await whatsappConnection(member.organizationId);
         const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
-        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, content),...destination,replyToMessageId:replyTarget?.providerId});
+        let wireContent=content;
+        if(Array.isArray(body.mentionTargets)&&body.mentionTargets.length){
+          if(!destination.to.endsWith("@g.us")||!connection)throw new Error("Menções são disponíveis apenas em grupos conectados.");
+          const profile=await resolvedChatProfile(connection,destination.to,true);
+          wireContent=namedMentions(content,body.mentionTargets,new Set(profile.participants.flatMap(person=>person.phone?[person.phone]:[]))).wireBody;
+        }
+        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, wireContent),...destination,replyToMessageId:replyTarget?.providerId});
         externalMessageId = sent.messageId;
         providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone,...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{}) };
       } catch (error) {

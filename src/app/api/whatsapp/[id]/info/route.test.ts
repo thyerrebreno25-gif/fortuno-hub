@@ -41,3 +41,8 @@ it("only offers member management to the assigned operator or manager when the c
 it("explicit member refresh bypasses the local profile cache and asks WhatsApp for current members",async()=>{
  await get("?refresh=1");expect(m.request.mock.calls[0][3]).toEqual({groupjid:"120363000@g.us",force:true});
 });
+
+it("resolves a newly added member from their individual WhatsApp profile only when members are requested",async()=>{
+ m.request.mockImplementation(async(_base,_token,path)=>path==="/group/info"?{Name:"Grupo",Participants:[{JID:"556191961024@s.whatsapp.net"}]}:{name:"556191961024",wa_contactName:"Contato conhecido"});m.directory.mockResolvedValue([]);m.senders.mockResolvedValue([]);
+ const result=await(await get("?members=1")).json();expect(result.profile.participants[0]).toMatchObject({phone:"556191961024",name:"Contato conhecido"});expect(m.request.mock.calls[1].slice(2)).toEqual(["/chat/details",{number:"556191961024",preview:true},{timeoutMs:3500}]);
+});

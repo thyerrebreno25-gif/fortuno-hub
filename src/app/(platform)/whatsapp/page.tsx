@@ -4,6 +4,7 @@ import {ComposerEmojiPicker} from "@/modules/whatsapp/emoji-picker";
 import {insertComposerText,type ComposerSelection} from "@/modules/whatsapp/composer-text";
 import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
+import {WhatsAppTransferBatchDialog} from "@/modules/whatsapp/transfer-batch-dialog";
 import {PaymentRequestsPanel} from "@/modules/whatsapp/payment-requests-panel";
 import {MentionPicker} from "@/modules/whatsapp/mention-picker";
 
@@ -541,6 +542,7 @@ export default function WhatsAppPage() {
     requestAnimationFrame(()=>replyInput.current?.focus());
   },[]);
 
+  const mentionTargets=useRef<{ticketId:string;targets:Array<{phone:string;name:string}>}>({ticketId:"",targets:[]});
   async function sendReply() {
     const content = (commentMode?comment:reply).trim(), id = selectedId;
     if (!content || !id || saving || sendingReply.current) return;
@@ -557,7 +559,8 @@ export default function WhatsAppPage() {
       setDetail(optimistic);
     }
     try {
-      const sent = await mutate({ action: commentMode?"comment":"reply", content,...(!commentMode&&quote?.id?{replyToMessageId:quote.id}:{}) }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
+      const sent = await mutate({ action: commentMode?"comment":"reply", content,...(!commentMode&&mentionTargets.current.ticketId===id?{mentionTargets:mentionTargets.current.targets}:{}),...(!commentMode&&quote?.id?{replyToMessageId:quote.id}:{}) }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
+      if(sent&&!commentMode&&mentionTargets.current.ticketId===id)mentionTargets.current.targets=[];
       if (!sent) {
         const cached = detailCache.current.get(id);
         if (cached) {
@@ -686,7 +689,7 @@ export default function WhatsAppPage() {
               {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
             </div>
           </FilterPanel></div>
-          {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></Group>}
+          {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppTransferBatchDialog operators={bootstrap.members} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onTransferred={ids=>{for(const id of ids){detailCache.current.delete(id);detailFetchedAt.current.delete(id);}void loadList();refreshVisibleConversation();}}/><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></Group>}
           <div className={styles.ticketList}>
             {tickets.length ? (
               tickets.map((ticket) => (
@@ -790,7 +793,7 @@ export default function WhatsAppPage() {
               {selectedQuote&&!commentMode&&<div className={styles.replyComposerBar}><div><Text size="xs" c="dimmed" mb={3}>Respondendo à mensagem</Text><QuotedMessagePreview quote={selectedQuote}/></div><ActionIcon variant="subtle" color="gray" aria-label="Cancelar resposta à mensagem" onClick={()=>setReplyTarget(null)}><IconX size={17}/></ActionIcon></div>}
               {(detail.status !== "RESOLVED"||commentMode) ? (
                 <div className={`${styles.composer} ${commentMode?styles.commentComposer:""}`}>
-                  <div className={styles.composerTools}>{attachmentButton}{!commentMode&&detail.senderEmail.startsWith("wa-group:")&&detail.assignedTo?.id===bootstrap?.currentUser.id&&<MentionPicker key={detail.id} ticketId={detail.id} value={reply} selection={composerSelection} onInsert={insertInComposer}/>}<ComposerEmojiPicker onInsert={emoji=>insertInComposer(emoji)} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))}/><Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>{setReplyTarget(null);setCommentMode(v=>!v);}}><IconLock size={18}/></ActionIcon></Tooltip></div>
+                  <div className={styles.composerTools}>{attachmentButton}{!commentMode&&detail.senderEmail.startsWith("wa-group:")&&detail.assignedTo?.id===bootstrap?.currentUser.id&&<MentionPicker key={detail.id} ticketId={detail.id} value={reply} selection={composerSelection} onInsert={insertInComposer} onMention={target=>{if(mentionTargets.current.ticketId!==detail.id)mentionTargets.current={ticketId:detail.id,targets:[]};mentionTargets.current.targets=[...mentionTargets.current.targets.filter(row=>row.name!==target.name),target].slice(-50);}}/>}<ComposerEmojiPicker onInsert={emoji=>insertInComposer(emoji)} disabled={Boolean(mediaBusy||saving||!bootstrap?.canEdit||(!commentMode&&detail.assignedTo?.id!==bootstrap?.currentUser.id))}/><Tooltip label="Mensagens padrão"><ActionIcon variant="subtle" aria-label="Abrir mensagens padrão" disabled={!bootstrap?.canEdit} onClick={()=>setQuickRepliesOpened(true)}><IconNotes size={19}/></ActionIcon></Tooltip><Tooltip label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"}><ActionIcon variant={commentMode?"light":"subtle"} color={commentMode?"yellow":"gray"} aria-label={commentMode?"Voltar a responder ao cliente":"Adicionar comentário interno"} aria-pressed={commentMode} disabled={saving||!bootstrap?.canEdit} onClick={()=>{setReplyTarget(null);setCommentMode(v=>!v);}}><IconLock size={18}/></ActionIcon></Tooltip></div>
                   <Textarea
                     ref={replyInput}
                     spellCheck

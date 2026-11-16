@@ -11,3 +11,6 @@ it("projects member names, roles and availability alongside the group informatio
  expect(chatProfile({Participants:[{JID:"123456789012345@lid",IsAdmin:true}],participant_profiles:[{lid:"123456789012345@lid",display_name:"Pessoa do grupo"}]},true)).toMatchObject({participantsAvailable:true,memberCount:1,participants:[{name:"Pessoa do grupo",phone:null,isAdmin:true}]});
  expect(chatProfile({Name:"Sem lista"},true).participantsAvailable).toBe(false);
 });
+
+it("uses the real saved name when the generic contact name is only a number",()=>{expect(chatProfile({name:"556191961024",wa_contactName:"Contato conhecido",wa_name:"Perfil"},false).name).toBe("Contato conhecido");expect(chatProfile({name:"556191961024",wa_contactName:"",wa_name:"Perfil"},false).name).toBe("Perfil");});
+it("reads available member profiles when the provider omits its legacy participant list",()=>{expect(chatProfile({Participants:[],participant_profiles:[{pn:"556191961024@s.whatsapp.net",display_name:"Pessoa conhecida"}]},true)).toMatchObject({participantsAvailable:true,memberCount:1,participants:[{name:"Pessoa conhecida",phone:"556191961024"}]});});

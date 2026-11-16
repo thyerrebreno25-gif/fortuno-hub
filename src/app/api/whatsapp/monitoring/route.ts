@@ -1,3 +1,5 @@
+import {monitoringInsights} from "@/modules/whatsapp/monitoring-insights";
+import {liveMonitoringTickets} from "@/modules/whatsapp/monitoring-live";
 import { canViewWhatsAppManagement } from "@/modules/whatsapp/management-access";
 import { operationStartedAt } from "@/modules/whatsapp/operation-start";
 import { accountMessageWhere, currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
@@ -73,14 +75,14 @@ export async function GET(request: Request) {
   const clientId = url.searchParams.get("clientId") || "";
   const assigneeId = url.searchParams.get("assigneeId") || "";
 
-  if (start > end) {
+  if (!Number.isFinite(+start)||!Number.isFinite(+end)||start > end||(url.searchParams.get("from")&&dateKey(start)!==url.searchParams.get("from"))||(url.searchParams.get("to")&&dateKey(end)!==url.searchParams.get("to"))) {
     return NextResponse.json(
       { error: "A data inicial deve ser anterior à data final." },
       { status: 400 },
     );
   }
 
-  const periodDays = Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
+  const periodDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
   if (periodDays > 370) {
     return NextResponse.json(
       { error: "Selecione um período de no máximo 12 meses." },
@@ -101,6 +103,7 @@ export async function GET(request: Request) {
     ? organizationMembers.find((item) => item.user.id === assigneeId)?.user
     : null;
 
+  if(assigneeId&&!selectedAssignee)return NextResponse.json({error:"Colaborador inválido."},{status:400});
   const account=await currentWhatsAppAccount(member.organizationId);
   const baseline=await operationStartedAt(member.organizationId,account.recipient);
   const effectiveStart=baseline&&baseline>start?baseline:start;
@@ -130,7 +133,7 @@ export async function GET(request: Request) {
       : {}),
   };
 
-  const [rawTickets, satisfactionSurveys] = await Promise.all([
+  const [rawTickets, satisfactionSurveys, liveRows] = await Promise.all([
     prisma.serviceTicket.findMany({
       where,
       orderBy: { receivedAt: "asc" },
@@ -141,6 +144,7 @@ export async function GET(request: Request) {
         senderName: true,
         status: true,
         routingArea: true,
+        whatsappDepartmentName:true,
         receivedAt: true,
         assignedAt: true,
         firstResponseAt: true,
@@ -149,10 +153,11 @@ export async function GET(request: Request) {
         client: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         messages: {
-          where: {...accountMessageWhere(account.connection),direction:{not:"INTERNAL"}},
-          orderBy: { receivedAt: "asc" },
+          where: {...accountMessageWhere(account.connection),direction:{not:"INTERNAL"},receivedAt:{gte:effectiveStart,lte:end}},
+          orderBy: [{receivedAt:"desc"},{id:"desc"}],take:2001,
           select: {
             direction: true,
+            textBody:true,deliveryStatus:true,
             providerMetadata: true,
             fromEmail: true,
             receivedAt: true,
@@ -165,14 +170,12 @@ export async function GET(request: Request) {
       take:10000,
       select:{ticketId:true,score:true,clientId:true,clientName:true,operatorId:true,operatorName:true},
     }),
+    liveMonitoringTickets(member.organizationId,account.recipient,account.connection?.phone||null,baseline,clientId,assigneeId),
   ]);
 
-  const tickets=rawTickets.map(ticket=>({...ticket,messages:ticket.messages.filter(message=>!message.providerMetadata||typeof message.providerMetadata!=="object"||Array.isArray(message.providerMetadata)||message.providerMetadata.type!=="WHATSAPP_SURVEY")}));
+  const tickets=rawTickets.map(ticket=>({...ticket,messages:ticket.messages.slice(0,2000).reverse().filter(message=>!message.providerMetadata||typeof message.providerMetadata!=="object"||Array.isArray(message.providerMetadata)||message.providerMetadata.type!=="WHATSAPP_SURVEY")}));
   const now = new Date();
-  const active = tickets.filter(
-    (ticket) => !["RESOLVED", "SPAM"].includes(ticket.status),
-  );
-  const queue = active.filter((ticket) => !ticket.assignedTo);
+  const insights=monitoringInsights(tickets,liveRows.slice(0,1000),now);
   const completed = tickets.filter((ticket) => ticket.status === "RESOLVED");
   const firstResponseValues = tickets.map((ticket) =>
     minutesBetween(ticket.receivedAt, ticket.firstResponseAt),
@@ -196,15 +199,6 @@ export async function GET(request: Request) {
       }
     }
   }
-
-  const currentWaits = active
-    .map((ticket) => {
-      const last = ticket.messages.at(-1);
-      return last?.direction === "INBOUND"
-        ? minutesBetween(last.receivedAt, now) || 0
-        : 0;
-    })
-    .filter((value) => value > 0);
 
   const timelineMap = new Map<
     string,
@@ -374,35 +368,17 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.conversations - a.conversations);
 
-  const attention = active
-    .map((ticket) => {
-      const last = ticket.messages.at(-1);
-      return {
-        id: ticket.id,
-        contact: ticket.senderName || ticket.subject,
-        client: ticket.client?.name || "Sem cliente",
-        assignee:
-          ticket.assignedTo?.name || ticket.assignedTo?.email || "Na fila",
-        status: ticket.status,
-        waitingMinutes:
-          last?.direction === "INBOUND"
-            ? minutesBetween(last.receivedAt, now) || 0
-            : 0,
-        lastMessageAt: ticket.lastMessageAt,
-      };
-    })
-    .filter((item) => item.waitingMinutes > 0)
-    .sort((a, b) => b.waitingMinutes - a.waitingMinutes)
-    .slice(0, 50);
+  const attention=insights.risks.slice(0,50);
 
   const scores = satisfactionSurveys.flatMap(row=>row.score===null?[]:[row.score]);
   return NextResponse.json({
     operationStartedAt:baseline,
+    insights,coverage:{conversationLimitReached:rawTickets.length>=10000,messageLimitReached:rawTickets.some(row=>row.messages.length>2000),liveLimitReached:liveRows.length>1000},
     period: { from: start.toISOString(), to: end.toISOString(), days: periodDays },
     summary: {
       conversations: tickets.length,
-      active: active.length,
-      queue: queue.length,
+      active: insights.current.active,
+      queue: insights.current.queue,
       completed: completed.length,
       resolutionRate: tickets.length
         ? Math.round((completed.length / tickets.length) * 100)
@@ -411,7 +387,7 @@ export async function GET(request: Request) {
       averageFirstResponseMinutes: average(firstResponseValues),
       averageHandlingMinutes: average(handlingValues),
       averageCustomerWaitMinutes: average(responseWaits),
-      longestCurrentWaitMinutes: currentWaits.length ? Math.max(...currentWaits) : 0,
+      longestCurrentWaitMinutes: Math.max(0,...insights.risks.map(row=>row.waitingMinutes)),
       satisfaction: scores.length
         ? Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(1))
         : null,

@@ -22,8 +22,8 @@ export function instanceState(body: unknown) {
   const qrCode = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$/.test(qr) ? qr : /^[A-Za-z0-9+/=\s]{80,}$/.test(qr) ? "data:image/png;base64," + qr : null;
   return { status, instanceId: text(instance.id), instanceName: text(instance.name, 200), phone: text(object(state.jid).user || instance.owner || root.owner, 80).split("@")[0].replace(/\D/g, ""), profileName: text(instance.profileName, 200), qrCode: connected ? null : qrCode, pairCode: connected ? null : text(instance.paircode || root.paircode, 30), created: text(instance.created, 100) };
 }
-export async function uazapiRequest(base: string, token: string, path: string, body?: unknown) {
-  const response = await fetch(serverUrl(base) + path, { method: body === undefined ? "GET" : "POST", headers: { token, "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: "error", signal: AbortSignal.timeout(20000), cache: "no-store" });
+export async function uazapiRequest(base: string, token: string, path: string, body?: unknown, options?:{timeoutMs?:number}) {
+  const response = await fetch(serverUrl(base) + path, { method: body === undefined ? "GET" : "POST", headers: { token, "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: "error", signal: AbortSignal.timeout(Math.max(1000,Math.min(20000,options?.timeoutMs||20000))), cache: "no-store" });
   if (!response.ok) throw Object.assign(new Error(response.status === 401 || response.status === 403 ? "A Uazapi recusou o token desta instância." : response.status === 404 ? "Instância não encontrada. No servidor gratuito, ela expira após uma hora." : "A Uazapi não concluiu a operação (HTTP " + response.status + ")."), { status: response.status });
   const result: unknown = await response.json();
   return result;

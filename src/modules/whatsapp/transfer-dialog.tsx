@@ -6,7 +6,7 @@ type Operator={id:string;name:string|null;email:string;canAttend?:boolean};
 import {DEFAULT_DEPARTMENTS,type WhatsAppDepartmentOption} from "./departments-core";
 import {WhatsAppDepartmentsManager} from "./departments-manager";
 
-export function WhatsAppTransferDialog({opened,onClose,onTransfer,operators,routingArea,departmentId,departmentName,canManageDepartments=false,saving}:{opened:boolean;onClose:()=>void;onTransfer:(data:Record<string,unknown>)=>Promise<boolean>;operators:Operator[];routingArea:WhatsAppRoutingArea;departmentId?:string|null;departmentName?:string|null;canManageDepartments?:boolean;saving:boolean}){
+export function WhatsAppTransferDialog({opened,onClose,onTransfer,operators,routingArea,departmentId,departmentName,canManageDepartments=false,saving,title="Transferir chamado"}:{opened:boolean;onClose:()=>void;onTransfer:(data:Record<string,unknown>)=>Promise<boolean>;operators:Operator[];routingArea:WhatsAppRoutingArea;departmentId?:string|null;departmentName?:string|null;canManageDepartments?:boolean;saving:boolean;title?:string}){
  const [area,setArea]=useState<string>(departmentId?"CUSTOM:"+departmentId:routingArea==="UNKNOWN"?"GENERAL":routingArea),[operatorId,setOperatorId]=useState<string|null>(null),[note,setNote]=useState("");
  const [departments,setDepartments]=useState<WhatsAppDepartmentOption[]>([]),[managing,setManaging]=useState(false),[error,setError]=useState("");
  useEffect(()=>{if(!opened||managing)return;const c=new AbortController();void fetch("/api/whatsapp/departments",{signal:c.signal,cache:"no-store"}).then(async r=>{const b=await r.json();if(!r.ok)throw new Error(b.error);if(!c.signal.aborted){setDepartments(b.items.filter((d:WhatsAppDepartmentOption)=>d.active));setError("");}}).catch(()=>{if(!c.signal.aborted)setError("Não foi possível atualizar os setores. Tente novamente.");});return()=>c.abort();},[opened,managing]);
@@ -14,7 +14,7 @@ export function WhatsAppTransferDialog({opened,onClose,onTransfer,operators,rout
  if(departmentId&&!departments.some(d=>d.id===departmentId))options.push({value:"CUSTOM:"+departmentId,label:(departmentName||"Setor anterior")+" (indisponível)"});
  const available=!area.startsWith("CUSTOM:")||departments.some(d=>"CUSTOM:"+d.id===area);
  const eligible=operators.filter(operator=>operator.canAttend),target=eligible.find(operator=>operator.id===operatorId);
- return <><Modal opened={opened} onClose={onClose} title="Transferir chamado" centered closeOnClickOutside={!saving} closeOnEscape={!saving} withCloseButton={!saving}><Stack gap="md">{error&&<Alert color="orange">{error}</Alert>}
+ return <><Modal opened={opened} onClose={onClose} title={title} centered closeOnClickOutside={!saving} closeOnEscape={!saving} withCloseButton={!saving}><Stack gap="md">{error&&<Alert color="orange">{error}</Alert>}
   <Select label="Setor" placeholder="Selecione o tipo de atendimento" value={area} onChange={value=>{setArea((value||"GENERAL"));setOperatorId(null);}} data={options} searchable disabled={saving} allowDeselect={false} required/>
   {canManageDepartments&&<Button variant="subtle" size="compact-xs" onClick={()=>setManaging(true)}>Gerenciar setores</Button>}
   <Select label="Transferir para" placeholder="Selecione o colaborador" searchable value={operatorId} onChange={setOperatorId} data={eligible.map(operator=>({value:operator.id,label:operator.name||operator.email}))} disabled={saving} nothingFoundMessage="Nenhum colaborador disponível" required/>

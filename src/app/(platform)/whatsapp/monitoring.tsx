@@ -1,7 +1,9 @@
 "use client";
+import {MonitoringInsightsPanel} from "@/modules/whatsapp/monitoring-insights-panel";
 import { FilterPanel } from "@/components/filter-panel";
 
 import {
+  Alert,SegmentedControl,
   Badge,
   Button,
   Group,
@@ -22,7 +24,6 @@ import {
   IconInbox,
   IconMessageCircle,
   IconRefresh,
-  IconStar,
   IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -65,6 +66,7 @@ function duration(minutes: number) {
 
 function dateTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
+    timeZone:"America/Sao_Paulo",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -95,6 +97,7 @@ export function WhatsAppMonitoring({
   const [data, setData] = useState<MonitoringData | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodPreset, setPeriodPreset] = useState(30);
+  const [mode,setMode]=useState<"operational"|"tactical">("operational");
 
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -172,19 +175,42 @@ export function WhatsAppMonitoring({
         </Group>
       </Paper></FilterPanel>
 
+      <SegmentedControl value={mode} onChange={value=>setMode(value as "operational"|"tactical")} data={[{value:"operational",label:"Monitoramento operacional"},{value:"tactical",label:"Monitoramento tático"}]} fullWidth/>
       {data?.operationStartedAt&&<Text size="xs" c="dimmed">Operação iniciada em {dateTime(data.operationStartedAt)} · indicadores anteriores reiniciados; histórico preservado.</Text>}
-      <WhatsAppSurveyResults from={from} to={to} clientId={clientId} assigneeId={assigneeId}/>
+      {mode==="tactical"&&<WhatsAppSurveyResults from={from} to={to} clientId={clientId} assigneeId={assigneeId}/>}
       {loading && !data ? (
         <div className={styles.loading}><Loader size="sm" /><Text>Calculando indicadores...</Text></div>
       ) : data ? (
         <>
-          <SimpleGrid cols={{ base: 2, sm: 3, xl: 6 }} spacing="sm">
-            <Metric title="Conversas" value={String(data.summary.conversations)} detail={`${data.summary.active} ainda ativas`} icon={<IconMessageCircle size={19} />} color="blue" />
+          {mode==="operational"&&<>
+          <Paper withBorder radius="lg" className={styles.attentionCard}>
+            <div className={styles.cardHeading}>
+              <div><Text fw={850}>Atendimentos que precisam de atenção</Text><Text size="xs" c="dimmed">Chamados abertos agora, inclusive os iniciados antes do período selecionado. Espera desde o início das mensagens ainda sem resposta.</Text></div>
+              <Group gap="xs"><Badge color={data.summary.longestCurrentWaitMinutes > 60 ? "red" : "blue"} variant="light">Maior espera: {duration(data.summary.longestCurrentWaitMinutes)}</Badge></Group>
+            </div>
+            <div className={styles.tableScroll}>
+              <table>
+                <thead><tr><th>Contato</th><th>Cliente</th><th>Responsável</th><th>Status</th><th>Última mensagem</th><th>Sem resposta / risco</th><th></th></tr></thead>
+                <tbody>
+                  {data.attention.map((item) => (
+                    <tr key={item.id}>
+                      <td><strong>{item.contact}</strong></td><td>{item.client}</td><td>{item.assignee}</td><td><Badge size="sm" variant="light" color={item.status === "NEW" ? "orange" : "blue"}>{statusLabels[item.status] || item.status}</Badge></td><td>{dateTime(item.lastMessageAt)}</td><td><span className={item.waitingMinutes > 60 ? styles.dangerTime : styles.waitTime}>{duration(item.waitingMinutes)}</span>{data.insights?.risks.find(row=>row.id===item.id)?.reasons.map(reason=><Text key={reason} size="xs" c="orange">{reason}</Text>)}</td><td><Button size="compact-xs" variant="subtle" onClick={() => onOpenTicket(item.id)}>Abrir</Button></td>
+                    </tr>
+                  ))}
+                  {!data.attention.length && <tr><td colSpan={7} className={styles.emptyCell}>Nenhuma conversa aguardando resposta.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Paper>
+          </>}
+          <MonitoringInsightsPanel data={data} mode={mode}/>
+          {mode==="operational"&&<><SimpleGrid cols={{ base: 2, sm: 3, xl: 6 }} spacing="sm">
+            <Metric title="Conversas" value={String(data.summary.conversations)} detail={`${data.summary.active} abertas agora em todos os períodos`} icon={<IconMessageCircle size={19} />} color="blue" />
             <Metric title="Na fila" value={String(data.summary.queue)} detail={`Espera média ${duration(data.summary.averageQueueMinutes)}`} icon={<IconInbox size={19} />} color="orange" />
-            <Metric title="Primeira resposta" value={duration(data.summary.averageFirstResponseMinutes)} detail={`Cliente espera ${duration(data.summary.averageCustomerWaitMinutes)}`} icon={<IconClock size={19} />} color="cyan" />
+            <Metric title="Primeira resposta" value={duration(data.summary.averageFirstResponseMinutes)} detail={`Espera por mensagem ${duration(data.summary.averageCustomerWaitMinutes)}`} icon={<IconClock size={19} />} color="cyan" />
             <Metric title="Duração média" value={duration(data.summary.averageHandlingMinutes)} detail="Da primeira resposta ao fim" icon={<IconChartAreaLine size={19} />} color="violet" />
             <Metric title="Resolvidos" value={`${data.summary.resolutionRate}%`} detail={`${data.summary.completed} finalizados`} icon={<IconCheck size={19} />} color="green" />
-            <Metric title="Satisfação" value={data.summary.satisfaction ? `${data.summary.satisfaction}/5` : "—"} detail={`${data.summary.satisfactionResponses} respostas`} icon={<IconStar size={19} />} color="yellow" />
+            <Metric title="Resolução total" value={duration(data.insights?.averageResolutionMinutes||0)} detail="Do início à finalização" icon={<IconClock size={19} />} color="cyan" />
           </SimpleGrid>
 
           <div className={styles.primaryGrid}>
@@ -196,11 +222,13 @@ export function WhatsAppMonitoring({
             </ChartCard>
           </div>
 
+          </>}
+          {mode==="tactical"&&<Alert color="blue" variant="light">Distribuições por início da conversa no período. Reaberturas permanecem na mesma conversa; mensagens e avaliações usam os registros disponíveis no período.</Alert>}
           <div className={styles.secondaryGrid}>
             <ChartCard title="Demanda por horário" subtitle="Horários com maior entrada de conversas">
               <HourlyBars data={data.hourly} />
             </ChartCard>
-            <ChartCard title="Carga por colaborador" subtitle="Conversas assumidas no período">
+            <ChartCard title="Carga por colaborador" subtitle="Conversas com participação no período">
               <AgentLoad data={data.agents} />
             </ChartCard>
           </div>
@@ -208,7 +236,7 @@ export function WhatsAppMonitoring({
           <div className={styles.tableGrid}>
             <Paper withBorder radius="lg" className={styles.tableCard}>
               <div className={styles.cardHeading}>
-                <div><Text fw={850}>Desempenho da equipe</Text><Text size="xs" c="dimmed">Tempo, produção e conclusão por colaborador</Text></div>
+                <div><Text fw={850}>Desempenho da equipe</Text><Text size="xs" c="dimmed">Participações e respostas identificadas por colaborador; uma conversa pode envolver mais de uma pessoa</Text></div>
                 <Badge variant="light" leftSection={<IconUsers size={13} />}>{data.agents.length} colaboradores</Badge>
               </div>
               <div className={styles.tableScroll}>
@@ -247,25 +275,7 @@ export function WhatsAppMonitoring({
             </Paper>
           </div>
 
-          <Paper withBorder radius="lg" className={styles.attentionCard}>
-            <div className={styles.cardHeading}>
-              <div><Text fw={850}>Atendimentos que precisam de atenção</Text><Text size="xs" c="dimmed">Conversas cuja última mensagem ainda é do cliente</Text></div>
-              <Group gap="xs"><Badge color={data.summary.longestCurrentWaitMinutes > 60 ? "red" : "blue"} variant="light">Maior espera: {duration(data.summary.longestCurrentWaitMinutes)}</Badge></Group>
-            </div>
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Contato</th><th>Cliente</th><th>Responsável</th><th>Status</th><th>Última mensagem</th><th>Sem resposta</th><th></th></tr></thead>
-                <tbody>
-                  {data.attention.map((item) => (
-                    <tr key={item.id}>
-                      <td><strong>{item.contact}</strong></td><td>{item.client}</td><td>{item.assignee}</td><td><Badge size="sm" variant="light" color={item.status === "NEW" ? "orange" : "blue"}>{statusLabels[item.status] || item.status}</Badge></td><td>{dateTime(item.lastMessageAt)}</td><td><span className={item.waitingMinutes > 60 ? styles.dangerTime : styles.waitTime}>{duration(item.waitingMinutes)}</span></td><td><Button size="compact-xs" variant="subtle" onClick={() => onOpenTicket(item.id)}>Abrir</Button></td>
-                    </tr>
-                  ))}
-                  {!data.attention.length && <tr><td colSpan={7} className={styles.emptyCell}>Nenhuma conversa aguardando resposta.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </Paper>
+
         </>
       ) : null}
     </section>

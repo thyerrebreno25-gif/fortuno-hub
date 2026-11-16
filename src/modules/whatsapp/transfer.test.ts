@@ -64,3 +64,5 @@ it("uses an active custom sector from this organization and records it without c
 });
 it("rejects inactive or foreign custom sectors before any transfer is written",async()=>{m.department.mockResolvedValue(null);await expect(transferWhatsappTicket(current,actor,true,{...destination,departmentId:"foreign"})).rejects.toMatchObject({status:400});expect(m.transaction).not.toHaveBeenCalled();});
 it("clears the previous custom sector when transferring to a standard sector",async()=>{await transferWhatsappTicket({...current,whatsappDepartmentId:"old",whatsappDepartmentName:"Antigo"},actor,false,destination);expect(m.change.mock.calls[0][0].data).toMatchObject({whatsappDepartmentId:null,whatsappDepartmentName:null,routingArea:"ACCOUNTS_PAYABLE"});});
+
+it("guards the reviewed version and account when transferring a batch item",async()=>{const date=new Date("2026-11-16T10:00:00Z");await transferWhatsappTicket({...current,recipientEmail:"wa-account:c:5511"},actor,false,destination,date);expect(m.change.mock.calls[0][0].where).toMatchObject({updatedAt:date,recipientEmail:"wa-account:c:5511"});});

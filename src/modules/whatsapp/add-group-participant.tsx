@@ -9,7 +9,7 @@ type Option={value:string;label:string};
 
 export function AddGroupParticipant({ticketId,groupJid,groupName,allowed,disabled,onChanged}:{ticketId:string;groupJid:string;groupName:string;allowed:boolean;disabled:boolean;onChanged:()=>void}){
  const current={value:ticketId,label:groupName};
- const [opened,setOpened]=useState(false),[number,setNumber]=useState(""),[groups,setGroups]=useState<string[]>([ticketId]),[search,setSearch]=useState(""),[options,setOptions]=useState<Option[]>([current]),[results,setResults]=useState<GroupParticipantBatchResult[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),[directoryError,setDirectoryError]=useState("");
+ const [opened,setOpened]=useState(false),[number,setNumber]=useState(""),[contactName,setContactName]=useState(""),[groups,setGroups]=useState<string[]>([ticketId]),[search,setSearch]=useState(""),[options,setOptions]=useState<Option[]>([current]),[results,setResults]=useState<GroupParticipantBatchResult[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),[directoryError,setDirectoryError]=useState("");
  const alive=useRef(true);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  useEffect(()=>{
@@ -23,11 +23,16 @@ export function AddGroupParticipant({ticketId,groupJid,groupName,allowed,disable
   if(!input.success){setError("Informe o telefone completo com DDI e DDD.");return;}
   if(input.data.action!=="add")return;
   setBusy(true);setError("");
+  if(contactName.trim()){
+   try{const response=await fetch("/api/whatsapp/contacts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({number:input.data.participant,name:contactName.trim()})});const body=await response.json();if(!response.ok)throw new Error(body.error||"Não foi possível salvar o nome do contato.");}
+   catch(error){setError(error instanceof Error?error.message:"Não foi possível salvar o contato.");setBusy(false);return;}
+  }
   await addGroupParticipantBatch(groups.map(id=>({id,name:options.find(row=>row.value===id)?.label||"Grupo"})),input.data,result=>setResults(previous=>[...previous,result]),()=>alive.current);
   if(alive.current){setBusy(false);onChanged();}
  }
- return <>{allowed&&<Button size="compact-xs" variant="light" leftSection={<IconUserPlus size={15}/>} disabled={disabled} onClick={()=>{setNumber("");setGroups([ticketId]);setOptions([current]);setSearch("");setResults([]);setError("");setOpened(true);}}>Adicionar participante</Button>}
+ return <>{allowed&&<Button size="compact-xs" variant="light" leftSection={<IconUserPlus size={15}/>} disabled={disabled} onClick={()=>{setNumber("");setContactName("");setGroups([ticketId]);setOptions([current]);setSearch("");setResults([]);setError("");setOpened(true);}}>Adicionar participante</Button>}
   <Modal opened={opened} onClose={()=>!busy&&setOpened(false)} title="Adicionar participante a grupos" centered closeOnClickOutside={!busy} closeOnEscape={!busy} withCloseButton={!busy}><Stack>
+   <TextInput label="Nome do contato (opcional)" description="Se preenchido, salva o nome na agenda do WhatsApp antes de adicionar aos grupos." value={contactName} onChange={event=>setContactName(event.currentTarget.value)} maxLength={150} disabled={busy||results.length>0}/>
    <TextInput label="Telefone com DDI e DDD" placeholder="+55 61 99999-9999" value={number} onChange={event=>setNumber(event.currentTarget.value)} maxLength={40} disabled={busy||results.length>0}/>
    <MultiSelect label="Grupos de destino" description="Selecione até 25 grupos. Digite o nome para buscar outros grupos da agenda." searchable searchValue={search} onSearchChange={setSearch} data={options} value={groups} onChange={setGroups} maxValues={25} disabled={busy||results.length>0} nothingFoundMessage="Nenhum grupo encontrado"/>
    {directoryError&&<Alert color="orange">{directoryError}</Alert>}
