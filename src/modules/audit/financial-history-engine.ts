@@ -13,6 +13,7 @@ export type ContaAzulAuditEntry = {
   costCenters: string[];
   dueDate: string;
   competenceDate: string | null;
+  paymentDate?: string | null;
   status: string;
   total: number;
   paid: number;
@@ -31,6 +32,9 @@ export type RecurringFinancialProfile = {
   expectedCompetenceOffset: number | null;
   competenceConfidence: number;
   recurrenceConfidence: number;
+  categoryConfidence?:number;
+  latestMonthAmount?:number;
+  latestMonth?:string;
 };
 
 export type FinancialHistoryAnalysis = {
@@ -49,6 +53,7 @@ export type FinancialHistoryAnalysis = {
     competenceDivergences: number;
     categoryDivergences: number;
     duplicates: number;
+    amountVariations:number;
     payableFindings: number;
     receivableFindings: number;
   };
@@ -65,6 +70,11 @@ const SEMANTIC_DEFINITIONS: SemanticDefinition[] = [
   { code: "TAX_SIMPLES", label: "Simples Nacional / DAS", pattern: /\bSIMPLES\b|\bDAS\b/, critical: true },
   { code: "TAX_FGTS", label: "FGTS", pattern: /\bFGTS\b/, critical: true },
   { code: "TAX_INSS", label: "INSS / GPS", pattern: /\bINSS\b|\bGPS\b/, critical: true },
+  {code:"TAX_IRPJ",label:"IRPJ",pattern:/\bIRPJ\b/,critical:true},
+  {code:"TAX_CSLL",label:"CSLL",pattern:/\bCSLL\b/,critical:true},
+  {code:"TAX_COFINS",label:"COFINS",pattern:/\bCOFINS\b/,critical:true},
+  {code:"TAX_PIS",label:"PIS",pattern:/\bPIS\b/,critical:true},
+  {code:"TAX_IRRF",label:"IRRF",pattern:/\bIRRF\b/,critical:true},
   { code: "TAX_DARF", label: "DARF e tributos federais", pattern: /\bDARF\b|\bIRPJ\b|\bCSLL\b|\bCOFINS\b|\bPIS\b|\bIRRF\b/, critical: true },
   { code: "TAX_STATE", label: "Tributos estaduais", pattern: /\bICMS\b|\bDARE\b/, critical: true },
   { code: "TAX_CITY", label: "Tributos municipais", pattern: /\bISS\b|\bDAM\b/, critical: true },
@@ -97,7 +107,8 @@ function normalize(value: unknown) {
 }
 
 function normalizedDescription(value: string) {
-  return normalize(value)
+  return normalize(value.replace(/\b\d{1,3}\s*\/\s*\d{1,3}\b/g," "))
+    .replace(/\b(?:JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\b/g," ")
     .replace(/\b(?:NF|NFE|FATURA|PARCELA|DOC|NUMERO)\s*\d+\b/g, " ")
     .replace(/\b\d{2,}\b/g, " ")
     .replace(/\s+/g, " ")
@@ -113,8 +124,12 @@ function recordText(entry: ContaAzulAuditEntry) {
 }
 
 function semanticDefinition(entry: ContaAzulAuditEntry) {
-  const text = recordText(entry);
-  return SEMANTIC_DEFINITIONS.find((definition) => definition.pattern.test(text)) ?? null;
+  // The chosen category cannot override the meaning of the payment description.
+  for(const value of [entry.description,entry.counterparty,entry.categories.join(" ")]){
+    const match=SEMANTIC_DEFINITIONS.find(definition=>definition.pattern.test(normalize(value)));
+    if(match)return match;
+  }
+  return null;
 }
 
 function firstCategory(entry: ContaAzulAuditEntry) {
@@ -122,10 +137,10 @@ function firstCategory(entry: ContaAzulAuditEntry) {
 }
 
 function recurrenceIdentity(entry: ContaAzulAuditEntry) {
-  const semantic = semanticDefinition(entry);
+  const semantic = semanticDefinition({...entry,categories:[]});
   if (semantic) {
     return {
-      key: `${entry.flow}:SEMANTIC:${semantic.code}`,
+      key: `${entry.flow}:SEMANTIC:${semantic.code}:${normalize(entry.counterparty) || "SEM CONTATO"}`,
       label: semantic.label,
       semantic,
     };
@@ -135,13 +150,13 @@ function recurrenceIdentity(entry: ContaAzulAuditEntry) {
   if (GENERIC_ONE_OFF.test(text)) return null;
 
   const counterparty = normalize(entry.counterparty);
-  const category = normalize(firstCategory(entry));
+
   const description = normalizedDescription(entry.description);
-  if (!counterparty && !category && description.length < 5) return null;
+  if (!counterparty && description.length < 5) return null;
 
   const identity = counterparty
-    ? `PARTY:${counterparty}|CATEGORY:${category || "SEM CATEGORIA"}`
-    : `DESCRIPTION:${description}|CATEGORY:${category || "SEM CATEGORIA"}`;
+    ? `PARTY:${counterparty}|DESCRIPTION:${description}`
+    : `DESCRIPTION:${description}`;
   return {
     key: `${entry.flow}:${identity}`,
     label: entry.counterparty?.trim() || entry.description.trim() || firstCategory(entry) || "Recorrência",
@@ -294,11 +309,11 @@ function buildProfiles(
     const observedMonths = [...new Set(entries.map((entry) => monthKey(entry.dueDate)).filter(Boolean))].sort();
     const coverage = expectedMonths.length ? observedMonths.length / expectedMonths.length : 0;
     const recentMonths = expectedMonths.slice(-2);
-    const appearedRecently = observedMonths.some((month) => recentMonths.includes(month));
+    const appearedRecently = recentMonths.length>=2&&recentMonths.every((month) => observedMonths.includes(month));
     const isSemantic = Boolean(identity.semantic);
     const recurring = appearedRecently && (
       (isSemantic && observedMonths.length >= 2)
-      || (observedMonths.length >= 3 && coverage >= 0.5)
+      || (observedMonths.length >= 2 && coverage >= 0.5)
     );
     if (!recurring) return [];
 
@@ -310,7 +325,9 @@ function buildProfiles(
       return value == null || Math.abs(value) > 12 ? [] : [String(value)];
     });
     const expectedOffset = mode(offsets);
-    const category = mode(entries.flatMap((entry) => entry.categories.map(normalize)).filter(Boolean));
+    const category = mode(entries.map(entry=>entry.categories.map(normalize).filter(Boolean).sort().join(" | ")).filter(Boolean));
+    const latestMonth=observedMonths.at(-1)!;
+    const latestMonthAmount=entries.filter(entry=>monthKey(entry.dueDate)===latestMonth).reduce((sum,entry)=>sum+entry.total,0);
 
     return [{
       key: identity.key,
@@ -324,6 +341,7 @@ function buildProfiles(
       expectedCompetenceOffset: expectedOffset ? Number(expectedOffset[0]) : null,
       competenceConfidence: expectedOffset && offsets.length ? expectedOffset[1] / offsets.length : 0,
       recurrenceConfidence: coverage,
+      categoryConfidence: category?category[1]/entries.length:0,latestMonth,latestMonthAmount,
     } satisfies RecurringFinancialProfile];
   });
 }
@@ -336,13 +354,16 @@ export function analyzeFinancialHistory(input: {
   periodStart: string;
   periodEnd: string;
   today?: string;
+  variationPercent?:number;
+  overdueEntries?:ContaAzulAuditEntry[];
 }): FinancialHistoryAnalysis {
-  const today = input.today ?? new Date().toISOString().slice(0, 10);
+  const today = input.today ?? new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const profiles = buildProfiles(input.history, input.historyStart, input.historyEnd);
   const findings: FinancialHistoryAnalysis["findings"] = [];
   const currentByIdentity = new Map<string, ContaAzulAuditEntry[]>();
 
   input.current.forEach((entry) => {
+    if (/CANCELADO|PERDIDO/.test(normalize(entry.status))) return;
     const identity = recurrenceIdentity(entry);
     if (!identity) return;
     const list = currentByIdentity.get(identity.key) ?? [];
@@ -350,106 +371,50 @@ export function analyzeFinancialHistory(input: {
     currentByIdentity.set(identity.key, list);
   });
 
-  profiles.forEach((profile) => {
-    const matches = currentByIdentity.get(profile.key) ?? [];
-    const expectedCount = expectedOccurrencesInPeriod(
-      profile,
-      input.periodStart,
-      input.periodEnd,
-    );
-    if (expectedCount > 0 && matches.length < expectedCount) {
-      const missingCount = expectedCount - matches.length;
-      findings.push({
-        localId: findingId("CA_MISSING_RECURRING", profile.key),
-        ruleCode: "CA_MISSING_RECURRING",
-        flow: profile.flow,
-        title: `${profile.label} não identificado no período`,
-        description: matches.length
-          ? `O histórico indica ${expectedCount} lançamento(s) esperado(s) dentro do intervalo selecionado, mas apenas ${matches.length} foi identificado. Confirme os ${missingCount} lançamento(s) possivelmente ausentes.`
-          : "O lançamento costuma ocorrer dentro dos dias incluídos no intervalo selecionado, mas não foi localizado.",
-        severity: severityForProfile(profile),
-        subject: profile.label,
-        category: profile.category,
-        competence: `${input.periodStart} a ${input.periodEnd}`,
-        evidence: [
-          { label: "Meses com ocorrência", value: profile.observedMonths.join(", ") },
-          { label: "Frequência histórica", value: `${Math.round(profile.recurrenceConfidence * 100)}% dos meses analisados` },
-          { label: "Dias habituais de vencimento", value: profile.expectedDueDays.join(", ") || "Não identificado" },
-          { label: "Quantidade esperada no intervalo", value: String(expectedCount) },
-          { label: "Quantidade localizada", value: String(matches.length) },
-        ],
-      });
+  const validCurrent=input.current.filter(entry=>!/CANCELADO|PERDIDO/.test(normalize(entry.status)));
+  const threshold=input.variationPercent??25;
+  for(const profile of profiles){
+    const matches=(currentByIdentity.get(profile.key)||[]).filter(entry=>!/CANCELADO|PERDIDO/.test(normalize(entry.status)));
+    for(const month of monthsBetween(input.periodStart,input.periodEnd)){
+      const lastDay=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).getUTCDate();
+      const from=input.periodStart>month+"-01"?input.periodStart:month+"-01",to=input.periodEnd<`${month}-${String(lastDay).padStart(2,"0")}`?input.periodEnd:`${month}-${String(lastDay).padStart(2,"0")}`;
+      const expected=from>today?0:expectedOccurrencesInPeriod(profile,from,to>today?today:to),found=matches.filter(entry=>entry.dueDate>=from&&entry.dueDate<=to);
+      if(expected>found.length)findings.push({localId:findingId("CA_MISSING_RECURRING",profile.key+month),ruleCode:"CA_MISSING_RECURRING",flow:profile.flow,title:`${profile.label} não identificado em ${month}`,description:`O histórico indica ${expected} lançamento(s) esperado(s) no intervalo, mas apenas ${found.length} foi identificado. Confirme se faltam pagamentos ou se a obrigação deixou de se aplicar.`,severity:severityForProfile(profile),subject:profile.label,category:profile.category,competence:month,evidence:[{label:"Meses com ocorrência",value:profile.observedMonths.join(", ")},{label:"Dias habituais de vencimento",value:profile.expectedDueDays.join(", ")},{label:"Quantidade esperada no intervalo",value:String(expected)},{label:"Quantidade localizada",value:String(found.length)}]});
+      const completeMonth=from===month+"-01"&&to===`${month}-${String(lastDay).padStart(2,"0")}`;
+      const previousMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-2,1,12)).toISOString().slice(0,7);
+      const previousEntries=[...input.history,...input.current].filter(entry=>monthKey(entry.dueDate)===previousMonth&&recurrenceIdentity(entry)?.key===profile.key&&!/CANCELADO|PERDIDO/.test(normalize(entry.status)));
+      const previous=previousEntries.reduce((sum,entry)=>sum+entry.total,0),current=found.reduce((sum,entry)=>sum+entry.total,0),difference=current-previous;
+      if(completeMonth&&found.length&&previous>0&&Math.abs(difference)>=100&&Math.abs(difference)/previous*100>=threshold)findings.push({localId:findingId("CA_AMOUNT_VARIATION",profile.key+month),ruleCode:"CA_AMOUNT_VARIATION",flow:profile.flow,title:`Valor fora do padrão em ${profile.label}`,description:`O valor mensal passou de ${money(previous)} para ${money(current)} (${(difference/previous*100).toFixed(1)}%). Confirme reajuste, cobrança extra ou lançamento incorreto.`,severity:"WARNING",subject:profile.label,category:profile.category,competence:month,amount:current,evidence:[{label:"Mês anterior observado",value:previousMonth},{label:"Valor anterior",value:money(previous)},{label:"Valor atual",value:money(current)},{label:"Diferença",value:money(difference)},{label:"Critério",value:`Variação de pelo menos ${threshold}% e R$ 100,00; comparação de meses completos.`}]});
     }
-
-    if (profile.expectedCompetenceOffset == null || profile.competenceConfidence < 0.67) return;
-    const expectedCompetenceOffset = profile.expectedCompetenceOffset;
-    matches.forEach((entry) => {
-      if (!entry.competenceDate) {
-        findings.push({
-          localId: findingId("CA_COMPETENCE_MISSING", entry.id),
-          ruleCode: "CA_COMPETENCE_MISSING",
-          flow: entry.flow,
-          title: `Competência ausente em ${profile.label}`,
-          description: `O histórico indica ${competencePattern(expectedCompetenceOffset)}, mas o lançamento atual não informou competência.`,
-          severity: "WARNING",
-          subject: profile.label,
-          category: firstCategory(entry) || profile.category,
-          competence: null,
-          amount: entry.total,
-          evidence: [
-            { label: "Vencimento", value: entry.dueDate },
-            { label: "Padrão aprendido", value: competencePattern(expectedCompetenceOffset) },
-          ],
-        });
-        return;
+    // Category validation must not depend on learning a competence offset.
+    if(profile.category&&(profile.categoryConfidence||0)>=0.67){
+      for(const entry of matches){const actual=entry.categories.map(normalize).filter(Boolean).sort().join(" | ");
+        if(actual===profile.category)continue;
+        findings.push({localId:findingId("CA_CATEGORY_DIVERGENCE",entry.id),ruleCode:"CA_CATEGORY_DIVERGENCE",flow:entry.flow,title:`Categoria diferente do histórico em ${profile.label}`,description:`O histórico utiliza “${profile.category}”, mas o lançamento atual está em “${entry.categories.join(", ")||"Sem categoria"}”. Valide a classificação.`,severity:"WARNING",subject:profile.label,category:entry.categories.join(", "),competence:entry.competenceDate,amount:entry.total,evidence:[{label:"Categoria histórica",value:profile.category},{label:"Categoria atual",value:entry.categories.join(", ")||"Sem categoria"},{label:"Identificador no CA",value:entry.id}]});
       }
-      const actualOffset = monthDifference(entry.dueDate, entry.competenceDate);
-      if (actualOffset === expectedCompetenceOffset) return;
-      findings.push({
-        localId: findingId("CA_COMPETENCE_DIVERGENCE", entry.id),
-        ruleCode: "CA_COMPETENCE_DIVERGENCE",
-        flow: entry.flow,
-        title: `Competência fora do padrão em ${profile.label}`,
-        description: `O histórico indica ${competencePattern(expectedCompetenceOffset)}, mas este lançamento está com competência ${entry.competenceDate}.`,
-        severity: "WARNING",
-        subject: profile.label,
-        category: firstCategory(entry) || profile.category,
-        competence: entry.competenceDate,
-        amount: entry.total,
-        evidence: [
-          { label: "Vencimento", value: entry.dueDate },
-          { label: "Competência informada", value: entry.competenceDate },
-          { label: "Padrão aprendido", value: competencePattern(expectedCompetenceOffset) },
-          { label: "Confiança do padrão", value: `${Math.round(profile.competenceConfidence * 100)}%` },
-        ],
-      });
-    });
+    }
+  }
+  const services=new Set(["ENERGY","WATER","INTERNET","RENT","ACCOUNTING","CONDOMINIUM","SOFTWARE","INSURANCE"]);
+  for(const entry of validCurrent){
+    const semantic=semanticDefinition(entry),oneOff=/\bCOMPRA\b|AQUISICAO|\bAVULS[OA]\b|EQUIPAMENTO/.test(normalize(entry.description));
+    const profile=profiles.find(row=>row.key===recurrenceIdentity(entry)?.key);
+    const monthlyService=entry.flow==="PAYABLE"&&!oneOff&&!!semantic&&services.has(semantic.code);
+    const cashPurchase=entry.flow==="PAYABLE"&&!monthlyService&&(oneOff||GENERIC_ONE_OFF.test(normalize(entry.description)));
+    const offset=monthlyService?1:!cashPurchase&&profile&&profile.competenceConfidence>=0.67?profile.expectedCompetenceOffset:null;
+    if(offset===null&&!cashPurchase)continue;
+    const reference=entry.paymentDate||entry.dueDate;
+    const expected=cashPurchase?entry.paymentDate:null;
+    if(cashPurchase&&!expected){
+      if(entry.paid>0)findings.push({localId:findingId("CA_COMPETENCE_PAYMENT_UNAVAILABLE",entry.id),ruleCode:"CA_COMPETENCE_PAYMENT_UNAVAILABLE",flow:entry.flow,title:"Data de pagamento indisponível para conferir competência",description:"Este pagamento avulso não informou uma data de baixa confiável. Confira o dia do pagamento e a competência manualmente; o vencimento não foi usado como substituto.",severity:"WARNING",subject:entry.counterparty||entry.description,evidence:[{label:"Identificador no CA",value:entry.id},{label:"Competência",value:entry.competenceDate||"Não informada"}]});
+      continue;
+    }
+    const valid=cashPurchase?entry.competenceDate===expected:entry.competenceDate&&monthDifference(reference,entry.competenceDate)===offset;
+    if(valid)continue;
+    const rule=entry.competenceDate?"CA_COMPETENCE_DIVERGENCE":"CA_COMPETENCE_MISSING";
+    findings.push({localId:findingId(rule,entry.id),ruleCode:rule,flow:entry.flow,title:`Competência ${entry.competenceDate?"fora do padrão":"ausente"} em ${semantic?.label||entry.description}`,description:cashPurchase?`Para este pagamento avulso, confira a competência na mesma data do pagamento: ${expected}.`:`Confira a competência: ${monthlyService?"a política de serviços mensais utiliza o mês anterior":`o histórico indica ${competencePattern(offset!)}`}. Trata-se de uma possível necessidade de ajuste; valide o documento.`,severity:"WARNING",subject:entry.counterparty||entry.description,category:firstCategory(entry),competence:entry.competenceDate,amount:entry.total,evidence:[{label:entry.paymentDate?"Data do pagamento":"Vencimento (data de pagamento indisponível)",value:reference},{label:"Competência informada",value:entry.competenceDate||"Não informada"},{label:"Padrão esperado",value:cashPurchase?expected!:competencePattern(offset!)},{label:"Identificador no CA",value:entry.id}]});
+  }
 
-    const expectedCategory = normalize(profile.category);
-    if (!expectedCategory) return;
-    matches.forEach((entry) => {
-      const categories = entry.categories.map(normalize).filter(Boolean);
-      if (!categories.length || categories.includes(expectedCategory)) return;
-      findings.push({
-        localId: findingId("CA_CATEGORY_DIVERGENCE", entry.id),
-        ruleCode: "CA_CATEGORY_DIVERGENCE",
-        flow: entry.flow,
-        title: `Categoria diferente do histórico em ${profile.label}`,
-        description: `O histórico usa principalmente “${profile.category}”, mas o lançamento atual está em “${entry.categories.join(", ")}”.`,
-        severity: "WARNING",
-        subject: profile.label,
-        category: entry.categories.join(", "),
-        competence: entry.competenceDate,
-        amount: entry.total,
-        evidence: [
-          { label: "Categoria histórica", value: profile.category || "—" },
-          { label: "Categoria atual", value: entry.categories.join(", ") },
-        ],
-      });
-    });
-  });
-
-  input.current.forEach((entry) => {
+  [...new Map([...input.current,...(input.overdueEntries||[])].map(entry=>[entry.flow+":"+entry.id,entry])).values()].forEach((entry) => {
     if (!isOpen(entry)) return;
     const overdue = isOverdue(entry, today);
     const semantic = semanticDefinition(entry);
@@ -525,6 +490,7 @@ export function analyzeFinancialHistory(input: {
       open: unique.filter((finding) => finding.ruleCode === "CA_OPEN").length,
       competenceDivergences: unique.filter((finding) => finding.ruleCode.startsWith("CA_COMPETENCE")).length,
       categoryDivergences: unique.filter((finding) => finding.ruleCode === "CA_CATEGORY_DIVERGENCE").length,
+      amountVariations:unique.filter(finding=>finding.ruleCode==="CA_AMOUNT_VARIATION").length,
       duplicates: unique.filter((finding) => finding.ruleCode === "CA_POSSIBLE_DUPLICATE").length,
       payableFindings: unique.filter((finding) => finding.flow === "PAYABLE").length,
       receivableFindings: unique.filter((finding) => finding.flow === "RECEIVABLE").length,

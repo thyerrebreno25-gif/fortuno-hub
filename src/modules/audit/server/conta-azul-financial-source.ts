@@ -1,15 +1,16 @@
+import {auditDate} from "../period";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
 import type { ContaAzulAuditEntry } from "../financial-history-engine";
 
 type ApiRecord = Record<string, unknown>;
 
 function apiItems(body: unknown): ApiRecord[] {
-  if (Array.isArray(body)) return body.filter(isRecord);
-  if (!isRecord(body)) return [];
+  if (Array.isArray(body)) {if(!body.every(isRecord))throw new Error("O CA retornou um lançamento inválido.");return body;}
+  if (!isRecord(body)) throw new Error("O CA retornou uma consulta financeira inválida.");
   for (const value of [body.itens, body.items, body.data, body.conteudo]) {
-    if (Array.isArray(value)) return value.filter(isRecord);
+    if (Array.isArray(value)) {if(!value.every(isRecord))throw new Error("O CA retornou um lançamento inválido.");return value;}
   }
-  return [];
+  throw new Error("O CA não retornou a lista completa de lançamentos.");
 }
 
 function isRecord(value: unknown): value is ApiRecord {
@@ -50,9 +51,10 @@ function contactName(item: ApiRecord, flow: ContaAzulAuditEntry["flow"]) {
   return firstString(contact, ["nome", "razao_social", "nome_fantasia", "name"]);
 }
 
-function financialEntry(item: ApiRecord, flow: ContaAzulAuditEntry["flow"], fallbackId: string): ContaAzulAuditEntry | null {
+export function financialEntry(item: ApiRecord, flow: ContaAzulAuditEntry["flow"], fallbackId: string): ContaAzulAuditEntry | null {
   const dueDate = firstString(item, ["data_vencimento", "vencimento"]);
-  if (!dueDate || !/^\d{4}-\d{2}-\d{2}/.test(dueDate)) return null;
+  if (!dueDate || !auditDate(dueDate.slice(0,10))) return null;
+  if(!firstString(item,["id","uuid","id_parcela","id_evento"])||item.total==null&&item.valor==null&&item.valor_bruto==null)return null;
   const total = numberValue(item.total ?? item.valor ?? item.valor_bruto);
   const paid = numberValue(item.pago ?? item.valor_pago ?? item.recebido);
   const outstandingSource = item.nao_pago ?? item.valor_em_aberto ?? item.saldo;
@@ -67,6 +69,7 @@ function financialEntry(item: ApiRecord, flow: ContaAzulAuditEntry["flow"], fall
     categories: names(item.categorias ?? item.categorias_rateio ?? item.rateio),
     costCenters: names(item.centros_custo ?? item.centros_de_custo),
     dueDate: dueDate.slice(0, 10),
+    paymentDate:auditDate(firstString(item,["data_pagamento","data_ultimo_pagamento","data_ultimo_recebimento","data_baixa"])?.slice(0,10)),
     competenceDate: firstString(item, ["data_competencia", "competencia"])?.slice(0, 10) || null,
     status: firstString(item, ["status_traduzido", "status", "situacao"]) || "NÃO INFORMADO",
     total,
@@ -80,11 +83,14 @@ async function fetchFlow(
   flow: ContaAzulAuditEntry["flow"],
   start: string,
   end: string,
+  statuses:string[]=[],
+  deadline=Date.now()+240000,
 ) {
   const entries: ContaAzulAuditEntry[] = [];
   const kind = flow === "PAYABLE" ? "contas-a-pagar" : "contas-a-receber";
   const pageSize = 1000;
 
+  const seenPages=new Set<string>();let expectedTotal:number|null=null;
   for (let page = 1; page <= 25; page += 1) {
     const params = new URLSearchParams({
       pagina: String(page),
@@ -92,28 +98,64 @@ async function fetchFlow(
       data_vencimento_de: start,
       data_vencimento_ate: end,
     });
+    statuses.forEach(status=>params.append("status",status));
+    if(Date.now()>=deadline)throw new Error("A consulta excedeu o tempo disponível. Reduza o período e tente novamente.");
     const body = await contaAzulRequest<unknown>(
       clientId,
-      `/v1/financeiro/eventos-financeiros/${kind}/buscar?${params.toString()}`,
+      `/v1/financeiro/${kind}?${params.toString()}`,
+      {signal:AbortSignal.timeout(Math.max(1,Math.min(20000,deadline-Date.now())))},
     );
     const items = apiItems(body);
+    const signature=JSON.stringify(items);if(seenPages.has(signature))throw new Error("O CA repetiu uma página de lançamentos; a auditoria não foi concluída.");seenPages.add(signature);
     items.forEach((item, index) => {
       const entry = financialEntry(item, flow, `${flow}-${page}-${index}`);
-      if (entry) entries.push(entry);
+      if (!entry) throw new Error("Um lançamento do CA não informou vencimento válido. A auditoria não foi concluída.");
+      entries.push(entry);
     });
-    if (items.length < pageSize) break;
+    const total=isRecord(body)?body.itens_totais:null;
+    if(typeof total!=="number"||!Number.isInteger(total)||total<0||expectedTotal!==null&&expectedTotal!==total)throw new Error("O CA não confirmou uma paginação financeira estável.");
+    expectedTotal=total;
+    if(entries.length>=total){const unique=[...new Map(entries.map(entry=>[entry.id,entry])).values()];if(unique.length!==total)throw new Error("A consulta retornou parcelas duplicadas ou incompletas.");return unique;}
+    if(!items.length)throw new Error("O CA retornou uma página incompleta.");
   }
 
-  return [...new Map(entries.map((entry) => [entry.id, entry])).values()];
+  throw new Error("O histórico excedeu o limite de consulta; reduza o período para obter uma auditoria completa.");
 }
 
 export async function fetchContaAzulAuditPeriod(
   clientId: string,
   start: string,
   end: string,
+  deadline=Date.now()+240000,
 ) {
-  // As consultas permanecem sequenciais porque o refresh token do Conta Azul é rotativo.
-  const payable = await fetchFlow(clientId, "PAYABLE", start, end);
-  const receivable = await fetchFlow(clientId, "RECEIVABLE", start, end);
-  return { payable, receivable, all: [...payable, ...receivable] };
+  // CA accepts date windows up to 365 days; keep refresh-token requests sequential.
+  const payable:ContaAzulAuditEntry[]=[],receivable:ContaAzulAuditEntry[]=[];
+  for(const [from,to] of dateWindows(start,end)){
+    payable.push(...await fetchFlow(clientId,"PAYABLE",from,to,[],deadline));
+    receivable.push(...await fetchFlow(clientId,"RECEIVABLE",from,to,[],deadline));
+  }
+  return {payable,receivable,all:[...payable,...receivable]};
+}
+function dateWindows(start:string,end:string){
+ const windows:Array<[string,string]>=[];let cursor=start;
+ while(cursor<=end){const date=new Date(cursor+"T12:00:00Z");date.setUTCDate(date.getUTCDate()+364);const to=date.toISOString().slice(0,10)<end?date.toISOString().slice(0,10):end;windows.push([cursor,to]);const next=new Date(to+"T12:00:00Z");next.setUTCDate(next.getUTCDate()+1);cursor=next.toISOString().slice(0,10);}
+ return windows;
+}
+export async function fetchContaAzulAuditOverdue(clientId:string,start:string,end:string,deadline=Date.now()+240000){
+ const entries:ContaAzulAuditEntry[]=[];for(const [from,to] of dateWindows(start,end))entries.push(...await fetchFlow(clientId,"PAYABLE",from,to,["ATRASADO","EM_ABERTO","RECEBIDO_PARCIAL","RENEGOCIADO"],deadline));
+ return entries.filter(entry=>entry.outstanding>0.009&&!/CANCELADO|PERDIDO|QUITADO|^PAGO$/.test(entry.status.toUpperCase()));
+}
+
+export async function enrichAuditPaymentDates(clientId:string,entries:ContaAzulAuditEntry[],deadline:number){
+ let queried=0;
+ for(const entry of entries){
+  if(entry.flow!=="PAYABLE"||entry.paymentDate||entry.paid<=0||queried>=60||Date.now()>deadline)continue;
+  queried++;
+  try{const body=await contaAzulRequest<unknown>(clientId,`/v1/financeiro/baixas?id_parcela=${encodeURIComponent(entry.id)}`,{signal:AbortSignal.timeout(Math.max(1,Math.min(15000,deadline-Date.now())))});
+   if(!Array.isArray(body)||!body.length)continue;
+   const dates=body.map(row=>isRecord(row)?auditDate(typeof row.data_pagamento==="string"?row.data_pagamento.slice(0,10):null):null);
+   // Several payment days require document review rather than inventing a single date.
+   if(dates.every(Boolean)&&new Set(dates).size===1)entry.paymentDate=dates[0];
+  }catch{/* Keep the explicit manual-review fallback when a settlement is unavailable. */}
+ }
 }

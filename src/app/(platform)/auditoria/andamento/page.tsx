@@ -115,7 +115,7 @@ export default function AuditoriasEmAndamentoPage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { const timer=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(timer); }, []);
 
   async function deleteAudit(audit: Audit) {
     const response = await fetch(`/api/audit/${audit.id}`, {
@@ -247,6 +247,7 @@ export default function AuditoriasEmAndamentoPage() {
                         Auditoria criada em {formatDate(audit.createdAt)}
                       </Text>
 
+                      <Button component={Link} href={`/auditoria?audit=${encodeURIComponent(audit.id)}`} size="xs" variant="light">{audit.status==="COMPLETED"?"Ver relatório final":"Abrir checklist / finalizar"}</Button>
                       <Button
                         size="xs"
                         color="red"

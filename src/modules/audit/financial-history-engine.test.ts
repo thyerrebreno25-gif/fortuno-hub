@@ -85,7 +85,7 @@ describe("analyzeFinancialHistory", () => {
       expect.objectContaining({ ruleCode: "CA_OVERDUE", flow: "PAYABLE" }),
       expect.objectContaining({ ruleCode: "CA_OPEN", flow: "RECEIVABLE" }),
     ]));
-    expect(result.metrics.payableFindings).toBe(1);
+    expect(result.findings.filter(item=>item.ruleCode==="CA_OVERDUE"&&item.flow==="PAYABLE")).toHaveLength(1);
     expect(result.metrics.receivableFindings).toBe(1);
   });
 
@@ -131,3 +131,18 @@ describe("analyzeFinancialHistory", () => {
     ]));
   });
 });
+
+describe("políticas financeiras da auditoria",()=>{
+ const history=["01","02","03"].map(month=>entry({id:month,description:"Aluguel",counterparty:"IMOBILIARIA",dueDate:`2026-${month}-10`,competenceDate:null,categories:["Aluguel"],total:10000}));
+ const input=(current:ContaAzulAuditEntry[])=>({history,current,historyStart:"2026-01-01",historyEnd:"2026-03-31",periodStart:"2026-04-01",periodEnd:"2026-04-30",today:"2026-05-01"});
+ it("compara categoria mesmo sem padrão de competência no histórico",()=>{const result=analyzeFinancialHistory(input([entry({id:"apr",description:"Aluguel",counterparty:"IMOBILIARIA",dueDate:"2026-04-10",competenceDate:"2026-03-01",categories:["Imóveis"],total:15000})]));expect(result.findings.map(item=>item.ruleCode)).toEqual(expect.arrayContaining(["CA_CATEGORY_DIVERGENCE","CA_AMOUNT_VARIATION"]));});
+ it("detecta aumento de 10 mil para 15 mil",()=>{const result=analyzeFinancialHistory(input([entry({id:"apr",description:"Aluguel",counterparty:"IMOBILIARIA",dueDate:"2026-04-10",total:15000})]));expect(result.findings.find(item=>item.ruleCode==="CA_AMOUNT_VARIATION")?.description).toContain("50.0%");});
+ it("PIX de aluguel continua sendo serviço mensal",()=>{const result=analyzeFinancialHistory(input([entry({id:"apr",description:"PIX Aluguel",dueDate:"2026-04-10",paymentDate:"2026-04-11",competenceDate:"2026-04-11"})]));expect(result.findings.some(item=>item.ruleCode==="CA_COMPETENCE_DIVERGENCE")).toBe(true);});
+ it("compra avulsa usa o dia exato do pagamento",()=>{for(const competenceDate of ["2026-04-01","2026-04-12"]){const result=analyzeFinancialHistory(input([entry({id:"purchase",description:"PIX compra de material",dueDate:"2026-04-10",paymentDate:"2026-04-12",competenceDate})]));expect(result.findings.some(item=>item.ruleCode==="CA_COMPETENCE_DIVERGENCE")).toBe(competenceDate!=="2026-04-12");}});
+ it("não transforma data de vencimento em data de pagamento",()=>{const result=analyzeFinancialHistory(input([entry({id:"purchase",description:"PIX compra de material",dueDate:"2026-04-10",paymentDate:null})]));expect(result.findings.some(item=>item.ruleCode==="CA_COMPETENCE_PAYMENT_UNAVAILABLE")).toBe(true);});
+ it("não cobra obrigação que ainda não venceu no mês em andamento",()=>{const result=analyzeFinancialHistory({...input([]),today:"2026-04-05"});expect(result.findings.some(item=>item.ruleCode==="CA_MISSING_RECURRING")).toBe(false);});
+ it("aprende obrigação presente nos dois últimos meses e não junta impostos diferentes",()=>{const result=analyzeFinancialHistory({...input([]),history:["02","03"].flatMap(month=>[entry({id:`irpj-${month}`,description:"DARF IRPJ",counterparty:"RECEITA FEDERAL",dueDate:`2026-${month}-20`}),entry({id:`csll-${month}`,description:"DARF CSLL",counterparty:"RECEITA FEDERAL",dueDate:`2026-${month}-20`})])});expect(result.profiles).toHaveLength(2);expect(result.findings.filter(item=>item.ruleCode==="CA_MISSING_RECURRING")).toHaveLength(2);});
+ it("incorpora vencidos anteriores sem duplicar o título do período",()=>{const current=entry({id:"apr",dueDate:"2026-04-10",status:"ATRASADO",paid:0,outstanding:500});const result=analyzeFinancialHistory({...input([current]),overdueEntries:[current,entry({id:"old",dueDate:"2025-12-10",status:"ATRASADO",paid:0,outstanding:500})]});expect(result.findings.filter(item=>item.ruleCode==="CA_OVERDUE")).toHaveLength(2);});
+});
+
+it("a categoria atual não muda a identidade usada para comparar a categoria anterior",()=>{const history=["01","02","03"].map(month=>entry({id:month,description:"Mensalidade do escritório",counterparty:"FORNECEDOR",categories:["Outras despesas"],dueDate:`2026-${month}-10`,competenceDate:null}));const result=analyze(history,[entry({id:"apr",description:"Mensalidade do escritório",counterparty:"FORNECEDOR",categories:["Aluguel"],dueDate:"2026-04-10",competenceDate:null})]);expect(result.findings.some(item=>item.ruleCode==="CA_CATEGORY_DIVERGENCE")).toBe(true);});

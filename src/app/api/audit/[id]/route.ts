@@ -86,3 +86,11 @@ export async function DELETE(
     clientName: audit.client.name,
   });
 }
+
+export async function GET(_request:Request,context:Context){
+ const member=await getAuditMember();if(!member)return NextResponse.json({error:"Sessão inválida."},{status:401});
+ if(!canSuperviseAudit(member.role,member.isTeamLeader))return NextResponse.json({error:"Sem permissão."},{status:403});
+ const {id}=await context.params;const audit=await prisma.audit.findFirst({where:{id,organizationId:member.organizationId,...(!isAuditAdministrator(member.role)?{supervisorId:member.userId}:{})},include:{client:{select:{id:true,name:true,payableResponsibleId:true,receivableResponsibleId:true}},supervisor:{select:{name:true,email:true}},files:true,checklist:{orderBy:{position:"asc"}},findings:{orderBy:{createdAt:"asc"},include:{operator:{select:{name:true,email:true}},interactions:{orderBy:{createdAt:"asc"},include:{user:{select:{name:true,email:true}}}}}}}});
+ if(!audit)return NextResponse.json({error:"Auditoria não encontrada."},{status:404});
+ return NextResponse.json({audit},{headers:{"Cache-Control":"no-store"}});
+}

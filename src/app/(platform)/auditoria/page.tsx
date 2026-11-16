@@ -11,6 +11,7 @@ import {
   FileButton,
   Group,
   Modal,
+  NumberInput,
   Paper,
   Progress,
   Select,
@@ -35,6 +36,8 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 
+import {FilterPanel} from "@/components/filter-panel";
+import type {AuditCompletionReport} from "@/modules/audit/completion";
 import { analyzeContaAzulDre } from "@/modules/audit/dre-engine";
 import { analyzeAuditMovements, combineAuditAnalyses } from "@/modules/audit/engine";
 import { parseContaAzulDre } from "@/modules/audit/parsers/conta-azul-dre-parser";
@@ -102,6 +105,7 @@ type SavedAudit = {
   status: string;
   healthScore: number;
   createdAt: string;
+  summary?: {source?:string;history?:{start:string;end:string};limitations?:string[];metrics?:AutomaticAnalysis["metrics"]};
   client: {
     id: string;
     name: string;
@@ -187,8 +191,8 @@ function findingType(ruleCode: string): FindingType {
   if (ruleCode.startsWith("CA_COMPETENCE")) return "COMPETENCE";
   if (ruleCode.includes("CATEGORY")) return "CATEGORY";
   if (ruleCode.includes("DUPLICATE")) return "DUPLICATE";
-  if (ruleCode === "MONTHLY_VARIATION" || ruleCode.startsWith("DRE_VARIATION_")) return "VARIATION";
-  if (ruleCode === "REPORT_PERIOD_MISMATCH" || ruleCode === "NEGATIVE_ENDING_BALANCE") return "REPORT";
+  if (ruleCode === "CA_AMOUNT_VARIATION" || ruleCode === "MONTHLY_VARIATION" || ruleCode.startsWith("DRE_VARIATION_")) return "VARIATION";
+  if (ruleCode.startsWith("CA_TRANSITORY_") || ruleCode === "REPORT_PERIOD_MISMATCH" || ruleCode === "NEGATIVE_ENDING_BALANCE") return "REPORT";
   if (ruleCode.startsWith("CHECKLIST:")) return "CHECKLIST";
   return "OTHER";
 }
@@ -254,14 +258,10 @@ function formatMoney(value: number) {
 }
 
 function currentMonthRange() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  return {
-    start: `${prefix}-01`,
-    end: `${prefix}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`,
-  };
+  const today = new Date(new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())+"T12:00:00Z");
+  const first=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth()-1,1,12));
+  const last=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),0,12));
+  return {start:first.toISOString().slice(0,10),end:last.toISOString().slice(0,10)};
 }
 
 type AutomaticAnalysis = {
@@ -278,6 +278,7 @@ type AutomaticAnalysis = {
     competenceDivergences: number;
     categoryDivergences: number;
     duplicates: number;
+    amountVariations:number;transitoryAccounts:number;nonzeroBalances:number;unavailableBalances:number;
     payableFindings: number;
     receivableFindings: number;
   };
@@ -299,6 +300,12 @@ export default function AuditoriaPage() {
   const [assignment, setAssignment] = useState<AssignmentState | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalState | null>(null);
   const [checklistReview, setChecklistReview] = useState<ChecklistReviewState | null>(null);
+  const [historyMonths,setHistoryMonths]=useState<number|string>(3);
+  const [variationPercent,setVariationPercent]=useState<number|string>(25);
+  const [finalizeOpened,setFinalizeOpened]=useState(false);
+  const [finalNote,setFinalNote]=useState("");
+  const [reportBusy,setReportBusy]=useState(false);
+  const [completionReport,setCompletionReport]=useState<AuditCompletionReport|null>(null);
   const [findingTypeFilter, setFindingTypeFilter] = useState("ALL");
 
   const isSupervisor = Boolean(bootstrap?.currentUser.canSupervise);
@@ -329,6 +336,11 @@ export default function AuditoriaPage() {
 
     setBootstrap(boot);
     setAudits(auditPayload.audits || []);
+    const auditId=new URLSearchParams(window.location.search).get("audit");
+    if(auditId&&boot.currentUser.canSupervise){const response=await fetch(`/api/audit/${encodeURIComponent(auditId)}`,{cache:"no-store"});const payload=await response.json();if(!response.ok)throw new Error(payload.error);setSavedAudit(payload.audit);
+      const summary=payload.audit.summary;if(summary?.source==="CONTA_AZUL_API"&&summary.history&&summary.metrics)setAutomaticAnalysis({healthScore:payload.audit.healthScore,historyStart:summary.history.start,historyEnd:summary.history.end,metrics:summary.metrics});
+    }
+
   }
 
   useEffect(() => {
@@ -445,13 +457,14 @@ export default function AuditoriaPage() {
       const response = await fetch("/api/audit/conta-azul", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, periodStart, periodEnd }),
+        body: JSON.stringify({ clientId, periodStart, periodEnd, historyMonths,variationPercent }),
       });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Não foi possível executar a validação automática.");
       }
       setSavedAudit(payload.audit);
+      window.history.replaceState(null,"",`?audit=${encodeURIComponent(payload.audit.id)}`);
       setAutomaticAnalysis(payload.analysis);
       notifications.show({
         color: payload.audit.findings.length ? "blue" : "green",
@@ -469,6 +482,16 @@ export default function AuditoriaPage() {
       setAutomaticLoading(false);
     }
   }
+
+  async function loadCompletionReport(){
+    if(!currentAudit)return;setReportBusy(true);
+    try{const response=await fetch(`/api/audit/${currentAudit.id}/report`);const payload=await response.json();if(!response.ok)throw new Error(payload.error);setCompletionReport(payload.report);}catch(error){notifications.show({color:"red",title:"Relatório",message:error instanceof Error?error.message:"Não foi possível abrir."});}finally{setReportBusy(false);}
+  }
+  async function finishAudit(){
+    if(!currentAudit)return;setReportBusy(true);
+    try{const response=await fetch(`/api/audit/${currentAudit.id}/complete`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note:finalNote})});const payload=await response.json();if(!response.ok)throw new Error(payload.error);setCompletionReport(payload.report);setFinalizeOpened(false);setSavedAudit({...currentAudit,status:"COMPLETED"});await load();}catch(error){notifications.show({color:"red",title:"Finalização da auditoria",message:error instanceof Error?error.message:"Não foi possível finalizar."});}finally{setReportBusy(false);}
+  }
+  async function downloadReport(){if(!completionReport)return;const {createAuditReportPdf}=await import("@/modules/audit/report-pdf");createAuditReportPdf(completionReport).save(`auditoria-${completionReport.auditId}.pdf`);}
 
   async function findingAction(
     id: string,
@@ -576,6 +599,7 @@ export default function AuditoriaPage() {
     setPeriodStart(range.start);
     setPeriodEnd(range.end);
     setSavedAudit(null);
+    window.history.replaceState(null,"",window.location.pathname);
     setAssignment(null);
     setActionModal(null);
     setChecklistReview(null);
@@ -604,12 +628,7 @@ export default function AuditoriaPage() {
     });
   }
 
-  // A tela /auditoria representa somente a auditoria criada na sessão atual.
-  // Auditorias anteriores permanecem salvas e são consultadas em /auditoria/andamento.
-  const currentAudit = useMemo(
-    () => savedAudit,
-    [savedAudit],
-  );
+  const currentAudit = savedAudit;
 
   const filteredFindings = useMemo(() => {
     if (!currentAudit) return [];
@@ -862,7 +881,7 @@ export default function AuditoriaPage() {
           <div>
             <Text fw={800}>Validação automática pelo Conta Azul</Text>
             <Text size="sm" c="dimmed">
-              Aprende o histórico do início do ano ao mês anterior e separa os
+              Compara no mínimo três meses anteriores completos e separa os
               resultados entre Contas a Pagar e Contas a Receber.
             </Text>
           </div>
@@ -915,12 +934,16 @@ export default function AuditoriaPage() {
           </Button>
         </SimpleGrid>
 
+        <div style={{marginTop:12}}><FilterPanel title="Critérios da comparação">
+          <SimpleGrid cols={{base:1,sm:2}}><NumberInput label="Meses anteriores para comparação" value={historyMonths} onChange={setHistoryMonths} min={3} max={12} allowDecimal={false}/><NumberInput label="Variação mínima de valor (%)" value={variationPercent} onChange={setVariationPercent} min={1} max={100}/></SimpleGrid>
+          <Text size="sm" c="dimmed" mt="sm">Serviços mensais: competência no mês anterior ao pagamento (ou vencimento, quando a data não estiver disponível). Compras e pagamentos avulsos: dia do pagamento. Variações exigem também diferença mínima de R$ 100. Saldo zero somente para contas transitórias; saldo indisponível exige conferência manual.</Text>
         <Alert color="blue" mt="md" icon={<IconShieldCheck size={18} />}>
           PIX, transferências, tarifas, estornos e descrições genéricas continuam
           na conferência de títulos abertos ou vencidos, mas não criam padrão de
           recorrência. O histórico aprende impostos, folha, aluguel, contas de
           consumo, empréstimos e demais fornecedores ou clientes realmente recorrentes.
         </Alert>
+        </FilterPanel></div>
 
         {automaticAnalysis && (
           <SimpleGrid cols={{ base: 2, md: 6 }} mt="md">
@@ -930,19 +953,17 @@ export default function AuditoriaPage() {
             <Metric title="Vencidos" value={automaticAnalysis.metrics.overdue} color="red" />
             <Metric title="Em aberto" value={automaticAnalysis.metrics.open} color="yellow" />
             <Metric title="Competências" value={automaticAnalysis.metrics.competenceDivergences} color="violet" />
+            <Metric title="Categorias diferentes" value={automaticAnalysis.metrics.categoryDivergences} color="orange"/>
+            <Metric title="Valores discrepantes" value={automaticAnalysis.metrics.amountVariations} color="orange"/>
+            <Metric title="Saldos não zerados" value={automaticAnalysis.metrics.nonzeroBalances} color="red"/>
+            <Metric title="Saldos a conferir" value={automaticAnalysis.metrics.unavailableBalances} color="orange"/>
+            <Text size="xs" c="dimmed">Histórico: {automaticAnalysis.historyStart} a {automaticAnalysis.historyEnd}</Text>
           </SimpleGrid>
         )}
       </Paper>
 
       <Paper withBorder radius="lg" p="lg">
-        <Group mb="md">
-          <div>
-            <Text fw={800}>Análise complementar por relatórios</Text>
-            <Text size="sm" c="dimmed">
-              Use os PDFs quando precisar complementar a API com Movimentações e DRE.
-            </Text>
-          </div>
-        </Group>
+        <FilterPanel title="Análise complementar por relatórios">
         <SimpleGrid cols={{ base: 1, md: 4 }}>
           <Select
             label="Cliente"
@@ -1009,6 +1030,7 @@ export default function AuditoriaPage() {
           </Button>
         </SimpleGrid>
 
+        <Text size="xs" c="dimmed" mt="sm">Use extratos com pelo menos três meses consecutivos para comparação.</Text>
         {!dreFile && (
           <Alert color="yellow" icon={<IconAlertTriangle size={16} />} mt="md">
             Sem a DRE, a auditoria usa somente o extrato. Água, energia,
@@ -1016,6 +1038,7 @@ export default function AuditoriaPage() {
             do líder.
           </Alert>
         )}
+        </FilterPanel>
       </Paper>
 
       {analysis && (
@@ -1161,6 +1184,9 @@ export default function AuditoriaPage() {
         </>
       )}
 
+      {currentAudit && <Paper withBorder radius="lg" p="md"><Group justify="space-between"><div><Text fw={700}>{currentAudit.status==="COMPLETED"?"Auditoria finalizada":"Encerramento da auditoria"}</Text><Text size="sm" c="dimmed">Finalize após revisar o checklist e validar ou descartar, com justificativa, todos os apontamentos.</Text></div><Button loading={reportBusy} onClick={()=>{if(currentAudit.status==="COMPLETED")void loadCompletionReport();else{setFinalNote("");setFinalizeOpened(true);}}}>{currentAudit.status==="COMPLETED"?"Ver relatório / PDF":"Finalizar auditoria"}</Button></Group></Paper>}
+      <Modal opened={finalizeOpened} onClose={()=>setFinalizeOpened(false)} title="Finalizar auditoria" centered><Stack><Text size="sm">O relatório registrará as correções, validações, justificativas e o checklist. Após finalizar, esses registros ficam fechados para edição.</Text><Textarea label="Observações finais do gestor" value={finalNote} onChange={event=>setFinalNote(event.currentTarget.value)} autosize minRows={3} maxLength={10000}/><Button loading={reportBusy} onClick={()=>void finishAudit()}>Finalizar e gerar relatório</Button></Stack></Modal>
+      <Modal opened={!!completionReport} onClose={()=>setCompletionReport(null)} title="Relatório final da auditoria" size="xl"><Stack>{completionReport&&<><Group justify="space-between"><div><Text fw={700}>{completionReport.client}</Text><Text size="sm">{completionReport.periodStart} a {completionReport.periodEnd}</Text></div><Button onClick={()=>void downloadReport()}>Baixar PDF</Button></Group><Text size="sm">Finalizado por {completionReport.completedBy} · {new Date(completionReport.completedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</Text><Text style={{whiteSpace:"pre-wrap"}}>{completionReport.note||"Sem observações finais."}</Text><Text size="sm" c="dimmed">{completionReport.criteria}</Text>{completionReport.limitations.map((line,index)=><Text key={index} size="xs" c="dimmed">{line}</Text>)}{["VALIDATED","DISMISSED"].map(status=><Stack key={status} gap="xs"><Title order={4}>{status==="VALIDATED"?"Ajustes validados":"Pontos descartados / justificados"}</Title>{completionReport.findings.filter(finding=>finding.status===status).map((finding,index)=><Paper key={index} withBorder p="sm"><Text fw={700}>{finding.title}</Text><Text size="sm">Responsável: {finding.operator}</Text><Text size="sm">{finding.description}</Text>{finding.history.filter(item=>item.note).map((item,i)=><Text key={i} size="sm" style={{whiteSpace:"pre-wrap"}}>{item.actor}: {item.note}</Text>)}</Paper>)}</Stack>)}<Title order={4}>Checklist revisado</Title>{completionReport.checklist.map((item,index)=><Text key={index} size="sm">{item.title} · {checklistStatusLabel(item.status)} · {item.reviewedBy}{item.note?` — ${item.note}`:""}</Text>)}</>}</Stack></Modal>
       {currentAudit && (
         <SimpleGrid cols={{ base: 1, xl: 2 }}>
           <Paper withBorder radius="lg" p="lg">
@@ -1179,10 +1205,10 @@ export default function AuditoriaPage() {
 
             <Stack gap="sm">
               <Alert color="green" icon={<IconCheck size={16} />}>
-                Extrato de Movimentações analisado
+                {currentAudit.summary?.source==="CONTA_AZUL_API"?"Lançamentos consultados no Conta Azul":"Extrato de Movimentações analisado"}
               </Alert>
 
-              {currentAudit.files?.some((file) => file.type === "DRE") ? (
+              {currentAudit.summary?.source==="CONTA_AZUL_API" ? <Text size="sm" c="dimmed">Consultas da API e histórico registrados nesta auditoria. Confira as evidências e limitações de cada apontamento.</Text> : currentAudit.files?.some((file) => file.type === "DRE") ? (
                 <Alert color="green" icon={<IconCheck size={16} />}>
                   DRE Gerencial analisada e comparada por competência
                 </Alert>
@@ -1239,6 +1265,7 @@ export default function AuditoriaPage() {
 
                       <Button
                         size="xs"
+                        disabled={currentAudit.status==="COMPLETED"}
                         variant={item.status === "PENDING" ? "filled" : "light"}
                         onClick={() =>
                           openChecklistReview(item, currentAudit)
@@ -1364,7 +1391,7 @@ export default function AuditoriaPage() {
                       </div>
                     </Group>
 
-                    <Group mt="md">
+                    <Group mt="md" style={currentAudit.status==="COMPLETED"?{display:"none"}:undefined}>
                       {finding.status === "IDENTIFIED" && (
                         <>
                           <Button

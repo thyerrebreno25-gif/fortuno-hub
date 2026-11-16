@@ -63,13 +63,18 @@ export const CONTA_AZUL_AUDIT_CHECKLIST = [
     description: "A API fornece o saldo do Conta Azul, mas a confirmação do saldo real do banco continua dependendo do extrato bancário.",
   },
   {
+    category:"Contas transitórias",
+    title:"Confirmar saldo zero de adquirentes e meios de recebimento no último dia do período.",
+    description:"Investimentos, poupança, caixa e contas correntes ficam fora desta regra. Saldo indisponível deve ser conferido manualmente, nunca considerado zerado.",
+  },
+  {
     category: "Conciliações",
     title: "Confirmar as conciliações bancárias, de cartões e adquirentes que não puderam ser comprovadas pela consulta.",
     description: "Direcione qualquer conta ou período pendente ao operador responsável.",
   },
   {
     category: "Exceções automáticas",
-    title: "Revisar recorrências ausentes, títulos vencidos, abertos, duplicados e competências divergentes.",
+    title: "Revisar recorrências ausentes, títulos vencidos, abertos, duplicados, competências, categorias e valores divergentes.",
     description: "Os apontamentos são separados entre Contas a Pagar e Contas a Receber e devem ser confirmados antes do envio.",
   },
   {

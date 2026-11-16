@@ -123,6 +123,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Envie o Extrato de Movimentações." }, { status: 400 });
   }
 
+  const months:unknown=body.metrics?.months;
+  const compared=Array.isArray(months)?[...new Set(months.filter((month):month is string=>typeof month==="string"&&/^\d{4}-(0[1-9]|1[0-2])$/.test(month)))].sort():[];
+  const consecutive=compared.length>=3&&compared.every((month,index)=>!index||Number(month.slice(0,4))*12+Number(month.slice(5,7))===Number(compared[index-1].slice(0,4))*12+Number(compared[index-1].slice(5,7))+1);
+  if(!consecutive)return NextResponse.json({error:"A comparação por relatórios exige lançamentos de pelo menos três meses consecutivos. Amplie o extrato ou use a validação automática pelo Conta Azul."},{status:400});
   const audit = await prisma.audit.create({
     data: {
       organizationId: member.organizationId,
@@ -135,7 +139,7 @@ export async function POST(request: Request) {
       healthScore: Number(body.healthScore ?? 100),
       totalChecks: Number(body.totalChecks ?? 0),
       passedChecks: Number(body.passedChecks ?? 0),
-      summary: body.metrics ?? undefined,
+      summary: {source:"PDF_REPORTS",metrics:body.metrics??{},limitations:["Os relatórios PDF não confirmam o saldo de cada conta transitória nem a data de baixa de cada título. Essas conferências exigem a API ou revisão manual do gestor."]},
       files: { create: files.map((file) => ({
         type: file.type,
         name: file.name,

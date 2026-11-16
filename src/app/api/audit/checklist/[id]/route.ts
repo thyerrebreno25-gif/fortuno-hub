@@ -1,3 +1,4 @@
+import {AuditConflict,lockAudit} from "@/modules/audit/server/workflow";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -146,7 +147,11 @@ export async function PATCH(
 
   const ruleCode = `CHECKLIST:${checklist.id}`;
 
+  try {
   const result = await prisma.$transaction(async (tx) => {
+    await lockAudit(tx,checklist.auditId,member.organizationId);
+    const latest=await tx.auditChecklistItem.findUnique({where:{id}});
+    if(!latest||latest.updatedAt.getTime()!==checklist.updatedAt.getTime())throw new AuditConflict("O checklist foi alterado. Atualize antes de continuar.");
     const reviewed = await tx.auditChecklistItem.update({
       where: {
         id: checklist.id,
@@ -265,76 +270,11 @@ export async function PATCH(
       });
     }
 
-    const [
-      pendingChecklist,
-      unresolvedFindings,
-      sentFindings,
-      pendingValidation,
-    ] = await Promise.all([
-      tx.auditChecklistItem.count({
-        where: {
-          auditId: checklist.auditId,
-          status: "PENDING",
-        },
-      }),
-      tx.auditFinding.count({
-        where: {
-          auditId: checklist.auditId,
-          status: {
-            notIn: ["VALIDATED", "DISMISSED"],
-          },
-        },
-      }),
-      tx.auditFinding.count({
-        where: {
-          auditId: checklist.auditId,
-          status: {
-            in: [
-              "SENT",
-              "IN_PROGRESS",
-              "RETURNED",
-            ],
-          },
-        },
-      }),
-      tx.auditFinding.count({
-        where: {
-          auditId: checklist.auditId,
-          status: "PENDING_VALIDATION",
-        },
-      }),
+    const [sent,pendingValidation]=await Promise.all([
+      tx.auditFinding.count({where:{auditId:checklist.auditId,status:{in:["SENT","IN_PROGRESS","RETURNED"]}}}),
+      tx.auditFinding.count({where:{auditId:checklist.auditId,status:"PENDING_VALIDATION"}}),
     ]);
-
-    let auditStatus:
-      | "IN_REVIEW"
-      | "SENT_TO_CORRECTION"
-      | "PENDING_VALIDATION"
-      | "COMPLETED" = "IN_REVIEW";
-
-    if (
-      pendingChecklist === 0 &&
-      unresolvedFindings === 0
-    ) {
-      auditStatus = "COMPLETED";
-    } else if (pendingValidation > 0) {
-      auditStatus = "PENDING_VALIDATION";
-    } else if (sentFindings > 0) {
-      auditStatus = "SENT_TO_CORRECTION";
-    }
-
-    await tx.audit.update({
-      where: {
-        id: checklist.auditId,
-      },
-      data: {
-        status: auditStatus,
-        completedAt:
-          auditStatus === "COMPLETED"
-            ? new Date()
-            : null,
-      },
-    });
-
+    await tx.audit.update({where:{id:checklist.auditId},data:{status:pendingValidation?"PENDING_VALIDATION":sent?"SENT_TO_CORRECTION":"IN_REVIEW",completedAt:null}});
     return {
       checklist: reviewed,
       finding,
@@ -342,4 +282,8 @@ export async function PATCH(
   });
 
   return NextResponse.json(result);
+ } catch(error){
+  if(error instanceof AuditConflict)return NextResponse.json({error:error.message},{status:409});
+  throw error;
+ }
 }

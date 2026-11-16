@@ -4,22 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { canSuperviseAudit, getAuditMember } from "@/modules/audit/auth";
 import { CONTA_AZUL_AUDIT_CHECKLIST } from "@/modules/audit/checklist";
 import { analyzeFinancialHistory } from "@/modules/audit/financial-history-engine";
-import { fetchContaAzulAuditPeriod } from "@/modules/audit/server/conta-azul-financial-source";
+import {auditHistoryPeriod,auditDate} from "@/modules/audit/period";
+import {auditTransitoryBalances} from "@/modules/audit/server/transitory-balances";
+import {transitoryBalanceFindings} from "@/modules/audit/transitory-accounts";
+import type {AuditFindingDraft} from "@/modules/audit/types";
+import { enrichAuditPaymentDates,fetchContaAzulAuditOverdue,fetchContaAzulAuditPeriod } from "@/modules/audit/server/conta-azul-financial-source";
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-function validDate(value: unknown) {
-  if (typeof value !== "string" || !DATE.test(value)) return null;
-  const date = new Date(`${value}T12:00:00Z`);
-  return Number.isNaN(date.getTime()) ? null : value;
-}
-
-function previousMonthEnd(periodStart: string) {
-  const [year, month] = periodStart.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, 0));
-  return date.toISOString().slice(0, 10);
-}
-
+export const maxDuration=300;
 function daysBetween(start: string, end: string) {
   const a = new Date(`${start}T12:00:00Z`).getTime();
   const b = new Date(`${end}T12:00:00Z`).getTime();
@@ -35,11 +26,14 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const clientId = typeof body.clientId === "string" ? body.clientId : "";
-  const periodStart = validDate(body.periodStart);
-  const periodEnd = validDate(body.periodEnd);
+  const periodStart = auditDate(body.periodStart);
+  const periodEnd = auditDate(body.periodEnd);
   if (!clientId || !periodStart || !periodEnd || periodStart > periodEnd) {
     return NextResponse.json({ error: "Selecione o cliente e informe um período válido." }, { status: 400 });
   }
+  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  if(periodEnd>today)return NextResponse.json({error:"Use um período já iniciado, sem datas futuras."},{status:400});
+  const deadline=Date.now()+240000;
   if (daysBetween(periodStart, periodEnd) > 366) {
     return NextResponse.json({ error: "A validação pode abranger no máximo 12 meses por execução." }, { status: 400 });
   }
@@ -59,35 +53,48 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Este cliente ainda não possui conexão ativa com o Conta Azul." }, { status: 400 });
   }
 
-  const historyStart = `${periodStart.slice(0, 4)}-01-01`;
-  const historyEnd = previousMonthEnd(periodStart);
+  const historyMonths=body.historyMonths===undefined?3:Number(body.historyMonths),variationPercent=body.variationPercent===undefined?25:Number(body.variationPercent);
+  if(!Number.isInteger(historyMonths)||historyMonths<3||historyMonths>12||!Number.isFinite(variationPercent)||variationPercent<1||variationPercent>100)return NextResponse.json({error:"Use de 3 a 12 meses anteriores e variação entre 1% e 100%."},{status:400});
+  const {start:historyStart,end:historyEnd}=auditHistoryPeriod(periodStart,historyMonths);
 
   try {
     const historyPeriod = historyEnd >= historyStart
-      ? await fetchContaAzulAuditPeriod(client.id, historyStart, historyEnd)
+      ? await fetchContaAzulAuditPeriod(client.id, historyStart, historyEnd,deadline)
       : { payable: [], receivable: [], all: [] };
-    const currentPeriod = await fetchContaAzulAuditPeriod(client.id, periodStart, periodEnd);
-    const analysis = analyzeFinancialHistory({
+    const currentPeriod = await fetchContaAzulAuditPeriod(client.id, periodStart, periodEnd,deadline);
+    await enrichAuditPaymentDates(client.id,currentPeriod.all,Math.min(deadline,Date.now()+45000));
+    const overdueEntries=await fetchContaAzulAuditOverdue(client.id,historyStart,periodEnd,deadline);
+    const financial = analyzeFinancialHistory({
       history: historyPeriod.all,
       current: currentPeriod.all,
       historyStart,
       historyEnd,
       periodStart,
-      periodEnd,
+      periodEnd,variationPercent,overdueEntries,
     });
 
+    let balances:Awaited<ReturnType<typeof auditTransitoryBalances>>=[],balanceError:string|null=null;
+    try{balances=await auditTransitoryBalances(client.id,periodEnd,deadline);}catch{balanceError="A lista de contas transitórias não pôde ser confirmada. Confira as contas e o saldo de fechamento manualmente.";}
+    const balanceFindings=transitoryBalanceFindings(balances);
+    if(balanceError)balanceFindings.push({localId:"CA_TRANSITORY_LIST_UNAVAILABLE",ruleCode:"CA_TRANSITORY_BALANCE_UNAVAILABLE",flow:"GENERAL",title:"Contas transitórias aguardam conferência",description:balanceError,severity:"WARNING",evidence:[{label:"Data do fechamento",value:periodEnd}]});
+    const findings:AuditFindingDraft[]=[...financial.findings,...balanceFindings];
+    const analysis={...financial,findings,totalChecks:financial.totalChecks+balances.length+(balanceError?1:0),passedChecks:financial.passedChecks+balances.filter(account=>account.balanceCents===0).length,healthScore:Math.max(0,financial.healthScore-balanceFindings.length*5),metrics:{...financial.metrics,transitoryAccounts:balances.length,nonzeroBalances:balances.filter(account=>account.balanceCents!==null&&account.balanceCents!==0).length,unavailableBalances:balances.filter(account=>account.balanceCents===null).length+(balanceError?1:0)}};
     const summary = {
       source: "CONTA_AZUL_API",
       tenant: client.contaAzulConnection.externalTenantName,
       queriedAt: new Date().toISOString(),
       period: { start: periodStart, end: periodEnd, basis: "vencimento" },
-      history: { start: historyStart, end: historyEnd, basis: "vencimento" },
+      history: { start: historyStart, end: historyEnd, months:historyMonths,basis: "vencimento" },
+      rules:{version:2,variationPercent,minimumVariationAmount:100,monthlyServiceCompetence:"PREVIOUS_MONTH",oneOffCompetence:"PAYMENT_DAY",zeroBalanceScope:"TRANSITORY_ONLY"},
+      transitoryBalances:balances.map(account=>({...account,reason:account.reason||null})),
       metrics: analysis.metrics,
       recurringProfiles: analysis.profiles,
       limitations: [
         "A recorrência é aprendida pelos títulos disponíveis no Conta Azul, usando vencimento, contato, categoria e descrição.",
-        "PIX, transferências, tarifas, estornos e descrições genéricas não formam recorrência automática.",
+        "A forma PIX não transforma um serviço mensal em compra avulsa. Pagamentos avulsos usam a data de pagamento quando disponibilizada pelo CA.",
+        "O saldo de fechamento é reconstituído com as movimentações posteriores quando o CA fornece todos os dados necessários. Saldo indisponível exige validação manual, nunca é considerado zero.",
         "A conferência do saldo real do banco continua dependendo do extrato bancário.",
+        "Títulos vencidos refletem a situação atual dos lançamentos com vencimento dentro do período e do histórico consultado.",
       ],
     } satisfies Prisma.InputJsonValue;
 

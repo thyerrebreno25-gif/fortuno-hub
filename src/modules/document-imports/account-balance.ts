@@ -10,14 +10,14 @@ const account = (value: unknown) => typeof value === "string" ? value : String(r
 export function brazilToday(now = new Date()) { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); }
 export function nextDay(value: string) { const date = new Date(value + "T12:00:00Z"); date.setUTCDate(date.getUTCDate() + 1); return date.toISOString().slice(0, 10); }
 
-async function pages(clientId: string, path: string, filters: Record<string, string>, deadline: number) {
+async function pages(clientId: string, path: string, filters: Record<string, string>, deadline: number,request:typeof contaAzulRequest) {
   const rows: Row[] = [];
   let expectedTotal: number | null = null;
   const seenPages = new Set<string>();
   for (let page = 1; page <= 20; page++) {
     if (Date.now() > deadline) throw new Error("Consulta de fechamento excedeu o tempo disponível.");
     const query = new URLSearchParams({ ...filters, pagina: String(page), tamanho_pagina: "100" });
-    const body = record(await contaAzulRequest(clientId, `${path}?${query}`));
+    const body = record(await request(clientId, `${path}?${query}`));
     if (!Array.isArray(body.itens) || typeof body.itens_totais !== "number") throw new Error("A API não confirmou a paginação completa dos movimentos.");
     if (!Number.isInteger(body.itens_totais) || body.itens_totais < 0 || expectedTotal !== null && body.itens_totais !== expectedTotal) throw new Error("A consulta de movimentos mudou durante a paginação.");
     expectedTotal = body.itens_totais;
@@ -33,7 +33,7 @@ async function pages(clientId: string, path: string, filters: Record<string, str
 
 // Public CA only exposes current balance. Roll back every known subsequent cash
 // movement; missing pages/fields or a moving current balance invalidate the result.
-export async function closingAccountBalance(clientId: string, accountId: string, date: string, now = new Date(), sharedDeadline = Infinity): Promise<AccountClosingBalance> {
+export async function closingAccountBalance(clientId: string, accountId: string, date: string, now = new Date(), sharedDeadline = Infinity,request:typeof contaAzulRequest=contaAzulRequest): Promise<AccountClosingBalance> {
   const base = { accountId, date, checkedAt: now.toISOString() };
   const today = brazilToday(now);
   if (!validDate(date) || date > today) return { ...base, balanceCents: null, method: "UNAVAILABLE", reason: "A data final é inválida ou está no futuro." };
@@ -41,14 +41,14 @@ export async function closingAccountBalance(clientId: string, accountId: string,
   try {
     if (Date.now() > deadline) throw new Error("Consulta de fechamento excedeu o tempo disponível.");
     const balancePath = `/v1/conta-financeira/${encodeURIComponent(accountId)}/saldo-atual`;
-    const initialCurrent = reais(record(await contaAzulRequest(clientId, balancePath)).saldo_atual);
+    const initialCurrent = reais(record(await request(clientId, balancePath)).saldo_atual);
     if (date === today) return { ...base, balanceCents: initialCurrent, method: "CURRENT" };
     const start = nextDay(date);
     let subsequentCents = 0;
     const settledIds = new Set<string>();
     for (const [flow, sign] of [["contas-a-receber", 1], ["contas-a-pagar", -1]] as const) {
       // No account filter: a settlement can use a different account from its installment.
-      const installments = await pages(clientId, `/v1/financeiro/eventos-financeiros/${flow}/buscar`, { data_vencimento_de: "1900-01-01", data_vencimento_ate: "2199-12-31", data_pagamento_de: start, data_pagamento_ate: today }, deadline);
+      const installments = await pages(clientId, `/v1/financeiro/eventos-financeiros/${flow}/buscar`, { data_vencimento_de: "1900-01-01", data_vencimento_ate: "2199-12-31", data_pagamento_de: start, data_pagamento_ate: today }, deadline,request);
       if (installments.length > 150) throw new Error("Muitas parcelas após o fechamento para validar automaticamente.");
       const seen = new Set<string>();
       for (const installment of installments) {
@@ -56,7 +56,7 @@ export async function closingAccountBalance(clientId: string, accountId: string,
         if (typeof installment.id !== "string" || !installment.id) throw new Error("Parcela sem identificador na consulta.");
         if (seen.has(installment.id)) continue;
         seen.add(installment.id);
-        const settlements = await contaAzulRequest<unknown>(clientId, `/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(installment.id)}/baixa`);
+        const settlements = await request<unknown>(clientId, `/v1/financeiro/eventos-financeiros/parcelas/${encodeURIComponent(installment.id)}/baixa`);
         if (!Array.isArray(settlements) || !settlements.length) throw new Error("As baixas de uma parcela paga não puderam ser confirmadas.");
         for (const value of settlements) {
           const settlement = record(value);
@@ -74,7 +74,7 @@ export async function closingAccountBalance(clientId: string, accountId: string,
         }
       }
     }
-    const transfers = await pages(clientId, "/v1/financeiro/transferencias", { ids_conta_financeira: accountId, data_inicio: start, data_fim: today }, deadline);
+    const transfers = await pages(clientId, "/v1/financeiro/transferencias", { ids_conta_financeira: accountId, data_inicio: start, data_fim: today }, deadline,request);
     const transferIds = new Set<string>();
     for (const transfer of transfers) {
       if (typeof transfer.id !== "string") throw new Error("Transferência sem identificador na API.");
@@ -88,7 +88,7 @@ export async function closingAccountBalance(clientId: string, accountId: string,
         if (legDate >= start && legDate <= today) subsequentCents += sign * reais(record(leg.composicao_valor).valor_liquido);
       }
     }
-    const openings = await pages(clientId, "/v1/financeiro/eventos-financeiros/saldo-inicial", { data_inicio: start + "T00:00:00", data_fim: today + "T23:59:59" }, deadline);
+    const openings = await pages(clientId, "/v1/financeiro/eventos-financeiros/saldo-inicial", { data_inicio: start + "T00:00:00", data_fim: today + "T23:59:59" }, deadline,request);
     for (const opening of openings) {
       if (opening.id_conta_financeira !== accountId) continue;
       const openingDate = day(opening.data_competencia);
@@ -97,7 +97,7 @@ export async function closingAccountBalance(clientId: string, accountId: string,
         subsequentCents += (opening.tipo === "DESPESA" ? -1 : 1) * Math.abs(reais(opening.saldo_inicial));
       }
     }
-    const finalCurrent = reais(record(await contaAzulRequest(clientId, balancePath)).saldo_atual);
+    const finalCurrent = reais(record(await request(clientId, balancePath)).saldo_atual);
     if (finalCurrent !== initialCurrent || brazilToday() !== today) throw new Error("O saldo mudou durante a consulta. Atualize para conferir novamente.");
     return { ...base, balanceCents: finalCurrent - subsequentCents, method: "RECONSTRUCTED" };
   } catch (error) {
