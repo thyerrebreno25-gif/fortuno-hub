@@ -104,6 +104,8 @@ type SavedAudit = {
   id: string;
   status: string;
   healthScore: number;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   createdAt: string;
   summary?: {source?:string;history?:{start:string;end:string};limitations?:string[];metrics?:AutomaticAnalysis["metrics"]};
   client: {
@@ -338,6 +340,9 @@ export default function AuditoriaPage() {
     setAudits(auditPayload.audits || []);
     const auditId=new URLSearchParams(window.location.search).get("audit");
     if(auditId&&boot.currentUser.canSupervise){const response=await fetch(`/api/audit/${encodeURIComponent(auditId)}`,{cache:"no-store"});const payload=await response.json();if(!response.ok)throw new Error(payload.error);setSavedAudit(payload.audit);
+      setClientId(payload.audit.client.id);
+      if(payload.audit.periodStart)setPeriodStart(payload.audit.periodStart.slice(0,10));
+      if(payload.audit.periodEnd)setPeriodEnd(payload.audit.periodEnd.slice(0,10));
       const summary=payload.audit.summary;if(summary?.source==="CONTA_AZUL_API"&&summary.history&&summary.metrics)setAutomaticAnalysis({healthScore:payload.audit.healthScore,historyStart:summary.history.start,historyEnd:summary.history.end,metrics:summary.metrics});
     }
 
@@ -953,10 +958,10 @@ export default function AuditoriaPage() {
             <Metric title="Vencidos" value={automaticAnalysis.metrics.overdue} color="red" />
             <Metric title="Em aberto" value={automaticAnalysis.metrics.open} color="yellow" />
             <Metric title="Competências" value={automaticAnalysis.metrics.competenceDivergences} color="violet" />
-            <Metric title="Categorias diferentes" value={automaticAnalysis.metrics.categoryDivergences} color="orange"/>
-            <Metric title="Valores discrepantes" value={automaticAnalysis.metrics.amountVariations} color="orange"/>
-            <Metric title="Saldos não zerados" value={automaticAnalysis.metrics.nonzeroBalances} color="red"/>
-            <Metric title="Saldos a conferir" value={automaticAnalysis.metrics.unavailableBalances} color="orange"/>
+            <Metric title="Categorias diferentes" value={automaticAnalysis.metrics.categoryDivergences??"—"} color="orange"/>
+            <Metric title="Valores discrepantes" value={automaticAnalysis.metrics.amountVariations??"—"} color="orange"/>
+            <Metric title="Saldos não zerados" value={automaticAnalysis.metrics.nonzeroBalances??"—"} color="red"/>
+            <Metric title="Saldos a conferir" value={automaticAnalysis.metrics.unavailableBalances??"—"} color="orange"/>
             <Text size="xs" c="dimmed">Histórico: {automaticAnalysis.historyStart} a {automaticAnalysis.historyEnd}</Text>
           </SimpleGrid>
         )}
@@ -1184,7 +1189,7 @@ export default function AuditoriaPage() {
         </>
       )}
 
-      {currentAudit && <Paper withBorder radius="lg" p="md"><Group justify="space-between"><div><Text fw={700}>{currentAudit.status==="COMPLETED"?"Auditoria finalizada":"Encerramento da auditoria"}</Text><Text size="sm" c="dimmed">Finalize após revisar o checklist e validar ou descartar, com justificativa, todos os apontamentos.</Text></div><Button loading={reportBusy} onClick={()=>{if(currentAudit.status==="COMPLETED")void loadCompletionReport();else{setFinalNote("");setFinalizeOpened(true);}}}>{currentAudit.status==="COMPLETED"?"Ver relatório / PDF":"Finalizar auditoria"}</Button></Group></Paper>}
+      {currentAudit && <Paper withBorder radius="lg" p="md"><Group justify="space-between"><div><Text fw={800}>{currentAudit.client.name}</Text><Text size="xs" c="dimmed">Período analisado: {currentAudit.periodStart?.slice(0,10)||"—"} a {currentAudit.periodEnd?.slice(0,10)||"—"}</Text><Text fw={700}>{currentAudit.status==="COMPLETED"?"Auditoria finalizada":"Encerramento da auditoria"}</Text><Text size="sm" c="dimmed">Finalize após revisar o checklist e validar ou descartar, com justificativa, todos os apontamentos.</Text></div><Button loading={reportBusy} onClick={()=>{if(currentAudit.status==="COMPLETED")void loadCompletionReport();else{setFinalNote("");setFinalizeOpened(true);}}}>{currentAudit.status==="COMPLETED"?"Ver relatório / PDF":"Finalizar auditoria"}</Button></Group></Paper>}
       <Modal opened={finalizeOpened} onClose={()=>setFinalizeOpened(false)} title="Finalizar auditoria" centered><Stack><Text size="sm">O relatório registrará as correções, validações, justificativas e o checklist. Após finalizar, esses registros ficam fechados para edição.</Text><Textarea label="Observações finais do gestor" value={finalNote} onChange={event=>setFinalNote(event.currentTarget.value)} autosize minRows={3} maxLength={10000}/><Button loading={reportBusy} onClick={()=>void finishAudit()}>Finalizar e gerar relatório</Button></Stack></Modal>
       <Modal opened={!!completionReport} onClose={()=>setCompletionReport(null)} title="Relatório final da auditoria" size="xl"><Stack>{completionReport&&<><Group justify="space-between"><div><Text fw={700}>{completionReport.client}</Text><Text size="sm">{completionReport.periodStart} a {completionReport.periodEnd}</Text></div><Button onClick={()=>void downloadReport()}>Baixar PDF</Button></Group><Text size="sm">Finalizado por {completionReport.completedBy} · {new Date(completionReport.completedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</Text><Text style={{whiteSpace:"pre-wrap"}}>{completionReport.note||"Sem observações finais."}</Text><Text size="sm" c="dimmed">{completionReport.criteria}</Text>{completionReport.limitations.map((line,index)=><Text key={index} size="xs" c="dimmed">{line}</Text>)}{["VALIDATED","DISMISSED"].map(status=><Stack key={status} gap="xs"><Title order={4}>{status==="VALIDATED"?"Ajustes validados":"Pontos descartados / justificados"}</Title>{completionReport.findings.filter(finding=>finding.status===status).map((finding,index)=><Paper key={index} withBorder p="sm"><Text fw={700}>{finding.title}</Text><Text size="sm">Responsável: {finding.operator}</Text><Text size="sm">{finding.description}</Text>{finding.history.filter(item=>item.note).map((item,i)=><Text key={i} size="sm" style={{whiteSpace:"pre-wrap"}}>{item.actor}: {item.note}</Text>)}</Paper>)}</Stack>)}<Title order={4}>Checklist revisado</Title>{completionReport.checklist.map((item,index)=><Text key={index} size="sm">{item.title} · {checklistStatusLabel(item.status)} · {item.reviewedBy}{item.note?` — ${item.note}`:""}</Text>)}</>}</Stack></Modal>
       {currentAudit && (
