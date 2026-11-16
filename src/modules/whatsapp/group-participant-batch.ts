@@ -1,4 +1,4 @@
-export type GroupParticipantBatchResult = { id: string; name: string; ok: boolean; message: string };
+export type GroupParticipantBatchResult = { id: string; name: string; ok: boolean; alreadyMember?:boolean; message: string };
 export async function addGroupParticipantBatch(
   groups: Array<{ id: string; name: string }>,
   input: { action: "add"; participant: string; requestId: string },
@@ -14,7 +14,7 @@ export async function addGroupParticipantBatch(
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
       });
       const body = await response.json();
-      result = { ...group, ok: response.ok && body.ok === true, message: body.message || body.error || "Não foi possível confirmar. Confira os membros antes de repetir." };
+      result = { ...group, ok: response.ok && body.ok === true, alreadyMember:body.alreadyMember===true, message: body.message || body.error || "Não foi possível confirmar. Confira os membros antes de repetir." };
     } catch {
       result = { ...group, ok: false, message: "Sem confirmação de resposta. Confira os membros antes de repetir." };
     }

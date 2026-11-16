@@ -11,18 +11,19 @@ async function manager() { const member = await getOperationMember(); return mem
 export async function GET() {
   const member = await manager();
   if (!member) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  const [activities, configurations, last] = await Promise.all([
+  const [activities, allActivities, configurations, last] = await Promise.all([
     prisma.operationActivity.count({ where: pending(member.organizationId) }),
+    prisma.operationActivity.count({ where: { organizationId: member.organizationId, deletedAt: null } }),
     prisma.operationClientProcess.count({ where: { active: true, client: { organizationId: member.organizationId } } }),
     prisma.auditLog.findFirst({ where: { entity: "OperationsReset", entityId: member.organizationId, action: "OPERATIONS_RESET" }, orderBy: { createdAt: "desc" }, select: { id: true } }),
   ]);
   const restored = last ? await prisma.auditLog.findFirst({ where: { entity: "OperationsReset", entityId: last.id, action: "OPERATIONS_RESET_RESTORED" }, select: { id: true } }) : null;
-  return NextResponse.json({ activities, configurations, restoreId: last && !restored ? last.id : null });
+  return NextResponse.json({ activities, allActivities, configurations, restoreId: last && !restored ? last.id : null });
 }
 export async function POST(request: Request) {
   const member = await manager();
   if (!member) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  const input = z.object({ action: z.enum(["archive", "restore"]), restoreId: z.string().max(100).nullish() }).safeParse(await request.json().catch(() => null));
+  const input = z.object({ action: z.enum(["archive", "restore"]), scope:z.enum(["pending","all"]).default("pending"), restoreId: z.string().max(100).nullish() }).safeParse(await request.json().catch(() => null));
   if (!input.success) return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -43,8 +44,9 @@ export async function POST(request: Request) {
         return { activities: snapshot.data.activities.length, configurations: configurations.length, restored: true };
       }
       const now = new Date(), id = randomUUID();
+      const scope:Prisma.OperationActivityWhereInput=input.data.scope==="all"?{organizationId:member.organizationId,deletedAt:null}:pending(member.organizationId);
       const [activities, configurations] = await Promise.all([
-        tx.operationActivity.findMany({ where: pending(member.organizationId), select: { id: true, clientProcessId: true }, take: 10001 }),
+        tx.operationActivity.findMany({ where: scope, select: { id: true, clientProcessId: true }, take: 10001 }),
         tx.operationClientProcess.findMany({ where: { active: true, client: { organizationId: member.organizationId } }, select: { id: true }, take: 10001 }),
       ]);
       if (activities.length > 10000 || configurations.length > 10000) throw new Error("LIMIT");
@@ -52,9 +54,9 @@ export async function POST(request: Request) {
       const ids = activities.map((activity) => activity.id);
       const timers = await tx.operationTimeEntry.findMany({ where: { activityId: { in: ids }, endedAt: null }, select: { id: true, startedAt: true } });
       for (const timer of timers) await tx.operationTimeEntry.update({ where: { id: timer.id }, data: { endedAt: now, seconds: Math.max(0, Math.floor((+now - +timer.startedAt) / 1000)) } });
-      await tx.operationActivity.updateMany({ where: { ...pending(member.organizationId), id: { in: ids } }, data: { deletedAt: now, deletedById: member.userId, deletionReason: `Limpeza de rotinas: ${id}` } });
+      await tx.operationActivity.updateMany({ where: { ...scope, id: { in: ids } }, data: { deletedAt: now, deletedById: member.userId, deletionReason: `Limpeza de rotinas: ${id}` } });
       await tx.operationClientProcess.updateMany({ where: { id: { in: configurations.map((c) => c.id) }, client: { organizationId: member.organizationId } }, data: { active: false } });
-      await tx.auditLog.create({ data: { id, userId: member.userId, entity: "OperationsReset", entityId: member.organizationId, action: "OPERATIONS_RESET", beforeData: { configurations: configurations.map((c) => c.id), activities }, afterData: { activities: activities.length, configurations: configurations.length } } });
+      await tx.auditLog.create({ data: { id, userId: member.userId, entity: "OperationsReset", entityId: member.organizationId, action: "OPERATIONS_RESET", beforeData: { configurations: configurations.map((c) => c.id), activities }, afterData: { activities: activities.length, configurations: configurations.length, scope:input.data.scope } } });
       return { activities: activities.length, configurations: configurations.length };
     }, { timeout: 60000 });
     return NextResponse.json(result);

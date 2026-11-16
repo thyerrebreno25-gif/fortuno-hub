@@ -5,7 +5,7 @@ it("reports each group's outcome separately and continues after a refusal withou
   const send = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ error: "Sem permissão" }, { status: 403 })).mockResolvedValueOnce(Response.json({ ok: true, message: "Adicionado" }));
   const results: GroupParticipantBatchResult[] = [];
   await addGroupParticipantBatch([{ id: "directory:a", name: "Grupo A" }, { id: "b", name: "Grupo B" }], input, result => results.push(result), () => true, send);
-  expect(results).toEqual([{ id: "directory:a", name: "Grupo A", ok: false, message: "Sem permissão" }, { id: "b", name: "Grupo B", ok: true, message: "Adicionado" }]);
+  expect(results).toEqual([{ id: "directory:a", name: "Grupo A", ok: false, alreadyMember:false, message: "Sem permissão" }, { id: "b", name: "Grupo B", ok: true, alreadyMember:false, message: "Adicionado" }]);
   expect(send).toHaveBeenCalledTimes(2);
   expect(send.mock.calls[0][0]).toBe("/api/whatsapp/directory%3Aa/participants");
   for (const [, options] of send.mock.calls) expect(JSON.parse(options!.body as string)).toEqual(input);
@@ -24,4 +24,10 @@ it("stops scheduling new changes when the screen is closed", async () => {
   const result = vi.fn();
   await addGroupParticipantBatch([{ id: "a", name: "A" }, { id: "b", name: "B" }], input, result, () => active, send);
   expect(send).toHaveBeenCalledOnce();expect(result).not.toHaveBeenCalled();
+});
+
+it("distinguishes an existing participant from a newly completed addition",async()=>{
+ const send=vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ok:true,alreadyMember:true,message:"Já participa"}));const rows:GroupParticipantBatchResult[]=[];
+ await addGroupParticipantBatch([{id:"a",name:"A"}],input,row=>rows.push(row),()=>true,send);
+ expect(rows[0]).toMatchObject({ok:true,alreadyMember:true,message:"Já participa"});expect(send).toHaveBeenCalledOnce();
 });

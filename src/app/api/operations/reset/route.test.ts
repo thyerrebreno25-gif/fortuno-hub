@@ -48,3 +48,16 @@ it("restores the saved activities and recurrences without changing completed his
 it("accepts a first cleanup when the interface has no previous restore id", async () => {
   expect((await POST(new Request("https://hub.test/api/operations/reset", { method: "POST", body: JSON.stringify({ action: "archive", restoreId: null }) }))).status).toBe(200);
 });
+
+it("can clear completed and pending activities together without deleting people or client data",async()=>{
+ const response=await POST(new Request("https://hub.test/api/operations/reset",{method:"POST",body:JSON.stringify({action:"archive",scope:"all"})}));
+ expect(response.status).toBe(200);expect(m.activities.findMany.mock.calls[0][0].where).toEqual({organizationId:"org",deletedAt:null});
+ expect(m.activities.updateMany.mock.calls[0][0].where).not.toHaveProperty("status");
+ expect(m.audit.create.mock.calls[0][0].data.afterData.scope).toBe("all");
+ expect(m.audit.create.mock.calls[0][0].data.beforeData.activities[0].id).toBe("task");
+});
+it("previews both pending-only and complete cleanup counts",async()=>{
+ m.activities.count.mockResolvedValueOnce(15).mockResolvedValueOnce(25);m.configurations.count.mockResolvedValueOnce(4);m.audit.findFirst.mockResolvedValue(null);
+ expect(await (await GET()).json()).toMatchObject({activities:15,allActivities:25,configurations:4});
+ expect(m.activities.count.mock.calls[1][0].where).toEqual({organizationId:"org",deletedAt:null});
+});

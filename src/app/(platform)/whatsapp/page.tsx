@@ -1,4 +1,5 @@
 "use client";
+import {WhatsAppSidebarSection} from "@/modules/whatsapp/sidebar-section";
 import {AutomaticDraftReview} from "@/modules/whatsapp/automatic-draft-review";
 import {ComposerEmojiPicker} from "@/modules/whatsapp/emoji-picker";
 import {insertComposerText,type ComposerSelection} from "@/modules/whatsapp/composer-text";
@@ -649,30 +650,27 @@ export default function WhatsAppPage() {
       {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
         <section data-whatsapp-workspace className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
         <aside className={styles.views} aria-label="Caixas e filtros">
-          <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">CAIXAS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
+          <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">FILTROS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
           {boxesMinimized&&<span className={styles.railLabel}>Caixas</span>}
           <div id="whatsapp-boxes-content" className={styles.boxesContent}>
-          <div className={styles.filterSection}>
+          <WhatsAppSidebarSection title="Caixas">
             <ViewButton active={view === "GENERAL"} icon={<IconUsers size={18} />} label="Caixa geral" count={stats?.facets?.view.GENERAL ?? stats?.general ?? 0} onClick={() => setView("GENERAL")} />
             <ViewButton active={view === "MINE"} icon={<IconMessageCircle size={18} />} label="Minha caixa" count={stats?.facets?.view.MINE ?? stats?.mine ?? 0} onClick={() => { setView("MINE"); setChatStatus("OPEN"); }} />
             <ViewButton active={view === "QUEUE"} icon={<IconInbox size={18} />} label="Fila de atendimento" count={stats?.facets?.view.QUEUE ?? stats?.queue ?? 0} onClick={() => setView("QUEUE")} />
-          </div>
-          <div className={styles.filterSection}>
-            <Text fw={800} size="xs" c="dimmed" mb="xs">CONVERSAS</Text>
+          </WhatsAppSidebarSection>
+          <WhatsAppSidebarSection title="Conversas">
             <ViewButton active={chatKind === "ALL"} icon={<IconMessageCircle size={18} />} label="Todas" count={stats?.facets?.kind.ALL || 0} onClick={() => setChatKind("ALL")} />
             <ViewButton active={chatKind === "GROUP"} icon={<IconUsers size={18} />} label="Grupos" count={stats?.facets?.kind.GROUP || 0} onClick={() => setChatKind("GROUP")} />
             <ViewButton active={chatKind === "CONTACT"} icon={<IconMessageCircle size={18} />} label="Individuais" count={stats?.facets?.kind.CONTACT || 0} onClick={() => setChatKind("CONTACT")} />
-          </div>
-          <div className={styles.filterSection}>
-            <Text fw={800} size="xs" c="dimmed" mb="xs">SITUAÇÃO</Text>
-            <ViewButton active={chatStatus === "ALL"} icon={<IconMessageCircle size={18} />} label="Todas as situações" count={stats?.facets?.status.ALL || 0} onClick={() => setChatStatus("ALL")} />
+          </WhatsAppSidebarSection>
+          <WhatsAppSidebarSection title="Situação">
             <ViewButton active={chatStatus === "OPEN"} icon={<IconInbox size={18} />} label="Em aberto" count={stats?.facets?.status.OPEN || 0} onClick={() => setChatStatus("OPEN")} />
             <ViewButton active={chatStatus === "RESOLVED"} icon={<IconCheck size={18} />} label="Finalizadas" count={view === "MINE" ? undefined : stats?.facets?.status.RESOLVED || 0} onClick={() => { setView("GENERAL"); setChatStatus("RESOLVED"); }} />
-          </div></div>
+          </WhatsAppSidebarSection></div>
         </aside>
 
         <div className={styles.listPanel} aria-label="Lista de conversas">
-          <Group justify="space-between" wrap="nowrap" className={styles.listHeading}>{!listMinimized&&<Text fw={850} size="md">Conversas</Text>}<Tooltip label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"}><ActionIcon variant="subtle" color="gray" aria-label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"} aria-expanded={!listMinimized} aria-controls="whatsapp-list-content" onClick={()=>setListMinimized(value=>!value)}>{listMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
+          <Group justify="space-between" wrap="nowrap" className={styles.listHeading}>{!listMinimized&&<Text fw={850} size="md">Conversas</Text>}{!listMinimized&&bootstrap?.canEdit&&<Menu position="bottom-end" withinPortal keepMounted><Menu.Target><ActionIcon variant="subtle" color="gray" aria-label="Ações da lista de conversas"><IconDotsVertical size={17}/></ActionIcon></Menu.Target><Menu.Dropdown><WhatsAppTransferBatchDialog menuItem operators={bootstrap.members} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onTransferred={ids=>{for(const id of ids){detailCache.current.delete(id);detailFetchedAt.current.delete(id);}void loadList();refreshVisibleConversation();}}/><WhatsAppFinalizeDialog menuItem key={bootstrap.accountKey} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></Menu.Dropdown></Menu>}<Tooltip label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"}><ActionIcon variant="subtle" color="gray" aria-label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"} aria-expanded={!listMinimized} aria-controls="whatsapp-list-content" onClick={()=>setListMinimized(value=>!value)}>{listMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
           {listMinimized&&<span className={styles.railLabel}>Conversas</span>}
           <div id="whatsapp-list-content" className={styles.listContent}>
           <div className={styles.listHeader}><FilterPanel title="Filtros de conversas" activeCount={Number(Boolean(search))+Number(onlyUnread)+Number(chatKind!=="ALL")}>
@@ -689,7 +687,6 @@ export default function WhatsAppPage() {
               {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
             </div>
           </FilterPanel></div>
-          {bootstrap?.canEdit&&<Group justify="flex-end" px="xs" py={4}><WhatsAppTransferBatchDialog operators={bootstrap.members} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onTransferred={ids=>{for(const id of ids){detailCache.current.delete(id);detailFetchedAt.current.delete(id);}void loadList();refreshVisibleConversation();}}/><WhatsAppFinalizeDialog key={bootstrap.accountKey} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></Group>}
           <div className={styles.ticketList}>
             {tickets.length ? (
               tickets.map((ticket) => (

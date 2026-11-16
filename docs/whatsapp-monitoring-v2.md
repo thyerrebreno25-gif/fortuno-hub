@@ -33,3 +33,15 @@ Tela atualiza a cada 60 segundos enquanto visível. O resumo de chamados ativos 
 Dados do grupo → Membros tenta resolver nomes conhecidos no perfil de grupo, agenda e histórico. Ao abrir Membros, consulta até seis perfis individuais sem nome, em pares, com timeout de 3,5 s por consulta e cache de dois minutos. O perfil de contato escolhe um nome real disponível em vez de deixar um telefone genérico ocultar o nome da agenda. Perfis adicionais do grupo são usados mesmo quando a lista legada de participantes vier vazia.
 
 Na adição a grupos há nome opcional; preenchê-lo salva o contato na agenda antes da inclusão. Um participante sem nome também oferece ⋮ → Salvar nome do contato. Se o WhatsApp não disponibiliza o nome, o Hub não inventa a identidade da pessoa. Nenhum contato real foi alterado nos testes automatizados.
+
+
+## Gestão: uso da ferramenta
+- Nova aba Uso da ferramenta, restrita a MASTER/ADMIN/MANAGER com permissão WHATSAPP, período em horário de Brasília (padrão mês atual, máximo 366 dias).
+- Registros humanos de ServiceTicketHistory identificam o autor real das respostas, anexos/encaminhamentos confirmados, notas, transferências, finalizações e ações de atendimento. Não usa o responsável atual para atribuir respostas anteriores. Pesquisas e sincronização não são uso; falhas conhecidas de resposta são excluídas. Dados limitados à organização, conta conectada e início da operação; colegas sem ações aparecem com zero.
+- Ranking de mensagens com participação percentual, ações, conversas/clientes distintos, notas, dias ativos e última ação. Atualização/cache 60 segundos, sem consultas ao provedor para essa métrica. Não mede qualidade nem produtividade só pelo volume.
+
+## Agenda, navegação e notas internas
+- Contatos e grupos oferece inclusão de número em até 25 grupos sem precisar abrir chamado. Antes de confirmar, Verificar participação consulta os grupos com concorrência 2 e mostra Já participa / Disponível / Conferir. Somente grupos conferidos e autorizados recebem a inclusão; a mutação verifica admin, conta e presença novamente. Já presente vira resultado explícito sem alteração externa. A permissão de cada grupo permanece a mesma do gerenciamento por conversa.
+- Lateral com Caixas/Conversas/Situação recolhíveis separadamente; sem Todas as situações. Ações em lote ficam no menu da lista. Busca global e abertura de chamados a partir da gestão mantêm a navegação anterior.
+- Notas internas, transferências e finalizações ganham apresentação discreta com autor/horário. Transferência separa destino, setor e observação, sem modificar texto persistido. O leitor só expõe o tipo do evento interno, nunca os metadados brutos.
+- Gestão de tarefas: reset oferece escopo all para arquivar atividades de todos os status e desativar rotinas; apontamentos ficam fora dos painéis por deletedAt. Última limpeza é reversível via snapshot e auditoria. Cadastros de clientes, equipe e catálogo de processos não são excluídos.

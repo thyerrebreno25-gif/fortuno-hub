@@ -35,7 +35,7 @@ it("rejects removing an absent member, the connected number or the owner",async(
  expect((await post({action:"remove",participant:phone+"@s.whatsapp.net",requestId})).status).toBe(400);
  m.request.mockResolvedValueOnce({OwnerIsAdmin:true,OwnerPN:participant+"@s.whatsapp.net",Participants:[{JID:participant+"@s.whatsapp.net"}]});expect((await post({action:"remove",participant:participant+"@s.whatsapp.net",requestId})).status).toBe(400);expect(m.create).not.toHaveBeenCalled();
 });
-it("does not add a number already in the group",async()=>{expect((await post()).status).toBe(409);expect(m.request).toHaveBeenCalledOnce();expect(m.create).not.toHaveBeenCalled();});
+it("does not add a number already in the group",async()=>{const response=await post();expect(response.status).toBe(200);expect(await response.json()).toMatchObject({ok:true,alreadyMember:true});expect(m.request).toHaveBeenCalledOnce();expect(m.create).not.toHaveBeenCalled();});
 it("adds a normalized number and never reports a privacy refusal as success",async()=>{
  m.request.mockResolvedValueOnce({OwnerIsAdmin:true,Participants:[]}).mockResolvedValueOnce({groupUpdated:[{JID:participant+"@s.whatsapp.net",Error:403,AddRequest:{Code:"private-code"}}]});
  const response=await post({action:"add",participant:"+55 (11) 99999-9999",requestId});expect(response.status).toBe(502);const result=await response.json();expect(result.error).toContain("privacidade");expect(JSON.stringify(result)).not.toContain("private-code");expect(m.request.mock.calls[1][3]).toEqual({groupjid:group,action:"add",participants:[participant]});expect(m.update.mock.calls[0][0].data.afterData.state).toBe("UNCONFIRMED");

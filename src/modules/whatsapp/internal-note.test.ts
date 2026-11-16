@@ -1,0 +1,5 @@
+import {expect,it} from "vitest";
+import {internalNote} from "./internal-note";
+it("separates a transfer, sector and multiline observation without losing content",()=>{expect(internalNote("WHATSAPP_TRANSFER","Transferência interna: Breno → Isabella · Contas a pagar.\nConferir o boleto.\nRetornar amanhã.","Breno")).toEqual({kind:"transfer",title:"Transferência",destination:"Isabella",sector:"Contas a pagar",body:"Conferir o boleto.\nRetornar amanhã."});});
+it("keeps ordinary internal notes intact and falls back for unrecognized events",()=>{expect(internalNote("WHATSAPP_COMMENT","Transferência interna: outro texto","Breno").body).toBe("Transferência interna: outro texto");expect(internalNote("WHATSAPP_TRANSFER","Texto legado não estruturado","Breno").body).toBe("Texto legado não estruturado");});
+it("recognizes legacy completion messages and uses the message author and timestamp in the view",()=>{expect(internalNote(undefined,"Chamado finalizado em 16/11/2026, 12:00 por Breno.","Breno").kind).toBe("resolved");expect(internalNote("WHATSAPP_COMMENT","Chamado finalizado em 16/11/2026 por Fulano.","Breno").kind).toBe("comment");});

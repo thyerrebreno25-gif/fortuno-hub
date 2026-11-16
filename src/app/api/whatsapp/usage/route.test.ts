@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),account:vi.fn(),usage:vi.fn()}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:m.account}));
+vi.mock("@/modules/whatsapp/usage-server",()=>({whatsappUsage:m.usage}));
+import {GET} from "./route";
+const get=(query="")=>GET(new Request("https://hub.test/api/whatsapp/usage"+query));
+beforeEach(()=>{vi.resetAllMocks();m.member.mockResolvedValue({organizationId:"org",role:"MASTER"});m.permission.mockResolvedValue({canView:true});m.account.mockResolvedValue({recipient:"wa-account:c:5511",connection:{phone:"5511"}});m.usage.mockResolvedValue({rows:[],summary:{messages:0}});});
+it("denies operator and read-only manager roles before accessing usage data",async()=>{m.member.mockResolvedValueOnce({role:"OPERATOR",organizationId:"org"});expect((await get()).status).toBe(403);m.permission.mockResolvedValueOnce({canView:false});expect((await get()).status).toBe(403);expect(m.usage).not.toHaveBeenCalled();});
+it("scopes usage to exact account and dates rather than selected ticket ownership",async()=>{expect((await get("?from=2026-11-01&to=2026-11-16")).status).toBe(200);expect(m.usage).toHaveBeenCalledWith("org","wa-account:c:5511","5511",new Date("2026-11-01T03:00:00Z"),new Date("2026-11-17T03:00:00Z"));});
+it("rejects invalid ranges and disconnected accounts",async()=>{expect((await get("?from=2026-02-30&to=2026-03-01")).status).toBe(400);m.account.mockResolvedValueOnce({recipient:null});expect((await get()).status).toBe(409);expect(m.usage).not.toHaveBeenCalled();});

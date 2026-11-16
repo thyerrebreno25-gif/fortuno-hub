@@ -45,7 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { action, participant, requestId } = input.data;
     const person = profile.participants.find(person => memberAliases(person).includes(participant));
     if (action === "remove" && (!person || !canRemoveGroupMember(person, connection.phone, profile.ownerId))) return NextResponse.json({ error: "Este participante não pode ser removido. Atualize os membros; o proprietário e o próprio número conectado são protegidos." }, { status: 400 });
-    if (action === "add" && profile.participants.some(person => person.phone === participant)) return NextResponse.json({ error: "Este número já participa do grupo." }, { status: 409 });
+    if (action === "add" && profile.participants.some(person => person.phone === participant)) return NextResponse.json({ ok: true, alreadyMember: true, message: "Este número já participa do grupo. Nenhuma inclusão foi necessária." });
     // Recheck the connected number after the remote lookup, before any external change.
     const current = await currentWhatsAppAccount(member.organizationId);
     if (current.recipient !== account.recipient || current.connection?.instanceId !== connection.instanceId) return NextResponse.json({ error: "A conexão mudou. Atualize a conversa." }, { status: 409 });

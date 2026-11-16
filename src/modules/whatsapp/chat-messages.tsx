@@ -1,7 +1,8 @@
 "use client";
 import { ActionIcon, Alert, Loader, Stack, Button, Group, Image, Modal, Popover, Text, Tooltip } from "@mantine/core";
-import { IconArrowDown, IconDownload, IconMoodSmile, IconCornerUpLeft, IconPhoneIncoming, IconPhoneOutgoing, IconPhoneOff, IconVideo } from "@tabler/icons-react";
+import { IconLock, IconArrowsExchange, IconCircleCheck, IconArrowDown, IconDownload, IconMoodSmile, IconCornerUpLeft, IconPhoneIncoming, IconPhoneOutgoing, IconPhoneOff, IconVideo } from "@tabler/icons-react";
 import {notifications} from "@mantine/notifications";
+import {internalNote} from "./internal-note";
 import {messageSenderName} from "./contact-name";
 import {callLabel, type WhatsAppCall} from "./call-core";
 import {REACTION_EMOJIS,type MessageReaction} from "./reaction-core";
@@ -17,7 +18,7 @@ import {ConversationSearch,type ConversationSearchResult} from "./conversation-s
 import { mediaKind } from "./media";
 import styles from "@/app/(platform)/whatsapp/whatsapp.module.css";
 type Attachment = { id: string; name: string; mimeType: string | null };
-type Message = { id: string; sourceTicketId?: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null; replyTo?:QuotedMessage|null; reaction?:MessageReaction|null; customerReactions?:MessageReaction[]; attachments: Attachment[] };
+type Message = { id: string; sourceTicketId?: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; internalType?:string|null; call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null; replyTo?:QuotedMessage|null; reaction?:MessageReaction|null; customerReactions?:MessageReaction[]; attachments: Attachment[] };
 const delivery: Record<string, string> = { accepted: "Enviando", sent: "Enviada", delivered: "Entregue", read: "Lida", failed: "Falha no envio" };
 function AttachmentPreview({ conversationId, attachment, message, transcript }: { conversationId: string; attachment: Attachment; message: string;transcript?:string|null }) {
   const [opened, setOpened] = useState(false), [failed, setFailed] = useState(false);
@@ -97,6 +98,7 @@ export const ChatMessages = memo(function ChatMessages({ conversationId, message
 
 const messageTime=new Intl.DateTimeFormat("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
 const MessageBubble=memo(function MessageBubble({message,conversationId,senderName,canReact,onReaction,canReply,onReply,onOpenOriginal,highlighted,onChanged,clientId,clientName}:{message:Message;conversationId:string;senderName:string;canReact?:boolean;onReaction?:(conversationId:string,messageId:string,reaction:MessageReaction)=>void;onChanged?:()=>void;canReply?:boolean;onReply?:(conversationId:string,quote:QuotedMessage)=>void;onOpenOriginal:(quote:QuotedMessage)=>void;highlighted:boolean;clientId?:string|null;clientName?:string|null}){
+ const note=message.direction==="INTERNAL"?internalNote(message.internalType,message.textBody,message.fromName||"Equipe"):null;
  const [pickerOpened,setPickerOpened]=useState(false),[reacting,setReacting]=useState(false);
  const [reactionAvailable]=useState(()=>Date.now()-new Date(message.receivedAt).getTime()<=7*24*60*60*1000);
  async function react(emoji:string){
@@ -104,16 +106,15 @@ const MessageBubble=memo(function MessageBubble({message,conversationId,senderNa
    try{const response=await fetch(`/api/whatsapp/${conversationId}/reactions`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messageId:message.id,emoji})});const body=await response.json();if(!response.ok)throw new Error(body.error||"Não foi possível reagir.");onReaction?.(conversationId,message.id,body.reaction);}catch(error){notifications.show({color:"red",message:error instanceof Error?error.message:"Não foi possível reagir."});}finally{setReacting(false);}
  }
  return <div data-message-id={message.id} data-highlighted={highlighted||undefined} className={`${styles.messageRow} ${message.direction === "OUTBOUND" ? styles.outbound : message.direction === "INTERNAL" ? styles.internal : ""}`}>
-        <div className={styles.bubble}>
+        <div className={`${styles.bubble} ${note?(note.kind==="comment"?styles.internalNote:styles.internalEvent):""}`}>
           {message.forwarded&&<Text size="xs" c="dimmed" mb={4}>Encaminhada</Text>}{message.deletedAt&&<Text size="xs" c="red" fw={700} mb={4}>Mensagem excluída no WhatsApp · conteúdo preservado no Hub</Text>}
           {message.editedAt&&<Text size="xs" c="dimmed" mb={4}>Editada</Text>}
           {message.replyTo&&<QuotedMessagePreview quote={message.replyTo} onOpen={()=>onOpenOriginal(message.replyTo!)}/>}
-          {message.direction==="INTERNAL"&&<Text size="xs" c="yellow.8" fw={750} mb={4}>Comentário interno · somente a equipe</Text>}
-          <Text size="xs" fw={800} mb={4}>{message.direction === "INTERNAL" ? message.fromName||"Equipe" : messageSenderName(message.fromName,senderName,message.direction === "OUTBOUND")}</Text>
+          {note?<><div className={styles.internalNoteHeader}><span>{note.kind==="transfer"?<IconArrowsExchange size={14}/>:note.kind==="resolved"?<IconCircleCheck size={14}/>:<IconLock size={13}/>}<strong>{note.title}</strong><span className={styles.internalOnly}>Somente a equipe</span></span><time>{messageTime.format(new Date(message.receivedAt))}</time></div>{note.kind==="comment"?<Text size="xs" fw={700} mb={5}>{message.fromName||"Equipe"}</Text>:<Text size="xs" className={styles.internalEventDescription}><strong>{message.fromName||"Equipe"}</strong>{note.kind==="transfer"?<> transferiu para <strong>{note.destination}</strong>{note.sector&&<span className={styles.internalSector}>{note.sector}</span>}</>:" finalizou o chamado"}</Text>}{note.body&&<Text size="sm" className={styles.messageBody}>{note.body}</Text>}</>:<Text size="xs" fw={800} mb={4}>{messageSenderName(message.fromName,senderName,message.direction === "OUTBOUND")}</Text>}
           {message.call && <Group gap="sm" wrap="nowrap" align="flex-start"><span className={styles.callIcon} data-missed={message.call.status==="missed"}>{message.call.media==="video"?<IconVideo size={22}/>:message.call.status==="missed"?<IconPhoneOff size={22}/>:message.direction==="OUTBOUND"?<IconPhoneOutgoing size={22}/>:<IconPhoneIncoming size={22}/>}</span><div><Text size="sm" fw={700}>{callLabel(message.call,message.direction==="OUTBOUND")}</Text><Text size="xs" c="dimmed" mt={3}>{message.direction==="OUTBOUND"?"Ligação realizada":"Ligação recebida"}{message.call.durationSeconds!==undefined?` · ${Math.floor(message.call.durationSeconds/60)}min ${message.call.durationSeconds%60}s`:""}</Text></div></Group>}
-          {!message.call && message.textBody && !(message.attachments.length && /^\[(Image|Audio|Video|Sticker|Document)Message\]$/.test(message.textBody)) && <Text size="sm" className={styles.messageBody}>{message.textBody}</Text>}
+          {!note && !message.call && message.textBody && !(message.attachments.length && /^\[(Image|Audio|Video|Sticker|Document)Message\]$/.test(message.textBody)) && <Text size="sm" className={styles.messageBody}>{message.textBody}</Text>}
           {message.attachments.map((attachment) => <AttachmentPreview key={attachment.id} conversationId={message.sourceTicketId||conversationId} attachment={attachment} transcript={message.audioTranscript} message={message.textBody || ""} />)}
-          <Group justify="flex-end" gap={6} mt={5}>{message.direction === "OUTBOUND" && message.deliveryStatus && <Text size="xs" c={["failed", "unconfirmed"].includes(message.deliveryStatus) ? "red" : "dimmed"}>{message.deliveryStatus === "unconfirmed" ? "Envio não confirmado · confira antes de reenviar" : delivery[message.deliveryStatus] || message.deliveryStatus}</Text>}<Text size="xs" c="dimmed">{messageTime.format(new Date(message.receivedAt))}</Text></Group>
+          {!note&&<Group justify="flex-end" gap={6} mt={5}>{message.direction === "OUTBOUND" && message.deliveryStatus && <Text size="xs" c={["failed", "unconfirmed"].includes(message.deliveryStatus) ? "red" : "dimmed"}>{message.deliveryStatus === "unconfirmed" ? "Envio não confirmado · confira antes de reenviar" : delivery[message.deliveryStatus] || message.deliveryStatus}</Text>}<Text size="xs" c="dimmed">{messageTime.format(new Date(message.receivedAt))}</Text></Group>}
           {message.customerReactions?.map((reaction,index)=><span key={index} className={styles.messageReaction} title={`Reação de ${reaction.name}`}>{reaction.emoji}</span>)}
           {message.reaction?.emoji&&<span className={styles.messageReaction} title={`Reação enviada por ${message.reaction.name}`} aria-label={`Reação ${message.reaction.emoji} enviada por ${message.reaction.name}`}>{message.reaction.emoji}</span>}
         </div>
