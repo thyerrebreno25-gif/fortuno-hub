@@ -61,3 +61,12 @@ it("flags forgotten running timers without silently capping their recorded deman
   expect(report.summary.longRunningTimers).toBe(1);
   expect(report.summary.runningSeconds).toBe(15 * 3600);
 });
+it("counts a duration-only entry on its activity day exactly once, including a corrected zero-span record", () => {
+  for (const source of ["MANUAL_DURATION", "CORRECTED_DURATION"]) {
+    const point = entry({ source, startedAt: "2026-10-27T12:00:00Z", endedAt: "2026-10-27T12:00:00Z", seconds: 9480 });
+    const data = buildOperationsAnalytics([activity()], [point], period, now);
+    expect(data.summary).toMatchObject({ seconds: 9480, worked: 1, withoutTime: 0 });
+    expect(data.daily[0].seconds).toBe(9480);
+    expect(entryAllocation(point, precedingPeriod(period), now).seconds).toBe(0);
+  }
+});

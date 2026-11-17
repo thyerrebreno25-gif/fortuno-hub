@@ -7,7 +7,7 @@ export type AnalyticsActivity = {
   client: { id: string; name: string; cluster: string }; process: { id: string; name: string };
   responsible: AnalyticsPerson | null;
 };
-export type AnalyticsEntry = { id: string; activityId: string; userId: string; startedAt: Date | string; endedAt: Date | string | null; seconds: number; user: AnalyticsPerson; activity: AnalyticsActivity };
+export type AnalyticsEntry = { id: string; activityId: string; userId: string; startedAt: Date | string; endedAt: Date | string | null; seconds: number; source?: string; user: AnalyticsPerson; activity: AnalyticsActivity };
 export type AnalyticsPeriod = { from: string; to: string; start: Date; end: Date; days: number };
 export type AnalyticsGroup = { id: string; name: string; planned: number; completed: number; pending: number; overdue: number; withoutTime: number; worked: number; seconds: number; runningSeconds: number; averageSeconds: number; share: number; previousSeconds: number };
 export type AnalyticsDetail = { id: string; title: string; clientId: string; client: string; processId: string; process: string; responsibleId: string | null; responsible: string; scheduledDate: string | null; status: string; dueAt: string | null; planned: boolean; seconds: number; runningSeconds: number; operators: Array<{ id: string; name: string; seconds: number }>; entries: number };
@@ -30,6 +30,10 @@ const personName = (person: AnalyticsPerson | null) => person?.name || person?.e
 /** Closed entries use recorded seconds; boundary overlaps are prorated, not counted twice. */
 export function entryAllocation(entry: AnalyticsEntry, period: AnalyticsPeriod, now: Date) {
   const start = stamp(entry.startedAt), finish = entry.endedAt ? stamp(entry.endedAt) : +now, end = Math.min(finish, +now);
+  if (entry.endedAt && start === finish && Number.isFinite(start) && start <= +now && start >= +period.start && start < +period.end && ["MANUAL_DURATION", "CORRECTED_DURATION"].includes(entry.source || "")) {
+    const seconds = Math.max(0, entry.seconds);
+    return { seconds, days: [{ date: brazilDay(new Date(start)), seconds }] };
+  }
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return { seconds: 0, days: [] as Array<{ date: string; seconds: number }> };
   const overlapStart = Math.max(start, +period.start), overlapEnd = Math.min(end, +period.end);
   if (overlapEnd <= overlapStart) return { seconds: 0, days: [] as Array<{ date: string; seconds: number }> };

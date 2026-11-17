@@ -1,8 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m = vi.hoisted(() => ({ member: vi.fn(), correct: vi.fn() }));
+const m = vi.hoisted(() => ({ member: vi.fn(), correct: vi.fn(), duration: vi.fn() }));
 vi.mock("@/modules/operations/auth", () => ({ getOperationMember: m.member }));
 vi.mock("@/modules/operations/time-correction-server", () => ({ correctOperationTime: m.correct }));
+vi.mock("@/modules/operations/duration-correction-server", () => ({ correctActivityDuration: m.duration }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { POST } from "./route";
 import { OperationTimerError } from "@/modules/operations/timer-server";
@@ -23,4 +24,11 @@ it("returns the saved entry without exposing unexpected database errors", async 
   expect(m.correct.mock.calls[0]).toEqual([{ userId: "u", organizationId: "org" }, "a", input]);
   m.correct.mockRejectedValue(new Error("PRIVATE_DATABASE_DETAIL"));
   const failed = await POST(request(), context); expect(failed.status).toBe(500); expect(await failed.text()).not.toContain("PRIVATE_DATABASE_DETAIL");
+});
+it("accepts a total duration and justification without start or end dates", async () => {
+  const body = { mode: "duration", requestId: input.newEntryId, userId: "u", seconds: 9480, reason: input.reason, expectedEntries: [] };
+  m.duration.mockResolvedValue({ seconds: 9480 });
+  expect(await (await POST(request(body), context)).json()).toMatchObject({ entry: { seconds: 9480 } });
+  expect(m.duration.mock.calls[0][2]).toEqual(body);
+  expect(m.correct).not.toHaveBeenCalled();
 });

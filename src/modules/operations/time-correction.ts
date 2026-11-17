@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { durationCorrectionSchema } from "./duration-correction";
 
-export const timeCorrectionSchema = z.object({
+const intervalTimeCorrectionSchema = z.object({
   entryId: z.string().min(1).max(100).optional(),
   newEntryId: z.string().uuid().optional(),
   expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
@@ -11,7 +12,9 @@ export const timeCorrectionSchema = z.object({
 }).superRefine((data, ctx) => {
   if (data.entryId ? !data.expectedUpdatedAt : !data.newEntryId) ctx.addIssue({ code: "custom", message: "Atualize o apontamento antes de corrigir." });
 });
-export type TimeCorrectionInput = z.infer<typeof timeCorrectionSchema>;
+export type TimeCorrectionInput = z.infer<typeof intervalTimeCorrectionSchema>;
+// Keep the interval payload compatible with forms already open before publication.
+export const timeCorrectionSchema = z.union([durationCorrectionSchema, intervalTimeCorrectionSchema]);
 
 export function correctionInterval(input: Pick<TimeCorrectionInput, "startedAt" | "endedAt">, now = new Date()) {
   const startedAt = new Date(input.startedAt), endedAt = new Date(input.endedAt);
