@@ -90,7 +90,8 @@ export default function ExecutivePage() {
   useEffect(() => {
     requestKey.current = period; controller.current?.abort(); busy.current = false; lastFetch.current = 0;
     const initial = window.setTimeout(() => void load(true), 0);
-    const poll = window.setInterval(() => void load(), REFRESH_MS);
+    // The fixed five-minute tick must not be skipped because the previous request finished after mount.
+    const poll = window.setInterval(() => void load(true), REFRESH_MS);
     const visible = () => { if (!document.hidden) void load(); };
     document.addEventListener("visibilitychange", visible);
     return () => { window.clearTimeout(initial); window.clearInterval(poll); document.removeEventListener("visibilitychange", visible); controller.current?.abort(); };
