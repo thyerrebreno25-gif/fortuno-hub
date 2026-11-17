@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ member: vi.fn(), activities: vi.fn(), entries: vi.fn(), clients: vi.fn(), members: vi.fn(), processes: vi.fn() }));
 vi.mock("@/modules/operations/auth", () => ({ getOperationMember: mocks.member }));
+vi.mock("@/modules/operations/team-catalog", () => ({ operationTeamCatalog: async () => ({ values: ["Equipe A", "equipe a ", "Elite Do Fluxo", "Elite do Fluxo"], options: ["Elite do Fluxo", "Equipe A"] }) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { operationActivity: { findMany: mocks.activities }, operationTimeEntry: { findMany: mocks.entries }, client: { findMany: mocks.clients }, organizationMember: { findMany: mocks.members }, operationProcess: { findMany: mocks.processes } } }));
 import { GET } from "./route";
 const request = (query = "") => new Request(`https://hub.test/api/operations/analytics?from=2026-10-01&to=2026-10-27${query}`);
@@ -19,7 +20,7 @@ it("rejects invalid dates before querying activity and time records", async () =
 it("scopes both workload and time to the organization, excludes deleted records and keeps filter semantics", async () => {
   const response = await GET(request("&clientId=c&processId=p&team=Equipe+A&cluster=B&operatorId=person"));
   expect(response.status).toBe(200);
-  expect(mocks.activities.mock.calls[0][0].where).toMatchObject({ organizationId: "org", deletedAt: null, clientId: "c", processId: "p", team: "Equipe A", clientCluster: "B", responsibleId: "person" });
+  expect(mocks.activities.mock.calls[0][0].where).toMatchObject({ organizationId: "org", deletedAt: null, clientId: "c", processId: "p", team: { in: ["Equipe A", "equipe a "] }, clientCluster: "B", responsibleId: "person" });
   expect(mocks.entries.mock.calls[0][0].where).toMatchObject({ userId: "person", activity: { organizationId: "org", deletedAt: null, clientId: "c" } });
   expect(mocks.entries.mock.calls[0][0].where.startedAt.lt.toISOString()).toBe("2026-10-28T03:00:00.000Z");
 });

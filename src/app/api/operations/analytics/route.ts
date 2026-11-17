@@ -1,4 +1,6 @@
 import {buildOperatorWorkload} from "@/modules/operations/workload";
+import { operationTeamCatalog } from "@/modules/operations/team-catalog";
+import { teamAliases } from "@/modules/operations/teams";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -21,20 +23,20 @@ export async function GET(request: Request) {
     const ownOnly = member.role === "OPERATOR";
     if (ownOnly && params.operatorId && params.operatorId !== member.userId) return NextResponse.json({ error: "Seu perfil permite consultar apenas seus próprios apontamentos." }, { status: 403 });
     const operatorId = ownOnly ? member.userId : params.operatorId || undefined;
+    const catalog = await operationTeamCatalog(member.organizationId);
     const base: Prisma.OperationActivityWhereInput = { organizationId: member.organizationId, deletedAt: null,
-      ...(params.clientId ? { clientId: params.clientId } : {}), ...(params.processId ? { processId: params.processId } : {}), ...(params.team ? { team: params.team } : {}), ...(params.cluster ? { clientCluster: params.cluster } : {}) };
+      ...(params.clientId ? { clientId: params.clientId } : {}), ...(params.processId ? { processId: params.processId } : {}), ...(params.team ? { team: { in: teamAliases(params.team, catalog.values) } } : {}), ...(params.cluster ? { clientCluster: params.cluster } : {}) };
     const previous = precedingPeriod(period), rangeStart = new Date(`${previous.from}T00:00:00Z`), rangeEnd = new Date(`${shiftDay(period.to, 1)}T00:00:00Z`);
-    const [activities, entries, clients, members, processes, teams] = await Promise.all([
+    const [activities, entries, clients, members, processes] = await Promise.all([
       prisma.operationActivity.findMany({ where: { ...base, ...(operatorId ? { responsibleId: operatorId } : {}), OR: [{ scheduledDate: { gte: rangeStart, lt: rangeEnd } }, { scheduledDate: null, createdAt: { gte: previous.start, lt: period.end } }] }, select: activitySelect, orderBy: { id: "asc" }, take: 20001 }),
       prisma.operationTimeEntry.findMany({ where: { ...(operatorId ? { userId: operatorId } : {}), startedAt: { lt: period.end }, OR: [{ endedAt: { gt: previous.start } }, { endedAt: null }], activity: base }, select: { id: true, activityId: true, userId: true, startedAt: true, endedAt: true, seconds: true, user: { select: person }, activity: { select: activitySelect } }, orderBy: { id: "asc" }, take: 100001 }),
       prisma.client.findMany({ where: { organizationId: member.organizationId, ...(ownOnly ? { operationActivities: { some: { deletedAt: null, OR: [{ responsibleId: member.userId }, { timeEntries: { some: { userId: member.userId } } }] } } } : {}) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
       prisma.organizationMember.findMany({ where: { organizationId: member.organizationId, role: { not: "CLIENT" }, ...(ownOnly ? { userId: member.userId } : {}) }, select: { user: { select: person } }, orderBy: { createdAt: "asc" } }),
       prisma.operationProcess.findMany({ where: { organizationId: member.organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      prisma.operationActivity.findMany({ where: { organizationId: member.organizationId, deletedAt: null, team: { not: null }, ...(ownOnly ? { responsibleId: member.userId } : {}) }, distinct: ["team"], select: { team: true }, orderBy: { team: "asc" } }),
     ]);
     if (activities.length > 20000 || entries.length > 100000) return NextResponse.json({ error: "O período possui muitos registros. Reduza as datas ou filtre um cliente ou operador para consultar os totais completos." }, { status: 422 });
     const analytics = buildOperationsAnalytics(activities, entries, period, new Date(), operatorId);
-    const result = { ...analytics,workload:buildOperatorWorkload(activities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: teams.map((item) => item.team).filter((team): team is string => Boolean(team)) }, ownOnly, currentUserId: member.userId };
+    const result = { ...analytics,workload:buildOperatorWorkload(activities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: catalog.options }, ownOnly, currentUserId: member.userId };
     if (Buffer.byteLength(JSON.stringify(result), "utf8") > 4000000) return NextResponse.json({ error: "O detalhamento deste período é muito extenso. Filtre por cliente, operador ou um período menor para obter o relatório completo." }, { status: 422 });
     return NextResponse.json(result);
   } catch (error) {

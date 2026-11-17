@@ -1,4 +1,5 @@
 "use client";
+import { OPERATION_TIMER_CHANGED, OPERATION_TIMER_STORAGE } from "./timer-client";
 import {OperationsWorkloadPanel} from "./workload-panel";
 import type {OperatorWorkload} from "./workload";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -78,8 +79,9 @@ export function OperationsAnalyticsPanel({ onOpenActivity, onOpenActivities }: {
   }, [from, to, filters, reload]);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") setReload((value) => value + 1); };
-    const timer = window.setInterval(refresh, 60000); document.addEventListener("visibilitychange", refresh);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+    const storage = (event: StorageEvent) => { if (event.key === OPERATION_TIMER_STORAGE) refresh(); };
+    const timer = window.setInterval(refresh, 60000); document.addEventListener("visibilitychange", refresh); window.addEventListener(OPERATION_TIMER_CHANGED, refresh); window.addEventListener("storage", storage);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); window.removeEventListener(OPERATION_TIMER_CHANGED, refresh); window.removeEventListener("storage", storage); };
   }, []);
   const activityRows = useMemo(() => (data?.activities || []).filter((row) => !inspect || (inspect.kind === "client" ? row.clientId === inspect.id : inspect.kind === "operator" ? (inspect.id === "unassigned" ? row.responsibleId === null : row.responsibleId === inspect.id || row.operators.some((operator) => operator.id === inspect.id)) : row.processId === inspect.id)).filter((row) => `${row.title} ${row.client} ${row.process} ${row.responsible} ${row.operators.map((author) => author.name).join(" ")}`.toLocaleLowerCase("pt-BR").includes(activitySearch.toLocaleLowerCase("pt-BR"))), [data, inspect, activitySearch]);
   const visiblePage = Math.min(page, Math.max(1, Math.ceil(activityRows.length / 15)));

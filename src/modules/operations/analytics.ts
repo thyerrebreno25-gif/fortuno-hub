@@ -1,3 +1,4 @@
+import { canonicalTeam, teamKey } from "./teams";
 export type AnalyticsPerson = { id: string; name: string | null; email: string };
 export type AnalyticsActivity = {
   id: string; title: string; status: string; scheduledDate: Date | string | null; createdAt: Date | string;
@@ -53,7 +54,7 @@ function summarize(activities: AnalyticsActivity[], entries: AnalyticsEntry[], p
     if (!group) { group = { id, name, planned: 0, completed: 0, pending: 0, overdue: 0, withoutTime: 0, worked: 0, seconds: 0, runningSeconds: 0, averageSeconds: 0, share: 0, previousSeconds: 0 }; groups[kind].set(id, group); worked.set(group, new Set()); }
     return group;
   };
-  const activityGroups = (activity: AnalyticsActivity) => [get("clients", activity.client.id, activity.client.name), get("processes", activity.process.id, activity.process.name), get("teams", activity.team || "none", activity.team || "Sem equipe"), get("clusters", activity.clientCluster || activity.client.cluster, `Cluster ${activity.clientCluster || activity.client.cluster}`)];
+  const activityGroups = (activity: AnalyticsActivity) => [get("clients", activity.client.id, activity.client.name), get("processes", activity.process.id, activity.process.name), get("teams", teamKey(activity.team) || "none", canonicalTeam(activity.team) || "Sem equipe"), get("clusters", activity.clientCluster || activity.client.cluster, `Cluster ${activity.clientCluster || activity.client.cluster}`)];
   const rowFor = (activity: AnalyticsActivity) => {
     let row = detail.get(activity.id);
     if (!row) { row = { id: activity.id, title: activity.title, clientId: activity.client.id, client: activity.client.name, processId: activity.process.id, process: activity.process.name, responsibleId: activity.responsibleId, responsible: personName(activity.responsible), scheduledDate: activity.scheduledDate ? scheduledDay(activity) : null, status: activity.status, dueAt: activity.dueAt ? new Date(activity.dueAt).toISOString() : null, planned: false, seconds: 0, runningSeconds: 0, operators: [], entries: 0 }; detail.set(row.id, row); }

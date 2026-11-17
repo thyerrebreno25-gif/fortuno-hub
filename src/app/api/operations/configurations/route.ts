@@ -1,3 +1,5 @@
+import { operationTeamCatalog } from "@/modules/operations/team-catalog";
+import { canonicalTeam } from "@/modules/operations/teams";
 import { routineScheduleKey } from "@/modules/operations/routine-schedule";
 import { brazilDay } from "@/modules/operations/analytics";
 import { NextResponse } from "next/server";
@@ -38,6 +40,8 @@ export async function POST(request: Request) {
 
     const type = typeof body.recurrenceType === "string" ? body.recurrenceType : "ONCE";
     if (!["ONCE","DAILY","WEEKLY","MONTHLY","CUSTOM"].includes(type)) return NextResponse.json({error:"Recorrência inválida."},{status:400});
+    const team = canonicalTeam(typeof body.team === "string" ? body.team : null);
+    if (team && !(await operationTeamCatalog(member.organizationId)).options.includes(team)) return NextResponse.json({error:"Selecione uma equipe da lista."},{status:400});
     const resume = typeof body.resumeConfigurationId === "string" ? body.resumeConfigurationId : null;
     // Serialize schedule creation per organization/client/process, including retries.
     const saved = await prisma.$transaction(async tx => {
@@ -55,7 +59,7 @@ export async function POST(request: Request) {
       const configuration = await tx.operationClientProcess.create({data:{
         clientId,processId,
         responsibleId:typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
-        team:typeof body.team === "string" && body.team.trim() ? body.team.trim() : null,
+        team,
         recurrenceType:type as never,recurrenceData:(body.recurrenceData || {}) as never,
         notifyClient:body.notifyClient !== false,priority:(typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
         auditEnabled:body.auditEnabled === true,auditRecurrenceData:(body.auditRecurrenceData || null) as never,active:true,
