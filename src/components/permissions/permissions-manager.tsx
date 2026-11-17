@@ -32,6 +32,7 @@ const modules = [
   ["SERVICE_CENTER", "Central de e-mail"],
   ["WHATSAPP", "Central WhatsApp"],
   ["MEETINGS", "Central de reuniões"],
+  ["DAILY_ACTIVITIES", "Atividades Daily"],
   ["CALENDAR", "Agenda"],
   ["NOTION", "Notion · páginas e bases"],
   ["OPERATIONAL_MAPPING", "Mapeamento Operacional"],
@@ -409,6 +410,7 @@ export function PermissionsManager() {
                   <Table.Tr key={code}>
                     <Table.Td>
                       <Text fw={600}>{name}</Text>
+                      {code === "DAILY_ACTIVITIES" && <Text size="xs" c="dimmed" maw={240}>Visualizar libera a aba. Editar permite concluir e reabrir as atividades.</Text>}
                     </Table.Td>
 
                     {actions.map((action) => {

@@ -1,3 +1,4 @@
+import { executiveQueries } from "./loading";
 import { onboardingSummary } from "./onboarding";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -12,9 +13,9 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
  const today=executivePeriod("today",now),horizon=new Date(now.getTime()+7*86400000);
  const sources=[...(scope.whatsapp?["WHATSAPP_API"]:[]),...(scope.email?["GMAIL","MANUAL"]:[])];
  const org=organizationId, activityScope=executiveActivityScope(period.from,period.to);
- const [clients,tickets,health,people,activityGroups,overdueGroups,completedGroups,scheduled,running,operationDaily,support,meetings,meetingCounts,personal,personalGroups,meetingGroups,personalToday,ca,onboardings,volumeRows]=await Promise.all([
-  scope.clients?prisma.client.groupBy({by:["active"],where:{organizationId:org},_count:{_all:true}}):[],
-  sources.length?prisma.$queryRaw<Row[]>(Prisma.sql`
+ const [clients,tickets,health,people,activityGroups,overdueGroups,completedGroups,scheduled,running,operationDaily,support,meetings,meetingCounts,personal,personalGroups,meetingGroups,personalToday,ca,onboardings,volumeRows]=await executiveQueries([
+  () => scope.clients?prisma.client.groupBy({by:["active"],where:{organizationId:org},_count:{_all:true}}):[],
+  () => sources.length?prisma.$queryRaw<Row[]>(Prisma.sql`
    SELECT CASE WHEN "source"='WHATSAPP_API' THEN 'whatsapp' ELSE 'email' END AS channel,"assignedToId" AS person,
     COUNT(*) FILTER(WHERE NOT "isSpam" AND "status" NOT IN ('SPAM','RESOLVED') AND (source='WHATSAPP_API' OR NOT EXISTS(SELECT 1 FROM "ServiceTicketHistory" archived WHERE archived."ticketId"="ServiceTicket".id AND archived.type='MAILBOX_ARCHIVED'))) AS open,
     COUNT(*) FILTER(WHERE NOT "isSpam" AND "status"='IN_PROGRESS' AND (source='WHATSAPP_API' OR NOT EXISTS(SELECT 1 FROM "ServiceTicketHistory" archived WHERE archived."ticketId"="ServiceTicket".id AND archived.type='MAILBOX_ARCHIVED'))) AS progress,
@@ -29,7 +30,7 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
    LEFT JOIN LATERAL (SELECT MIN(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"="ServiceTicket".id AND m.direction='INBOUND' AND m."providerMetadata"->>'historical'='false') operational_in ON source='WHATSAPP_API'
    LEFT JOIN LATERAL (SELECT MIN(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"="ServiceTicket".id AND m.direction='OUTBOUND' AND COALESCE(m."providerMetadata"->>'historical','false')<>'true' AND m."receivedAt">=operational_in.at) operational_out ON source='WHATSAPP_API'
    WHERE "organizationId"=${org} AND "mergedIntoId" IS NULL AND "source" IN (${Prisma.join(sources)}) AND (source<>'WHATSAPP_API' OR "recipientEmail"=${whatsappRecipient}) AND (source<>'WHATSAPP_API' OR EXISTS(SELECT 1 FROM "ServiceMessage" seen WHERE seen."ticketId"="ServiceTicket".id)) GROUP BY channel,"assignedToId"`):[],
-  scope.whatsapp?prisma.$queryRaw<Row[]>(Prisma.sql`
+  () => scope.whatsapp?prisma.$queryRaw<Row[]>(Prisma.sql`
    SELECT COUNT(*) AS waiting,COUNT(*) FILTER(WHERE age<=15) AS ontime,COUNT(*) FILTER(WHERE age>15 AND age<=30) AS delayed,COUNT(*) FILTER(WHERE age>30) AS critical,MAX(age) AS oldest FROM (
     SELECT EXTRACT(EPOCH FROM (${now}::timestamptz-last_in.at))/60 AS age
     FROM "ServiceTicket" t
@@ -37,23 +38,23 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
     JOIN LATERAL (SELECT MIN(m."receivedAt") at FROM "ServiceMessage" m WHERE m."ticketId"=t.id AND m.direction='INBOUND' AND m."providerMetadata"->>'historical'='false' AND (last_out.at IS NULL OR m."receivedAt">last_out.at)) last_in ON last_in.at IS NOT NULL
     WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${whatsappRecipient} AND t."mergedIntoId" IS NULL AND NOT t."isSpam" AND t.status NOT IN ('SPAM','RESOLVED') AND (last_out.at IS NULL OR last_in.at>last_out.at) AND last_in.at<=${now}
    ) waiting_messages`):[],
-  prisma.organizationMember.findMany({where:{organizationId:org,role:{not:"CLIENT"}},select:{user:{select:{id:true,name:true}}},orderBy:{createdAt:"asc"}}),
-  scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...activityScope},_count:{_all:true}}):[],
-  scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},dueAt:{lt:now}},_count:{_all:true}}):[],
-  scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:"COMPLETED",completedAt:{gte:start,lt:end}},_count:{_all:true}}):[],
-  scope.operations?prisma.operationActivity.count({where:{organizationId:org,deletedAt:null,...activityScope}}):0,
-  scope.operations?prisma.operationTimeEntry.count({where:{endedAt:null,activity:{organizationId:org,deletedAt:null}}}):0,
-  scope.operations?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT to_char("completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS date,COUNT(*) AS count FROM "OperationActivity" WHERE "organizationId"=${org} AND "deletedAt" IS NULL AND status='COMPLETED' AND "completedAt">=${start} AND "completedAt"<${end} GROUP BY date`):[],
-  scope.support?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT COUNT(*) FILTER(WHERE status IN ('OPEN','IN_PROGRESS')) AS open,COUNT(*) FILTER(WHERE status='IN_PROGRESS') AS progress,COUNT(*) FILTER(WHERE status IN ('RESOLVED','CLOSED') AND "updatedAt">=${start} AND "updatedAt"<${end}) AS resolved,COUNT(*) FILTER(WHERE "createdAt">=${start} AND "createdAt"<${end}) AS received FROM "SupportTicket" WHERE "organizationId"=${org}`):[],
-  scope.meetings?prisma.teamMeeting.findMany({where:{organizationId:org,deletedAt:null,status:{not:"CANCELLED"},endsAt:{gte:now},startsAt:{lte:horizon}},select:{id:true,title:true,startsAt:true,endsAt:true,status:true,participants:{select:{userId:true,user:{select:{name:true}}}}},orderBy:{startsAt:"asc"},take:200}):[],
-  scope.meetings?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT COUNT(*) FILTER(WHERE "startsAt">=${today.start} AND "startsAt"<${today.end}) AS today,COUNT(*) FILTER(WHERE "endsAt">=${now} AND "startsAt"<=${horizon}) AS upcoming,COUNT(*) FILTER(WHERE status='COMPLETED' AND "endsAt">=${start} AND "endsAt"<${end}) AS completed FROM "TeamMeeting" WHERE "organizationId"=${org} AND "deletedAt" IS NULL AND status<>'CANCELLED'`):[],
-  scope.calendar?prisma.teamCalendarEvent.findMany({where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,endsAt:{gte:now},startsAt:{lte:horizon}},select:{id:true,title:true,startsAt:true,endsAt:true,userId:true,user:{select:{name:true}}},orderBy:{startsAt:"asc"},take:200}):[],
-  scope.calendar?prisma.teamCalendarEvent.groupBy({by:["userId"],where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,endsAt:{gte:now},startsAt:{lte:horizon}},_count:{_all:true}}):[],
-  scope.meetings?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT p."userId" AS person,COUNT(*) AS count FROM "MeetingParticipant" p JOIN "TeamMeeting" m ON m.id=p."meetingId" WHERE m."organizationId"=${org} AND m."deletedAt" IS NULL AND m.status<>'CANCELLED' AND m."endsAt">=${now} AND m."startsAt"<=${horizon} GROUP BY p."userId"`):[],
-  scope.calendar?prisma.teamCalendarEvent.count({where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,startsAt:{gte:today.start,lt:today.end}}}):0,
-  scope.ca?caMetrics(org,start,end,scope):[],
-  scope.onboarding?prisma.onboarding.findMany({where:{organizationId:org,status:{not:"CANCELLED"}},select:{id:true,status:true,risk:true,expectedEndDate:true,completedAt:true,companyName:true,responsibleName:true,client:{select:{name:true}},responsible:{select:{name:true}},projectData:true,tasks:{select:{status:true}}}}):[],
-  scope.whatsapp&&whatsappRecipient?prisma.$queryRaw<Array<{weekday:number;day:number;hour:number;count:bigint}>>(Prisma.sql`
+  () => prisma.organizationMember.findMany({where:{organizationId:org,role:{not:"CLIENT"}},select:{user:{select:{id:true,name:true}}},orderBy:{createdAt:"asc"}}),
+  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...activityScope},_count:{_all:true}}):[],
+  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},dueAt:{lt:now}},_count:{_all:true}}):[],
+  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:"COMPLETED",completedAt:{gte:start,lt:end}},_count:{_all:true}}):[],
+  () => scope.operations?prisma.operationActivity.count({where:{organizationId:org,deletedAt:null,...activityScope}}):0,
+  () => scope.operations?prisma.operationTimeEntry.count({where:{endedAt:null,activity:{organizationId:org,deletedAt:null}}}):0,
+  () => scope.operations?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT to_char("completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS date,COUNT(*) AS count FROM "OperationActivity" WHERE "organizationId"=${org} AND "deletedAt" IS NULL AND status='COMPLETED' AND "completedAt">=${start} AND "completedAt"<${end} GROUP BY date`):[],
+  () => scope.support?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT COUNT(*) FILTER(WHERE status IN ('OPEN','IN_PROGRESS')) AS open,COUNT(*) FILTER(WHERE status='IN_PROGRESS') AS progress,COUNT(*) FILTER(WHERE status IN ('RESOLVED','CLOSED') AND "updatedAt">=${start} AND "updatedAt"<${end}) AS resolved,COUNT(*) FILTER(WHERE "createdAt">=${start} AND "createdAt"<${end}) AS received FROM "SupportTicket" WHERE "organizationId"=${org}`):[],
+  () => scope.meetings?prisma.teamMeeting.findMany({where:{organizationId:org,deletedAt:null,status:{not:"CANCELLED"},endsAt:{gte:now},startsAt:{lte:horizon}},select:{id:true,title:true,startsAt:true,endsAt:true,status:true,participants:{select:{userId:true,user:{select:{name:true}}}}},orderBy:{startsAt:"asc"},take:200}):[],
+  () => scope.meetings?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT COUNT(*) FILTER(WHERE "startsAt">=${today.start} AND "startsAt"<${today.end}) AS today,COUNT(*) FILTER(WHERE "endsAt">=${now} AND "startsAt"<=${horizon}) AS upcoming,COUNT(*) FILTER(WHERE status='COMPLETED' AND "endsAt">=${start} AND "endsAt"<${end}) AS completed FROM "TeamMeeting" WHERE "organizationId"=${org} AND "deletedAt" IS NULL AND status<>'CANCELLED'`):[],
+  () => scope.calendar?prisma.teamCalendarEvent.findMany({where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,endsAt:{gte:now},startsAt:{lte:horizon}},select:{id:true,title:true,startsAt:true,endsAt:true,userId:true,user:{select:{name:true}}},orderBy:{startsAt:"asc"},take:200}):[],
+  () => scope.calendar?prisma.teamCalendarEvent.groupBy({by:["userId"],where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,endsAt:{gte:now},startsAt:{lte:horizon}},_count:{_all:true}}):[],
+  () => scope.meetings?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT p."userId" AS person,COUNT(*) AS count FROM "MeetingParticipant" p JOIN "TeamMeeting" m ON m.id=p."meetingId" WHERE m."organizationId"=${org} AND m."deletedAt" IS NULL AND m.status<>'CANCELLED' AND m."endsAt">=${now} AND m."startsAt"<=${horizon} GROUP BY p."userId"`):[],
+  () => scope.calendar?prisma.teamCalendarEvent.count({where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,startsAt:{gte:today.start,lt:today.end}}}):0,
+  () => scope.ca?caMetrics(org,start,end,scope):[],
+  () => scope.onboarding?prisma.onboarding.findMany({where:{organizationId:org,status:{not:"CANCELLED"}},select:{id:true,status:true,risk:true,expectedEndDate:true,completedAt:true,companyName:true,responsibleName:true,client:{select:{name:true}},responsible:{select:{name:true}},projectData:true,tasks:{select:{status:true}}}}):[],
+  () => scope.whatsapp&&whatsappRecipient?prisma.$queryRaw<Array<{weekday:number;day:number;hour:number;count:bigint}>>(Prisma.sql`
    WITH conversation_starts AS (
      SELECT t."receivedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo' AS local_at
      FROM "ServiceTicket" t LEFT JOIN "WhatsAppOperationStart" b ON b."organizationId"=t."organizationId" AND b."accountRecipient"=t."recipientEmail"

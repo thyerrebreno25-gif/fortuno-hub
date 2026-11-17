@@ -37,3 +37,22 @@ it("allows the Master to create and edit meetings even with an old disabled modu
  expect((await meetingAccess("MEETINGS","canCreate")).permissions.canCreate).toBe(true);
  expect((await meetingAccess("MEETINGS","canEdit")).permissions.canEdit).toBe(true);
 });
+
+it("checks Daily access independently from meeting permissions",async()=>{
+ mocks.member.mockResolvedValue(member);
+ mocks.permissions.mockResolvedValue({MEETINGS:{canView:true},DAILY_ACTIVITIES:{canView:false,canEdit:false}});
+ await expect(meetingAccess("DAILY_ACTIVITIES")).rejects.toMatchObject({status:403});
+ mocks.permissions.mockResolvedValue({MEETINGS:{canView:false,canEdit:false},DAILY_ACTIVITIES:{canView:true,canEdit:true}});
+ expect((await meetingAccess("DAILY_ACTIVITIES","canEdit")).permissions.canEdit).toBe(true);
+});
+it("requires Daily edit permission to complete actions and always rejects client roles",async()=>{
+ mocks.member.mockResolvedValue(member);mocks.permissions.mockResolvedValue({DAILY_ACTIVITIES:{canView:true,canEdit:false}});
+ await expect(meetingAccess("DAILY_ACTIVITIES","canEdit")).rejects.toMatchObject({status:403});
+ mocks.member.mockResolvedValue({...member,role:"CLIENT"});mocks.permissions.mockResolvedValue({DAILY_ACTIVITIES:{canView:true,canEdit:true}});
+ await expect(meetingAccess("DAILY_ACTIVITIES")).rejects.toMatchObject({status:403});
+});
+
+it("does not allow Daily mutations when the profile's view access is disabled",async()=>{
+ mocks.member.mockResolvedValue(member);mocks.permissions.mockResolvedValue({DAILY_ACTIVITIES:{canView:false,canEdit:true}});
+ await expect(meetingAccess("DAILY_ACTIVITIES","canEdit")).rejects.toMatchObject({status:403});
+});

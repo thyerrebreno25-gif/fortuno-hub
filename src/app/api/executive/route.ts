@@ -7,6 +7,7 @@ import {unstable_cache} from "next/cache";
 import {getCurrentMember,getRolePermissions} from "@/modules/permissions/permissions";
 import {managementRole,executivePeriod} from "@/modules/executive/model";
 import {executiveSnapshot,type ExecutiveScope} from "@/modules/executive/server";
+import {executiveLoad} from "@/modules/executive/loading";
 export const maxDuration=60;
 export async function GET(request:Request){
  try{
@@ -22,10 +23,16 @@ export async function GET(request:Request){
   // returning the previous snapshot while a stale cache revalidates.
   const refreshBucket=String(Math.floor(Date.now()/300000));
   const account=scope.whatsapp?await currentWhatsAppAccount(member.organizationId):null;
-  const data=await unstable_cache(async()=>{
-    const [snapshot,usage,whatsappEngagement]=await Promise.all([executiveSnapshot(member.organizationId,period.key,scope,account?.recipient||null),usageSnapshot(member.organizationId,usagePeriod(period.from,period.to),permissions,{}).catch(()=>null),scope.whatsapp&&account?.recipient&&account.connection?.phone?whatsappUsage(member.organizationId,account.recipient,account.connection.phone,period.start,period.end).catch(()=>null):null]);
+  const cacheKey=["executive-v8",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify({...scope,usageViews:Object.fromEntries(Object.entries(permissions).map(([key,value])=>[key,value.canView]))})];
+  const data=await unstable_cache(()=>executiveLoad(JSON.stringify(cacheKey),async()=>{
+    // The runtime pool has two connections. General usage and WhatsApp usage
+    // each run their own queries, so start them after the main snapshot rather
+    // than competing with all of its metrics for the same pool.
+    const snapshot=await executiveSnapshot(member.organizationId,period.key,scope,account?.recipient||null);
+    const usage=await usageSnapshot(member.organizationId,usagePeriod(period.from,period.to),permissions,{}).catch(()=>null);
+    const whatsappEngagement=scope.whatsapp&&account?.recipient&&account.connection?.phone?await whatsappUsage(member.organizationId,account.recipient,account.connection.phone,period.start,period.end).catch(()=>null):null;
     return {...snapshot,whatsappEngagement,engagement:usage?{total:usage.total,summary:usage.summary,byUser:usage.byUser,byPage:usage.byPage}:null};
-  },["executive-v7",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify({...scope,usageViews:Object.fromEntries(Object.entries(permissions).map(([key,value])=>[key,value.canView]))})],{revalidate:300})();
+  }),cacheKey,{revalidate:300})();
   return NextResponse.json(data,{headers:{"Cache-Control":"private, no-store"}});
  }catch(error){console.error("Erro no painel gerencial:",error);return NextResponse.json({error:"Não foi possível atualizar o painel gerencial."},{status:503});}
 }

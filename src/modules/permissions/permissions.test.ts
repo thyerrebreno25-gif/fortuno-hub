@@ -20,10 +20,10 @@ import {
 } from "./permissions";
 
 it("restricts the new financial test modules to Master by default", () => {
-  for (const module of ["INVESTMENT_INCOME", "CONTRACT_IMPORTS"] as const) {
-    expect(defaultPermission("MASTER", module).canView).toBe(true);
+  for (const moduleCode of ["INVESTMENT_INCOME", "CONTRACT_IMPORTS"] as const) {
+    expect(defaultPermission("MASTER", moduleCode).canView).toBe(true);
     for (const role of ["ADMIN", "MANAGER", "OPERATOR", "CLIENT"]) {
-      expect(Object.values(defaultPermission(role, module)).every((value) => value === false)).toBe(true);
+      expect(Object.values(defaultPermission(role, moduleCode)).every((value) => value === false)).toBe(true);
     }
   }
 });
@@ -147,4 +147,16 @@ describe("permissões do módulo de clientes", () => {
       canManage: false,
     });
   });
+});
+
+describe("Atividades Daily por perfil",()=>{
+ beforeEach(()=>{findMany.mockReset();findMany.mockResolvedValue([]);});
+ it("keeps operators blocked until explicit release and preserves management defaults",()=>{
+  expect(defaultPermission("OPERATOR","DAILY_ACTIVITIES").canView).toBe(false);
+  for(const role of ["MASTER","ADMIN","MANAGER"])expect(defaultPermission(role,"DAILY_ACTIVITIES").canView).toBe(true);
+ });
+ it("accepts a Daily grant without granting the Central de reuniões",async()=>{
+  findMany.mockResolvedValue([{moduleCode:"MEETINGS",canView:false,canEdit:false},{moduleCode:"DAILY_ACTIVITIES",canView:true,canEdit:true}]);
+  const permissions=await getRolePermissions("tenant","OPERATOR");expect(permissions.DAILY_ACTIVITIES.canView).toBe(true);expect(permissions.MEETINGS.canView).toBe(false);
+ });
 });

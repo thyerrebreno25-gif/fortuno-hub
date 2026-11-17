@@ -5,13 +5,14 @@ import { getNoticeMember } from "@/modules/notices/server/notice-auth";
 import { getRolePermissions, type PermissionShape } from "@/modules/permissions/permissions";
 
 export class MeetingError extends Error { constructor(message: string, public status = 400) { super(message); } }
-export async function meetingAccess(module: "MEETINGS" | "CALENDAR" = "MEETINGS", action: keyof PermissionShape = "canView") {
+export async function meetingAccess(module: "MEETINGS" | "CALENDAR" | "DAILY_ACTIVITIES" = "MEETINGS", action: keyof PermissionShape = "canView") {
   const member = await getNoticeMember();
   if (!member) throw new MeetingError("Sessão inválida.", 401);
-  const configured = (await getRolePermissions(member.organizationId, member.role))[module];
+  const modulePermissions = await getRolePermissions(member.organizationId, member.role);
+  const configured = modulePermissions[module];
   const permissions = member.role === "MASTER" && module === "MEETINGS" ? { ...configured, canView: true, canCreate: true, canEdit: true } : configured;
-  if (!permissions[action] || member.role === "CLIENT") throw new MeetingError("Seu perfil não permite esta ação.", 403);
-  return { member, permissions };
+  if (!permissions[action] || module === "DAILY_ACTIVITIES" && !permissions.canView || member.role === "CLIENT") throw new MeetingError("Seu perfil não permite esta ação.", 403);
+  return { member, permissions, modulePermissions };
 }
 export type MeetingMember = Awaited<ReturnType<typeof meetingAccess>>["member"];
 export function meetingScope(member: MeetingMember, deleted = false) {

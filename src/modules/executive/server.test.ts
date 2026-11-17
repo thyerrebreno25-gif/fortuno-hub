@@ -31,3 +31,13 @@ it("scopes volume distributions to the physical WhatsApp account, operational me
  expect(q.values).toContain("wa-account:active");expect(q.values).toContain("org");expect(q.sql).toContain('"WhatsAppOperationStart"');expect(q.sql).toContain("'historical'='false'");expect(q.sql).toContain("America/Sao_Paulo");
  expect(data.volume?.hours[9].value).toBe(4);expect(data.volume?.weekdays[1].value).toBe(4);
 });
+
+it("loads the real snapshot query set within the two-connection pool budget",async()=>{
+ vi.useRealTimers();let active=0,peak=0;
+ for(const query of Object.values(m)){
+  const original=query.getMockImplementation()!;
+  query.mockImplementation(async(...args:unknown[])=>{active++;peak=Math.max(peak,active);if(active>2)throw new Error("timeout exceeded when trying to connect");try{await new Promise(resolve=>setTimeout(resolve,2));return await original(...args);}finally{active--;}});
+ }
+ const data=await executiveSnapshot("org","month",all,"wa-account:active");
+ expect(peak).toBe(2);expect(data.period.key).toBe("month");expect(data.clients.active).toBe(3);
+});
