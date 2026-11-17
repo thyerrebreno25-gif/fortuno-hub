@@ -6,7 +6,7 @@ vi.mock("./directory", () => ({ scheduleDirectorySync: vi.fn() }));
 vi.mock("./history-sync", () => ({ scheduleHistorySync: vi.fn() }));
 vi.mock("@/modules/purchase-invoices/server/crypto", () => ({ decryptIntegrationSecret: () => "private-token" }));
 vi.mock("./uazapi", async (original) => ({ ...await original<typeof import("./uazapi")>(), uazapiRequest: m.request }));
-import { checkConnection, configureWebhook, connectionView, sendUazapiText, sendUazapiMedia, sendUazapiReaction, type whatsappConnection } from "./uazapi-server";
+import { checkConnection, configureWebhook, connectionView, sendUazapiText, sendUazapiMedia, sendUazapiReaction, changeUazapiMessage, type whatsappConnection } from "./uazapi-server";
 const connection = { id: "connection", instanceId: "instance", organizationId: "org", serverUrl: "https://free.uazapi.com", tokenEncrypted: "encrypted-secret", tokenHash: "private-hash", status: "DISCONNECTED", expiresAt: null } as NonNullable<Awaited<ReturnType<typeof whatsappConnection>>>;
 beforeEach(() => { vi.clearAllMocks(); m.update.mockResolvedValue({}); });
 describe("Uazapi server-side connection", () => {
@@ -57,3 +57,6 @@ it("sends replyid only when explicitly given for text and media",async()=>{
  await sendUazapiText({organizationId:"org",accountRecipient:"wa-account:connection:5511",to:"5522",body:"Resposta",replyToMessageId:"original"});expect(m.request.mock.calls[0][3]).toMatchObject({replyid:"original"});
  await sendUazapiMedia({organizationId:"org",accountRecipient:"wa-account:connection:5511",to:"5522",type:"image",file:"https://storage.example/print",name:"print.png",mimeType:"image/png",caption:"Segue o print",trackingId:"upload",replyToMessageId:"original"});expect(m.request.mock.calls[1][3]).toMatchObject({replyid:"original",type:"image"});
 });
+
+it("edits the existing provider message instead of sending a new one",async()=>{m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockReset().mockResolvedValue({success:true});await changeUazapiMessage({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"existing",action:"edit",body:"*Ana*\nTexto corrigido"});expect(m.request.mock.calls[0].slice(2)).toEqual(["/message/edit",{id:"existing",text:"*Ana*\nTexto corrigido"}]);expect(m.request).toHaveBeenCalledOnce();});
+it("does not accept an unconfirmed edit or edit through a replaced number",async()=>{m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockReset().mockResolvedValue({success:false});await expect(changeUazapiMessage({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"existing",action:"edit",body:"Novo"})).rejects.toThrow("não foi confirmada");m.request.mockClear();await expect(changeUazapiMessage({organizationId:"org",accountRecipient:"wa-account:connection:old",messageId:"existing",action:"edit",body:"Novo"})).rejects.toThrow("número conectado mudou");expect(m.request).not.toHaveBeenCalled();});
