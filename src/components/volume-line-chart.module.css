@@ -1,0 +1,7 @@
+.root{display:flex;flex-direction:column;gap:8px;min-width:0;width:100%}
+.plot{position:relative;min-width:0;width:100%;height:clamp(220px,22vw,300px)}
+.fill{flex:1;min-height:0}
+.fill .plot{height:auto;flex:1;min-height:140px}
+.plot svg{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:visible}
+.value{min-height:20px;flex-shrink:0;font-size:13px;line-height:1.4;text-align:right}
+.fill .value{font-size:14px}
