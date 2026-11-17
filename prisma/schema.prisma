@@ -1448,7 +1448,7 @@ model OperationClientProcess {
   responsible User?               @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
   activities  OperationActivity[]
 
-  @@unique([clientId, processId])
+  @@index([clientId, processId])
   @@index([responsibleId, active])
 }
 

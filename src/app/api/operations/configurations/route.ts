@@ -1,7 +1,11 @@
+import { routineScheduleKey } from "@/modules/operations/routine-schedule";
+import { brazilDay } from "@/modules/operations/analytics";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
 import { generateActivitiesForConfigurationRange } from "@/modules/operations/recurrence";
+
+export const maxDuration=60;
 
 function addDays(date: Date, days: number) {
   const result = new Date(date);
@@ -21,7 +25,7 @@ export async function POST(request: Request) {
     if (!clientId || !processId) return NextResponse.json({ error: "Selecione cliente e processo." }, { status: 400 });
 
     const recurrence=body.recurrenceData as {weekdays?:unknown;startDate?:string;dailyMode?:string}|undefined;
-    if(body.recurrenceType==="CUSTOM" && (!Array.isArray(recurrence?.weekdays)||!recurrence.weekdays.length||recurrence.weekdays.some(day=>!Number.isInteger(day)||Number(day)<0||Number(day)>6)))return NextResponse.json({error:"Selecione dias da semana válidos para a recorrência personalizada."},{status:400});
+    if((body.recurrenceType==="CUSTOM"||body.recurrenceType==="WEEKLY"||(body.recurrenceType==="DAILY"&&recurrence?.dailyMode==="CUSTOM_DAYS")) && (!Array.isArray(recurrence?.weekdays)||!recurrence.weekdays.length||recurrence.weekdays.some(day=>!Number.isInteger(day)||Number(day)<0||Number(day)>6)))return NextResponse.json({error:"Selecione dias da semana válidos para a recorrência."},{status:400});
     if(typeof body.responsibleId==="string"&&body.responsibleId){
       const responsible=await prisma.organizationMember.findFirst({where:{userId:body.responsibleId,organizationId:member.organizationId,role:{not:"CLIENT"}},select:{userId:true}});
       if(!responsible)return NextResponse.json({error:"Responsável não encontrado nesta organização."},{status:400});
@@ -32,51 +36,37 @@ export async function POST(request: Request) {
     ]);
     if (!client || !process) return NextResponse.json({ error: "Cliente ou processo não encontrado." }, { status: 404 });
 
-    const previous = await prisma.operationClientProcess.findUnique({ where: { clientId_processId: { clientId, processId } }, select: { id: true, active: true } });
-    const resume=typeof body.resumeConfigurationId==="string"?body.resumeConfigurationId:null;
-    if(resume&&(!previous?.active||previous.id!==resume))return NextResponse.json({error:"A rotina para retomar não corresponde a este cliente e processo."},{status:409});
-    if(!resume&&body.createOnly===true&&previous?.active)return NextResponse.json({skipped:true,configurationId:previous.id});
-    if (previous && !previous.active) await prisma.operationActivity.updateMany({ where: { organizationId: member.organizationId, clientProcessId: previous.id, deletedAt: { not: null } }, data: { clientProcessId: null } });
-    const configuration = resume ? previous! : await (body.createOnly===true&&!previous ? prisma.operationClientProcess.create({data:{
-        clientId, processId,
-        responsibleId: typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
-        team: typeof body.team === "string" && body.team.trim() ? body.team.trim() : null,
-        recurrenceType: typeof body.recurrenceType === "string" ? body.recurrenceType as never : "ONCE",
-        recurrenceData: (body.recurrenceData || {}) as never,
-        notifyClient: body.notifyClient !== false,
-        priority: (typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
-        auditEnabled: body.auditEnabled === true,
-        auditRecurrenceData: (body.auditRecurrenceData || null) as never,
-        active: true,
-      },include:{client:true,process:true,responsible:true}}) : prisma.operationClientProcess.upsert({
-      where: { clientId_processId: { clientId, processId } },
-      create: {
-        clientId, processId,
-        responsibleId: typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
-        team: typeof body.team === "string" && body.team.trim() ? body.team.trim() : null,
-        recurrenceType: typeof body.recurrenceType === "string" ? body.recurrenceType as never : "ONCE",
-        recurrenceData: (body.recurrenceData || {}) as never,
-        notifyClient: body.notifyClient !== false,
-        priority: (typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
-        auditEnabled: body.auditEnabled === true,
-        auditRecurrenceData: (body.auditRecurrenceData || null) as never,
-        active: true,
-      },
-      update: {
-        responsibleId: typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
-        team: typeof body.team === "string" && body.team.trim() ? body.team.trim() : null,
-        recurrenceType: typeof body.recurrenceType === "string" ? body.recurrenceType as never : "ONCE",
-        recurrenceData: (body.recurrenceData || {}) as never,
-        notifyClient: body.notifyClient !== false,
-        priority: (typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
-        auditEnabled: body.auditEnabled === true,
-        auditRecurrenceData: (body.auditRecurrenceData || null) as never,
-        active: true,
-      },
-      include: { client: true, process: true, responsible: true },
-    }));
+    const type = typeof body.recurrenceType === "string" ? body.recurrenceType : "ONCE";
+    if (!["ONCE","DAILY","WEEKLY","MONTHLY","CUSTOM"].includes(type)) return NextResponse.json({error:"Recorrência inválida."},{status:400});
+    const resume = typeof body.resumeConfigurationId === "string" ? body.resumeConfigurationId : null;
+    // Serialize schedule creation per organization/client/process, including retries.
+    const saved = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"operations-reset-" + member.organizationId}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${member.organizationId + ":" + clientId + ":" + processId}))`;
+      const existing = await tx.operationClientProcess.findMany({where:{clientId,processId,active:true,client:{organizationId:member.organizationId}},orderBy:{createdAt:"asc"}});
+      if (resume) {
+        const configuration = existing.find(row => row.id === resume);
+        if (!configuration || routineScheduleKey(configuration.recurrenceType,configuration.recurrenceData) !== routineScheduleKey(type,body.recurrenceData)) return null;
+        return {configuration, skipped:false};
+      }
+      const key = routineScheduleKey(type, body.recurrenceData);
+      const same = existing.find(row => routineScheduleKey(row.recurrenceType,row.recurrenceData) === key);
+      if (same) return {configuration:same,skipped:true};
+      const configuration = await tx.operationClientProcess.create({data:{
+        clientId,processId,
+        responsibleId:typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
+        team:typeof body.team === "string" && body.team.trim() ? body.team.trim() : null,
+        recurrenceType:type as never,recurrenceData:(body.recurrenceData || {}) as never,
+        notifyClient:body.notifyClient !== false,priority:(typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
+        auditEnabled:body.auditEnabled === true,auditRecurrenceData:(body.auditRecurrenceData || null) as never,active:true,
+      },include:{client:true,process:true,responsible:true}});
+      return {configuration,skipped:false};
+    },{maxWait:5000,timeout:10000});
+    if (!saved) return NextResponse.json({error:"A rotina para retomar não corresponde a este cliente e processo."},{status:409});
+    const {configuration} = saved;
+    if (saved.skipped) return NextResponse.json({skipped:true,configurationId:configuration.id});
 
-    const today=new Date().toISOString().slice(0,10);
+    const today=brazilDay();
     const requestedStart=typeof recurrence?.startDate==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(recurrence.startDate)?recurrence.startDate:today;
     const from=new Date((requestedStart>today?requestedStart:today)+"T12:00:00Z");
     let generation;

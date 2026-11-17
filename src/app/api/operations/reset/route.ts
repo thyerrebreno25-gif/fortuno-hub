@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
+import { routineScheduleKey } from "@/modules/operations/routine-schedule";
 export const maxDuration = 120;
 const pending = (organizationId: string): Prisma.OperationActivityWhereInput => ({ organizationId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] } });
 const saved = z.object({ configurations: z.array(z.string()), activities: z.array(z.object({ id: z.string(), clientProcessId: z.string().nullable() })) });
@@ -33,8 +34,12 @@ export async function POST(request: Request) {
         const snapshot = saved.safeParse(audit?.beforeData);
         if (!audit || !snapshot.success) throw new Error("CONFLICT");
         if (await tx.auditLog.findFirst({ where: { entity: "OperationsReset", entityId: audit.id, action: "OPERATIONS_RESET_RESTORED" } })) throw new Error("CONFLICT");
-        const configurations = await tx.operationClientProcess.findMany({ where: { id: { in: snapshot.data.configurations }, client: { organizationId: member.organizationId } }, select: { id: true, active: true } });
+        const configurations = await tx.operationClientProcess.findMany({ where: { id: { in: snapshot.data.configurations }, client: { organizationId: member.organizationId } }, select: { id: true, active: true, clientId:true, processId:true, recurrenceType:true, recurrenceData:true } });
         if (configurations.length !== snapshot.data.configurations.length || configurations.some((c) => c.active)) throw new Error("CONFLICT");
+        const active = configurations.length ? await tx.operationClientProcess.findMany({where:{active:true,client:{organizationId:member.organizationId},OR:configurations.map(c=>({clientId:c.clientId,processId:c.processId}))},select:{clientId:true,processId:true,recurrenceType:true,recurrenceData:true}}) : [];
+        const key=(c:typeof active[number])=>JSON.stringify([c.clientId,c.processId,routineScheduleKey(c.recurrenceType,c.recurrenceData)]);
+        const activeKeys=new Set(active.map(key));
+        if(configurations.some(c=>activeKeys.has(key(c))))throw new Error("CONFLICT");
         for (const activity of snapshot.data.activities) {
           const updated = await tx.operationActivity.updateMany({ where: { id: activity.id, organizationId: member.organizationId, deletionReason: `Limpeza de rotinas: ${audit.id}` }, data: { deletedAt: null, deletedById: null, deletionReason: null, clientProcessId: activity.clientProcessId } });
           if (!updated.count) throw new Error("CONFLICT");

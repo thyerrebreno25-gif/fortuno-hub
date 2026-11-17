@@ -39,7 +39,7 @@ it("rejects unsupported actions without a transaction", async () => {
 });
 it("restores the saved activities and recurrences without changing completed history", async () => {
   m.audit.findFirst.mockResolvedValueOnce({ id: "batch", beforeData: { configurations: ["routine"], activities: [{ id: "task", clientProcessId: "routine" }] } }).mockResolvedValueOnce(null);
-  m.configurations.findMany.mockResolvedValueOnce([{ id: "routine", active: false }]);
+  m.configurations.findMany.mockResolvedValueOnce([{ id: "routine", active: false }]).mockResolvedValueOnce([]);
   m.activities.updateMany.mockResolvedValueOnce({ count: 1 });
   expect((await POST(request("restore"))).status).toBe(200);
   expect(m.activities.updateMany.mock.calls[0][0]).toMatchObject({ where: { organizationId: "org", id: "task", deletionReason: "Limpeza de rotinas: batch" }, data: { deletedAt: null, clientProcessId: "routine" } });
@@ -61,3 +61,5 @@ it("previews both pending-only and complete cleanup counts",async()=>{
  expect(await (await GET()).json()).toMatchObject({activities:15,allActivities:25,configurations:4});
  expect(m.activities.count.mock.calls[1][0].where).toEqual({organizationId:"org",deletedAt:null});
 });
+
+it("prevents restoring an exact schedule recreated after cleanup while allowing different weekdays",async()=>{const old={id:"old",active:false,clientId:"c",processId:"p",recurrenceType:"WEEKLY",recurrenceData:{weekdays:[1]}};m.audit.findFirst.mockResolvedValueOnce({id:"batch",beforeData:{configurations:["old"],activities:[]}}).mockResolvedValueOnce(null);m.configurations.findMany.mockResolvedValueOnce([old]).mockResolvedValueOnce([{...old,id:"new",active:true}]);expect((await POST(request("restore"))).status).toBe(409);expect(m.configurations.updateMany).not.toHaveBeenCalled();m.audit.findFirst.mockResolvedValueOnce({id:"batch",beforeData:{configurations:["old"],activities:[]}}).mockResolvedValueOnce(null);m.configurations.findMany.mockResolvedValueOnce([old]).mockResolvedValueOnce([{...old,id:"tuesday",active:true,recurrenceData:{weekdays:[2]}}]);expect((await POST(request("restore"))).status).toBe(200);});
