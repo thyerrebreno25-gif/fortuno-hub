@@ -1,4 +1,6 @@
 "use client";
+import {readMailboxResponse} from "@/modules/atendimento/mailbox-response";
+import {deleteArchivedMailbox,ArchiveDeletionError,type ArchiveDeletionProgress} from "@/modules/atendimento/delete-archived-mailbox";
 import { useUsageClient } from "@/modules/usage/client-context";
 import { EmailAnalyticsPanel } from "@/modules/atendimento/components/email-analytics-panel";
 
@@ -49,6 +51,7 @@ import { GmailConnectionCard } from "@/modules/atendimento/components/gmail-conn
 import { EmailTicketDrawer } from "@/modules/atendimento/components/email-ticket-drawer";
 import styles from "./atendimento.module.css";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Shared legacy payload shape used by the email drawer.
 type Any = Record<string, any>;
 
 const views = [
@@ -107,6 +110,9 @@ export default function AtendimentoPage() {
   const [newOpen, setNewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [archiveAction, setArchiveAction] = useState<"archive" | "restore" | "delete" | null>(null);
+  const archiveBusy=useRef(false);
+  const [archiveProgress,setArchiveProgress]=useState<ArchiveDeletionProgress|null>(null);
+  const [archiveNotice,setArchiveNotice]=useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [note, setNote] = useState("");
 
@@ -126,7 +132,7 @@ export default function AtendimentoPage() {
     const response = await fetch("/api/atendimento/bootstrap", {
       cache: "no-store",
     });
-    const body = await response.json();
+    const body = await readMailboxResponse<Any>(response,"Não foi possível concluir a operação na Central de e-mails.");
     if (!response.ok) throw new Error(body.error || "Erro ao carregar Central.");
     setBootstrap(body);
   }, []);
@@ -141,7 +147,7 @@ export default function AtendimentoPage() {
       `/api/atendimento?${query.toString()}`,
       { cache: "no-store" },
     );
-    const body = await response.json();
+    const body = await readMailboxResponse<Any>(response,"Não foi possível concluir a operação na Central de e-mails.");
     if (!response.ok) throw new Error(body.error || "Erro ao carregar chamados.");
     if(request !== listSequence.current) return;
     setTotal(body.total || 0); setClientCounts(body.clientCounts || {});
@@ -151,18 +157,29 @@ export default function AtendimentoPage() {
   }, [view, search, clientId, page]);
 
   async function archiveMailbox(action: "archive" | "restore" | "delete") {
+    if(archiveBusy.current)return;
+    archiveBusy.current=true;
     setArchiveAction(null);
     setSaving(true);
-    setError("");
+    setError("");setArchiveNotice("");setArchiveProgress(null);
     try {
-      const response = await fetch("/api/atendimento/archive", { method: action === "delete" ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, confirmation: deleteConfirmation }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Falha ao atualizar a caixa.");
-      detailSequence.current++;setSelected(null); setSelectedId(null);
+      if(action==="delete") {
+        setArchiveProgress({deleted:0,remaining:Number(stats.archived)||0});
+        const result=await deleteArchivedMailbox({confirmation:deleteConfirmation,onProgress:setArchiveProgress});
+        setArchiveNotice(`${result.deleted} atendimento(s) arquivado(s) excluído(s) do Hub.`);
+      } else {
+        const response=await fetch("/api/atendimento/archive",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});
+        await readMailboxResponse(response,"Falha ao atualizar a caixa.");
+      }
+      detailSequence.current++;setSelected(null);setSelectedId(null);
       setDeleteConfirmation("");
-      await loadTickets();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao atualizar a caixa."); }
-    finally { setSaving(false); }
+    } catch(cause) {
+      const prefix=cause instanceof ArchiveDeletionError&&cause.confirmedDeleted?`${cause.confirmedDeleted} atendimento(s) já tiveram exclusão confirmada. `:"";
+      setError(prefix+(cause instanceof Error?cause.message:"Falha ao atualizar a caixa."));
+    } finally {
+      try{await listLoader.current();}catch{setError(current=>current||"Não foi possível atualizar a lista. Clique em Atualizar para conferir o resultado.");}
+      setArchiveProgress(null);setSaving(false);archiveBusy.current=false;
+    }
   }
 
   useEffect(() => {
@@ -173,7 +190,7 @@ export default function AtendimentoPage() {
   useEffect(()=>{const timer=setTimeout(()=>{void loadTickets().catch(cause=>setError(cause instanceof Error?cause.message:"Erro ao carregar chamados."));},200);return()=>{clearTimeout(timer);invalidateList();};},[loadTickets,invalidateList]);
   const listLoader = useRef(loadTickets);
   useEffect(()=>{listLoader.current=loadTickets;},[loadTickets]);
-  useEffect(()=>{let busy=false;const refresh=async()=>{if(busy||document.visibilityState!=="visible")return;busy=true;try{await fetch("/api/atendimento/gmail/sync",{method:"POST"});await listLoader.current();}catch{}finally{busy=false;}};const timer=window.setInterval(()=>void refresh(),60000);document.addEventListener("visibilitychange",refresh);return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",refresh);};},[]);
+  useEffect(()=>{let busy=false;const refresh=async()=>{if(busy||archiveBusy.current||document.visibilityState!=="visible")return;busy=true;try{await fetch("/api/atendimento/gmail/sync",{method:"POST"});await listLoader.current();}catch{}finally{busy=false;}};const timer=window.setInterval(()=>void refresh(),60000);document.addEventListener("visibilitychange",refresh);return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",refresh);};},[]);
 
   const openTicket = useCallback(async (id: string) => {
     const request = ++detailSequence.current;
@@ -185,7 +202,7 @@ export default function AtendimentoPage() {
       const response = await fetch(`/api/atendimento/${id}`, {
         cache: "no-store",
       });
-      const body = await response.json();
+      const body = await readMailboxResponse<Any>(response,"Não foi possível concluir a operação na Central de e-mails.");
       if (!response.ok) throw new Error(body.error || "Erro ao abrir chamado.");
       if(request !== detailSequence.current) return;
       setSelected(body.ticket);
@@ -212,7 +229,7 @@ export default function AtendimentoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...payload }),
       });
-      const body = await response.json();
+      const body = await readMailboxResponse<Any>(response,"Não foi possível concluir a operação na Central de e-mails.");
       if (!response.ok) throw new Error(body.error || "Erro ao atualizar chamado.");
 
       if(sequence===detailSequence.current)setSelected(body.ticket);
@@ -238,7 +255,7 @@ export default function AtendimentoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const body = await response.json();
+      const body = await readMailboxResponse<Any>(response,"Não foi possível concluir a operação na Central de e-mails.");
       if (!response.ok) throw new Error(body.error || "Erro ao criar chamado.");
 
       setNewOpen(false);
@@ -290,7 +307,7 @@ export default function AtendimentoPage() {
   const canEditSelected=Boolean(bootstrap?.permission?.canEdit&&(bootstrap?.currentUser?.canManage||selected?.assignedTo?.id===bootstrap?.currentUser?.id));
   const folderLabel=views.find(row=>row[0]===view)?.[1]||"Caixa de entrada";
   const selectedClientName=clientId==="UNIDENTIFIED"?"Cliente não identificado":bootstrap?.clients?.find((client:Any)=>client.id===clientId)?.name;
-  async function identifyClients(){if(classifying)return;setClassifying(true);setError("");try{const response=await fetch("/api/atendimento/routing/reprocess",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível identificar os clientes.");setClassificationNotice(`${result.changed} e-mail(s) reclassificado(s) entre ${result.checked} verificado(s). Vínculos revisados pela equipe foram preservados.`);await loadTickets();}catch(e){setError(e instanceof Error?e.message:"Não foi possível identificar os clientes.");}finally{setClassifying(false);}}
+  async function identifyClients(){if(classifying)return;setClassifying(true);setError("");try{const response=await fetch("/api/atendimento/routing/reprocess",{method:"POST"});const result=await readMailboxResponse<Any>(response,"Não foi possível identificar os clientes.");if(!response.ok)throw new Error(result.error||"Não foi possível identificar os clientes.");setClassificationNotice(`${result.changed} e-mail(s) reclassificado(s) entre ${result.checked} verificado(s). Vínculos revisados pela equipe foram preservados.`);await loadTickets();}catch(e){setError(e instanceof Error?e.message:"Não foi possível identificar os clientes.");}finally{setClassifying(false);}}
   async function refreshMailbox(){if(refreshing)return;setRefreshing(true);setError("");try{const r=await fetch("/api/atendimento/gmail/sync",{method:"POST"});const b=await r.json();if(!r.ok)throw new Error(b.error||"Não foi possível atualizar o Gmail.");await loadTickets();}catch(e){setError(e instanceof Error?e.message:"Não foi possível atualizar os e-mails.");}finally{setRefreshing(false);}}
   if (loading) {
     return (
@@ -322,11 +339,13 @@ export default function AtendimentoPage() {
           <Menu position="bottom-end" width={255} shadow="md"><Menu.Target><ActionIcon size="lg" variant="subtle" aria-label="Opções dos e-mails"><IconDotsVertical size={21}/></ActionIcon></Menu.Target><Menu.Dropdown>
             <Menu.Item onClick={()=>setConnectionOpen(true)}>Conexão Gmail</Menu.Item>
             {bootstrap.currentUser?.canManage&&bootstrap.permission?.canEdit&&<Menu.Item disabled={classifying} onClick={()=>void identifyClients()}>Identificar clientes dos e-mails</Menu.Item>}
-            {bootstrap.permission?.canManage&&<><Menu.Divider/><Menu.Item disabled={saving} onClick={()=>setArchiveAction(view==="ARCHIVED"?"restore":"archive")}>{view==="ARCHIVED"?"Restaurar arquivados":"Arquivar todos os e-mails"}</Menu.Item>{view==="ARCHIVED"&&<Menu.Item color="red" onClick={()=>{setDeleteConfirmation("");setArchiveAction("delete");}}>Excluir todos os arquivados</Menu.Item>}</>}
+            {bootstrap.permission?.canManage&&<><Menu.Divider/><Menu.Item disabled={saving} onClick={()=>setArchiveAction(view==="ARCHIVED"?"restore":"archive")}>{view==="ARCHIVED"?"Restaurar arquivados":"Arquivar todos os e-mails"}</Menu.Item>{view==="ARCHIVED"&&<Menu.Item disabled={saving} color="red" onClick={()=>{setDeleteConfirmation("");setArchiveAction("delete");}}>Excluir todos os arquivados</Menu.Item>}</>}
             {bootstrap.permission?.canCreate&&bootstrap.currentUser?.canManage&&<><Menu.Divider/><Menu.Item onClick={()=>setNewOpen(true)}>Simular e-mail para teste</Menu.Item></>}
           </Menu.Dropdown></Menu>
         </Group>
       </header>
+      {archiveProgress&&<Alert color="blue" icon={<Loader size="xs"/>}><Text size="sm">Excluindo arquivados: {archiveProgress.deleted} confirmado(s) · {archiveProgress.remaining} restante(s). Mantenha esta página aberta até concluir.</Text></Alert>}
+      {archiveNotice&&<Alert color="teal" withCloseButton onClose={()=>setArchiveNotice("")}>{archiveNotice}</Alert>}
       {classificationNotice&&<Alert color="teal" withCloseButton onClose={()=>setClassificationNotice("")}>{classificationNotice}</Alert>}
       {error&&<Alert color="red" withCloseButton onClose={()=>setError("")}>{error}</Alert>}
       <Modal opened={connectionOpen} onClose={()=>setConnectionOpen(false)} title="Conexão Gmail" size="lg"><GmailConnectionCard/></Modal>
