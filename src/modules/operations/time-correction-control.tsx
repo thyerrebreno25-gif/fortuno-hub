@@ -4,7 +4,7 @@ import { Alert, Badge, Button, Group, Modal, Paper, Select, SimpleGrid, Stack, T
 import { notifications } from "@mantine/notifications";
 import { IconClockEdit } from "@tabler/icons-react";
 import { announceOperationTimerChange } from "./timer-client";
-import { brazilDateTimeInput, brazilDateTimeIso } from "./time-correction";
+import { brazilDateTimeInput, correctionDates } from "./time-correction";
 
 type Entry = { id: string; userId: string; startedAt: string; endedAt: string | null; seconds: number; updatedAt: string; source: string; user: { name: string | null; email: string } };
 type Props = { activity: { id: string; responsibleId: string | null; timeEntries: Entry[] }; currentUserId: string; canManage: boolean; canEdit: boolean; members: Array<{ id: string; name: string | null; email: string }>; onChanged: () => Promise<void> };
@@ -15,6 +15,7 @@ export function TimeCorrectionControl({ activity, currentUserId, canManage, canE
   const [opened, setOpened] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState("");
   const [entryId, setEntryId] = useState("new"), [newEntryId, setNewEntryId] = useState("");
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState("");
+  const [reference, setReference] = useState<{ startedAt: string; endedAt: string } | null>(null);
   const [start, setStart] = useState(""), [end, setEnd] = useState(""), [reason, setReason] = useState(""), [userId, setUserId] = useState(currentUserId);
   const entries = activity.timeEntries.filter(entry => canManage || entry.userId === currentUserId);
   const canAdd = canManage || activity.responsibleId === currentUserId;
@@ -22,21 +23,24 @@ export function TimeCorrectionControl({ activity, currentUserId, canManage, canE
   const entry = entries.find(item => item.id === entryId);
   const choose = (id: string) => {
     const selected = entries.find(item => item.id === id);
+    const original = selected ? { startedAt: selected.startedAt, endedAt: selected.endedAt || new Date().toISOString() } : null;
+    setReference(original);
     setEntryId(id); setError(""); setReason(""); setUserId(selected?.userId || currentUserId);
     setExpectedUpdatedAt(selected?.updatedAt || "");
-    setStart(selected ? brazilDateTimeInput(selected.startedAt) : "");
-    setEnd(selected ? brazilDateTimeInput(selected.endedAt || new Date()) : "");
+    setStart(original ? brazilDateTimeInput(original.startedAt) : "");
+    setEnd(original ? brazilDateTimeInput(original.endedAt) : "");
   };
   let seconds: number | null = null;
   if (start && end) {
-    const delta = Math.floor((+new Date(`${end}-03:00`) - +new Date(`${start}-03:00`)) / 1000);
+    const dates = correctionDates(start, end, reference);
+    const delta = Math.floor((+new Date(dates.endedAt) - +new Date(dates.startedAt)) / 1000);
     if (Number.isFinite(delta) && delta >= 0) seconds = delta;
   }
   async function save() {
     if (saving) return;
     setSaving(true); setError("");
     try {
-      const response = await fetch(`/api/operations/activities/${activity.id}/time-correction`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(entry ? { entryId: entry.id, expectedUpdatedAt } : { newEntryId, userId }), startedAt: brazilDateTimeIso(start), endedAt: brazilDateTimeIso(end), reason }) });
+      const response = await fetch(`/api/operations/activities/${activity.id}/time-correction`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(entry ? { entryId: entry.id, expectedUpdatedAt } : { newEntryId, userId }), ...correctionDates(start, end, reference), reason }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível salvar a correção.");
       setOpened(false); announceOperationTimerChange();

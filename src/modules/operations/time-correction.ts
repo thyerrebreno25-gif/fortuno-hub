@@ -29,3 +29,12 @@ export function brazilDateTimeInput(value: string | Date) {
 export function brazilDateTimeIso(value: string) {
   return new Date(`${value}-03:00`).toISOString();
 }
+
+/** Native inputs show seconds; retain the stored fractions until that field is changed. */
+export function correctionDates(start: string, end: string, reference: { startedAt: string; endedAt: string } | null = null) {
+  const sameStart = reference && start === brazilDateTimeInput(reference.startedAt);
+  const sameEnd = reference && end === brazilDateTimeInput(reference.endedAt);
+  const startedAt = sameStart ? reference.startedAt : brazilDateTimeIso(start);
+  const endedAt = start === end && !(sameStart && sameEnd) ? startedAt : sameEnd ? reference.endedAt : brazilDateTimeIso(end);
+  return { startedAt, endedAt };
+}
