@@ -115,3 +115,9 @@ describe("gerador OFX de extratos", () => {
     expect(ofx).toContain("<TRNAMT>6.49</TRNAMT>");
   });
 });
+
+it("rejects an explicitly invalid or incomplete statement period",()=>{
+ const base={bankId:"070",initialBalance:0,finalBalance:0,transactions:[]};
+ expect(()=>generateOfx({...base,periodStart:"2026-10-01",periodEnd:"2026-10-32"})).toThrow("Período OFX inválido");
+ expect(()=>generateOfx({...base,periodStart:"2026-10-31",periodEnd:"2026-10-01"})).toThrow("Período OFX inválido");
+});

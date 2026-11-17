@@ -7,11 +7,14 @@ type GenerateOfxInput = {
   account?: string;
   initialBalance: number;
   finalBalance: number;
+  periodStart?: string;
+  periodEnd?: string;
   transactions: StatementTransaction[];
 };
 
 const institutionNames: Record<string, string> = {
   "001": "Banco do Brasil S.A.",
+  "070": "BRB - Banco de Brasilia S.A.",
   "104": "Caixa Economica Federal",
   "102": "XP Investimentos CCTVM S.A.",
   "260": "Nu Pagamentos S.A.",
@@ -83,9 +86,13 @@ export function generateOfx(args: GenerateOfxInput) {
       return byDate || first.id - second.id;
     });
   const today = new Date().toISOString().slice(0, 10);
-  const start = transactions[0] ? transactionDate(transactions[0]) : today;
+  const start = args.periodStart || (transactions[0] ? transactionDate(transactions[0]) : today);
   const lastTransaction = transactions.at(-1);
-  const end = lastTransaction ? transactionDate(lastTransaction) : start;
+  const end = args.periodEnd || (lastTransaction ? transactionDate(lastTransaction) : start);
+  if (args.periodStart || args.periodEnd) {
+    const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value + "T12:00:00Z")) && new Date(value + "T12:00:00Z").toISOString().slice(0, 10) === value;
+    if (!validDate(start) || !validDate(end) || start > end || transactions.some(row => transactionDate(row) < start || transactionDate(row) > end)) throw new Error("Período OFX inválido ou movimentações fora do período informado.");
+  }
   const institutionName = escapeOfx(
     args.institutionName || institutionNames[args.bankId] || "Instituicao Financeira",
   );
