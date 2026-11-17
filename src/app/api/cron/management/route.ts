@@ -1,3 +1,4 @@
+import {processDailyActivities} from "@/modules/meetings/daily-server";
 import {processPasswordRecoveryQueue} from "@/modules/auth/password-recovery";
 import {syncConnectedFathom} from "@/modules/meetings/fathom";
 import {processWhatsAppSurveys} from "@/modules/whatsapp/surveys";
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   const expected = Buffer.from(`Bearer ${secret || ""}`), provided = Buffer.from(request.headers.get("authorization") || "");
   if (!secret || expected.length !== provided.length || !timingSafeEqual(expected, provided)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   after(async () => { await Promise.allSettled([
+    processDailyActivities(),
     processPasswordRecoveryQueue(),
     processWhatsAppSurveys(),
     processQueuedMeetingReports(),

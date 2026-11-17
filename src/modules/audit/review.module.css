@@ -1,0 +1,7 @@
+.stat{padding:12px 16px;background:var(--mantine-color-gray-light);border-radius:12px;min-width:0}
+.checkItem{padding:15px 0;border-bottom:1px solid var(--mantine-color-default-border);overflow-wrap:anywhere}
+.checkItem:last-child{border-bottom:0;padding-bottom:0}
+.source{display:flex;gap:8px;align-items:flex-start;color:var(--mantine-color-teal-7);padding:10px 12px;background:var(--mantine-color-teal-light);border-radius:9px}
+.description{font-size:11px;margin-top:9px;color:var(--mantine-color-dimmed)}
+.description summary{cursor:pointer}
+.observation{border-left:2px solid var(--mantine-color-blue-4);padding:4px 10px;white-space:pre-wrap}

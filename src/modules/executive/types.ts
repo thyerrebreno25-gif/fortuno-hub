@@ -2,6 +2,8 @@ import type { UsageReport } from "@/modules/usage/model";
 import type { onboardingSummary } from "./onboarding";
 export type ExecutivePeriod = "today" | "week" | "month";
 export type ExecutiveData = {
+ whatsappEngagement?:ReturnType<typeof import("@/modules/whatsapp/usage").whatsappUsageReport>|null;
+ volume?:ReturnType<typeof import("./volume").volumeDistribution>;
  engagement?:Pick<UsageReport,"total"|"summary"|"byUser"|"byPage">|null;
  generatedAt:string; period:{key:ExecutivePeriod;label:string;from:string;to:string};
  available:{onboarding:boolean;clients:boolean;whatsapp:boolean;email:boolean;support:boolean;operations:boolean;meetings:boolean;ca:boolean};

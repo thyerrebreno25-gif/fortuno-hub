@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Autocomplete, Badge, Button, Checkbox, Group, Loader, Modal, MultiSelect, Paper, Tabs, Select, SimpleGrid, Stack, TagsInput, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconPlus, IconRefresh } from "@tabler/icons-react";
+import { MeetingNotesPanel } from "./notes-panel";
 import { MeetingChecklist } from "./checklist";
 import { MeetingReportPanel } from "./report-panel";
 import {FathomSettings,FathomMeetingPanel} from "./fathom-panel";
@@ -20,14 +21,14 @@ export function MeetingsPage() {
   const [options, setOptions] = useState<MeetingOptions | null>(null), [meetings, setMeetings] = useState<Summary[]>([]), [meeting, setMeeting] = useState<Meeting | null>(null);
   const [canManage, setCanManage] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [scope, setScope] = useState("mine"), [period, setPeriod] = useState("upcoming"), [from, setFrom] = useState(""), [to, setTo] = useState("");
-  const listSequence = useRef(0);
+  const listSequence = useRef(0), detailSequence = useRef(0), selectedMeeting = useRef<string | null>(null);
   const [q, setQ] = useState(""), [query, setQuery] = useState(""), [page, setPage] = useState(0), [hasMore, setHasMore] = useState(false);
   const [modal, setModal] = useState(false), [editing, setEditing] = useState(false), [form, setForm] = useState(emptyForm);
   const [actionModal, setActionModal] = useState(false), [editingAction, setEditingAction] = useState<MeetingAction | null>(null);
   const [task, setTask] = useState(() => ({ title: "", description: "", responsibleId: "", dueAt: localDateInput(new Date(Date.now() + 86400000)) }));
   const [recurrence, setRecurrence] = useState<RecurrenceForm>({frequency:"NONE",weekdays:[1,2,3,4,5],until:""});
   const [creationKey, setCreationKey] = useState("");
-  const [note, setNote] = useState("");
+  const [notePending, setNotePending] = useState(false);
   const [trash,setTrash]=useState(false),[deleteOpen,setDeleteOpen]=useState(false);
   const report = (error: unknown) => notifications.show({ color: "red", title: "Central de reuniões", message: error instanceof Error ? error.message : "Falha ao concluir a ação." });
   const loadList = useCallback(async () => {
@@ -38,7 +39,10 @@ export function MeetingsPage() {
     if (sequence === listSequence.current) { setMeetings(result.meetings); setHasMore(result.hasMore); }
   }, [page, query, trash, scope, period, from, to]);
   const openMeeting = useCallback(async (id: string, deleted = false) => {
+    const sequence = ++detailSequence.current;
     const result = await meetingRequest<{ meeting: Meeting; canManage: boolean }>(`/api/meetings?id=${encodeURIComponent(id)}${deleted?"&deleted=1":""}`);
+    if (sequence !== detailSequence.current) return;
+    if (selectedMeeting.current !== id) {selectedMeeting.current = id; setNotePending(false);}
     setMeeting(result.meeting); setCanManage(result.canManage);
     window.history.replaceState(null, "", `/reunioes?meeting=${encodeURIComponent(id)}${deleted?"&deleted=1":""}`);
   }, []);
@@ -59,6 +63,13 @@ export function MeetingsPage() {
     const timer = setInterval(() => { if(document.visibilityState === "visible") void openMeeting(meeting.id).catch(() => {}); }, 10000);
     return () => clearInterval(timer);
   }, [meeting, openMeeting, options?.transcriptionConfigured, trash]);
+  useEffect(() => {
+    if (!meeting || trash || busy || modal || actionModal) return;
+    const refresh = () => {if (!document.hidden) void openMeeting(meeting.id).catch(() => {});};
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => {window.clearInterval(timer); window.removeEventListener("focus", refresh);};
+  }, [meeting, trash, busy, modal, actionModal, openMeeting]);
   async function run(action: () => Promise<void>) {
     setBusy(true);
     try { await action();window.dispatchEvent(new Event("fortuno:notifications-refresh"));window.dispatchEvent(new Event("fortuno:calendar-changed")); } catch (error) { report(error); }
@@ -109,9 +120,9 @@ export function MeetingsPage() {
           {!options.remindersConfigured && <Alert color="orange">O resumo diário por e-mail aguarda configuração do agendador. Os avisos de pendências já aparecem na agenda e nas notificações do Hub.</Alert>}
           <Text size="xs" c="dimmed">Os convites aparecem no Fortuno Hub{options.emailConfigured ? " e são enviados por e-mail." : ". O envio por e-mail aguarda configuração."} Entregas pendentes continuam sendo lembradas, mesmo depois de realizar a reunião.</Text>
         </Stack></Paper>
-        <MeetingReportPanel meeting={meeting} canManage={canManage} editable={editable} busy={busy} configured={options.transcriptionConfigured} pendingNote={Boolean(note.trim())} onChanged={async()=>{await openMeeting(meeting.id);await loadList();}}/>
+        <MeetingReportPanel meeting={meeting} canManage={canManage} editable={editable} busy={busy} configured={options.transcriptionConfigured} pendingNote={notePending} onChanged={async()=>{await openMeeting(meeting.id);await loadList();}}/>
         <MeetingChecklist meeting={meeting} userId={options.userId} canManage={canManage && !trash} editable={editable} busy={busy} onAdd={responsibleId => showTask(undefined, responsibleId)} onEdit={showTask} onToggle={(item, completed) => void run(async () => { await meetingRequest("/api/meetings/actions", jsonRequest("PATCH", { id: item.id, meetingId: meeting.id, revision: item.revision, completed })); await openMeeting(meeting.id); await loadList(); })} onDelete={item => { if (window.confirm("Excluir esta tarefa e cancelar o compromisso vinculado?")) void run(async () => { await meetingRequest("/api/meetings/actions", jsonRequest("DELETE", { id: item.id, meetingId: meeting.id, revision: item.revision })); await openMeeting(meeting.id); await loadList(); }); }} />
-        <Tabs defaultValue="notes"><Tabs.List><Tabs.Tab value="notes">Notas da equipe</Tabs.Tab><Tabs.Tab value="recordings">Gravações e transcrições</Tabs.Tab></Tabs.List><Tabs.Panel value="notes" pt="md"><Paper withBorder radius="lg" p="lg"><Stack><Title order={4}>Notas da equipe</Title>{meeting.contributions.map((item) => <div key={item.id}><Text size="xs" fw={700}>{item.author.name || item.author.email} · {formatMeetingDate(item.createdAt)}</Text><Text size="sm" className={styles.prose}>{item.body}</Text></div>)}{editable && <><Textarea label="Adicionar uma nota" value={note} maxLength={10000} autosize minRows={2} onChange={(event) => setNote(event.currentTarget.value)} /><Button size="xs" w="fit-content" disabled={busy || !note.trim()} onClick={() => void run(async () => { await meetingRequest("/api/meetings/notes", jsonRequest("POST", { meetingId: meeting.id, body: note })); setNote(""); await openMeeting(meeting.id); })}>Registrar nota</Button></>}</Stack></Paper>
+        <Tabs defaultValue="notes"><Tabs.List><Tabs.Tab value="notes">Notas da equipe</Tabs.Tab><Tabs.Tab value="recordings">Gravações e transcrições</Tabs.Tab></Tabs.List><Tabs.Panel value="notes" pt="md"><MeetingNotesPanel key={meeting.id} meeting={meeting} userId={options.userId} canManage={canManage} editable={editable} onDraftChange={setNotePending} onChanged={() => openMeeting(meeting.id)}/>
         </Tabs.Panel><Tabs.Panel value="recordings" pt="md">
         <FathomMeetingPanel meeting={meeting}/>{editable && <details><summary>Gravação manual / arquivos anteriores</summary><RecordingCapture key={meeting.id} meetingId={meeting.id} configured={options.recordingConfigured} onSaved={() => void openMeeting(meeting.id).catch(report)} /></details>}
         {!!meeting.recordings.length&&<Paper withBorder radius="lg" p="lg"><Stack><Title order={4}>Gravações anteriores / envio manual</Title><Text size="xs" c="dimmed">A transcrição pode conter erros. Revise o texto antes de usá-lo na ata. {options.transcriptionConfigured ? "" : "A transcrição automática aguarda configuração da API OpenAI."}</Text>{!meeting.recordings.length && <Text size="sm" c="dimmed">Nenhum áudio anexado a esta reunião.</Text>}{meeting.recordings.map((item) => <Stack key={item.id} gap="xs"><Group justify="space-between"><Text fw={700} size="sm">{item.name}</Text><Badge>{({ UPLOADING: "Envio pendente", READY: "Áudio salvo", TRANSCRIBING: "Transcrevendo", DONE: "Transcrita", FAILED: "Revisar transcrição" } as Record<string, string>)[item.status]}</Badge></Group>{!trash && item.status !== "UPLOADING" && <audio controls preload="none" src={`/api/meetings/recordings?id=${encodeURIComponent(item.id)}`} />}{item.error && <Alert color="orange">{item.error}</Alert>}{item.transcript && <Textarea label="Transcrição" value={item.transcript} readOnly autosize minRows={4} maxRows={14} />}{editable && options.transcriptionConfigured && ["READY", "FAILED", "TRANSCRIBING"].includes(item.status) && <Button size="xs" variant="light" w="fit-content" disabled={busy} onClick={() => void run(async () => { await meetingRequest("/api/meetings/recordings", jsonRequest("PATCH", { id: item.id, retry: true })); notifications.show({ message: "Solicitação de transcrição enviada. Áudios já em processamento não são duplicados." }); await openMeeting(meeting.id); })}>Tentar transcrição</Button>}</Stack>)}</Stack></Paper>}
@@ -124,7 +135,7 @@ export function MeetingsPage() {
       <SimpleGrid cols={{ base: 1, sm: 2 }}><TextInput type="datetime-local" label="Início · Brasília" required value={form.startsAt} onChange={(event) => setForm({ ...form, startsAt: event.currentTarget.value })} /><TextInput type="datetime-local" label="Término · Brasília" required value={form.endsAt} onChange={(event) => setForm({ ...form, endsAt: event.currentTarget.value })} /></SimpleGrid>
       {!editing && <MeetingRecurrenceFields value={recurrence} onChange={setRecurrence} startsAt={form.startsAt} endsAt={form.endsAt}/>}
       {editing && meeting?.recurrenceData && <Text size="xs" c="dimmed">Você está editando somente esta ocorrência. As demais datas permanecem como foram agendadas.</Text>}
-      <Select label="Responsável pela reunião" required searchable allowDeselect={false} disabled={!options?.canAssignResponsible} data={(options?.members || []).map(user=>({value:user.id,label:user.name || user.email}))} value={form.responsibleId} onChange={responsibleId=>{if(responsibleId)setForm({...form,responsibleId,participantIds:[...new Set([...form.participantIds,responsibleId])]});}}/>
+      <Select label="Responsável pela reunião" required searchable allowDeselect={false} disabled={!options?.canAssignResponsible && !(editing && canManage)} data={(options?.members || []).map(user=>({value:user.id,label:user.name || user.email}))} value={form.responsibleId} onChange={responsibleId=>{if(responsibleId)setForm({...form,responsibleId,participantIds:[...new Set([...form.participantIds,responsibleId])]});}}/>
       <MultiSelect label="Participantes" searchable required data={(options?.members || []).map((user) => ({ value: user.id, label: user.name || user.email }))} value={form.participantIds} onChange={(participantIds) => setForm({ ...form, participantIds: [...new Set([...participantIds, form.responsibleId].filter(Boolean))] })} />
       <TagsInput label="Convidados externos" description="Digite o e-mail e pressione Enter. Convites são enviados pelo Google Agenda do organizador." placeholder="nome@empresa.com" value={form.externalEmails} onChange={(externalEmails) => setForm({ ...form, externalEmails })} splitChars={[",", ";", " "]} maxTags={100} />
       <Checkbox label="Gerar link do Google Meet automaticamente" checked={form.generateMeet} onChange={(event) => setForm({ ...form, generateMeet: event.currentTarget.checked })} disabled={editing && Boolean(meeting?.meetLink)} />

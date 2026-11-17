@@ -176,6 +176,7 @@ const menuItems: MenuItem[] = [
   { label: "Painel gerencial", href: "/painel-gerencial", moduleCode: "MANAGEMENT", icon: icons.report, group: "Visão geral" },
   { label: "Gestão", href: "/gestao", moduleCode: "MANAGEMENT", icon: icons.dashboard, group: "Visão geral" },
   { label: "Gestão de tarefas", href: "/operacoes", moduleCode: "OPERATIONS", icon: icons.operations, group: "Operações" },
+  { label: "Atividades Daily", href: "/atividades-daily", moduleCode: "MEETINGS", icon: icons.operations, group: "Operações" },
   { label: "Notion", href: "/integracoes/notion", moduleCode: "NOTION", icon: icons.document, group: "Operações" },
   { label: "Central de Reuniões", href: "/reunioes", moduleCode: "MEETINGS", icon: icons.users, group: "Operações" },
   { label: "Agenda", href: "/agenda", moduleCode: "CALENDAR", icon: icons.operations, group: "Operações" },

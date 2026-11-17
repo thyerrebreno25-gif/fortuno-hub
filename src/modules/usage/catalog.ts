@@ -8,6 +8,7 @@ export const usagePages: Array<{ key: string; label: string; href: string; modul
   { key: "whatsapp", label: "WhatsApp", href: "/whatsapp", module: "WHATSAPP" },
   { key: "email", label: "Central de e-mails", href: "/atendimento", module: "SERVICE_CENTER" },
   { key: "meetings", label: "Reuniões", href: "/reunioes", module: "MEETINGS" },
+  { key: "daily", label: "Atividades Daily", href: "/atividades-daily", module: "MEETINGS" },
   { key: "calendar", label: "Agenda", href: "/agenda", module: "CALENDAR" },
   { key: "support", label: "Suporte", href: "/suporte", module: "SUPPORT" },
   { key: "notices", label: "Avisos", href: "/avisos", module: "NOTICES" },

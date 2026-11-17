@@ -1,10 +1,11 @@
+import {reportWordmark,reportIcon} from "./report-brand";
 import {readableMeetingReport,plainMeetingText} from "./meeting-text";
 import {jsPDF} from "jspdf";
 type Report={content:string;generatedAt:string|null;status:string;outdated?:boolean};
 const clean=(text:string)=>plainMeetingText(text).normalize("NFC").replace(/[\u2010-\u2015\u2212]/g,"-").replace(/[\u2018\u2019]/g,"'").replace(/[\u201c\u201d]/g,'"').replace(/\u2026/g,"...").replace(/[•●]/g,"-").replace(/\u00a0/g," ").replace(/\p{Extended_Pictographic}/gu,"").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,"");
 export function createMeetingReportPdf(report:Report){
- const doc=new jsPDF({unit:"mm",format:"a4"});const width=doc.internal.pageSize.getWidth(),height=doc.internal.pageSize.getHeight(),margin=17,available=width-2*margin;
- let y=30,assignmentOwner="";const header=()=>{doc.setFillColor(13,35,64);doc.rect(0,0,width,19,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text("Fortuno Hub | Relatório de reunião",margin,12);};
+ const doc=new jsPDF({unit:"mm",format:"a4"});doc.setProperties({title:"Relatório de reunião | Fortuno",author:"Fortuno",creator:"Fortuno Hub"});const width=doc.internal.pageSize.getWidth(),height=doc.internal.pageSize.getHeight(),margin=17,available=width-2*margin;
+ let y=30,assignmentOwner="";const header=()=>{doc.setFillColor(13,35,64);doc.rect(0,0,width,23,"F");doc.addImage(reportIcon,"PNG",margin,7,11,6.4,"fortuno-icon");doc.addImage(reportWordmark,"PNG",margin+16,7,45,8.8,"fortuno-wordmark");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setFontSize(11);doc.text("Relatório de reunião",width-margin,13.5,{align:"right"});};
  const next=()=>{doc.addPage();header();y=30;if(assignmentOwner){doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(45,70,95);const label=doc.splitTextToSize(clean(assignmentOwner)+" (continuação)",available) as string[];doc.text(label,margin,y);y+=label.length*4+5;}};
  const reserve=(space:number)=>{if(y+space>height-20)next();};
  function write(text:string,size:number,bold=false,space=2){

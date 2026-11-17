@@ -2,7 +2,8 @@ import { onboardingSummary } from "./onboarding";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { ExecutiveData, ExecutivePeriod } from "./types";
-import { executivePeriod } from "./model";
+import { volumeDistribution } from "./volume";
+import { executivePeriod, executiveActivityScope } from "./model";
 export type ExecutiveScope=ExecutiveData["available"] & {finance:boolean;purchase:boolean;investment:boolean;contract:boolean;calendar:boolean};
 type Row=Record<string,string|number|bigint|null>;
 const n=(value:unknown)=>Number(value||0);
@@ -10,8 +11,8 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
  const now=new Date(),period=executivePeriod(key,now),{start,end}=period;
  const today=executivePeriod("today",now),horizon=new Date(now.getTime()+7*86400000);
  const sources=[...(scope.whatsapp?["WHATSAPP_API"]:[]),...(scope.email?["GMAIL","MANUAL"]:[])];
- const org=organizationId;
- const [clients,tickets,health,people,activityGroups,overdueGroups,completedGroups,scheduled,running,operationDaily,support,meetings,meetingCounts,personal,personalGroups,meetingGroups,personalToday,ca,onboardings]=await Promise.all([
+ const org=organizationId, activityScope=executiveActivityScope(period.from,period.to);
+ const [clients,tickets,health,people,activityGroups,overdueGroups,completedGroups,scheduled,running,operationDaily,support,meetings,meetingCounts,personal,personalGroups,meetingGroups,personalToday,ca,onboardings,volumeRows]=await Promise.all([
   scope.clients?prisma.client.groupBy({by:["active"],where:{organizationId:org},_count:{_all:true}}):[],
   sources.length?prisma.$queryRaw<Row[]>(Prisma.sql`
    SELECT CASE WHEN "source"='WHATSAPP_API' THEN 'whatsapp' ELSE 'email' END AS channel,"assignedToId" AS person,
@@ -37,10 +38,10 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
     WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${whatsappRecipient} AND t."mergedIntoId" IS NULL AND NOT t."isSpam" AND t.status NOT IN ('SPAM','RESOLVED') AND (last_out.at IS NULL OR last_in.at>last_out.at) AND last_in.at<=${now}
    ) waiting_messages`):[],
   prisma.organizationMember.findMany({where:{organizationId:org,role:{not:"CLIENT"}},select:{user:{select:{id:true,name:true}}},orderBy:{createdAt:"asc"}}),
-  scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]}},_count:{_all:true}}):[],
+  scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...activityScope},_count:{_all:true}}):[],
   scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},dueAt:{lt:now}},_count:{_all:true}}):[],
   scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:"COMPLETED",completedAt:{gte:start,lt:end}},_count:{_all:true}}):[],
-  scope.operations?prisma.operationActivity.count({where:{organizationId:org,deletedAt:null,scheduledDate:{gte:new Date(period.from+"T00:00:00Z"),lt:new Date(period.to+"T23:59:59.999Z")}}}):0,
+  scope.operations?prisma.operationActivity.count({where:{organizationId:org,deletedAt:null,...activityScope}}):0,
   scope.operations?prisma.operationTimeEntry.count({where:{endedAt:null,activity:{organizationId:org,deletedAt:null}}}):0,
   scope.operations?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT to_char("completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS date,COUNT(*) AS count FROM "OperationActivity" WHERE "organizationId"=${org} AND "deletedAt" IS NULL AND status='COMPLETED' AND "completedAt">=${start} AND "completedAt"<${end} GROUP BY date`):[],
   scope.support?prisma.$queryRaw<Row[]>(Prisma.sql`SELECT COUNT(*) FILTER(WHERE status IN ('OPEN','IN_PROGRESS')) AS open,COUNT(*) FILTER(WHERE status='IN_PROGRESS') AS progress,COUNT(*) FILTER(WHERE status IN ('RESOLVED','CLOSED') AND "updatedAt">=${start} AND "updatedAt"<${end}) AS resolved,COUNT(*) FILTER(WHERE "createdAt">=${start} AND "createdAt"<${end}) AS received FROM "SupportTicket" WHERE "organizationId"=${org}`):[],
@@ -52,8 +53,17 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
   scope.calendar?prisma.teamCalendarEvent.count({where:{organizationId:org,status:"ACTIVE",meetingId:null,actionItemId:null,startsAt:{gte:today.start,lt:today.end}}}):0,
   scope.ca?caMetrics(org,start,end,scope):[],
   scope.onboarding?prisma.onboarding.findMany({where:{organizationId:org,status:{not:"CANCELLED"}},select:{id:true,status:true,risk:true,expectedEndDate:true,completedAt:true,companyName:true,responsibleName:true,client:{select:{name:true}},responsible:{select:{name:true}},projectData:true,tasks:{select:{status:true}}}}):[],
+  scope.whatsapp&&whatsappRecipient?prisma.$queryRaw<Array<{weekday:number;day:number;hour:number;count:bigint}>>(Prisma.sql`
+   WITH conversation_starts AS (
+     SELECT t."receivedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo' AS local_at
+     FROM "ServiceTicket" t LEFT JOIN "WhatsAppOperationStart" b ON b."organizationId"=t."organizationId" AND b."accountRecipient"=t."recipientEmail"
+     WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${whatsappRecipient} AND t."mergedIntoId" IS NULL AND NOT t."isSpam" AND t.status<>'SPAM'
+     AND t."receivedAt">=${start} AND t."receivedAt"<${end} AND (b."startedAt" IS NULL OR t."receivedAt">=b."startedAt")
+     AND EXISTS(SELECT 1 FROM "ServiceMessage" m WHERE m."ticketId"=t.id AND m.direction='INBOUND' AND m."providerMetadata"->>'historical'='false')
+   ) SELECT EXTRACT(DOW FROM local_at)::int AS weekday,EXTRACT(DAY FROM local_at)::int AS day,EXTRACT(HOUR FROM local_at)::int AS hour,COUNT(*) AS count FROM conversation_starts GROUP BY weekday,day,hour`):[],
  ]);
  const result:ExecutiveData={generatedAt:now.toISOString(),period:{key,label:period.label,from:period.from,to:period.to},available:{...scope,meetings:scope.meetings||scope.calendar},
+ volume:volumeDistribution(volumeRows),
  onboarding:onboardingSummary(onboardings,start,end,now),
  clients:{active:clients.filter(row=>row.active).reduce((s,r)=>s+r._count._all,0),total:clients.reduce((s,r)=>s+r._count._all,0)},
  whatsapp:{open:0,unassigned:0,inProgress:0,resolvedPeriod:0,receivedPeriod:0,averageResolutionMinutes:null,resolutionSample:0,health:{targetMinutes:15,waiting:n(health[0]?.waiting),onTime:n(health[0]?.ontime),delayed:n(health[0]?.delayed),critical:n(health[0]?.critical),oldestWaitingMinutes:health[0]?.oldest==null?null:n(health[0].oldest),averageFirstResponseMinutes:null,firstResponseSample:0}},
@@ -61,7 +71,7 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
  operations:{open:activityGroups.reduce((s,r)=>s+r._count._all,0),overdue:overdueGroups.reduce((s,r)=>s+r._count._all,0),completedPeriod:completedGroups.reduce((s,r)=>s+r._count._all,0),scheduledPeriod:scheduled,runningTimers:running},
  meetings:{today:n(meetingCounts[0]?.today)+personalToday,upcoming:n(meetingCounts[0]?.upcoming)+personalGroups.reduce((s,r)=>s+r._count._all,0),completedPeriod:n(meetingCounts[0]?.completed),agenda:[...meetings.map(m=>({id:m.id,title:m.title,startsAt:m.startsAt.toISOString(),endsAt:m.endsAt.toISOString(),status:m.status,participants:m.participants.map(p=>p.user.name||"Colaborador")})),...personal.map(m=>({id:"calendar:"+m.id,title:m.title,startsAt:m.startsAt.toISOString(),endsAt:m.endsAt.toISOString(),status:"AGENDA",participants:[m.user.name||"Colaborador"]}))].sort((a,b)=>a.startsAt.localeCompare(b.startsAt))},
  ca:{confirmedLines:0,failedLines:0,pendingLines:0,confirmedBatches:0,breakdown:[]},
- operators:people.map(p=>({id:p.user.id,name:p.user.name||"Colaborador",whatsappOpen:0,emailOpen:0,activitiesOpen:0,activitiesOverdue:0,completedPeriod:0,meetingsUpcoming:0})),daily:period.days.map(day=>({date:day.date,whatsappReceived:0,emailReceived:0,activitiesCompleted:0,caConfirmed:0})),notes:["Contatos do WhatsApp sem mensagens não são contados como atendimentos.","Fila e pendências mostram a situação atual; e-mails arquivados não entram na carteira em aberto. WhatsApp recebido conta conversas com mensagens operacionais no período; finalizações contam os encerramentos registrados, inclusive conversas reabertas.","Agendas incluem reuniões e compromissos registrados no Hub; não representam todos os eventos externos do Google.","Tempos do WhatsApp usam entradas operacionais identificadas, em tempo corrido. Histórico recuperado não entra no SLA. A espera começa na primeira mensagem ainda sem resposta após a última saída; mensagens adicionais não reiniciam o prazo.","Envios ao CA são registros confirmados, não chamadas da API. Criação e baixa do mesmo lançamento contam uma única vez."]};
+ operators:people.map(p=>({id:p.user.id,name:p.user.name||"Colaborador",whatsappOpen:0,emailOpen:0,activitiesOpen:0,activitiesOverdue:0,completedPeriod:0,meetingsUpcoming:0})),daily:period.days.map(day=>({date:day.date,whatsappReceived:0,emailReceived:0,activitiesCompleted:0,caConfirmed:0})),notes:["Atividades em aberto incluem apenas as programadas no período selecionado (ou sem programação com vencimento no período). Atrasadas incluem todo o passivo pendente, inclusive de períodos anteriores. Rotinas futuras ficam fora da contagem em aberto.","Volume por dia/horário conta cada conversa uma vez, pela data de entrada registrada no atendimento atual, em horário de Brasília; histórico importado não entra.","Contatos do WhatsApp sem mensagens não são contados como atendimentos.","Fila e pendências mostram a situação atual; e-mails arquivados não entram na carteira em aberto. WhatsApp recebido conta conversas com mensagens operacionais no período; finalizações contam os encerramentos registrados, inclusive conversas reabertas.","Agendas incluem reuniões e compromissos registrados no Hub; não representam todos os eventos externos do Google.","Tempos do WhatsApp usam entradas operacionais identificadas, em tempo corrido. Histórico recuperado não entra no SLA. A espera começa na primeira mensagem ainda sem resposta após a última saída; mensagens adicionais não reiniciam o prazo.","Envios ao CA são registros confirmados, não chamadas da API. Criação e baixa do mesmo lançamento contam uma única vez."]};
  if(scope.onboarding)result.notes.push("Onboarding: pendências e riscos são das implantações abertas; conclusões usam completedAt no período. Atraso: entrega anterior ao dia atual. Atenção: bloqueio, espera pelo cliente, risco registrado ou entrega em até 3 dias. Progresso usa os pesos das etapas atuais; tarefas do formato anterior são contadas apenas sem etapas no projeto.");
  const operators=new Map(result.operators.map(row=>[row.id,row]));let duration=0,response=0;
  for(const row of tickets){if(row.channel==="whatsapp"){const w=result.whatsapp;w.open+=n(row.open);w.inProgress+=n(row.progress);w.resolvedPeriod+=n(row.resolved);w.receivedPeriod+=n(row.received);w.resolutionSample+=n(row.sample);w.health.firstResponseSample+=n(row.response_sample);duration+=n(row.duration);response+=n(row.response);if(!row.person)w.unassigned+=n(row.open);if(row.person&&operators.has(String(row.person)))operators.get(String(row.person))!.whatsappOpen+=n(row.open);}else{const e=result.email;e.open+=n(row.open);e.resolvedPeriod+=n(row.resolved);e.receivedPeriod+=n(row.received);e.spamPeriod+=n(row.spam);if(!row.person)e.unassigned+=n(row.open);if(row.person&&operators.has(String(row.person)))operators.get(String(row.person))!.emailOpen+=n(row.open);}}
@@ -84,7 +94,7 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
    SELECT id,'email',"receivedAt" FROM "ServiceTicket" WHERE "organizationId"=${org} AND "mergedIntoId" IS NULL AND NOT "isSpam" AND status<>'SPAM' AND source IN ('GMAIL','MANUAL') AND source IN (${Prisma.join(sources)}) AND "receivedAt">=${start} AND "receivedAt"<${end}
   ) SELECT to_char(at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS date,channel,COUNT(DISTINCT id) AS count FROM received GROUP BY date,channel`):[];
  for(const row of serviceDaily){const day=days.get(String(row.date));if(day){if(row.channel==="whatsapp")day.whatsappReceived+=n(row.count);else day.emailReceived+=n(row.count);}}
- for(const row of ca){if(row.date){const day=days.get(String(row.date));if(day)day.caConfirmed+=n(row.confirmed);continue;}result.ca.confirmedLines+=n(row.confirmed);result.ca.failedLines+=n(row.failed);result.ca.pendingLines+=n(row.pending);result.ca.confirmedBatches+=n(row.batches);result.ca.breakdown!.push({label:({CREDIT_CARD_INVOICE:"Faturas",ACQUIRER:"Adquirentes",INVESTMENT:"Rendimentos",CONTRACT:"Contratos",PURCHASE:"Notas de compra"} as Record<string,string>)[String(row.label)]||String(row.label),confirmed:n(row.confirmed)});}
+ for(const row of ca){if(row.date){const day=days.get(String(row.date));if(day)day.caConfirmed+=n(row.confirmed);continue;}result.ca.confirmedLines+=n(row.confirmed);result.ca.failedLines+=n(row.failed);result.ca.pendingLines+=n(row.pending);result.ca.confirmedBatches+=n(row.batches);result.ca.breakdown!.push({label:({CREDIT_CARD_INVOICE:"Faturas",ACQUIRER:"Adquirentes",INVESTMENT:"Rendimentos",CONTRACT:"Contratos",PURCHASE:"Notas de compra",WHATSAPP:"Lançamentos do WhatsApp"} as Record<string,string>)[String(row.label)]||String(row.label),confirmed:n(row.confirmed)});}
  return result;
 }
 async function caMetrics(org:string,start:Date,end:Date,scope:ExecutiveScope){

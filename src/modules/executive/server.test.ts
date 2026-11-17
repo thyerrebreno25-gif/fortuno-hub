@@ -16,3 +16,18 @@ it("excludes history from SLA and preserves the first unanswered message",async(
 it("reads onboarding only in its organization with minimal relational task fields",async()=>{await executiveSnapshot("org","today",all);expect(m.onboarding).toHaveBeenCalledWith(expect.objectContaining({where:{organizationId:"org",status:{not:"CANCELLED"}}}));expect(m.onboarding.mock.calls[0][0].select.tasks).toEqual({select:{status:true}});});
 
 it("counts reopened conversation completions from events, excludes archived mail from open workload, and scopes daily inbound volume to the active account",async()=>{await executiveSnapshot("org","today",all,"wa-account:active");const q=m.raw.mock.calls.find(([sql])=>sql.sql.includes('AS channel,"assignedToId"'))![0];expect(q.sql).toContain("h.type='WHATSAPP_RESOLVED'");expect(q.sql).toContain("archived.type='MAILBOX_ARCHIVED'");expect(q.sql).toContain("incoming.direction='INBOUND'");const daily=m.raw.mock.calls.find(([sql])=>sql.sql.includes("WITH received AS"))![0];expect(daily.values).toContain("wa-account:active");expect(daily.sql).toContain("COUNT(DISTINCT id)");expect(daily.sql).toContain(`m."providerMetadata"->>'historical'='false'`);});
+
+it("counts only scheduled work in the selected period, preserving the independent overdue backlog",async()=>{
+ await executiveSnapshot("org","today",all);
+ const active=m.activities.mock.calls[0][0].where;
+ expect(active.OR).toEqual(expect.arrayContaining([{scheduledDate:{gte:new Date("2026-11-05T00:00:00Z"),lt:new Date("2026-11-06T00:00:00Z")}}, {scheduledDate:null,dueAt:{gte:new Date("2026-11-05T03:00:00Z"),lt:new Date("2026-11-06T03:00:00Z")}}]));
+ expect(m.activities.mock.calls[1][0].where).toMatchObject({dueAt:{lt:new Date("2026-11-05T12:00:00Z")}});
+ expect(m.activities.mock.calls[1][0].where).not.toHaveProperty("OR");
+});
+it("scopes volume distributions to the physical WhatsApp account, operational messages and the operation baseline",async()=>{
+ m.raw.mockImplementation((sql:{sql:string})=>sql.sql.includes("WITH conversation_starts")?[{weekday:1,day:2,hour:9,count:4n}]:[]);
+ const data=await executiveSnapshot("org","month",all,"wa-account:active");
+ const q=m.raw.mock.calls.find(([sql])=>sql.sql.includes("WITH conversation_starts"))![0];
+ expect(q.values).toContain("wa-account:active");expect(q.values).toContain("org");expect(q.sql).toContain('"WhatsAppOperationStart"');expect(q.sql).toContain("'historical'='false'");expect(q.sql).toContain("America/Sao_Paulo");
+ expect(data.volume?.hours[9].value).toBe(4);expect(data.volume?.weekdays[1].value).toBe(4);
+});

@@ -5,13 +5,14 @@ import { prisma } from "@/lib/prisma";
 import { actionEvent, actionInput, editableMeeting, meetingInput } from "./model";
 import { meetingOccurrences } from "./recurrence";
 import { findMeeting, MeetingError, type MeetingMember } from "./auth";
+import { dailyDeadlineEditAllowed } from "./daily-model";
 
 export async function saveMeeting(member: MeetingMember, body: unknown, id?: string) {
   const input = meetingInput.parse(body);
   const current = id ? await findMeeting(member, id) : null;
   const responsibleId = input.responsibleId || current?.responsibleId || current?.createdById || member.userId;
   const manager = ["MASTER", "ADMIN", "MANAGER"].includes(member.role);
-  if (responsibleId !== (current?.responsibleId || current?.createdById || member.userId) && !manager) throw new MeetingError("Somente gestores podem definir outro responsável pela reunião.", 403);
+  if (responsibleId !== (current?.responsibleId || current?.createdById || member.userId) && !manager && (!current || !editableMeeting(member, current))) throw new MeetingError("Somente o organizador, responsável ou gestor pode definir outro responsável pela reunião.", 403);
   if (id && input.recurrence) throw new MeetingError("Edite cada ocorrência individualmente. Para gerar novas datas, use Criar reunião.");
   const participantIds = [...new Set([...input.participantIds, responsibleId])];
   const members = await prisma.organizationMember.count({ where: { organizationId: member.organizationId, userId: { in: participantIds }, role: { not: "CLIENT" } } });
@@ -75,12 +76,12 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
 export async function saveAction(member: MeetingMember, meetingId: string, body: unknown, id?: string) {
   const meeting = await findMeeting(member, meetingId);
   if (meeting.status === "CANCELLED") throw new MeetingError("Esta reunião foi cancelada.");
-  const manager = editableMeeting(member, meeting);
   const completion = z.object({ completed: z.boolean(), revision: z.number().int().positive() }).safeParse(body);
   return prisma.$transaction(async (tx) => {
     // Serialize changes to participants/cancellation with checklist edits.
     await tx.$queryRaw`SELECT "id" FROM "TeamMeeting" WHERE "id" = ${meetingId} FOR UPDATE`;
     const latest = await tx.teamMeeting.findUniqueOrThrow({ where: { id: meetingId }, include: { participants: { select: { userId: true } } } });
+    const manager = editableMeeting(member, latest);
     if (latest.deletedAt || latest.status === "CANCELLED") throw new MeetingError("Esta reunião foi cancelada.");
     if (!manager && !latest.participants.some((item) => item.userId === member.userId)) throw new MeetingError("Você não participa mais desta reunião.", 403);
     const previous = id ? await tx.meetingActionItem.findFirst({ where: { id, meetingId } }) : null;
@@ -89,8 +90,10 @@ export async function saveAction(member: MeetingMember, meetingId: string, body:
       if (!manager && previous.responsibleId !== member.userId) throw new MeetingError("Somente o responsável ou organizador pode concluir esta entrega.", 403);
       const changed = await tx.meetingActionItem.updateMany({ where: { id, meetingId, revision: completion.data.revision }, data: { completedAt: completion.data.completed ? new Date() : null, revision: { increment: 1 } } });
       if (!changed.count) throw new MeetingError("A entrega foi alterada. Atualize a reunião.", 409);
+      if (previous.overdueNoticeId) await tx.notice.updateMany({where: {id: previous.overdueNoticeId, organizationId: member.organizationId}, data: {closedAt: completion.data.completed ? new Date() : null}});
     } else {
       const input = actionInput.parse(body);
+      if (previous && !dailyDeadlineEditAllowed(latest.type, previous, input.dueAt)) throw new MeetingError("Atividades de Daily têm uma única prorrogação automática para o próximo dia útil. O prazo não pode ser estendido novamente.");
       if (!manager && (!meeting.participants.some((item) => item.userId === member.userId) || input.responsibleId !== member.userId || (previous && previous.responsibleId !== member.userId))) throw new MeetingError("Você só pode definir suas próprias entregas.", 403);
       if (!latest.participants.some((item) => item.userId === input.responsibleId)) throw new MeetingError("O responsável deve participar da reunião.");
       if (id) {

@@ -1,3 +1,12 @@
 import {expect,it} from "vitest";
 import {createMeetingReportPdf} from "./report-pdf";
 it("exports a paginated PDF retaining accented names, tasks and the end of a long report",async()=>{const content="# Relatório da reunião\nReunião de validação\n## Atividades distribuídas\n"+Array.from({length:180},(_,index)=>"Tarefa "+index+" — Responsável: João Gonçalves. Prazo: 05/11/2026. Situação: Pendente. "+"Descrição detalhada. ".repeat(6)).join("\n")+"\n## Encerramento\nÚLTIMO REGISTRO PRESERVADO";const doc=createMeetingReportPdf({content,generatedAt:"2026-11-04T12:00:00Z",status:"READY"});expect(doc.getNumberOfPages()).toBeGreaterThan(3);const pdfjs=await import("pdfjs-dist/legacy/build/pdf.mjs");const task=pdfjs.getDocument({data:new Uint8Array(doc.output("arraybuffer")),useSystemFonts:true});const pdf=await task.promise;let text="";for(let page=1;page<=pdf.numPages;page++){const data=await (await pdf.getPage(page)).getTextContent();text+=data.items.filter(item=>"str" in item).map(item=>"str" in item?item.str:"").join(" ");}expect(text).toContain("João Gonçalves");expect(text).toContain("Tarefa 179");expect(text).toContain("ÚLTIMO REGISTRO PRESERVADO");expect(text).toContain("Página 1 de "+pdf.numPages);await task.destroy();});
+
+it("embeds the official icon and Fortuno wordmark on every page",async()=>{
+ const doc=createMeetingReportPdf({content:"# Reunião de alinhamento\nFortuno - Gestão Financeira\n## Atividades distribuídas\n### Equipe de validação\n"+Array.from({length:28},(_,i)=>"#### "+(i+1)+". Conferir entrega\nResponsável: Equipe de validação\nPrazo: 18/11/2026 às 17h\nSituação: Pendente\n").join("\n"),generatedAt:"2026-11-17T12:00:00Z",status:"READY"});
+ const pdfjs=await import("pdfjs-dist/legacy/build/pdf.mjs");const task=pdfjs.getDocument({data:new Uint8Array(doc.output("arraybuffer")),useSystemFonts:true});const pdf=await task.promise;
+ expect(pdf.numPages).toBeGreaterThan(1);
+ for(let index=1;index<=pdf.numPages;index++){const page=await pdf.getPage(index);const operators=await page.getOperatorList();expect(operators.fnArray.filter(fn=>fn===pdfjs.OPS.paintImageXObject||fn===pdfjs.OPS.paintInlineImageXObject).length).toBeGreaterThanOrEqual(2);}
+ if(process.env.FORTUNO_PDF_QA_DIR){const fs=await import("node:fs/promises");await fs.mkdir(process.env.FORTUNO_PDF_QA_DIR,{recursive:true});await fs.writeFile(process.env.FORTUNO_PDF_QA_DIR+"/relatorio-reuniao-fortuno.pdf",Buffer.from(doc.output("arraybuffer")));}
+ await task.destroy();
+});

@@ -25,8 +25,12 @@ export async function DELETE(request: Request) {
     const meeting = await findMeeting(member, meetingId);
     if (!editableMeeting(member, meeting)) throw new MeetingError("Somente o organizador ou gestor pode excluir entregas.", 403);
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "TeamMeeting" WHERE "id" = ${meetingId} FOR UPDATE`;
+      const latest = await tx.teamMeeting.findUniqueOrThrow({where: {id: meetingId}});
+      if (!editableMeeting(member, latest) || latest.organizationId !== member.organizationId) throw new MeetingError("Você não pode excluir esta entrega.", 403);
       const action = await tx.meetingActionItem.findFirst({ where: { id, meetingId, revision } });
       if (!action) throw new MeetingError("A entrega foi alterada. Atualize a reunião.", 409);
+      if (action.overdueNoticeId) await tx.notice.updateMany({where: {id: action.overdueNoticeId, organizationId: member.organizationId}, data: {closedAt: new Date()}});
       await tx.teamCalendarEvent.updateMany({ where: { actionItemId: id }, data: { status: "CANCELLED", googleSyncStatus: "PENDING", revision: { increment: 1 } } });
       const result = await tx.meetingActionItem.deleteMany({ where: { id, meetingId, revision } });
       if (!result.count) throw new MeetingError("A entrega foi alterada. Atualize a reunião.", 409);

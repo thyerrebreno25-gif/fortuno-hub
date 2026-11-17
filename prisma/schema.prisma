@@ -2037,6 +2037,9 @@ model MeetingActionItem {
   title String
   description String @default("")
   dueAt DateTime
+  originalDueAt DateTime?
+  autoExtendedAt DateTime?
+  overdueNoticeId String?
   completedAt DateTime?
   revision Int @default(1)
   createdAt DateTime @default(now())
@@ -2046,12 +2049,16 @@ model MeetingActionItem {
   events TeamCalendarEvent[]
   deliveries MeetingDelivery[]
   @@index([responsibleId,completedAt,dueAt])
+  @@index([completedAt,dueAt])
 }
 model MeetingNote {
   id String @id @default(cuid())
   meetingId String
   authorId String
   body String
+  revision Int @default(1)
+  editedAt DateTime?
+  reactions Json @default("{}")
   createdAt DateTime @default(now())
   meeting TeamMeeting @relation(fields:[meetingId],references:[id],onDelete:Cascade)
   author User @relation(fields:[authorId],references:[id],onDelete:Restrict)

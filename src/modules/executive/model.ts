@@ -35,3 +35,8 @@ export function executivePeriod(requested: string | null | undefined, now = new 
 export function managementRole(role: string): boolean {
   return role === "MASTER" || role === "ADMIN" || role === "MANAGER";
 }
+
+/** Scheduled days are date-only (UTC midnight); undated ad-hoc work uses its due instant. */
+export function executiveActivityScope(from: string, to: string) {
+  return {OR: [{scheduledDate: {gte: new Date(from + "T00:00:00Z"), lt: new Date(shiftDay(to, 1) + "T00:00:00Z")}}, {scheduledDate: null, dueAt: {gte: new Date(from + "T00:00:00-03:00"), lt: new Date(shiftDay(to, 1) + "T00:00:00-03:00")}}]};
+}

@@ -24,3 +24,5 @@
 .event[data-external="true"] { border-color: var(--mantine-color-green-6); background: var(--mantine-color-green-light); }
 .event[data-completed="true"] { opacity: .65; }
 @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .list { max-height: 340px; } }
+
+.note{padding:15px 0;border-bottom:1px solid var(--fortuno-line,#dce5ef)}.note:last-child{border-bottom:0}

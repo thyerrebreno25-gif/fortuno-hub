@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   find: vi.fn(),
-  tx: { $executeRaw: vi.fn(), $queryRaw: vi.fn(), teamMeeting: { findUniqueOrThrow: vi.fn(), findMany: vi.fn(), createManyAndReturn: vi.fn(), create: vi.fn(), updateMany: vi.fn() }, meetingActionItem: { count: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn() }, meetingParticipant: { deleteMany: vi.fn(), createMany: vi.fn() }, teamCalendarEvent: { createMany: vi.fn(), updateMany: vi.fn(), upsert: vi.fn() }, meetingDelivery: { updateMany: vi.fn(), createMany: vi.fn(), create: vi.fn() } }, members: vi.fn(),
+  tx: { notice: {updateMany: vi.fn()}, $executeRaw: vi.fn(), $queryRaw: vi.fn(), teamMeeting: { findUniqueOrThrow: vi.fn(), findMany: vi.fn(), createManyAndReturn: vi.fn(), create: vi.fn(), updateMany: vi.fn() }, meetingActionItem: { count: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn() }, meetingParticipant: { deleteMany: vi.fn(), createMany: vi.fn() }, teamCalendarEvent: { createMany: vi.fn(), updateMany: vi.fn(), upsert: vi.fn() }, meetingDelivery: { updateMany: vi.fn(), createMany: vi.fn(), create: vi.fn() } }, members: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: { organizationMember: { count: mocks.members }, $transaction: (callback: (tx: typeof mocks.tx) => unknown) => callback(mocks.tx) } }));
 vi.mock("./auth", () => ({ findMeeting: mocks.find, MeetingError: class extends Error { constructor(message: string, public status = 400) { super(message); } } }));
@@ -103,4 +103,22 @@ it("creates all 79 meetings and 395 participant commitments without decoding the
   expect(mocks.tx.teamMeeting.createManyAndReturn.mock.calls[0][0].data).toHaveLength(79);
   expect(mocks.tx.teamCalendarEvent.createMany.mock.calls[0][0].data).toHaveLength(395);
   expect(mocks.tx.meetingDelivery.createMany.mock.calls[0][0].data).toHaveLength(395);
+});
+
+it("lets the designated meeting responsible assign an action to any participant",async()=>{
+ const responsibleMeeting={...meeting,createdById:"else",responsibleId:"a"};mocks.find.mockResolvedValue(responsibleMeeting);mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(responsibleMeeting);
+ await saveAction(member,"m",{title:"Atividade atribuída",responsibleId:"b",dueAt:"2026-12-01T18:00:00Z"});
+ expect(mocks.tx.meetingActionItem.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({responsibleId:"b"})}));
+});
+it("closes the real overdue Aviso when the action is completed from either screen",async()=>{
+ mocks.tx.meetingActionItem.findFirst.mockResolvedValue({...action,overdueNoticeId:"notice"});
+ mocks.tx.meetingActionItem.findUniqueOrThrow.mockResolvedValue({...action,completedAt:new Date()});
+ await saveAction(member,"m",{completed:true,revision:1},"task");
+ expect(mocks.tx.notice.updateMany).toHaveBeenCalledWith({where:{id:"notice",organizationId:"org"},data:{closedAt:expect.any(Date)}});
+});
+it("denies a fresh manual Daily postponement after the automatic extension",async()=>{
+ mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue({...meeting,type:"Daily"});
+ mocks.tx.meetingActionItem.findFirst.mockResolvedValue({...action,autoExtendedAt:new Date()});
+ await expect(saveAction(member,"m",{title:action.title,responsibleId:"b",dueAt:"2026-12-01T18:00:00Z",revision:1},"task")).rejects.toThrow("única prorrogação");
+ expect(mocks.tx.meetingActionItem.updateMany).not.toHaveBeenCalled();
 });

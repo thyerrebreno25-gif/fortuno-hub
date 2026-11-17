@@ -28,7 +28,6 @@ import {
   IconAlertTriangle,
   IconArrowRight,
   IconCheck,
-  IconClipboardCheck,
   IconFileAnalytics,
   IconRefresh,
   IconSend,
@@ -36,6 +35,7 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 
+import {AuditReviewSummary,AuditChecklistPanel} from "@/modules/audit/review-panels";
 import {FilterPanel} from "@/components/filter-panel";
 import type {AuditCompletionReport} from "@/modules/audit/completion";
 import { analyzeContaAzulDre } from "@/modules/audit/dre-engine";
@@ -234,13 +234,6 @@ function checklistStatusLabel(value: string) {
   };
 
   return labels[value] || value;
-}
-
-function checklistStatusColor(value: string) {
-  if (value === "COMPLIANT") return "green";
-  if (value === "NON_COMPLIANT") return "red";
-  if (value === "NOT_APPLICABLE") return "gray";
-  return "yellow";
 }
 
 function formatDate(value?: string | null) {
@@ -1189,106 +1182,17 @@ export default function AuditoriaPage() {
         </>
       )}
 
-      {currentAudit && <Paper withBorder radius="lg" p="md"><Group justify="space-between"><div><Text fw={800}>{currentAudit.client.name}</Text><Text size="xs" c="dimmed">Período analisado: {currentAudit.periodStart?.slice(0,10)||"—"} a {currentAudit.periodEnd?.slice(0,10)||"—"}</Text><Text fw={700}>{currentAudit.status==="COMPLETED"?"Auditoria finalizada":"Encerramento da auditoria"}</Text><Text size="sm" c="dimmed">Finalize após revisar o checklist e validar ou descartar, com justificativa, todos os apontamentos.</Text></div><Button loading={reportBusy} onClick={()=>{if(currentAudit.status==="COMPLETED")void loadCompletionReport();else{setFinalNote("");setFinalizeOpened(true);}}}>{currentAudit.status==="COMPLETED"?"Ver relatório / PDF":"Finalizar auditoria"}</Button></Group></Paper>}
+      {currentAudit && <AuditReviewSummary client={currentAudit.client.name} from={currentAudit.periodStart} to={currentAudit.periodEnd} status={currentAudit.status} checklist={currentAudit.checklist||[]} findings={currentAudit.findings} busy={reportBusy} onFinish={()=>{if(currentAudit.status==="COMPLETED")void loadCompletionReport();else{setFinalNote("");setFinalizeOpened(true);}}}/>}
       <Modal opened={finalizeOpened} onClose={()=>setFinalizeOpened(false)} title="Finalizar auditoria" centered><Stack><Text size="sm">O relatório registrará as correções, validações, justificativas e o checklist. Após finalizar, esses registros ficam fechados para edição.</Text><Textarea label="Observações finais do gestor" value={finalNote} onChange={event=>setFinalNote(event.currentTarget.value)} autosize minRows={3} maxLength={10000}/><Button loading={reportBusy} onClick={()=>void finishAudit()}>Finalizar e gerar relatório</Button></Stack></Modal>
       <Modal opened={!!completionReport} onClose={()=>setCompletionReport(null)} title="Relatório final da auditoria" size="xl"><Stack>{completionReport&&<><Group justify="space-between"><div><Text fw={700}>{completionReport.client}</Text><Text size="sm">{completionReport.periodStart} a {completionReport.periodEnd}</Text></div><Button onClick={()=>void downloadReport()}>Baixar PDF</Button></Group><Text size="sm">Finalizado por {completionReport.completedBy} · {new Date(completionReport.completedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</Text><Text style={{whiteSpace:"pre-wrap"}}>{completionReport.note||"Sem observações finais."}</Text><Text size="sm" c="dimmed">{completionReport.criteria}</Text>{completionReport.limitations.map((line,index)=><Text key={index} size="xs" c="dimmed">{line}</Text>)}{["VALIDATED","DISMISSED"].map(status=><Stack key={status} gap="xs"><Title order={4}>{status==="VALIDATED"?"Ajustes validados":"Pontos descartados / justificados"}</Title>{completionReport.findings.filter(finding=>finding.status===status).map((finding,index)=><Paper key={index} withBorder p="sm"><Text fw={700}>{finding.title}</Text><Text size="sm">Responsável: {finding.operator}</Text><Text size="sm">{finding.description}</Text>{finding.history.filter(item=>item.note).map((item,i)=><Text key={i} size="sm" style={{whiteSpace:"pre-wrap"}}>{item.actor}: {item.note}</Text>)}</Paper>)}</Stack>)}<Title order={4}>Checklist revisado</Title>{completionReport.checklist.map((item,index)=><Text key={index} size="sm">{item.title} · {checklistStatusLabel(item.status)} · {item.reviewedBy}{item.note?` — ${item.note}`:""}</Text>)}</>}</Stack></Modal>
       {currentAudit && (
         <SimpleGrid cols={{ base: 1, xl: 2 }}>
-          <Paper withBorder radius="lg" p="lg">
-            <Group mb="md">
-              <ThemeIcon variant="light" color="blue">
-                <IconClipboardCheck size={18} />
-              </ThemeIcon>
-
-              <div>
-                <Text fw={700}>Relatórios e checklist</Text>
-                <Text size="xs" c="dimmed">
-                  Base analisada e validações manuais do líder
-                </Text>
-              </div>
-            </Group>
-
-            <Stack gap="sm">
-              <Alert color="green" icon={<IconCheck size={16} />}>
-                {currentAudit.summary?.source==="CONTA_AZUL_API"?"Lançamentos consultados no Conta Azul":"Extrato de Movimentações analisado"}
-              </Alert>
-
-              {currentAudit.summary?.source==="CONTA_AZUL_API" ? <Text size="sm" c="dimmed">Consultas da API e histórico registrados nesta auditoria. Confira as evidências e limitações de cada apontamento.</Text> : currentAudit.files?.some((file) => file.type === "DRE") ? (
-                <Alert color="green" icon={<IconCheck size={16} />}>
-                  DRE Gerencial analisada e comparada por competência
-                </Alert>
-              ) : (
-                <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
-                  DRE não enviada: recorrências devem ser confirmadas no checklist do líder
-                </Alert>
-              )}
-
-              {(currentAudit.checklist ?? []).map((item) => {
-                const relatedFinding = currentAudit.findings.find(
-                  (finding) => finding.ruleCode === `CHECKLIST:${item.id}`,
-                );
-
-                return (
-                  <Card key={item.id} withBorder radius="md" p="md">
-                    <Group justify="space-between" align="flex-start" gap="sm">
-                      <div style={{ flex: 1 }}>
-                        <Text size="xs" c="dimmed">
-                          {item.category}
-                        </Text>
-
-                        <Text size="sm" fw={700} mt={2}>
-                          {item.title}
-                        </Text>
-
-                        {item.description && (
-                          <Text size="xs" c="dimmed" mt={4}>
-                            {item.description}
-                          </Text>
-                        )}
-
-                        {item.note && (
-                          <Text size="xs" c="dimmed" mt="xs">
-                            <b>Observação:</b> {item.note}
-                          </Text>
-                        )}
-
-                        <Group gap="xs" mt="sm">
-                          <Badge
-                            variant="light"
-                            color={checklistStatusColor(item.status)}
-                          >
-                            {checklistStatusLabel(item.status)}
-                          </Badge>
-
-                          {relatedFinding && (
-                            <Badge variant="outline" color="blue">
-                              Correção: {statusLabel(relatedFinding.status)}
-                            </Badge>
-                          )}
-                        </Group>
-                      </div>
-
-                      <Button
-                        size="xs"
-                        disabled={currentAudit.status==="COMPLETED"}
-                        variant={item.status === "PENDING" ? "filled" : "light"}
-                        onClick={() =>
-                          openChecklistReview(item, currentAudit)
-                        }
-                      >
-                        {item.status === "PENDING" ? "Revisar" : "Editar"}
-                      </Button>
-                    </Group>
-                  </Card>
-                );
-              })}
-            </Stack>
-          </Paper>
+          <AuditChecklistPanel key={currentAudit.id} items={currentAudit.checklist||[]} findings={currentAudit.findings} completed={currentAudit.status==="COMPLETED"} source={currentAudit.summary?.source} hasDre={Boolean(currentAudit.files?.some(file=>file.type==="DRE"))} onReview={item=>openChecklistReview(item,currentAudit)}/>
 
           <Paper withBorder radius="lg" p="lg">
             <Group justify="space-between" align="flex-end" mb="md">
               <div>
-                <Text fw={700}>Reports identificados</Text>
+                <Text fw={800}>Apontamentos para revisão</Text>
                 <Text size="xs" c="dimmed">
                   Revise os achados antes de enviar para correção.
                 </Text>
