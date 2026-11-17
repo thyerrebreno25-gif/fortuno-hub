@@ -1,3 +1,4 @@
+import {activityOverdue} from "@/modules/operations/activity-deadline";
 import { operationalOverview } from "@/modules/dashboard/operational-overview";
 import { getRolePermissions } from "@/modules/permissions/permissions";
 import { NextResponse } from "next/server";
@@ -180,7 +181,7 @@ export async function GET(request: Request) {
     const operationOverdue = operations.filter(
       (item) =>
         !["COMPLETED", "DISREGARDED"].includes(item.status) &&
-        Boolean(item.dueAt && item.dueAt < now),
+        activityOverdue(item, now),
     ).length;
 
     const resolvedService = serviceTickets.filter(

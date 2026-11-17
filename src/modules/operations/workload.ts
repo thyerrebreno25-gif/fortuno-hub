@@ -1,3 +1,4 @@
+import {activityDueDay,activityOverdue,activityCompletedLate} from "./activity-deadline";
 import {scheduledDay,type AnalyticsActivity,type AnalyticsPeriod,type AnalyticsPerson} from "./analytics";
 export type OperatorWorkload={id:string;name:string;total:number;open:number;onTime:number;overdue:number;fineRisk:number;undated:number;blocked:number;completed:number;completedOnTime:number;completedLate:number;completedUndated:number;disregarded:number;completion:number};
 export function buildOperatorWorkload(activities:Array<AnalyticsActivity&{subjectToFine?:boolean}>,members:AnalyticsPerson[],period:AnalyticsPeriod,now:Date){
@@ -5,8 +6,8 @@ export function buildOperatorWorkload(activities:Array<AnalyticsActivity&{subjec
  const rows=new Map(members.map(m=>[m.id,create(m.id,m.name||m.email)]));
  for(const a of activities){const day=scheduledDay(a);if(day<period.from||day>period.to)continue;const id=a.responsibleId||"UNASSIGNED",r=rows.get(id)||create(id,a.responsible?.name||a.responsible?.email||"Sem responsável");r.total++;
   if(a.status==="DISREGARDED")r.disregarded++;
-  else if(a.status==="COMPLETED"){r.completed++;if(!a.dueAt||!a.completedAt)r.completedUndated++;else if(+new Date(a.completedAt)>+new Date(a.dueAt))r.completedLate++;else r.completedOnTime++;}
-  else {r.open++;if(a.status==="BLOCKED")r.blocked++;if(!a.dueAt)r.undated++;else if(+new Date(a.dueAt)>=+now)r.onTime++;else if(a.subjectToFine)r.fineRisk++;else r.overdue++;}
+  else if(a.status==="COMPLETED"){r.completed++;if(!activityDueDay(a)||!a.completedAt)r.completedUndated++;else if(activityCompletedLate(a))r.completedLate++;else r.completedOnTime++;}
+  else {r.open++;if(a.status==="BLOCKED")r.blocked++;if(!activityDueDay(a))r.undated++;else if(!activityOverdue(a,now))r.onTime++;else if(a.subjectToFine)r.fineRisk++;else r.overdue++;}
   rows.set(id,r);
  }
  for(const r of rows.values())r.completion=r.total-r.disregarded?Math.round(r.completed/(r.total-r.disregarded)*100):0;

@@ -21,8 +21,7 @@ it("counts only scheduled work in the selected period, preserving the independen
  await executiveSnapshot("org","today",all);
  const active=m.activities.mock.calls[0][0].where;
  expect(active.OR).toEqual(expect.arrayContaining([{scheduledDate:{gte:new Date("2026-11-05T00:00:00Z"),lt:new Date("2026-11-06T00:00:00Z")}}, {scheduledDate:null,dueAt:{gte:new Date("2026-11-05T03:00:00Z"),lt:new Date("2026-11-06T03:00:00Z")}}]));
- expect(m.activities.mock.calls[1][0].where).toMatchObject({dueAt:{lt:new Date("2026-11-05T12:00:00Z")}});
- expect(m.activities.mock.calls[1][0].where).not.toHaveProperty("OR");
+ expect(m.activities.mock.calls[1][0].where).toMatchObject({OR:[{scheduledDate:{lt:new Date("2026-11-05T00:00:00Z")}},{scheduledDate:null,dueAt:{lt:new Date("2026-11-05T03:00:00Z")}}]});
 });
 it("scopes volume distributions to the physical WhatsApp account, operational messages and the operation baseline",async()=>{
  m.raw.mockImplementation((sql:{sql:string})=>sql.sql.includes("WITH conversation_starts")?[{weekday:1,day:2,hour:9,count:4n}]:[]);

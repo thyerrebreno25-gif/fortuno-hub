@@ -23,7 +23,7 @@ export async function GET(request:Request){
   // returning the previous snapshot while a stale cache revalidates.
   const refreshBucket=String(Math.floor(Date.now()/300000));
   const account=scope.whatsapp?await currentWhatsAppAccount(member.organizationId):null;
-  const cacheKey=["executive-v8",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify({...scope,usageViews:Object.fromEntries(Object.entries(permissions).map(([key,value])=>[key,value.canView]))})];
+  const cacheKey=["executive-v9",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify({...scope,usageViews:Object.fromEntries(Object.entries(permissions).map(([key,value])=>[key,value.canView]))})];
   const data=await unstable_cache(()=>executiveLoad(JSON.stringify(cacheKey),async()=>{
     // The runtime pool has two connections. General usage and WhatsApp usage
     // each run their own queries, so start them after the main snapshot rather

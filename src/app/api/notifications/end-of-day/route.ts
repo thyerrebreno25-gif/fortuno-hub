@@ -1,3 +1,4 @@
+import {overdueActivityDates} from "@/modules/operations/activity-deadline";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentMember, getRolePermissions } from "@/modules/permissions/permissions";
@@ -28,7 +29,7 @@ export async function GET() {
       account ? prisma.serviceTicket.count({where:{...account.where,assignedToId:user,mergedIntoId:null,isSpam:false,status:{notIn:["SPAM","RESOLVED"]}}}) : null,
       permissions.SERVICE_CENTER.canView ? prisma.serviceTicket.count({where:{organizationId:org,source:{in:["GMAIL","MANUAL"]},assignedToId:user,mergedIntoId:null,isSpam:false,status:{notIn:["SPAM","RESOLVED"]},history:{none:{type:"MAILBOX_ARCHIVED"}}}}) : null,
       permissions.OPERATIONS.canView ? prisma.operationActivity.count({where:{...pending,OR:[{scheduledDate:{lt:new Date(w.tomorrow+"T00:00:00Z")}},{scheduledDate:null,dueAt:{lt:w.end}},{scheduledDate:null,dueAt:null}]}}) : null,
-      permissions.OPERATIONS.canView ? prisma.operationActivity.count({where:{...pending,dueAt:{lt:now}}}) : null,
+      permissions.OPERATIONS.canView ? prisma.operationActivity.count({where:{...pending,...overdueActivityDates(now)}}) : null,
       permissions.NOTICES.canView ? prisma.notice.count({where:{organizationId:org,closedAt:null,OR:[{expiresAt:null},{expiresAt:{gte:now}}],recipients:{some:{memberId:member.id,viewedAt:null,completedAt:null}}}}) : null,
       permissions.CALENDAR.canView ? prisma.teamCalendarEvent.findMany({where:agendaWhere,orderBy:[{startsAt:"asc"},{id:"asc"}],take:100,select:{id:true,title:true,startsAt:true,endsAt:true,meetingId:true}}) : [],
       permissions.CALENDAR.canView ? prisma.teamCalendarEvent.count({where:agendaWhere}) : 0,

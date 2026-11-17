@@ -1,4 +1,5 @@
 vi.mock("@/modules/usage/server",()=>({usageSnapshot:mocks.usage}));
+vi.mock("@/modules/whatsapp/usage-server",()=>({whatsappUsage:vi.fn(async()=>null)}));
 vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:vi.fn(async()=>({accountKey:"wa-account:conn:5511888888888",recipient:"wa-account:conn:5511888888888"}))}));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -66,7 +67,7 @@ it("marks Conta Azul unavailable when every export module is denied", async () =
 it("partitions the server cache by organization, period, São Paulo date and effective permissions", async () => {
   await GET(request("week"));
   const first = mocks.cache.mock.calls[0];
-  expect(first[1]).toEqual(["executive-v5", "wa-account:conn:5511888888888", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
+  expect(first[1]).toEqual(["executive-v9", "wa-account:conn:5511888888888", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
   expect(first[2]).toEqual({ revalidate: 300 });
   expect(JSON.parse(first[1][6]).contract).toBe(true);
 

@@ -1,3 +1,4 @@
+import {activityOverdue} from "./activity-deadline";
 import { canonicalTeam, teamKey } from "./teams";
 export type AnalyticsPerson = { id: string; name: string | null; email: string };
 export type AnalyticsActivity = {
@@ -72,7 +73,7 @@ function summarize(activities: AnalyticsActivity[], entries: AnalyticsEntry[], p
     const day = byDay.get(scheduledDay(activity)); if (day) day.planned++;
     for (const group of [...activityGroups(activity), get("operators", activity.responsibleId || "unassigned", personName(activity.responsible))]) {
       group.planned++; if (activity.status === "COMPLETED") group.completed++;
-      if (!["COMPLETED", "DISREGARDED"].includes(activity.status)) { group.pending++; if (activity.dueAt && stamp(activity.dueAt) < +now) group.overdue++; }
+      if (!["COMPLETED", "DISREGARDED"].includes(activity.status)) { group.pending++; if (activityOverdue(activity,now)) group.overdue++; }
     }
   }
   let seconds = 0, runningSeconds = 0, sessions = 0, runningTimers = 0, longRunningTimers = 0;
@@ -111,7 +112,7 @@ function summarize(activities: AnalyticsActivity[], entries: AnalyticsEntry[], p
   const withoutTime = eligible.filter((item) => !detail.get(item.id)?.seconds).length;
   const statusCounts = Object.fromEntries(["OPEN", "IN_PROGRESS", "BLOCKED", "COMPLETED", "DISREGARDED"].map((status) => [status, planned.filter((item) => item.status === status).length]));
   return {
-    summary: { seconds, closedSeconds: seconds - runningSeconds, runningSeconds, planned: planned.length, worked: details.filter((row) => row.seconds > 0).length, completed: statusCounts.COMPLETED, pending: statusCounts.OPEN + statusCounts.IN_PROGRESS + statusCounts.BLOCKED, blocked: statusCounts.BLOCKED, overdue: planned.filter((a) => !["COMPLETED", "DISREGARDED"].includes(a.status) && a.dueAt && stamp(a.dueAt) < +now).length, withoutTime, completedWithoutTime: planned.filter((item) => item.status === "COMPLETED" && !detail.get(item.id)?.seconds).length, coverage: eligible.length ? (eligible.length - withoutTime) / eligible.length * 100 : null, averageSeconds: details.some((row) => row.seconds > 0) ? Math.round(seconds / details.filter((row) => row.seconds > 0).length) : 0, clients: groups.clients.size, operators: contributingOperators.size, sessions, runningTimers, longRunningTimers },
+    summary: { seconds, closedSeconds: seconds - runningSeconds, runningSeconds, planned: planned.length, worked: details.filter((row) => row.seconds > 0).length, completed: statusCounts.COMPLETED, pending: statusCounts.OPEN + statusCounts.IN_PROGRESS + statusCounts.BLOCKED, blocked: statusCounts.BLOCKED, overdue: planned.filter((a) => !["COMPLETED", "DISREGARDED"].includes(a.status) && activityOverdue(a,now)).length, withoutTime, completedWithoutTime: planned.filter((item) => item.status === "COMPLETED" && !detail.get(item.id)?.seconds).length, coverage: eligible.length ? (eligible.length - withoutTime) / eligible.length * 100 : null, averageSeconds: details.some((row) => row.seconds > 0) ? Math.round(seconds / details.filter((row) => row.seconds > 0).length) : 0, clients: groups.clients.size, operators: contributingOperators.size, sessions, runningTimers, longRunningTimers },
     groups, details, daily, statusCounts,
   };
 }

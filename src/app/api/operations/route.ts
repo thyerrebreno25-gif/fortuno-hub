@@ -1,3 +1,4 @@
+import {overdueActivityDates} from "@/modules/operations/activity-deadline";
 import { operationTeamCatalog } from "@/modules/operations/team-catalog";
 import { canonicalTeam, teamAliases } from "@/modules/operations/teams";
 import { responsibleForProcess } from "@/modules/operations/responsible";
@@ -22,7 +23,7 @@ export async function GET(request:Request){
  const from=u.searchParams.get("from"),to=u.searchParams.get("to"),status=u.searchParams.get("status"),clientId=u.searchParams.get("clientId"),requestedResponsibleId=u.searchParams.get("responsibleId"),processId=u.searchParams.get("processId"),team=u.searchParams.get("team"),priority=u.searchParams.get("priority"),cluster=u.searchParams.get("cluster"),pendingPrevious=u.searchParams.get("pendingPrevious")==="1";
  const catalog=await operationTeamCatalog(member.organizationId);
  const responsibleId=member.role==="OPERATOR"?member.userId:requestedResponsibleId;
- if(pendingPrevious){where.scheduledDate={lt:parseDateStart(new Date().toISOString().slice(0,10))};where.status={in:["OPEN","IN_PROGRESS","BLOCKED"]};}
+ if(pendingPrevious){Object.assign(where,overdueActivityDates());where.status={in:["OPEN","IN_PROGRESS","BLOCKED"]};}
  else {if(from||to)where.scheduledDate={...(from?{gte:parseDateStart(from)}:{}),...(to?{lt:parseNextDateStart(to)}:{})};if(status)where.status=status;}
  if(clientId)where.clientId=clientId;if(responsibleId)where.responsibleId=responsibleId;if(processId)where.processId=processId;if(team)where.team={in:teamAliases(team,catalog.values)};if(priority)where.priority=priority;if(cluster)where.clientCluster=cluster;
  const [activities,clients,processes,members,configurations,overdueCount]=await Promise.all([
@@ -31,7 +32,7 @@ export async function GET(request:Request){
   prisma.operationProcess.findMany({where:{organizationId:member.organizationId,active:true},orderBy:{name:"asc"},include:{checklistTemplates:{orderBy:{position:"asc"}}}}),
   prisma.organizationMember.findMany({where:{organizationId:member.organizationId,role:{not:"CLIENT"}},include:{user:{select:{id:true,name:true,email:true}}},orderBy:{createdAt:"asc"}}),
   ["MASTER","ADMIN","MANAGER"].includes(member.role)?prisma.operationClientProcess.findMany({where:{client:{organizationId:member.organizationId},active:true},include:{client:{select:{id:true,name:true,cluster:true}},process:{select:{id:true,name:true}},responsible:{select:{id:true,name:true,email:true}}},orderBy:{updatedAt:"desc"}}):Promise.resolve([]),
-  prisma.operationActivity.count({where:{organizationId:member.organizationId,deletedAt:null,scheduledDate:{lt:parseDateStart(new Date().toISOString().slice(0,10))},status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...(responsibleId?{responsibleId}:{})}}),
+  prisma.operationActivity.count({where:{organizationId:member.organizationId,deletedAt:null,...overdueActivityDates(),status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...(responsibleId?{responsibleId}:{})}}),
  ]);
  return NextResponse.json({activities:activities.map(row=>({...row,team:canonicalTeam(row.team)})),clients,processes,teams:catalog.options,members:members.map(m=>m.user),configurations:configurations.map(row=>({...row,team:canonicalTeam(row.team)})),overdueCount,currentUserId:member.userId,currentRole:member.role,canEdit:member.canEdit,canManage:["MASTER","ADMIN","MANAGER"].includes(member.role),canDelete:["MASTER","ADMIN","MANAGER"].includes(member.role)});
 }
