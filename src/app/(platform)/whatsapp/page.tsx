@@ -224,6 +224,7 @@ export default function WhatsAppPage() {
   const [focusMode, setFocusMode] = useState(false);
   const [contactInfoId, setContactInfoId] = useState<string|null>(null);
   const [section, setSection] = useState<Section>("INBOX");
+  const pageRef = useRef<HTMLElement>(null);
   const [view, setView] = useState<View>("GENERAL");
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [chatKind, setChatKind] = useState<InboxKind>("ALL");
@@ -357,6 +358,31 @@ export default function WhatsAppPage() {
       if(silent)throw error;
     }finally{if(request===detailRequest.current)setDetailLoading(false);}
   },[rememberDetail,detailFresh]);
+  const openInbox = useCallback((ticketId?: string) => {
+    const id = ticketId || selectedId;
+    if (ticketId) {
+      setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL");
+      setOnlyUnread(false); setSearch(""); setManagementSelection(ticketId);
+    }
+    ++detailRequest.current;
+    conversationRequests.current.clear();
+    selectedRef.current = id;
+    setSelectedId(id);
+    const cached = id ? detailCache.current.get(id) : null;
+    setDetail(cached || null); setDetailLoading(Boolean(id && !cached));
+    setContactInfoId(null); setMessageSearchOpened(false);
+    lastRevision.current = "";
+    setSection("INBOX");
+    if (id) void loadDetail(id);
+    requestAnimationFrame(() => pageRef.current?.scrollIntoView({ block: "start" }));
+  }, [selectedId, loadDetail]);
+  const changeSection = useCallback((next: Section) => {
+    ++listRequest.current; ++detailRequest.current;
+    if (warmTimer.current) clearTimeout(warmTimer.current);
+    conversationRequests.current.clear();
+    setDetailLoading(false); setContactInfoId(null); setMessageSearchOpened(false);
+    setSection(next);
+  }, []);
   const warmDetail=useCallback((id:string)=>{
     if(detailFresh(id))return;
     if(warmTimer.current)clearTimeout(warmTimer.current);
@@ -421,6 +447,7 @@ export default function WhatsAppPage() {
         if (lastRevision.current && lastRevision.current !== state.revision) window.dispatchEvent(new Event("fortuno:notifications-refresh"));
         if (section === "INBOX" && lastRevision.current !== state.revision) {
           await loadList();
+          if (cancelled) return;
           const currentId = selectedRef.current;
           if (currentId && detailCache.current.get(currentId)?.updatedAt !== ticketVersions.current.get(currentId)) await loadDetail(currentId, true);
           if (!cancelled) lastRevision.current = state.revision;
@@ -602,7 +629,7 @@ export default function WhatsAppPage() {
   }
 
   return (
-    <main className={`${styles.page} ${connected && section === "INBOX" ? styles.inboxPage : ""} ${focusMode && connected && section === "INBOX" ? styles.focusMode : ""}`}>
+    <main ref={pageRef} data-whatsapp-section={section} className={`${styles.page} ${connected && section === "INBOX" ? styles.inboxPage : ""} ${focusMode && connected && section === "INBOX" ? styles.focusMode : ""}`}>
       <header className={styles.header}>
         <div>
           <Group gap="sm" align="center">
@@ -610,7 +637,8 @@ export default function WhatsAppPage() {
               <button
                 type="button"
                 className={section === "INBOX" ? styles.sectionTabActive : ""}
-                onClick={() => setSection("INBOX")}
+                aria-pressed={section === "INBOX"}
+                onClick={() => openInbox()}
               >
                 <IconBrandWhatsapp size={18} /> Central WhatsApp
               </button>
@@ -618,12 +646,13 @@ export default function WhatsAppPage() {
                 type="button"
                 className={section === "MONITORING" ? styles.sectionTabActive : ""}
                 disabled={!connected}
-                onClick={() => setSection("MONITORING")}
+                aria-pressed={section === "MONITORING"}
+                onClick={() => changeSection("MONITORING")}
               >
                 <IconChartBar size={18} /> Central de monitoramento
               </button>}
-              <button type="button" className={section === "DIRECTORY" ? styles.sectionTabActive : ""} disabled={!connected} onClick={() => setSection("DIRECTORY")}><IconUsers size={18}/> Contatos e grupos</button>
-              {bootstrap?.canViewManagement && <button type="button" className={section === "MANAGEMENT" ? styles.sectionTabActive : ""} onClick={() => setSection("MANAGEMENT")}><IconUsers size={18}/> Gestão</button>}
+              <button type="button" className={section === "DIRECTORY" ? styles.sectionTabActive : ""} disabled={!connected} aria-pressed={section === "DIRECTORY"} onClick={() => changeSection("DIRECTORY")}><IconUsers size={18}/> Contatos e grupos</button>
+              {bootstrap?.canViewManagement && <button type="button" className={section === "MANAGEMENT" ? styles.sectionTabActive : ""} aria-pressed={section === "MANAGEMENT"} onClick={() => changeSection("MANAGEMENT")}><IconUsers size={18}/> Gestão</button>}
             </div>
             {section === "INBOX" && syncError && <Text size="xs" c="orange">Reconectando atualização automática…</Text>}
             {bootstrap&&<WhatsAppNotificationToggle/>}
@@ -632,7 +661,7 @@ export default function WhatsAppPage() {
           </Group>
         </div>
         <Group gap={4} wrap="nowrap">
-          {connected&&<PaymentRequestsPanel onOpenTicket={id=>{setView("GENERAL");setChatKind("ALL");setChatStatus("ALL");setOnlyUnread(false);setSearch("");setManagementSelection(id);selectedRef.current=id;setSelectedId(id);setSection("INBOX");}}/>}
+          {connected&&<PaymentRequestsPanel onOpenTicket={openInbox}/>}
           <Menu position="bottom-end" width={290} shadow="md" keepMounted>
             <Menu.Target>
               <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Opções do WhatsApp"><IconDotsVertical size={21}/></ActionIcon>
@@ -658,7 +687,7 @@ export default function WhatsAppPage() {
       </header>
       {bootstrap?.canEdit&&<><WhatsAppTransferBatchDialog hideTrigger openRequest={batchRequests.transfer} operators={bootstrap.members} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onTransferred={ids=>{for(const id of ids){detailCache.current.delete(id);detailFetchedAt.current.delete(id);}void loadList();refreshVisibleConversation();}}/><WhatsAppFinalizeDialog hideTrigger openRequest={batchRequests.finalize} filters={{...searchInboxFilters(search,filters),search:search.trim(),onlyUnread:!search.trim()&&onlyUnread}} onClosed={removeClosed}/></>}
 
-      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={(id) => { setView("GENERAL"); setChatKind("ALL"); setChatStatus("ALL"); setOnlyUnread(false); setSearch(""); setManagementSelection(id); selectedRef.current = id; setSelectedId(id); setDetail(detailCache.current.get(id) || null); setDetailLoading(!detailCache.current.has(id)); setSection("INBOX"); }} /> : section === "INBOX" ? (
+      {section === "MANAGEMENT" && bootstrap?.canViewManagement ? <WhatsAppManagement canEdit={Boolean(bootstrap.canEdit)} onOpenTicket={openInbox} /> : !connected ? <UazapiConnection compact onStatus={onConnectionStatus} /> : section === "DIRECTORY" ? <WhatsAppDirectory canEdit={Boolean(bootstrap?.canEdit)} onOpenTicket={openInbox} /> : section === "INBOX" ? (
         <section data-whatsapp-workspace className={`${styles.workspace} ${boxesMinimized ? styles.boxesMinimized : ""} ${listMinimized ? styles.listMinimized : ""}`}>
         <aside className={styles.views} aria-label="Caixas e filtros">
           <Group justify="space-between" wrap="nowrap" className={styles.panelHeading}>{!boxesMinimized&&<Text fw={800} size="xs" c="dimmed">FILTROS</Text>}<Tooltip label={boxesMinimized?"Abrir caixas":"Recolher caixas"}><ActionIcon variant="subtle" color="gray" aria-label={boxesMinimized?"Abrir caixas":"Recolher caixas"} aria-expanded={!boxesMinimized} aria-controls="whatsapp-boxes-content" onClick={()=>setBoxesMinimized(value=>!value)}>{boxesMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
@@ -857,12 +886,7 @@ export default function WhatsAppPage() {
           onClosed={removeClosed}
           clients={clientOptions}
           members={memberOptions}
-         onOpenTicket={(id) => {
-            setManagementSelection(null);
-            setView("GENERAL");
-            setSelectedId(id);
-            setSection("INBOX");
-          }}
+         onOpenTicket={openInbox}
         />
       )}
 

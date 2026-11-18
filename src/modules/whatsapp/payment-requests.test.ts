@@ -2,4 +2,11 @@ import {beforeEach,expect,it,vi} from "vitest";vi.mock("server-only",()=>({}));c
 beforeEach(()=>{vi.clearAllMocks();m.account.mockResolvedValue({recipient:"wa-account:c:5511"});m.query.mockResolvedValue([]);});
 it("keeps payment alerts isolated by company, phone and responsible operator",async()=>{await listPaymentRequests("org","operator",false);const query=m.query.mock.calls[0][0];expect(query.values).toEqual(expect.arrayContaining(["org","operator","wa-account:c:5511",false,"PENDING"]));expect(query.sql).toContain('t."assignedToId"');expect(query.sql).toContain('JOIN "ServiceMessage"');});
 it("does not expose alerts from a disconnected account",async()=>{m.account.mockResolvedValueOnce({recipient:null});expect(await listPaymentRequests("org","operator",true)).toEqual([]);expect(m.query).not.toHaveBeenCalled();});
+it("reads the client's team within the same organization and identifies it in payment notifications",async()=>{
+ m.query.mockResolvedValue([{messageId:"message",ticketId:"ticket",clientId:"client",clientName:"Cliente",clientTeam:"Elite Do Fluxo",createdAt:new Date("2026-11-18T15:00:00Z")}]);
+ const notifications=await paymentRequestNotifications("org","operator",false);
+ expect(m.query.mock.calls[0][0].sql).toContain('c."notionSquad" AS "clientTeam"');
+ expect(m.query.mock.calls[0][0].sql).toContain('c."organizationId"=p."organizationId"');
+ expect(notifications[0].description).toBe("Elite do Fluxo · Cliente");
+});
 it("keeps a stable warning until explicitly acknowledged",async()=>{m.query.mockResolvedValue([{messageId:"message",ticketId:"ticket",clientName:"Cliente",createdAt:new Date("2026-11-11T15:00:00Z")}]);const rows=await paymentRequestNotifications("org","operator",false);expect(rows[0]).toMatchObject({id:"whatsapp-payment-client-ticket:ticket-message",type:"WARNING",description:"Cliente",href:"/whatsapp?ticket=ticket&payment=message"});});

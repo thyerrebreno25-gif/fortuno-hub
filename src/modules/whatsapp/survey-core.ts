@@ -11,9 +11,11 @@ export function nextSurveyBusinessTime(date:Date) {
  return new Date(local.getTime()+3*3600000);
 }
 
-export function isSurveyCoolingDown(previous:{status:string;sentAt:Date|null;createdAt:Date}|null,cadenceDays:number,now:Date) {
+export const ANSWERED_SURVEY_COOLDOWN_DAYS=30;
+export function isSurveyCoolingDown(previous:{status:string;sentAt:Date|null;createdAt:Date;answeredAt?:Date|null}|null,cadenceDays:number,now:Date) {
   if(!previous)return false;
   if(["PENDING","SENDING"].includes(previous.status))return true;
+  if(previous.status==="ANSWERED"&&(previous.answeredAt||previous.sentAt||previous.createdAt).getTime()>now.getTime()-ANSWERED_SURVEY_COOLDOWN_DAYS*86400000)return true;
   return (previous.sentAt||previous.createdAt).getTime()>now.getTime()-cadenceDays*86400000;
 }
 export function surveySummary(rows:Array<{status:string;score:number|null;sentAt:Date|string|null}>) {
