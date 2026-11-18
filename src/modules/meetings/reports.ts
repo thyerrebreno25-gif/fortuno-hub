@@ -5,12 +5,19 @@ import {z} from "zod";
 import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {findMeeting,MeetingError,type MeetingMember} from "./auth";
+import {dailyCarryoverActions} from "./daily-carryover";
 import {editableMeeting} from "./model";
 import {transcribeRecording} from "./recordings";
 import {reportFingerprint,reportSource,renderMeetingReport,splitReportText,reportSummarySchema,type ReportSummary} from "./report-model";
 import {summarizeMeetingPart} from "./report-ai";
 export const publicReportSelect={id:true,status:true,includeRecordings:true,content:true,mode:true,error:true,generatedAt:true,sourceHash:true} satisfies Prisma.MeetingReportSelect;
 const include={fathomRecordings:{orderBy:{startsAt:"asc" as const}},participants:{include:{user:{select:{name:true,email:true}}}},actions:{include:{responsible:{select:{name:true,email:true}}},orderBy:{dueAt:"asc" as const}},contributions:{include:{author:{select:{name:true,email:true}}},orderBy:{createdAt:"asc" as const}},recordings:{orderBy:{createdAt:"asc" as const}}} satisfies Prisma.TeamMeetingInclude;
+async function readReportMeeting(meetingId:string,referenceAt:Date){
+ const meeting=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+ if(!meeting)return null;
+ const carried=await dailyCarryoverActions(meeting,referenceAt,null);
+ return {...meeting,carryoverActions:carried.actions,referenceAt};
+}
 const active=["PENDING","PROCESSING","WAITING_AUDIO"];
 const inputSchema=z.object({meetingId:z.string().min(1).max(100),revision:z.number().int().positive(),finish:z.boolean().default(false),generate:z.boolean().default(true),includeRecordings:z.boolean().default(false),force:z.boolean().default(false)});
 export async function requestMeetingReport(member:MeetingMember,body:unknown){
@@ -48,7 +55,7 @@ export async function processMeetingReport(meetingId:string){
  const claim=await prisma.meetingReport.updateMany({where:{id:report.id,generation:report.generation,status:report.status,claimedAt:report.claimedAt},data:{status:"PROCESSING",claimedAt:now,error:null}});if(!claim.count)return;
  const owned={id:report.id,generation:report.generation,status:"PROCESSING",claimedAt:now};
  try{
-  const meeting=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+  const meeting=await readReportMeeting(meetingId,now);
   if(!meeting)throw new Error("A reunião não está mais finalizada ou foi excluída. Nenhum novo relatório foi publicado.");
   if(report.includeRecordings&&meeting.fathomEnabled){
    const records=meeting.fathomRecordings;
@@ -57,7 +64,7 @@ export async function processMeetingReport(meetingId:string){
    let content=renderMeetingReport(meeting,null,false).split("\n## Gravações e transcrição")[0];
    for(const recording of records)content+="\n\n## Conteúdo recebido do Fathom · "+recording.title+"\n"+recording.summary+"\n\n### Atividades sugeridas pelo Fathom (não distribuídas no Hub)\n"+(recording.actionItems||"Nenhuma atividade sugerida.");
    content+="\n\nA gravação e a transcrição integral estão na aba Gravações e transcrições. As tarefas oficiais e seus prazos são as registradas no checklist do Hub.";
-   const fresh=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+   const fresh=await readReportMeeting(meetingId,now);
    if(!fresh||reportFingerprint(fresh,true)!==hash){await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",claimedAt:null,nextRunAt:new Date()}});return;}
    await prisma.meetingReport.updateMany({where:{...owned,meeting:{deletedAt:null,status:"COMPLETED"}},data:{status:pending?"WAITING_AUDIO":"READY",content,sourceHash:hash,mode:"FATHOM",error:pending?"Relatório dos registros do Hub disponível. Aguardando o Fathom disponibilizar resumo e transcrição. Confira a conexão e a captura da reunião no Fathom.":null,generatedAt:new Date(),work:Prisma.DbNull,claimedAt:null,nextRunAt:new Date(Date.now()+60000)}});return;
   }
@@ -75,7 +82,7 @@ export async function processMeetingReport(meetingId:string){
   let summary:ReportSummary|null=null,mode="BASIC";
   if(report.includeRecordings&&process.env.OPENAI_API_KEY?.trim()){
    mode="AI";const saved=workSchema.safeParse(report.work);
-   let work=saved.success&&saved.data.hash===hash?saved.data:{hash,inputs:splitReportText(JSON.stringify(reportSource(meeting,report.includeRecordings),null,2),40000),outputs:[] as ReportSummary[],index:0,level:0,retryCount:0};
+   let work=saved.success&&saved.data.hash===hash?saved.data:{hash,inputs:splitReportText(JSON.stringify({referenceAt:now.toISOString(),...reportSource(meeting,report.includeRecordings)},null,2),40000),outputs:[] as ReportSummary[],index:0,level:0,retryCount:0};
    for(let step=0;step<2;step++){
     let output:ReportSummary;
     try{output=await summarizeMeetingPart(work.inputs[work.index],work.level>0);}
@@ -84,7 +91,7 @@ export async function processMeetingReport(meetingId:string){
       await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",error:error.message,work:{...work,retryCount:work.retryCount+1} as Prisma.InputJsonValue,claimedAt:null,nextRunAt:new Date(Date.now()+Math.max(60,error.details.retryAfterSeconds||60)*1000)}});return;
      }
      if(!report.content){
-      const fresh=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+      const fresh=await readReportMeeting(meetingId,now);
       if(!fresh)throw error;
       if(reportFingerprint(fresh,report.includeRecordings)!==hash){await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",work:Prisma.DbNull,claimedAt:null,nextRunAt:new Date()}});return;}
       const warning=error instanceof OpenAIRequestError?error.message:"Não foi possível concluir a síntese por IA. Os registros do Hub foram consolidados abaixo.";
@@ -102,7 +109,7 @@ export async function processMeetingReport(meetingId:string){
    }
    if(!summary){await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",work:work as Prisma.InputJsonValue,claimedAt:null,nextRunAt:new Date()}});return;}
   }
-  const fresh=await prisma.teamMeeting.findFirst({where:{id:meetingId,deletedAt:null,status:"COMPLETED"},include});
+  const fresh=await readReportMeeting(meetingId,now);
   if(!fresh)throw new Error("A reunião foi alterada ou excluída durante a geração.");
   if(reportFingerprint(fresh,report.includeRecordings)!==hash){await prisma.meetingReport.updateMany({where:owned,data:{status:"PENDING",work:Prisma.DbNull,claimedAt:null,nextRunAt:new Date()}});return;}
   await prisma.meetingReport.updateMany({where:{...owned,meeting:{deletedAt:null,status:"COMPLETED"}},data:{status:"READY",content:renderMeetingReport(meeting,summary,report.includeRecordings),sourceHash:hash,mode,generatedAt:new Date(),work:Prisma.DbNull,error:null,claimedAt:null}});

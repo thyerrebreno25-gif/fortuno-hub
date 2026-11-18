@@ -32,8 +32,9 @@ export async function GET(request: Request) {
       const [events,connections]=await Promise.all([prisma.teamCalendarEvent.findMany({where:{organizationId:member.organizationId,meetingId:meeting.id,actionItemId:null,sourceKey:`meeting:${meeting.id}`},select:{userId:true,googleSyncStatus:true,syncError:true}}),prisma.googleCalendarConnection.findMany({where:{organizationId:member.organizationId,userId:{in:meeting.participants.map(person=>person.userId)}},select:{userId:true,status:true}})]);
       const calendarSync=meeting.participants.map(person=>({userId:person.userId,connected:connections.some(connection=>connection.userId===person.userId&&connection.status==="CONNECTED"),googleSyncStatus:events.find(event=>event.userId===person.userId)?.googleSyncStatus||"PENDING",syncError:events.find(event=>event.userId===person.userId)?.syncError||null}));
       if (!deleted && meeting.report && ["PENDING","WAITING_AUDIO","PROCESSING"].includes(meeting.report.status)) after(()=>processMeetingReport(meeting.id));
-      const report = meeting.report ? {...meeting.report,outdated:Boolean(meeting.report.content && meeting.report.sourceHash !== reportFingerprint(meeting,meeting.report.includeRecordings))} : null;
       const carryover=deleted?{actions:[],total:0}:await dailyCarryoverActions(meeting);
+      const reportActions=meeting.report?.content&&carryover.total>carryover.actions.length?(await dailyCarryoverActions(meeting,new Date(),null)).actions:carryover.actions;
+      const report = meeting.report ? {...meeting.report,outdated:Boolean(meeting.report.content && meeting.report.sourceHash !== reportFingerprint({...meeting,carryoverActions:reportActions},meeting.report.includeRecordings))} : null;
       return NextResponse.json({ meeting: { ...meeting, report, integration, calendarSync,carryoverActions:carryover.actions,carryoverTotal:carryover.total }, canManage: editableMeeting(member, meeting) });
     }
     const page = Math.min(100, Math.max(0, Number(url.searchParams.get("page")) || 0));

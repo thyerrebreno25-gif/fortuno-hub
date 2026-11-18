@@ -4,12 +4,18 @@ import {z} from "zod";
 export const reportSummarySchema=z.object({summary:z.string().max(12000),topics:z.array(z.object({title:z.string().max(300),points:z.array(z.string().max(2500)).max(30)})).max(40),decisions:z.array(z.string().max(2500)).max(50),pending:z.array(z.string().max(2500)).max(50),nextSteps:z.array(z.string().max(2500)).max(50)});
 export type ReportSummary=z.infer<typeof reportSummarySchema>;
 type Person={name:string|null;email:string};
-export type ReportMeeting={fathomEnabled?:boolean;fathomRecordings?:Array<{id:string;title:string;transcript:string;summary:string;actionItems:string}>;id:string;title:string;type:string;startsAt:Date|string;endsAt:Date|string;agenda:string;notes:string;status:string;participants:Array<{userId:string;user:Person}>;actions:Array<{id:string;title:string;description:string;dueAt:Date|string;completedAt:Date|string|null;responsible:Person}>;contributions:Array<{id:string;body:string;createdAt:Date|string;author:Person}>;recordings:Array<{id:string;name:string;status:string;transcript:string}>};
+export type ReportAction={id:string;title:string;description:string;dueAt:Date|string;completedAt:Date|string|null;responsible:Person;originalDueAt?:Date|string|null;autoExtendedAt?:Date|string|null;origin?:{id:string;title:string;startsAt:Date|string}};
+export type ReportMeeting={referenceAt?:Date|string;carryoverActions?:ReportAction[];fathomEnabled?:boolean;fathomRecordings?:Array<{id:string;title:string;transcript:string;summary:string;actionItems:string}>;id:string;title:string;type:string;startsAt:Date|string;endsAt:Date|string;agenda:string;notes:string;status:string;participants:Array<{userId:string;user:Person}>;actions:ReportAction[];contributions:Array<{id:string;body:string;createdAt:Date|string;author:Person}>;recordings:Array<{id:string;name:string;status:string;transcript:string}>};
 const iso=(value:Date|string)=>new Date(value).toISOString();
 const person=(value:Person)=>value.name||value.email;
 const date=(value:Date|string)=>new Date(value).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"});
+export function reportCarryovers(meeting:ReportMeeting){
+ const own=new Set(meeting.actions.map(action=>action.id));
+ return [...new Map((meeting.carryoverActions||[]).filter(action=>!own.has(action.id)).map(action=>[action.id,action])).values()];
+}
 export function reportSource(meeting:ReportMeeting,includeRecordings:boolean){
  return {fathomEnabled:includeRecordings&&Boolean(meeting.fathomEnabled),fathom:includeRecordings&&meeting.fathomEnabled?(meeting.fathomRecordings||[]).map(row=>({id:row.id,title:row.title,transcript:row.transcript,summary:row.summary,actionItems:row.actionItems})).sort((a,b)=>a.id.localeCompare(b.id)):[],title:meeting.title,type:meeting.type,startsAt:iso(meeting.startsAt),endsAt:iso(meeting.endsAt),agenda:meeting.agenda,notes:meeting.notes,
+ ...(reportCarryovers(meeting).length?{carryoverActions:reportCarryovers(meeting).map(row=>({id:row.id,title:row.title,description:row.description,responsible:person(row.responsible),dueAt:iso(row.dueAt),originalDueAt:row.originalDueAt?iso(row.originalDueAt):null,autoExtendedAt:row.autoExtendedAt?iso(row.autoExtendedAt):null,completedAt:row.completedAt?iso(row.completedAt):null,origin:row.origin?{id:row.origin.id,title:row.origin.title,startsAt:iso(row.origin.startsAt)}:null})).sort((a,b)=>a.id.localeCompare(b.id))}:{}),
  participants:meeting.participants.map(row=>({id:row.userId,name:person(row.user)})).sort((a,b)=>a.id.localeCompare(b.id)),
  actions:meeting.actions.map(row=>({id:row.id,title:row.title,description:row.description,responsible:person(row.responsible),dueAt:iso(row.dueAt),completedAt:row.completedAt?iso(row.completedAt):null})).sort((a,b)=>a.id.localeCompare(b.id)),
  contributions:meeting.contributions.map(row=>({id:row.id,author:person(row.author),createdAt:iso(row.createdAt),body:row.body})).sort((a,b)=>a.id.localeCompare(b.id)),
@@ -23,10 +29,22 @@ export function splitReportText(text:string,limit=20000){
 }
 export function renderMeetingReport(meeting:ReportMeeting,summary:ReportSummary|null,includeRecordings:boolean){
  const lines=["# Relatório da reunião",meeting.title,"Tipo: "+meeting.type,"Horário agendado: "+date(meeting.startsAt)+" até "+date(meeting.endsAt)+" (Brasília)","Participantes cadastrados: "+meeting.participants.map(row=>person(row.user)).join(", "),""];
+ const carried=reportCarryovers(meeting),reference=meeting.referenceAt?new Date(meeting.referenceAt):new Date();
+ const late=(action:ReportAction)=>!action.completedAt&&+new Date(action.dueAt)<+reference;
+ const pending=carried.filter(action=>!action.completedAt).sort((a,b)=>Number(late(b))-Number(late(a))||+new Date(a.originalDueAt||a.dueAt)-+new Date(b.originalDueAt||b.dueAt)||a.id.localeCompare(b.id));
+ if(carried.length){
+  lines.push(pending.length?"## Prioridade · atividades de reuniões anteriores":"## Atividades de reuniões anteriores",`**${pending.length} pendente(s) de reuniões anteriores · ${pending.filter(late).length} em atraso · ${carried.length-pending.length} concluída(s)**`,"Situação das atividades verificada em "+date(reference)+" (Brasília).","Estas são as mesmas atividades do checklist e de Atividades Daily; a continuidade não altera os prazos.","");
+  for(const action of [...pending,...carried.filter(action=>action.completedAt)]){
+   const minutes=Math.max(0,Math.floor((+reference-+new Date(action.dueAt))/60000)),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60);
+   const wait=[days?days+" dia(s)":"",hours?hours+"h":"",minutes%60?minutes%60+"min":""].filter(Boolean).join(" ")||"menos de 1 min";
+   const state=action.completedAt?"Concluída em "+date(action.completedAt):late(action)?"EM ATRASO · prazo atual vencido há "+wait:action.autoExtendedAt?"Pendente de reunião anterior · prazo prorrogado":"Pendente de reunião anterior · no prazo atual";
+   lines.push("### "+(late(action)?"EM ATRASO · ":!action.completedAt?"PENDÊNCIA ANTERIOR · ":"CONCLUÍDA · ")+action.title,"Responsável: "+person(action.responsible),...(action.origin?["Reunião de origem: "+action.origin.title+" · "+date(action.origin.startsAt)+" (Brasília)"]:[]),"Prazo original: "+date(action.originalDueAt||action.dueAt)+" (Brasília)","Prazo atual: "+date(action.dueAt)+" (Brasília)","Situação: "+state,...(action.autoExtendedAt?["Prorrogação automática única já utilizada; a atividade não recebe novo prazo ao aparecer nesta reunião."]:[]),...(action.description?["Detalhes: "+action.description]:[]),"");
+  }
+ }
  if(summary){lines.push("## Resumo executivo",summary.summary,"");for(const topic of summary.topics)lines.push("### "+topic.title,...topic.points.map(point=>"• "+point),"");for(const [title,items]of [["Decisões registradas",summary.decisions],["Pendências e pontos de atenção",summary.pending],["Próximos passos",summary.nextSteps]] as const)lines.push("## "+title,...(items.length?items.map(item=>"• "+item):["Nenhum registro identificado nas fontes."]),"");}
  else lines.push("## Consolidação dos registros","Relatório estruturado a partir dos dados do Hub. A síntese por IA não foi utilizada.","");
  lines.push("## Atividades distribuídas");
- if(!meeting.actions.length)lines.push("Nenhuma atividade distribuída.");
+ if(!meeting.actions.length)lines.push(carried.length?"Nenhuma nova atividade distribuída nesta reunião. As atividades anteriores estão listadas acima.":"Nenhuma atividade distribuída.");
  for(const action of meeting.actions)lines.push("### "+action.title,"Responsável: "+person(action.responsible),"Prazo: "+date(action.dueAt)+" (Brasília)","Situação: "+(action.completedAt?"Concluída em "+date(action.completedAt):"Pendente"),...(action.description?["Detalhes: "+action.description]:[]),"");
  lines.push("## Pauta registrada",meeting.agenda||"Nenhuma pauta registrada.","","## Notas gerais",meeting.notes||"Nenhuma nota geral registrada.","","## Anotações da equipe");
  if(!meeting.contributions.length)lines.push("Nenhuma anotação registrada.");

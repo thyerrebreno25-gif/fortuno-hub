@@ -17,6 +17,9 @@ it("reads the canonical action and original deadline without copying or moving a
  db.find.mockResolvedValue([{...action,meeting:origin}]);db.count.mockResolvedValue(1);
  expect(await dailyCarryoverActions(occurrence,now)).toEqual({actions:[{...action,origin}],total:1});expect(db.find.mock.calls[0][0].where).toEqual(dailyCarryoverWhere(occurrence,now));
 });
+it("does not silently truncate inherited activities in reports",async()=>{
+ await dailyCarryoverActions(occurrence,now,null);expect(db.find.mock.calls[0][0]).not.toHaveProperty("take");
+});
 it("aggregates only pending counts for authorized active dates, excluding all future occurrences",async()=>{
  db.query.mockResolvedValue([{id:"today",pending:6}]);expect(await dailyCarryoverCounts([occurrence,{...occurrence,id:"tomorrow",startsAt:new Date("2026-11-19T12:00:00Z")}],now)).toEqual(new Map([["today",6]]));
  const sql=db.query.mock.calls[0][0];expect(sql.values).toEqual(["org","today"]);expect(sql.sql).toContain('a."completedAt" IS NULL');expect(sql.sql).toContain('s."creationKey"=t."creationKey"');expect(sql.sql).toContain("America/Sao_Paulo");

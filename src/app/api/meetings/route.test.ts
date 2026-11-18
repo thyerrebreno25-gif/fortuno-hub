@@ -10,6 +10,7 @@ vi.mock('@/modules/meetings/google-calendar',()=>({googleConfigured:vi.fn()}));
 vi.mock('@/modules/meetings/daily-carryover',()=>({dailyCarryoverActions:m.carry,dailyCarryoverCounts:m.counts}));
 vi.mock('@/modules/meetings/daily-server',()=>({processDailyActivities:m.daily}));
 import {DELETE,PATCH,GET,POST} from './route';
+import {reportFingerprint} from '@/modules/meetings/report-model';
 import {meetingScope} from '@/modules/meetings/auth';
 beforeEach(()=>{vi.clearAllMocks();m.carry.mockResolvedValue({actions:[],total:0});m.counts.mockResolvedValue(new Map());m.connections.mockResolvedValue([]);m.access.mockResolvedValue({member:{organizationId:'org',userId:'owner'}});m.trash.mockResolvedValue({ok:true});});
 it('applies filters before pagination and retains access scope for all meetings',async()=>{
@@ -46,4 +47,12 @@ it('does not attach carried activities or process deadlines for a deleted occurr
 });
 it('includes distinct previous pending counts in the meeting list without changing native delivery totals',async()=>{
  m.list.mockResolvedValue([{id:'today',_count:{actions:0},actions:[]}]);m.counts.mockResolvedValue(new Map([['today',6]]));const response=await GET(new Request('https://hub.test/api/meetings?scope=all'));expect(response.status).toBe(200);expect(await response.json()).toMatchObject({meetings:[{id:'today',carryoverPending:6,_count:{actions:0},actions:[]}]});
+});
+
+it('detects old reports missing inherited actions and compares regenerated reports against the same complete source',async()=>{
+ const meeting={id:'today',type:'Daily',title:'Daily',createdById:'owner',startsAt:'2026-11-18T12:00:00Z',endsAt:'2026-11-18T12:30:00Z',agenda:'',notes:'',status:'COMPLETED',participants:[],actions:[],contributions:[],recordings:[]};const carry={id:'prior-task',title:'Anterior',description:'',dueAt:'2026-11-18T18:00:00Z',completedAt:null,responsible:{name:'Equipe',email:'team@example.test'},origin:{id:'yesterday',title:'Daily',startsAt:'2026-11-17T12:00:00Z'}};
+ m.findAccess.mockResolvedValue({id:'today',type:'Daily'});m.carry.mockResolvedValue({actions:[carry],total:1});m.detail.mockResolvedValue({...meeting,report:{content:'Versão anterior',includeRecordings:false,sourceHash:reportFingerprint(meeting,false)}});
+ expect(await (await GET(new Request('https://hub.test/api/meetings?id=today'))).json()).toMatchObject({meeting:{report:{outdated:true}}});
+ m.detail.mockResolvedValue({...meeting,report:{content:'Versão atual',includeRecordings:false,sourceHash:reportFingerprint({...meeting,carryoverActions:[carry]},false)}});
+ expect(await (await GET(new Request('https://hub.test/api/meetings?id=today'))).json()).toMatchObject({meeting:{report:{outdated:false}}});
 });

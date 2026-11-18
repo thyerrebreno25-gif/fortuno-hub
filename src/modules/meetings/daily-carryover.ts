@@ -11,11 +11,11 @@ export function dailyCarryoverWhere(meeting:DailyOccurrence,now=new Date()):Pris
  const start=new Date(`${dayKey(meeting.startsAt)}T00:00:00-03:00`),end=new Date(+start+86400000);
  return {meeting:{organizationId:meeting.organizationId,creationKey:meeting.creationKey,type:"Daily",deletedAt:null,status:{not:"CANCELLED"},startsAt:{lt:start}},createdAt:{lt:end},OR:[{completedAt:null},{completedAt:{gte:start}}]};
 }
-export async function dailyCarryoverActions(meeting:DailyOccurrence,now=new Date()) {
+export async function dailyCarryoverActions(meeting:DailyOccurrence,now=new Date(),limit:number|null=500) {
  const where=dailyCarryoverWhere(meeting,now);
  if(!where)return {actions:[],total:0};
  const [actions,total]=await Promise.all([
-  prisma.meetingActionItem.findMany({where,include:{responsible:{select:{id:true,name:true,email:true}},meeting:{select:{id:true,title:true,startsAt:true}}},orderBy:[{dueAt:"asc"},{id:"asc"}],take:500}),
+  prisma.meetingActionItem.findMany({where,include:{responsible:{select:{id:true,name:true,email:true}},meeting:{select:{id:true,title:true,startsAt:true}}},orderBy:[{dueAt:"asc"},{id:"asc"}],...(limit===null?{}:{take:limit})}),
   prisma.meetingActionItem.count({where}),
  ]);
  return {actions:actions.map(({meeting:origin,...action})=>({...action,origin})),total};

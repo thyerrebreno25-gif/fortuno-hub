@@ -1,5 +1,6 @@
 import {expect,it} from "vitest";
 import {createMeetingReportPdf} from "./report-pdf";
+import {renderMeetingReport,type ReportMeeting} from "./report-model";
 it("exports a paginated PDF retaining accented names, tasks and the end of a long report",async()=>{const content="# Relatório da reunião\nReunião de validação\n## Atividades distribuídas\n"+Array.from({length:180},(_,index)=>"Tarefa "+index+" — Responsável: João Gonçalves. Prazo: 05/11/2026. Situação: Pendente. "+"Descrição detalhada. ".repeat(6)).join("\n")+"\n## Encerramento\nÚLTIMO REGISTRO PRESERVADO";const doc=createMeetingReportPdf({content,generatedAt:"2026-11-04T12:00:00Z",status:"READY"});expect(doc.getNumberOfPages()).toBeGreaterThan(3);const pdfjs=await import("pdfjs-dist/legacy/build/pdf.mjs");const task=pdfjs.getDocument({data:new Uint8Array(doc.output("arraybuffer")),useSystemFonts:true});const pdf=await task.promise;let text="";for(let page=1;page<=pdf.numPages;page++){const data=await (await pdf.getPage(page)).getTextContent();text+=data.items.filter(item=>"str" in item).map(item=>"str" in item?item.str:"").join(" ");}expect(text).toContain("João Gonçalves");expect(text).toContain("Tarefa 179");expect(text).toContain("ÚLTIMO REGISTRO PRESERVADO");expect(text).toContain("Página 1 de "+pdf.numPages);await task.destroy();});
 
 it("embeds the official icon and Fortuno wordmark on every page",async()=>{
@@ -8,5 +9,16 @@ it("embeds the official icon and Fortuno wordmark on every page",async()=>{
  expect(pdf.numPages).toBeGreaterThan(1);
  for(let index=1;index<=pdf.numPages;index++){const page=await pdf.getPage(index);const operators=await page.getOperatorList();expect(operators.fnArray.filter(fn=>fn===pdfjs.OPS.paintImageXObject||fn===pdfjs.OPS.paintInlineImageXObject).length).toBeGreaterThanOrEqual(2);}
  if(process.env.FORTUNO_PDF_QA_DIR){const fs=await import("node:fs/promises");await fs.mkdir(process.env.FORTUNO_PDF_QA_DIR,{recursive:true});await fs.writeFile(process.env.FORTUNO_PDF_QA_DIR+"/relatorio-reuniao-fortuno.pdf",Buffer.from(doc.output("arraybuffer")));}
+ await task.destroy();
+});
+it("exports inherited overdue work before new work, preserving extended and completed activity details",async()=>{
+ const person={name:"Colaborador de exemplo",email:"example@example.test"},origin={id:"prior",title:"Daily anterior",startsAt:"2026-11-17T12:00:00Z"};
+ const action={id:"late",title:"Concluir conferência de pagamentos",description:"Pendência anterior que precisa de atenção no alinhamento de hoje.",dueAt:"2026-11-18T12:00:00Z",originalDueAt:"2026-11-17T12:00:00Z",autoExtendedAt:"2026-11-17T19:00:00Z",completedAt:null,responsible:person,origin};
+ const meeting:ReportMeeting={id:"example",title:"Daily | Demonstração de validação",type:"Daily",startsAt:"2026-11-18T12:00:00Z",endsAt:"2026-11-18T12:30:00Z",referenceAt:"2026-11-18T15:30:00Z",status:"COMPLETED",agenda:"Revisar pendências e distribuir as novas atividades.",notes:"Exemplo para validar a apresentação do relatório.",participants:[{userId:"person",user:person}],actions:[{id:"new",title:"Atividade nova desta reunião",description:"Nova demanda.",dueAt:"2026-11-19T18:00:00Z",completedAt:null,responsible:person}],carryoverActions:[action,{...action,id:"extended",title:"Conferir recebimentos",dueAt:"2026-11-18T21:00:00Z"},{...action,id:"done",title:"Entrega anterior concluída",completedAt:"2026-11-18T14:00:00Z"}],contributions:[],recordings:[]};
+ const doc=createMeetingReportPdf({content:renderMeetingReport(meeting,null,false),generatedAt:meeting.referenceAt as string,status:"READY"});
+ const pdfjs=await import("pdfjs-dist/legacy/build/pdf.mjs"),task=pdfjs.getDocument({data:new Uint8Array(doc.output("arraybuffer")),useSystemFonts:true}),pdf=await task.promise;
+ let text="";for(let index=1;index<=pdf.numPages;index++){const data=await (await pdf.getPage(index)).getTextContent();text+=data.items.filter(item=>"str" in item).map(item=>"str" in item?item.str:"").join(" ")+"\n";}
+ expect(text).toContain("Prioridade");expect(text).toContain("EM ATRASO");expect(text.indexOf("Concluir conferência")).toBeLessThan(text.indexOf("Atividade nova"));expect(text).toContain("Reunião de origem:");expect(text).toContain("Prazo original:");expect(text).toContain("Prazo atual:");expect(text).toContain("prazo prorrogado");expect(text).toContain("Entrega anterior concluída");expect(text).toContain("3h 30min");
+ if(process.env.FORTUNO_DAILY_REPORT_QA){const fs=await import("node:fs/promises");await fs.mkdir(process.env.FORTUNO_DAILY_REPORT_QA,{recursive:true});await fs.writeFile(process.env.FORTUNO_DAILY_REPORT_QA+"/relatorio-daily-validacao.pdf",Buffer.from(doc.output("arraybuffer")));}
  await task.destroy();
 });

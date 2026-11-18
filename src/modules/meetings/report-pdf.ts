@@ -8,29 +8,36 @@ export function createMeetingReportPdf(report:Report){
  let y=30,assignmentOwner="";const header=()=>{doc.setFillColor(13,35,64);doc.rect(0,0,width,23,"F");doc.addImage(reportIcon,"PNG",margin,7,11,6.4,"fortuno-icon");doc.addImage(reportWordmark,"PNG",margin+16,7,45,8.8,"fortuno-wordmark");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setFontSize(11);doc.text("Relatório de reunião",width-margin,13.5,{align:"right"});};
  const next=()=>{doc.addPage();header();y=30;if(assignmentOwner){doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(45,70,95);const label=doc.splitTextToSize(clean(assignmentOwner)+" (continuação)",available) as string[];doc.text(label,margin,y);y+=label.length*4+5;}};
  const reserve=(space:number)=>{if(y+space>height-20)next();};
- function write(text:string,size:number,bold=false,space=2){
+ function write(text:string,size:number,bold=false,space=2,color:[number,number,number]=[22,39,59]){
   doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.setTextColor(22,39,59);
   const lines=doc.splitTextToSize(clean(text),available) as string[];const lineHeight=size*0.3528*1.4;
-  for(const line of lines){reserve(lineHeight);doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.setTextColor(22,39,59);doc.text(line,margin,y);y+=lineHeight;}y+=space;
+  for(const line of lines){reserve(lineHeight);doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.setTextColor(...color);doc.text(line,margin,y);y+=lineHeight;}y+=space;
  }
  header();
  if(report.generatedAt)write("Gerado em "+new Date(report.generatedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})+" (Brasília)",8,false,4);
  if(report.status!=="READY")write("Versão parcial: processamento ou atualização ainda em andamento.",9,true,4);
  if(report.outdated)write("Os registros foram alterados após esta versão. Gere novamente para atualizar o relatório.",9,true,4);
  const lines=readableMeetingReport(report.content).split(/\r?\n/);
- let inAssignments=false;
+ let inAssignments=false,inCarryovers=false;
  for(let index=0;index<lines.length;index++){
   const line=lines[index];if(!line.trim()){y+=2;continue;}
   const heading=line.match(/^(#{1,6})\s+(.+)$/);
   if(heading){
-   if(heading[1].length===2){inAssignments=heading[2]==="Atividades distribuídas";assignmentOwner="";}
+   if(heading[1].length===2){inAssignments=heading[2]==="Atividades distribuídas";inCarryovers=heading[2].includes("atividades de reuniões anteriores")||heading[2]==="Atividades de reuniões anteriores";assignmentOwner="";}
+   if(heading[1].length===2&&heading[2].startsWith("Prioridade ·")){
+    reserve(26);doc.setFillColor(255,242,219);doc.roundedRect(margin,y-4,available,15,2,2,"F");y+=1;write(heading[2],11,true,8,[137,70,0]);continue;
+   }
+   if(inCarryovers&&heading[1].length===3){
+    let block=heading[2];for(let j=index+1;j<lines.length&&!/^#{1,3}\s/.test(lines[j]);j++)block+="\n"+lines[j];
+    doc.setFontSize(9.5);const rows=doc.splitTextToSize(clean(block),available) as string[];reserve(Math.min(height-55,rows.length*4.8+13));
+   }
    if(inAssignments&&heading[1].length===4){
     let block=heading[2];for(let j=index+1;j<lines.length&&!/^#{1,4}\s/.test(lines[j]);j++)block+="\n"+lines[j];
     doc.setFontSize(9.5);const rows=doc.splitTextToSize(clean(block),available) as string[];reserve(Math.min(height-55,rows.length*4.8+13));
    }
    if(inAssignments&&heading[1].length===3){assignmentOwner="";reserve(36);assignmentOwner=heading[2];y+=4;doc.setDrawColor(190,207,224);doc.line(margin,y,width-margin,y);y+=5;}
-   const size=heading[1].length===1?16:heading[1].length===2?12:10;doc.setFontSize(size);doc.setFont("helvetica","bold");const count=(doc.splitTextToSize(clean(heading[2]),available) as string[]).length;reserve(Math.min(count*size*.3528*1.4+(heading[1].length<=2?28:12),height-55));y+=2;write(heading[2],size,true,3);}
-  else write(line.replace(/\*\*([^*]+)\*\*/g,"$1"),9.5,false,1.4);
+   const size=heading[1].length===1?16:heading[1].length===2?12:10;doc.setFontSize(size);doc.setFont("helvetica","bold");const count=(doc.splitTextToSize(clean(heading[2]),available) as string[]).length;reserve(Math.min(count*size*.3528*1.4+(heading[1].length<=2?28:12),height-55));y+=2;write(heading[2],size,true,3,heading[2].startsWith("EM ATRASO ·")?[174,35,35]:[22,39,59]);}
+  else {const late=line.startsWith("Situação: EM ATRASO");write(line.replace(/\*\*([^*]+)\*\*/g,"$1"),9.5,late,1.4,late?[174,35,35]:[22,39,59]);}
  }
  const pages=doc.getNumberOfPages();for(let page=1;page<=pages;page++){doc.setPage(page);doc.setDrawColor(218,226,235);doc.line(margin,height-15,width-margin,height-15);doc.setTextColor(98,112,132);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text("Fortuno Hub - registro da reunião",margin,height-10);doc.text("Página "+page+" de "+pages,width-margin,height-10,{align:"right"});}
  return doc;
