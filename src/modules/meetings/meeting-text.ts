@@ -12,11 +12,11 @@ export function groupMeetingAssignments(content:string){
  if(start<0)return content;
  let end=start+1;while(end<lines.length&&!/^##\s/.test(lines[end]))end++;
  const section=lines.slice(start+1,end);if(section.some(line=>/^####\s/.test(line)))return content;
- const groups=new Map<string,string[][]>();let task:string[]=[];
+ const groups=new Map<string,string[][]>(),intro:string[]=[];let task:string[]=[];
  const append=()=>{if(!task.length)return;const owner=task.find(line=>/^Responsável:\s*/.test(line))?.replace(/^Responsável:\s*/,"").trim()||"Sem responsável";const rows=groups.get(owner)||[];rows.push(task);groups.set(owner,rows);task=[];};
- for(const line of section){if(/^###\s/.test(line)){append();task=[line];}else if(task.length)task.push(line);}append();
+ for(const line of section){if(/^###\s/.test(line)){append();task=[line];}else if(task.length)task.push(line);else intro.push(line);}append();
  if(!groups.size)return content;
- const grouped=["## Atividades distribuídas",""];
+ const grouped=["## Atividades distribuídas",...intro,""];
  for(const [owner,tasks] of groups){grouped.push("### "+owner,"");for(const rows of tasks)grouped.push(rows[0].replace(/^### /,"#### "),...rows.slice(1).filter(line=>!/^Responsável:/.test(line)),"");}
  return [...lines.slice(0,start),...grouped,...lines.slice(end)].join("\n");
 }

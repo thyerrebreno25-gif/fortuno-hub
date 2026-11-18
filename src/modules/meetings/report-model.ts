@@ -15,7 +15,7 @@ export function reportCarryovers(meeting:ReportMeeting){
 }
 export function reportSource(meeting:ReportMeeting,includeRecordings:boolean){
  return {fathomEnabled:includeRecordings&&Boolean(meeting.fathomEnabled),fathom:includeRecordings&&meeting.fathomEnabled?(meeting.fathomRecordings||[]).map(row=>({id:row.id,title:row.title,transcript:row.transcript,summary:row.summary,actionItems:row.actionItems})).sort((a,b)=>a.id.localeCompare(b.id)):[],title:meeting.title,type:meeting.type,startsAt:iso(meeting.startsAt),endsAt:iso(meeting.endsAt),agenda:meeting.agenda,notes:meeting.notes,
- ...(reportCarryovers(meeting).length?{carryoverActions:reportCarryovers(meeting).map(row=>({id:row.id,title:row.title,description:row.description,responsible:person(row.responsible),dueAt:iso(row.dueAt),originalDueAt:row.originalDueAt?iso(row.originalDueAt):null,autoExtendedAt:row.autoExtendedAt?iso(row.autoExtendedAt):null,completedAt:row.completedAt?iso(row.completedAt):null,origin:row.origin?{id:row.origin.id,title:row.origin.title,startsAt:iso(row.origin.startsAt)}:null})).sort((a,b)=>a.id.localeCompare(b.id))}:{}),
+ ...(reportCarryovers(meeting).length?{reportLayout:"daily-assignments-v2",carryoverActions:reportCarryovers(meeting).map(row=>({id:row.id,title:row.title,description:row.description,responsible:person(row.responsible),dueAt:iso(row.dueAt),originalDueAt:row.originalDueAt?iso(row.originalDueAt):null,autoExtendedAt:row.autoExtendedAt?iso(row.autoExtendedAt):null,completedAt:row.completedAt?iso(row.completedAt):null,origin:row.origin?{id:row.origin.id,title:row.origin.title,startsAt:iso(row.origin.startsAt)}:null})).sort((a,b)=>a.id.localeCompare(b.id))}:{}),
  participants:meeting.participants.map(row=>({id:row.userId,name:person(row.user)})).sort((a,b)=>a.id.localeCompare(b.id)),
  actions:meeting.actions.map(row=>({id:row.id,title:row.title,description:row.description,responsible:person(row.responsible),dueAt:iso(row.dueAt),completedAt:row.completedAt?iso(row.completedAt):null})).sort((a,b)=>a.id.localeCompare(b.id)),
  contributions:meeting.contributions.map(row=>({id:row.id,author:person(row.author),createdAt:iso(row.createdAt),body:row.body})).sort((a,b)=>a.id.localeCompare(b.id)),
@@ -31,21 +31,18 @@ export function renderMeetingReport(meeting:ReportMeeting,summary:ReportSummary|
  const lines=["# Relatório da reunião",meeting.title,"Tipo: "+meeting.type,"Horário agendado: "+date(meeting.startsAt)+" até "+date(meeting.endsAt)+" (Brasília)","Participantes cadastrados: "+meeting.participants.map(row=>person(row.user)).join(", "),""];
  const carried=reportCarryovers(meeting),reference=meeting.referenceAt?new Date(meeting.referenceAt):new Date();
  const late=(action:ReportAction)=>!action.completedAt&&+new Date(action.dueAt)<+reference;
- const pending=carried.filter(action=>!action.completedAt).sort((a,b)=>Number(late(b))-Number(late(a))||+new Date(a.originalDueAt||a.dueAt)-+new Date(b.originalDueAt||b.dueAt)||a.id.localeCompare(b.id));
- if(carried.length){
-  lines.push(pending.length?"## Prioridade · atividades de reuniões anteriores":"## Atividades de reuniões anteriores",`**${pending.length} pendente(s) de reuniões anteriores · ${pending.filter(late).length} em atraso · ${carried.length-pending.length} concluída(s)**`,"Situação das atividades verificada em "+date(reference)+" (Brasília).","Estas são as mesmas atividades do checklist e de Atividades Daily; a continuidade não altera os prazos.","");
-  for(const action of [...pending,...carried.filter(action=>action.completedAt)]){
-   const minutes=Math.max(0,Math.floor((+reference-+new Date(action.dueAt))/60000)),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60);
-   const wait=[days?days+" dia(s)":"",hours?hours+"h":"",minutes%60?minutes%60+"min":""].filter(Boolean).join(" ")||"menos de 1 min";
-   const state=action.completedAt?"Concluída em "+date(action.completedAt):late(action)?"EM ATRASO · prazo atual vencido há "+wait:action.autoExtendedAt?"Pendente de reunião anterior · prazo prorrogado":"Pendente de reunião anterior · no prazo atual";
-   lines.push("### "+(late(action)?"EM ATRASO · ":!action.completedAt?"PENDÊNCIA ANTERIOR · ":"CONCLUÍDA · ")+action.title,"Responsável: "+person(action.responsible),...(action.origin?["Reunião de origem: "+action.origin.title+" · "+date(action.origin.startsAt)+" (Brasília)"]:[]),"Prazo original: "+date(action.originalDueAt||action.dueAt)+" (Brasília)","Prazo atual: "+date(action.dueAt)+" (Brasília)","Situação: "+state,...(action.autoExtendedAt?["Prorrogação automática única já utilizada; a atividade não recebe novo prazo ao aparecer nesta reunião."]:[]),...(action.description?["Detalhes: "+action.description]:[]),"");
-  }
- }
+ const actions=[...meeting.actions,...carried].sort((a,b)=>person(a.responsible).localeCompare(person(b.responsible),"pt-BR")||Number(Boolean(a.completedAt))-Number(Boolean(b.completedAt))||Number(late(b))-Number(late(a))||+new Date(a.dueAt)-+new Date(b.dueAt)||a.id.localeCompare(b.id));
  if(summary){lines.push("## Resumo executivo",summary.summary,"");for(const topic of summary.topics)lines.push("### "+topic.title,...topic.points.map(point=>"• "+point),"");for(const [title,items]of [["Decisões registradas",summary.decisions],["Pendências e pontos de atenção",summary.pending],["Próximos passos",summary.nextSteps]] as const)lines.push("## "+title,...(items.length?items.map(item=>"• "+item):["Nenhum registro identificado nas fontes."]),"");}
  else lines.push("## Consolidação dos registros","Relatório estruturado a partir dos dados do Hub. A síntese por IA não foi utilizada.","");
  lines.push("## Atividades distribuídas");
- if(!meeting.actions.length)lines.push(carried.length?"Nenhuma nova atividade distribuída nesta reunião. As atividades anteriores estão listadas acima.":"Nenhuma atividade distribuída.");
- for(const action of meeting.actions)lines.push("### "+action.title,"Responsável: "+person(action.responsible),"Prazo: "+date(action.dueAt)+" (Brasília)","Situação: "+(action.completedAt?"Concluída em "+date(action.completedAt):"Pendente"),...(action.description?["Detalhes: "+action.description]:[]),"");
+ if(!actions.length)lines.push("Nenhuma atividade distribuída.");
+ else lines.push(`${actions.length} atividade(s) · ${actions.filter(action=>!action.completedAt).length} pendente(s) · ${actions.filter(late).length} em atraso · ${actions.filter(action=>action.completedAt).length} concluída(s)`,"");
+ for(const action of actions){
+  const minutes=Math.max(0,Math.floor((+reference-+new Date(action.dueAt))/60000)),days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60);
+  const wait=[days?days+" dia(s)":"",hours?hours+"h":"",minutes%60?minutes%60+"min":""].filter(Boolean).join(" ")||"menos de 1 min";
+  const state=action.completedAt?"Concluída em "+date(action.completedAt):late(action)?"EM ATRASO há "+wait:"Pendente";
+  lines.push("### "+action.title,"Responsável: "+person(action.responsible),"Prazo: "+date(action.dueAt)+" (Brasília)","Situação: "+state,...(action.description?["Detalhes: "+action.description]:[]),"");
+ }
  lines.push("## Pauta registrada",meeting.agenda||"Nenhuma pauta registrada.","","## Notas gerais",meeting.notes||"Nenhuma nota geral registrada.","","## Anotações da equipe");
  if(!meeting.contributions.length)lines.push("Nenhuma anotação registrada.");
  for(const note of meeting.contributions)lines.push("### "+person(note.author)+" · "+date(note.createdAt),note.body,"");
