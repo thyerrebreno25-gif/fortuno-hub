@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     ]);
     if (activities.length > 20000 || entries.length > 100000) return NextResponse.json({ error: "O período possui muitos registros. Reduza as datas ou filtre um cliente ou operador para consultar os totais completos." }, { status: 422 });
     const analytics = buildOperationsAnalytics(activities, entries, period, new Date(), operatorId);
-    const result = { ...analytics,workload:buildOperatorWorkload(activities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: catalog.options }, ownOnly, currentUserId: member.userId };
+    const result = { ...analytics,workload:buildOperatorWorkload(activities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: catalog.options }, ownOnly, preferenceScope:member.organizationId+":"+member.userId, currentUserId: member.userId };
     if (Buffer.byteLength(JSON.stringify(result), "utf8") > 4000000) return NextResponse.json({ error: "O detalhamento deste período é muito extenso. Filtre por cliente, operador ou um período menor para obter o relatório completo." }, { status: 422 });
     return NextResponse.json(result);
   } catch (error) {
