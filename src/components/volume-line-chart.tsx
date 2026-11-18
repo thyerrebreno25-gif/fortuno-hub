@@ -4,7 +4,7 @@ import styles from "./volume-line-chart.module.css";
 export type VolumePoint = {label: string; value: number};
 /** A small shared chart for the monitoring and TV dashboards. Curves stay
  * between consecutive values, including zero; all values remain inspectable. */
-export function VolumeLineChart({rows, label, color = "#248fdd", dark = false, fill = false}: {rows: VolumePoint[]; label: string; color?: string; dark?: boolean; fill?: boolean}) {
+export function VolumeLineChart({rows, label, color = "#248fdd", dark = false, fill = false, unit = "conversas", maxValue}: {rows: VolumePoint[]; label: string; color?: string; dark?: boolean; fill?: boolean; unit?: string; maxValue?: number}) {
   const id = useId().replace(/:/g, ""), [active, setActive] = useState<number | null>(null);
   const plot = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({width: 720, height: 260});
@@ -25,7 +25,7 @@ export function VolumeLineChart({rows, label, color = "#248fdd", dark = false, f
   }, [hasRows]);
   if (!rows.length) return <p>Sem dados no período.</p>;
   const {width, height} = size, fontSize = fill ? 16 : 13;
-  const max = Math.max(4, Math.ceil(Math.max(...rows.map(row => row.value)) / 4) * 4);
+  const max = maxValue || Math.max(4, Math.ceil(Math.max(...rows.map(row => row.value)) / 4) * 4);
   const left = Math.max(50, String(max).length * fontSize * .65 + 18), right = 18, top = 16, bottom = fontSize + 22;
   const x = (index: number) => rows.length === 1 ? (width + left - right) / 2 : left + index * (width - left - right) / (rows.length - 1);
   const y = (value: number) => height - bottom - value / max * (height - bottom - top);
@@ -41,5 +41,5 @@ export function VolumeLineChart({rows, label, color = "#248fdd", dark = false, f
     <path d={`${path} L ${x(rows.length - 1)} ${y(0)} L ${x(0)} ${y(0)} Z`} fill={`url(#${id})`}/><path d={path} fill="none" stroke={color} strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round"/>
     {ticks.map(index => <text key={index} x={x(index)} y={height - 10} textAnchor={index === 0 ? "start" : index === rows.length - 1 ? "end" : "middle"} fill={text} fontSize={fontSize}>{rows[index].label}</text>)}
     {rows.map((row, index) => <g key={index}><circle cx={x(index)} cy={y(row.value)} r={active === index ? 5 : rows.length === 1 ? 4 : 0} fill={color}/><rect x={x(index) - (width - left - right) / Math.max(2, rows.length) / 2} y={top} width={(width - left - right) / Math.max(2, rows.length)} height={height - bottom - top} fill="transparent" tabIndex={0} aria-label={`${row.label}: ${row.value}`} onMouseEnter={() => setActive(index)} onMouseLeave={() => setActive(null)} onFocus={() => setActive(index)} onBlur={() => setActive(null)}><title>{row.label}: {row.value}</title></rect></g>)}
-  </svg></div><div aria-live="polite" className={styles.value} style={{color: text}}>{!selected ? "Passe sobre a linha para consultar os valores" : `${selected.label} · ${selected.value.toLocaleString("pt-BR")} conversas`}</div></div>;
+  </svg></div><div aria-live="polite" className={styles.value} style={{color: text}}>{!selected ? "Passe sobre a linha para consultar os valores" : `${selected.label} · ${selected.value.toLocaleString("pt-BR",{maximumFractionDigits:2})} ${unit}`}</div></div>;
 }

@@ -2,6 +2,7 @@ import type { UsageReport } from "@/modules/usage/model";
 import type { onboardingSummary } from "./onboarding";
 export type ExecutivePeriod = "today" | "week" | "month";
 export type ExecutiveData = {
+ briefing?:import("./briefing").ExecutiveBriefing|null;
  whatsappEngagement?:ReturnType<typeof import("@/modules/whatsapp/usage").whatsappUsageReport>|null;
  volume?:ReturnType<typeof import("./volume").volumeDistribution>;
  engagement?:Pick<UsageReport,"total"|"summary"|"byUser"|"byPage">|null;
@@ -15,7 +16,7 @@ export type ExecutiveData = {
  operations:{open:number;overdue:number;completedPeriod:number;scheduledPeriod:number;runningTimers:number};
  meetings:{today:number;upcoming:number;completedPeriod:number;agenda:Array<{id:string;title:string;startsAt:string;endsAt:string;status:string;participants:string[]}>};
  ca:{confirmedLines:number;failedLines:number;pendingLines:number;confirmedBatches:number;breakdown?:Array<{label:string;confirmed:number}>};
- operators:Array<{id:string;name:string;whatsappOpen:number;emailOpen:number;activitiesOpen:number;activitiesOverdue:number;completedPeriod:number;meetingsUpcoming:number}>;
+ operators:Array<{id:string;name:string;whatsappReceived?:number;whatsappResolved?:number;averageResolutionMinutes?:number|null;averageResponseMinutes?:number|null;whatsappOpen:number;emailOpen:number;activitiesOpen:number;activitiesOverdue:number;completedPeriod:number;meetingsUpcoming:number}>;
  daily:Array<{date:string;whatsappReceived:number;emailReceived:number;activitiesCompleted:number;caConfirmed:number}>;
  notes:string[];
 };

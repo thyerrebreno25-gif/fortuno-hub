@@ -1,3 +1,4 @@
+import {executiveBriefing} from "@/modules/executive/briefing-server";
 import { whatsappUsage } from "@/modules/whatsapp/usage-server";
 import { usageSnapshot } from "@/modules/usage/server";
 import { usagePeriod } from "@/modules/usage/model";
@@ -23,7 +24,7 @@ export async function GET(request:Request){
   // returning the previous snapshot while a stale cache revalidates.
   const refreshBucket=String(Math.floor(Date.now()/300000));
   const account=scope.whatsapp?await currentWhatsAppAccount(member.organizationId):null;
-  const cacheKey=["executive-v9",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify({...scope,usageViews:Object.fromEntries(Object.entries(permissions).map(([key,value])=>[key,value.canView]))})];
+  const cacheKey=["executive-v10",account?.accountKey||"none",member.organizationId,period.key,period.to,refreshBucket,JSON.stringify({...scope,usageViews:Object.fromEntries(Object.entries(permissions).map(([key,value])=>[key,value.canView]))})];
   const data=await unstable_cache(()=>executiveLoad(JSON.stringify(cacheKey),async()=>{
     // The runtime pool has two connections. General usage and WhatsApp usage
     // each run their own queries, so start them after the main snapshot rather
@@ -31,7 +32,8 @@ export async function GET(request:Request){
     const snapshot=await executiveSnapshot(member.organizationId,period.key,scope,account?.recipient||null);
     const usage=await usageSnapshot(member.organizationId,usagePeriod(period.from,period.to),permissions,{}).catch(()=>null);
     const whatsappEngagement=scope.whatsapp&&account?.recipient&&account.connection?.phone?await whatsappUsage(member.organizationId,account.recipient,account.connection.phone,period.start,period.end).catch(()=>null):null;
-    return {...snapshot,whatsappEngagement,engagement:usage?{total:usage.total,summary:usage.summary,byUser:usage.byUser,byPage:usage.byPage}:null};
+    const briefing=await executiveBriefing(member.organizationId,snapshot,scope,Boolean(permissions.DAILY_ACTIVITIES?.canView),account?.recipient||null,account?.connection?.phone||null).catch(error=>{console.error("Dados complementares do painel:",error);return null;});
+    return {...snapshot,briefing,whatsappEngagement,engagement:usage?{total:usage.total,summary:usage.summary,byUser:usage.byUser,byPage:usage.byPage}:null};
   }),cacheKey,{revalidate:300})();
   return NextResponse.json(data,{headers:{"Cache-Control":"private, no-store"}});
  }catch(error){console.error("Erro no painel gerencial:",error);return NextResponse.json({error:"Não foi possível atualizar o painel gerencial."},{status:503});}

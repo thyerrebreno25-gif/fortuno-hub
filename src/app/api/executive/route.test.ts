@@ -1,21 +1,23 @@
+vi.mock("@/modules/executive/briefing-server",()=>({executiveBriefing:mocks.briefing}));
 vi.mock("@/modules/usage/server",()=>({usageSnapshot:mocks.usage}));
 vi.mock("@/modules/whatsapp/usage-server",()=>({whatsappUsage:vi.fn(async()=>null)}));
 vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:vi.fn(async()=>({accountKey:"wa-account:conn:5511888888888",recipient:"wa-account:conn:5511888888888"}))}));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ usage:vi.fn(), member: vi.fn(), permissions: vi.fn(), snapshot: vi.fn(), cache: vi.fn() }));
+const mocks = vi.hoisted(() => ({ briefing:vi.fn(), usage:vi.fn(), member: vi.fn(), permissions: vi.fn(), snapshot: vi.fn(), cache: vi.fn() }));
 vi.mock("@/modules/permissions/permissions", () => ({ getCurrentMember: mocks.member, getRolePermissions: mocks.permissions }));
 vi.mock("@/modules/executive/server", () => ({ executiveSnapshot: mocks.snapshot }));
 vi.mock("next/cache", () => ({ unstable_cache: mocks.cache }));
 import { GET } from "./route";
 
-const moduleCodes = ["ONBOARDING", "MANAGEMENT", "CLIENTS", "WHATSAPP", "SERVICE_CENTER", "SUPPORT", "OPERATIONS", "MEETINGS", "CALENDAR", "IMPORTS", "PURCHASE_INVOICES", "INVESTMENT_INCOME", "CONTRACT_IMPORTS"];
+const moduleCodes = ["ONBOARDING", "MANAGEMENT", "CLIENTS", "WHATSAPP", "SERVICE_CENTER", "SUPPORT", "OPERATIONS", "MEETINGS", "DAILY_ACTIVITIES", "CALENDAR", "IMPORTS", "PURCHASE_INVOICES", "INVESTMENT_INCOME", "CONTRACT_IMPORTS"];
 const permissions = (disabled: string[] = []) => Object.fromEntries(moduleCodes.map(code => [code, { canView: !disabled.includes(code) }]));
 const request = (period = "today") => new Request("https://hub.test/api/executive?period=" + period);
 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.usage.mockResolvedValue(null);
+  mocks.briefing.mockResolvedValue(null);
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-11-05T12:00:00Z"));
   mocks.member.mockResolvedValue({ organizationId: "org-a", userId: "manager-a", role: "MANAGER" });
@@ -67,7 +69,7 @@ it("marks Conta Azul unavailable when every export module is denied", async () =
 it("partitions the server cache by organization, period, São Paulo date and effective permissions", async () => {
   await GET(request("week"));
   const first = mocks.cache.mock.calls[0];
-  expect(first[1]).toEqual(["executive-v9", "wa-account:conn:5511888888888", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
+  expect(first[1]).toEqual(["executive-v10", "wa-account:conn:5511888888888", "org-a", "week", "2026-11-05", expect.any(String), expect.any(String)]);
   expect(first[2]).toEqual({ revalidate: 300 });
   expect(JSON.parse(first[1][6]).contract).toBe(true);
 
@@ -102,3 +104,12 @@ it("respects denied onboarding permission",async()=>{mocks.permissions.mockResol
 
 it("partitions engagement cache by all page permissions, including modules absent from executive totals",async()=>{const p=permissions();mocks.permissions.mockResolvedValue({...p,ASSISTANT:{canView:true}});await GET(request());mocks.permissions.mockResolvedValue({...p,ASSISTANT:{canView:false}});await GET(request());expect(mocks.cache.mock.calls[0][1]).not.toEqual(mocks.cache.mock.calls[1][1]);});
 it("keeps executive metrics available if engagement fails",async()=>{mocks.usage.mockRejectedValue(new Error("temporary"));const r=await GET(request());expect(r.status).toBe(200);expect(await r.json()).toMatchObject({marker:"safe-summary",engagement:null});});
+
+it("honors the independently configured Daily access in supplementary TV metrics",async()=>{
+ mocks.permissions.mockResolvedValue(permissions(["DAILY_ACTIVITIES"]));
+ expect((await GET(request())).status).toBe(200);
+ expect(mocks.briefing.mock.calls[0][3]).toBe(false);
+ mocks.permissions.mockResolvedValue(permissions());
+ expect((await GET(request())).status).toBe(200);
+ expect(mocks.briefing.mock.calls[1][3]).toBe(true);
+});
