@@ -1,4 +1,6 @@
 import { meetingListFilter } from "@/modules/meetings/list-filters";
+import {dailyCarryoverActions,dailyCarryoverCounts} from "@/modules/meetings/daily-carryover";
+import {processDailyActivities} from "@/modules/meetings/daily-server";
 import {publicReportSelect,processMeetingReport} from "@/modules/meetings/reports";
 import {reportFingerprint} from "@/modules/meetings/report-model";
 import { after, NextResponse } from "next/server";
@@ -23,14 +25,16 @@ export async function GET(request: Request) {
     const deleted = url.searchParams.get("deleted") === "1";
     const id = url.searchParams.get("id");
     if (id) {
-      await findMeeting(member, id, deleted);
+      const accessible=await findMeeting(member, id, deleted);
+      if(!deleted&&accessible.type==="Daily")await processDailyActivities(member.organizationId);
       const meeting = await prisma.teamMeeting.findFirstOrThrow({ where: { id, ...meetingScope(member, deleted) }, include: { fathomRecordings:{select:{id:true,title:true,playbackUrl:true,transcript:true,summary:true,actionItems:true,startsAt:true},orderBy:{startsAt:"asc"}}, report:{select:publicReportSelect}, creator: { select: { id: true, name: true } }, participants: { include: { user: { select: { id: true, name: true, email: true } } } }, actions: { include: { responsible: { select: { id: true, name: true, email: true } } }, orderBy: { dueAt: "asc" } }, contributions: { include: { author: { select: { name: true, email: true } } }, orderBy: { createdAt: "asc" } }, recordings: { select: { id: true, name: true, status: true, transcript: true, error: true, size: true, createdAt: true }, orderBy: { createdAt: "desc" } } } });
       const integration = await prisma.teamCalendarEvent.findFirst({ where: { meetingId: meeting.id, userId: meeting.responsibleId || meeting.createdById, actionItemId: null, sourceKey:`meeting:${meeting.id}` }, select: { googleSyncStatus: true, syncError: true } });
       const [events,connections]=await Promise.all([prisma.teamCalendarEvent.findMany({where:{organizationId:member.organizationId,meetingId:meeting.id,actionItemId:null,sourceKey:`meeting:${meeting.id}`},select:{userId:true,googleSyncStatus:true,syncError:true}}),prisma.googleCalendarConnection.findMany({where:{organizationId:member.organizationId,userId:{in:meeting.participants.map(person=>person.userId)}},select:{userId:true,status:true}})]);
       const calendarSync=meeting.participants.map(person=>({userId:person.userId,connected:connections.some(connection=>connection.userId===person.userId&&connection.status==="CONNECTED"),googleSyncStatus:events.find(event=>event.userId===person.userId)?.googleSyncStatus||"PENDING",syncError:events.find(event=>event.userId===person.userId)?.syncError||null}));
       if (!deleted && meeting.report && ["PENDING","WAITING_AUDIO","PROCESSING"].includes(meeting.report.status)) after(()=>processMeetingReport(meeting.id));
       const report = meeting.report ? {...meeting.report,outdated:Boolean(meeting.report.content && meeting.report.sourceHash !== reportFingerprint(meeting,meeting.report.includeRecordings))} : null;
-      return NextResponse.json({ meeting: { ...meeting, report, integration, calendarSync }, canManage: editableMeeting(member, meeting) });
+      const carryover=deleted?{actions:[],total:0}:await dailyCarryoverActions(meeting);
+      return NextResponse.json({ meeting: { ...meeting, report, integration, calendarSync,carryoverActions:carryover.actions,carryoverTotal:carryover.total }, canManage: editableMeeting(member, meeting) });
     }
     const page = Math.min(100, Math.max(0, Number(url.searchParams.get("page")) || 0));
     const q = (url.searchParams.get("q") || "").slice(0, 180);
@@ -38,7 +42,8 @@ export async function GET(request: Request) {
     try { filters = meetingListFilter(url.searchParams, member.userId, deleted); }
     catch { throw new MeetingError("Selecione um período válido para as reuniões."); }
     const meetings = await prisma.teamMeeting.findMany({ where: { AND: [meetingScope(member, deleted), filters.personal, filters.dates], ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { type: { contains: q, mode: "insensitive" } }] } : {}) }, include: { _count: { select: { participants: true, actions: true } }, actions: { select: { completedAt: true } } }, orderBy: [{ startsAt: filters.direction }, { id: filters.direction }], take: 51, skip: page * 50 });
-    return NextResponse.json({ meetings: meetings.slice(0, 50), hasMore: meetings.length > 50 });
+    const visible=meetings.slice(0,50),carryoverCounts=deleted?new Map<string,number>():await dailyCarryoverCounts(visible);
+    return NextResponse.json({ meetings: visible.map(meeting=>({...meeting,carryoverPending:carryoverCounts.get(meeting.id)||0})), hasMore: meetings.length > 50 });
   } catch (error) { return meetingFailure(error); }
 }
 export async function POST(request: Request) {

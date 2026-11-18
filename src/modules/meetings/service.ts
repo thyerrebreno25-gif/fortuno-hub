@@ -6,6 +6,7 @@ import { actionEvent, actionInput, editableMeeting, meetingInput } from "./model
 import { meetingOccurrences } from "./recurrence";
 import { findMeeting, MeetingError, type MeetingMember } from "./auth";
 import { dailyDeadlineEditAllowed } from "./daily-model";
+import {dailyCarryoverWhere} from "./daily-carryover";
 
 export async function saveMeeting(member: MeetingMember, body: unknown, id?: string) {
   const input = meetingInput.parse(body);
@@ -47,6 +48,8 @@ export async function saveMeeting(member: MeetingMember, body: unknown, id?: str
     let meeting;
     if (id) {
       await tx.$queryRaw`SELECT "id" FROM "TeamMeeting" WHERE "id" = ${id} FOR UPDATE`;
+      const latest=await tx.teamMeeting.findUniqueOrThrow({where:{id}});
+      if(latest.organizationId!==member.organizationId||latest.deletedAt||!editableMeeting(member,latest))throw new MeetingError("O responsável ou acesso à reunião mudou. Atualize a tela.",403);
       const invalidTasks = await tx.meetingActionItem.count({ where: { meetingId: id, responsibleId: { notIn: participantIds } } });
       if (invalidTasks) throw new MeetingError("Reatribua as entregas antes de remover o responsável dos participantes.");
       const changed = await tx.teamMeeting.updateMany({ where: { id, organizationId: member.organizationId, revision }, data: { ...data, revision: { increment: 1 } } });
@@ -84,11 +87,24 @@ export async function saveAction(member: MeetingMember, meetingId: string, body:
     const manager = editableMeeting(member, latest);
     if (latest.deletedAt || latest.status === "CANCELLED") throw new MeetingError("Esta reunião foi cancelada.");
     if (!manager && !latest.participants.some((item) => item.userId === member.userId)) throw new MeetingError("Você não participa mais desta reunião.", 403);
-    const previous = id ? await tx.meetingActionItem.findFirst({ where: { id, meetingId } }) : null;
+    let previous = id ? await tx.meetingActionItem.findFirst({ where: { id, meetingId } }) : null;
+    if(id&&!previous){
+      const scope=dailyCarryoverWhere(latest);
+      if(scope){
+        const carried=await tx.meetingActionItem.findFirst({where:{id,...scope}});
+        if(carried){
+          // A later occurrence always locks its earlier source second. The same
+          // source lock serializes Daily completion, auto-extension and deletion.
+          await tx.$queryRaw`SELECT "id" FROM "TeamMeeting" WHERE "id" = ${carried.meetingId} FOR UPDATE`;
+          previous=await tx.meetingActionItem.findFirst({where:{id,...scope}});
+        }
+      }
+    }
     if (id && !previous) throw new MeetingError("Entrega não encontrada.", 404);
+    const actionMeetingId=previous?.meetingId||meetingId;
     if (previous && completion.success) {
       if (!manager && previous.responsibleId !== member.userId) throw new MeetingError("Somente o responsável ou organizador pode concluir esta entrega.", 403);
-      const changed = await tx.meetingActionItem.updateMany({ where: { id, meetingId, revision: completion.data.revision }, data: { completedAt: completion.data.completed ? new Date() : null, revision: { increment: 1 } } });
+      const changed = await tx.meetingActionItem.updateMany({ where: { id, meetingId:actionMeetingId, revision: completion.data.revision }, data: { completedAt: completion.data.completed ? new Date() : null, revision: { increment: 1 } } });
       if (!changed.count) throw new MeetingError("A entrega foi alterada. Atualize a reunião.", 409);
       if (previous.overdueNoticeId) await tx.notice.updateMany({where: {id: previous.overdueNoticeId, organizationId: member.organizationId}, data: {closedAt: completion.data.completed ? new Date() : null}});
     } else {
@@ -98,7 +114,7 @@ export async function saveAction(member: MeetingMember, meetingId: string, body:
       if (!latest.participants.some((item) => item.userId === input.responsibleId)) throw new MeetingError("O responsável deve participar da reunião.");
       if (id) {
         const { revision } = z.object({ revision: z.number().int().positive() }).parse(body);
-        const changed = await tx.meetingActionItem.updateMany({ where: { id, meetingId, revision }, data: { ...input, revision: { increment: 1 } } });
+        const changed = await tx.meetingActionItem.updateMany({ where: { id, meetingId:actionMeetingId, revision }, data: { ...input, revision: { increment: 1 } } });
         if (!changed.count) throw new MeetingError("A entrega foi alterada. Atualize a reunião.", 409);
       } else {
         const created = await tx.meetingActionItem.create({ data: { ...input, meetingId } });
@@ -108,9 +124,9 @@ export async function saveAction(member: MeetingMember, meetingId: string, body:
     const action = await tx.meetingActionItem.findUniqueOrThrow({ where: { id: id! } });
     const event = { ...actionEvent(action), googleSyncStatus: "PENDING" };
     await tx.teamCalendarEvent.updateMany({ where: { actionItemId: action.id, userId: { not: action.responsibleId } }, data: { status: "CANCELLED", googleSyncStatus: "PENDING", revision: { increment: 1 } } });
-    await tx.teamCalendarEvent.upsert({ where: { userId_sourceKey: { userId: action.responsibleId, sourceKey: `action:${action.id}` } }, create: { ...event, organizationId: member.organizationId, userId: action.responsibleId, sourceKey: `action:${action.id}`, meetingId, actionItemId: action.id }, update: { ...event, revision: { increment: 1 } } });
+    await tx.teamCalendarEvent.upsert({ where: { userId_sourceKey: { userId: action.responsibleId, sourceKey: `action:${action.id}` } }, create: { ...event, organizationId: member.organizationId, userId: action.responsibleId, sourceKey: `action:${action.id}`, meetingId:actionMeetingId, actionItemId: action.id }, update: { ...event, revision: { increment: 1 } } });
     await tx.meetingDelivery.updateMany({ where: { actionItemId: action.id, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } });
-    if (!action.completedAt) await tx.meetingDelivery.create({ data: { organizationId: member.organizationId, userId: action.responsibleId, meetingId, actionItemId: action.id, dedupeKey: `assignment:${action.id}:${action.revision}`, title: `Entrega definida · ${action.title}`, body: `Prazo: ${action.dueAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · Reunião: ${meeting.title}` } });
+    if (!action.completedAt) await tx.meetingDelivery.create({ data: { organizationId: member.organizationId, userId: action.responsibleId, meetingId:actionMeetingId, actionItemId: action.id, dedupeKey: `assignment:${action.id}:${action.revision}`, title: `Entrega definida · ${action.title}`, body: `Prazo: ${action.dueAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · Reunião: ${meeting.title}` } });
     return action;
   }, { timeout: 30000, maxWait: 10000 });
 }

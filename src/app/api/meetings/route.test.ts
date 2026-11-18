@@ -1,15 +1,17 @@
 vi.mock("@/modules/meetings/reports",()=>({publicReportSelect:{},processMeetingReport:vi.fn()}));
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({access:vi.fn(),trash:vi.fn(),save:vi.fn(),after:vi.fn(),members:vi.fn(),connections:vi.fn(),connection:vi.fn(),list:vi.fn()}));
+const m=vi.hoisted(()=>({access:vi.fn(),trash:vi.fn(),save:vi.fn(),after:vi.fn(),members:vi.fn(),connections:vi.fn(),connection:vi.fn(),list:vi.fn(),detail:vi.fn(),findAccess:vi.fn(),carry:vi.fn(),counts:vi.fn(),daily:vi.fn()}));
 vi.mock('next/server',async()=>{const actual=await vi.importActual<typeof import('next/server')>('next/server');return {...actual,after:m.after};});
-vi.mock('@/lib/prisma',()=>({prisma:{teamMeeting:{findMany:m.list},organizationMember:{findMany:m.members},googleCalendarConnection:{findMany:m.connections,findUnique:m.connection}}}));
-vi.mock('@/modules/meetings/auth',()=>({meetingAccess:m.access,meetingFailure:(error:{status?:number;message?:string})=>Response.json({error:error.message},{status:error.status||400}),meetingScope:vi.fn(),findMeeting:vi.fn()}));
+vi.mock('@/lib/prisma',()=>({prisma:{teamMeeting:{findMany:m.list,findFirstOrThrow:m.detail},teamCalendarEvent:{findFirst:vi.fn(async()=>null),findMany:vi.fn(async()=>[])},organizationMember:{findMany:m.members},googleCalendarConnection:{findMany:m.connections,findUnique:m.connection}}}));
+vi.mock('@/modules/meetings/auth',()=>({meetingAccess:m.access,meetingFailure:(error:{status?:number;message?:string})=>Response.json({error:error.message},{status:error.status||400}),meetingScope:vi.fn(),findMeeting:m.findAccess}));
 vi.mock('@/modules/meetings/service',()=>({saveMeeting:m.save,trashMeeting:m.trash}));
 vi.mock('@/modules/meetings/delivery',()=>({processMeetingBackground:vi.fn()}));
 vi.mock('@/modules/meetings/google-calendar',()=>({googleConfigured:vi.fn()}));
+vi.mock('@/modules/meetings/daily-carryover',()=>({dailyCarryoverActions:m.carry,dailyCarryoverCounts:m.counts}));
+vi.mock('@/modules/meetings/daily-server',()=>({processDailyActivities:m.daily}));
 import {DELETE,PATCH,GET,POST} from './route';
 import {meetingScope} from '@/modules/meetings/auth';
-beforeEach(()=>{vi.clearAllMocks();m.access.mockResolvedValue({member:{organizationId:'org',userId:'owner'}});m.trash.mockResolvedValue({ok:true});});
+beforeEach(()=>{vi.clearAllMocks();m.carry.mockResolvedValue({actions:[],total:0});m.counts.mockResolvedValue(new Map());m.connections.mockResolvedValue([]);m.access.mockResolvedValue({member:{organizationId:'org',userId:'owner'}});m.trash.mockResolvedValue({ok:true});});
 it('applies filters before pagination and retains access scope for all meetings',async()=>{
  vi.mocked(meetingScope).mockReturnValue({organizationId:'org',deletedAt:null,OR:[{createdById:'owner'}]});m.list.mockResolvedValue([]);
  expect((await GET(new Request('https://hub.test/api/meetings?scope=all&period=nextMonth&q=Daily'))).status).toBe(200);
@@ -33,4 +35,15 @@ it('returns the number of independent occurrences created and queues the backgro
  m.save.mockResolvedValue({id:'first',createdCount:4});
  const response=await POST(new Request('https://hub.test/api/meetings',{method:'POST',body:JSON.stringify({title:'Reunião'})}));
  expect(response.status).toBe(201);expect(await response.json()).toMatchObject({meeting:{id:'first'},createdCount:4});expect(m.access).toHaveBeenCalledWith('MEETINGS','canCreate');expect(m.after).toHaveBeenCalledTimes(1);
+});
+
+it('loads previous Daily actions as references while preserving current occurrence actions and running the existing one-time deadline processor',async()=>{
+ m.findAccess.mockResolvedValue({id:'today',type:'Daily'});const action={id:'task-original',meetingId:'yesterday',origin:{id:'yesterday'}};m.carry.mockResolvedValue({actions:[action],total:1});m.detail.mockResolvedValue({id:'today',type:'Daily',createdById:'owner',participants:[],actions:[],report:null});
+ const response=await GET(new Request('https://hub.test/api/meetings?id=today'));expect(response.status).toBe(200);expect(await response.json()).toMatchObject({meeting:{id:'today',actions:[],carryoverActions:[action],carryoverTotal:1},canManage:true});expect(m.daily).toHaveBeenCalledWith('org');expect(m.carry).toHaveBeenCalledWith(expect.objectContaining({id:'today'}));
+});
+it('does not attach carried activities or process deadlines for a deleted occurrence',async()=>{
+ m.findAccess.mockResolvedValue({id:'today',type:'Daily'});m.detail.mockResolvedValue({id:'today',type:'Daily',createdById:'owner',participants:[],actions:[],report:null});const response=await GET(new Request('https://hub.test/api/meetings?id=today&deleted=1'));expect(response.status).toBe(200);expect(m.daily).not.toHaveBeenCalled();expect(m.carry).not.toHaveBeenCalled();
+});
+it('includes distinct previous pending counts in the meeting list without changing native delivery totals',async()=>{
+ m.list.mockResolvedValue([{id:'today',_count:{actions:0},actions:[]}]);m.counts.mockResolvedValue(new Map([['today',6]]));const response=await GET(new Request('https://hub.test/api/meetings?scope=all'));expect(response.status).toBe(200);expect(await response.json()).toMatchObject({meetings:[{id:'today',carryoverPending:6,_count:{actions:0},actions:[]}]});
 });

@@ -5,7 +5,8 @@ import { dailyScope } from "@/modules/meetings/daily-model";
 import { processDailyActivities } from "@/modules/meetings/daily-server";
 import { processMeetingBackground } from "@/modules/meetings/delivery";
 import { z } from "zod";
-import { findMeeting } from "@/modules/meetings/auth";
+import { findMeeting,meetingScope } from "@/modules/meetings/auth";
+import {dayKey} from "@/modules/meetings/model";
 import { dailyMeetingTypes } from "@/modules/meetings/daily-model";
 import { saveAction } from "@/modules/meetings/service";
 export const maxDuration = 180;
@@ -25,25 +26,37 @@ export async function GET(request: Request) {
     const base = {...scope, ...(type !== "all" ? {meeting: {...scope.meeting, type}} : {}), ...(query ? {OR: [{title: {contains: query, mode: "insensitive" as const}}, {meeting: {title: {contains: query, mode: "insensitive" as const}}}]} : {})};
     const state = status === "completed" ? {completedAt: {not: null}} : status === "overdue" ? {completedAt: null, dueAt: {lt: now}} : status === "pending" ? {completedAt: null} : {};
     const [actions, total, pending, overdue, completed] = await Promise.all([
-      prisma.meetingActionItem.findMany({where: {...base, ...state}, include: {responsible: {select: {id: true, name: true, email: true}}, meeting: {select: {id: true, title: true, type: true}}}, orderBy: [{dueAt: "asc"}, {id: "asc"}], skip: Math.floor(page) * 30, take: 30}),
+      prisma.meetingActionItem.findMany({where: {...base, ...state}, include: {responsible: {select: {id: true, name: true, email: true}}, meeting: {select: {id: true, title: true, type: true,creationKey:true,startsAt:true}}}, orderBy: [{dueAt: "asc"}, {id: "asc"}], skip: Math.floor(page) * 30, take: 30}),
       prisma.meetingActionItem.count({where: {...base, ...state}}),
       prisma.meetingActionItem.count({where: {...base, completedAt: null}}),
       prisma.meetingActionItem.count({where: {...base, completedAt: null, dueAt: {lt: now}}}),
       prisma.meetingActionItem.count({where: {...base, completedAt: {not: null}}}),
     ]);
-    return NextResponse.json({actions, total, summary: {pending, overdue, completed}, userId: member.userId, manager, canEdit: permissions.canEdit, canViewMeetings: modulePermissions.MEETINGS.canView}, {headers: {"Cache-Control": "private, no-store"}});
+    const keys=[...new Set(actions.flatMap(action=>action.meeting.type==="Daily"&&action.meeting.creationKey?[action.meeting.creationKey]:[]))];
+    // A carried assignment may belong to a new participant. Use an accessible
+    // occurrence as context, while keeping the original action and source ID.
+    const occurrences=keys.length?await prisma.teamMeeting.findMany({where:{...meetingScope(member),type:"Daily",status:{not:"CANCELLED"},creationKey:{in:keys},startsAt:{lt:new Date(+new Date(`${dayKey(now)}T00:00:00-03:00`)+86400000)}},orderBy:[{startsAt:"desc"},{id:"asc"}],distinct:["creationKey"],select:{id:true,creationKey:true,startsAt:true}}):[];
+    const contexts=new Map(occurrences.map(meeting=>[meeting.creationKey,meeting]));
+    const items=actions.map(action=>{
+      const context=contexts.get(action.meeting.creationKey);
+      const start=context?new Date(`${dayKey(context.startsAt)}T00:00:00-03:00`):null;
+      const carried=context&&start&&action.meeting.startsAt<start&&action.createdAt<new Date(+start+86400000)&&(!action.completedAt||action.completedAt>=start);
+      return {...action,contextMeetingId:carried?context.id:action.meeting.id};
+    });
+    return NextResponse.json({actions:items, total, summary: {pending, overdue, completed}, userId: member.userId, manager, canEdit: permissions.canEdit, canViewMeetings: modulePermissions.MEETINGS.canView}, {headers: {"Cache-Control": "private, no-store"}});
   } catch (error) { return meetingFailure(error); }
 }
 
 export async function PATCH(request: Request) {
   try {
     const {member} = await meetingAccess("DAILY_ACTIVITIES", "canEdit");
-    const body = z.object({meetingId: z.string().min(1), id: z.string().min(1), revision: z.number().int().positive(), completed: z.boolean()}).strict().parse(await request.json());
-    const meeting = await findMeeting(member, body.meetingId);
+    const body = z.object({meetingId: z.string().min(1),contextMeetingId:z.string().min(1).optional(), id: z.string().min(1), revision: z.number().int().positive(), completed: z.boolean()}).strict().parse(await request.json());
+    const meetingId=body.contextMeetingId||body.meetingId;
+    const meeting = await findMeeting(member, meetingId);
     if (!dailyMeetingTypes.includes(meeting.type)) throw new MeetingError("Esta entrega não pertence a uma Daily ou Semanal de squad.", 403);
     // Same entity and service as the meeting checklist; Daily permissions do
     // not grant access to other meeting features or arbitrary assignments.
-    const action = await saveAction(member, body.meetingId, body, body.id);
+    const action = await saveAction(member, meetingId, body, body.id);
     after(() => processMeetingBackground(member.organizationId));
     return NextResponse.json({action: {id: action.id, completedAt: action.completedAt, revision: action.revision}});
   } catch (error) {return meetingFailure(error);}

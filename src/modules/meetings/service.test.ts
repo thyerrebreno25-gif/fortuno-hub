@@ -56,6 +56,35 @@ it("cancels the meeting's linked events", async () => {
 });
 
 const payload = { title: "Daily", type: "Daily", startsAt: "2026-11-16T09:00:00-03:00", endsAt: "2026-11-16T09:30:00-03:00", participantIds: ["a","b"], creationKey: "7fae5ebd-3d35-4651-bcad-e86b30c032a9" };
+it("allows the current responsible operator to designate another responsible and includes them as a participant",async()=>{
+ const current={...meeting,createdById:"master",responsibleId:"a"};mocks.find.mockResolvedValue(current);mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(current);
+ await saveMeeting(member,{...payload,responsibleId:"b",revision:1},"m");expect(mocks.tx.teamMeeting.updateMany.mock.calls[0][0].data.responsibleId).toBe("b");expect(mocks.tx.meetingParticipant.createMany.mock.calls[0][0].data).toContainEqual({meetingId:"m",userId:"b"});
+});
+it("prevents a plain participant from delegating or retaining organizer rights after responsibility changes concurrently",async()=>{
+ const current={...meeting,createdById:"master",responsibleId:"b"};mocks.find.mockResolvedValue(current);
+ await expect(saveMeeting(member,{...payload,responsibleId:"a",revision:1},"m")).rejects.toMatchObject({status:403});
+ mocks.find.mockResolvedValue({...current,responsibleId:"a"});mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(current);
+ await expect(saveMeeting(member,{...payload,responsibleId:"b",revision:1},"m")).rejects.toMatchObject({status:403});expect(mocks.tx.teamMeeting.updateMany).not.toHaveBeenCalled();
+});
+it("completes a carried task using its original ID, revision, notice and calendar event under the new Daily responsible",async()=>{
+ const current={...meeting,type:"Daily",creationKey:"series",createdById:"master",responsibleId:"a",startsAt:new Date("2026-11-17T12:00:00Z")};mocks.find.mockResolvedValue(current);mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(current);
+ const carried={...action,meetingId:"prior",overdueNoticeId:"notice"};mocks.tx.meetingActionItem.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(carried).mockResolvedValueOnce(carried);mocks.tx.meetingActionItem.findUniqueOrThrow.mockResolvedValue({...carried,completedAt:new Date(),revision:2});
+ await saveAction(member,"m",{completed:true,revision:1},"task");
+ expect(mocks.tx.meetingActionItem.updateMany.mock.calls[0][0].where).toEqual({id:"task",meetingId:"prior",revision:1});expect(mocks.tx.meetingActionItem.create).not.toHaveBeenCalled();expect(mocks.tx.teamCalendarEvent.upsert.mock.calls[0][0].create).toMatchObject({meetingId:"prior",actionItemId:"task",sourceKey:"action:task"});expect(mocks.tx.notice.updateMany).toHaveBeenCalled();expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(2);
+ expect(mocks.tx.meetingActionItem.findFirst.mock.calls[1][0].where.meeting).toMatchObject({organizationId:"org",creationKey:"series",type:"Daily",deletedAt:null});
+});
+it("does not let participants complete another person's carried action or use IDs outside this series",async()=>{
+ const current={...meeting,type:"Daily",creationKey:"series",createdById:"master",responsibleId:"other",startsAt:new Date("2026-11-17T12:00:00Z")};mocks.find.mockResolvedValue(current);mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(current);
+ mocks.tx.meetingActionItem.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(action).mockResolvedValueOnce(action);await expect(saveAction(member,"m",{completed:true,revision:1},"task")).rejects.toMatchObject({status:403});expect(mocks.tx.meetingActionItem.updateMany).not.toHaveBeenCalled();
+ mocks.tx.meetingActionItem.findFirst.mockResolvedValue(null);await expect(saveAction(member,"m",{completed:true,revision:1},"foreign-task")).rejects.toMatchObject({status:404});
+});
+it("preserves the one-time extension rule and detects stale revisions when editing carried work",async()=>{
+ const current={...meeting,type:"Daily",creationKey:"series",startsAt:new Date("2026-11-17T12:00:00Z")};mocks.find.mockResolvedValue(current);mocks.tx.teamMeeting.findUniqueOrThrow.mockResolvedValue(current);
+ const carried={...action,meetingId:"prior",autoExtendedAt:new Date()};mocks.tx.meetingActionItem.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(carried).mockResolvedValueOnce(carried);
+ await expect(saveAction(member,"m",{title:action.title,responsibleId:"b",dueAt:"2026-12-01T18:00:00Z",revision:1},"task")).rejects.toThrow("única prorrogação");
+ mocks.tx.meetingActionItem.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(carried).mockResolvedValueOnce(carried);mocks.tx.meetingActionItem.updateMany.mockResolvedValueOnce({count:0});
+ await expect(saveAction(member,"m",{completed:true,revision:1},"task")).rejects.toMatchObject({status:409});expect(mocks.tx.teamCalendarEvent.upsert).not.toHaveBeenCalled();
+});
 it("creates a separate meeting and participant events for every selected Thursday and Friday", async () => {
   const result = await saveMeeting({...member,role:"MASTER"}, {...payload,responsibleId:"b",recurrence:{frequency:"WEEKLY",weekdays:[4,5],until:"2026-11-27"}});
   expect(result.createdCount).toBe(4);
