@@ -1,15 +1,18 @@
 export const WHATSAPP_SLA={queueMinutes:15,responseMinutes:30,resolutionMinutes:480};
-export type LiveMonitoringTicket={id:string;contact:string;clientId:string|null;client:string;assigneeId:string|null;assignee:string;status:string;receivedAt:Date;assignedAt:Date|null;firstResponseAt:Date|null;pendingSince:Date|null;lastMessageAt:Date;lastMessageId:string|null;pendingText:string|null};
+export type LiveMonitoringTicket={id:string;contact:string;clientId:string|null;client:string;assigneeId:string|null;assignee:string;status:string;receivedAt:Date;assignedAt:Date|null;firstResponseAt:Date|null;pendingSince:Date|null;lastMessageAt:Date;lastMessageId:string|null;pendingText:string|null;lastOperationalMessageAt?:Date|null;attentionStartedAt?:Date|null};
 const mins=(from:Date,to:Date)=>Math.max(0,Math.floor((+to-+from)/60000));
 export function urgencyTerms(text:string){
  const folded=text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/nao\s+(?:e\s+|eh\s+|ha\s+)?(?:urgente|importante)/g,"");
  return [...new Set([...(folded.matchAll(/\b(urgent(?:e|es|issimo|issima|issimos|issimas)|urgencias?|important(?:e|es|issimo|issima|issimos|issimas)|prioridade|imediat[oa]|sem retorno|reclamacao|atrasad[oa]s?)\b/g))].map(row=>row[0]))];
 }
 export function liveTicketRisk(ticket:LiveMonitoringTicket,now=new Date()){
- const waitingMinutes=ticket.pendingSince?mins(ticket.pendingSince,now):0;
- const queueMinutes=!ticket.assigneeId?mins(ticket.receivedAt,now):0;
- const openMinutes=mins(ticket.receivedAt,now);
- const terms=ticket.pendingSince?urgencyTerms(ticket.pendingText||""):[];
+ const floor=ticket.attentionStartedAt;
+ const since=(date:Date)=>floor&&floor>date?floor:date;
+ const waitingMinutes=ticket.pendingSince?mins(since(ticket.pendingSince),now):0;
+ const queueMinutes=!ticket.assigneeId?mins(since(ticket.receivedAt),now):0;
+ const openMinutes=mins(since(ticket.receivedAt),now);
+ const newSignal=!floor||(ticket.lastOperationalMessageAt||ticket.lastMessageAt)>floor;
+ const terms=ticket.pendingSince&&newSignal?urgencyTerms(ticket.pendingText||""):[];
  const reasons=[...(terms.length?["Sinalização do cliente: "+terms.join(", ")]:[]),...(waitingMinutes>=WHATSAPP_SLA.responseMinutes?["Resposta acima de 30 minutos"]:[]),...(queueMinutes>=WHATSAPP_SLA.queueMinutes?["Fila acima de 15 minutos"]:[]),...(openMinutes>=WHATSAPP_SLA.resolutionMinutes&&ticket.status!=="WAITING_CUSTOMER"?["Chamado aberto há mais de 8h"]:[])];
  const severity=terms.length||waitingMinutes>=60||queueMinutes>=30||openMinutes>=960&&ticket.status!=="WAITING_CUSTOMER"?"CRITICAL":reasons.length?"WARNING":"OK";
  return {id:ticket.id,contact:ticket.contact,client:ticket.client,assignee:ticket.assignee,status:ticket.status,waitingMinutes,queueMinutes,terms,reasons,severity,lastMessageAt:new Date(ticket.lastMessageAt).toISOString(),pendingSince:ticket.pendingSince?new Date(ticket.pendingSince).toISOString():null};
@@ -52,5 +55,7 @@ export function monitoringInsights(tickets:InsightTicket[],live:LiveMonitoringTi
  const liveAgents=new Map<string,{id:string;name:string;active:number;critical:number;waitingMinutes:number}>();
  for(const ticket of live){const id=ticket.assigneeId||"queue",row=liveAgents.get(id)||{id,name:ticket.assignee,active:0,critical:0,waitingMinutes:0};row.active++;const risk=liveTicketRisk(ticket,now);if(risk.severity==="CRITICAL")row.critical++;row.waitingMinutes=Math.max(row.waitingMinutes,risk.waitingMinutes);liveAgents.set(id,row);}
  const percentile=(rows:number[])=>rows.length?[...rows].sort((a,b)=>a-b)[Math.ceil(rows.length*0.95)-1]:null;
- return {liveAgents:[...liveAgents.values()].sort((a,b)=>b.critical-a.critical||b.active-a.active),clientRequests:[...clientRequests.values()].sort((a,b)=>b.messages-a.messages),responseP95Minutes:percentile(response),resolutionP95Minutes:percentile(resolution),resolutionCount:resolution.length,targets:WHATSAPP_SLA,weekdays,monthDays,demands:[...demands].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value),bottlenecks:[...bottlenecks.values()].map(row=>({name:row.name,conversations:row.conversations,averageQueueMinutes:mean(row.queue),averageResolutionMinutes:mean(row.resolution),failedMessages:row.failedMessages})).sort((a,b)=>b.averageResolutionMinutes-a.averageResolutionMinutes),sla,inboundMessages,outboundMessages,failedMessages,averageResolutionMinutes:mean(resolution),currentQueueMinutes:mean(live.filter(row=>!row.assigneeId).map(row=>mins(row.receivedAt,now))),risks,current:{active:live.length,queue:live.filter(row=>!row.assigneeId).length,critical:risks.filter(row=>row.severity==="CRITICAL").length,warning:risks.filter(row=>row.severity==="WARNING").length}};
+ const queueTimes=live.filter(row=>!row.assigneeId).map(row=>liveTicketRisk(row,now).queueMinutes);
+ const currentQueue={count:queueTimes.length,averageMinutes:mean(queueTimes),longestMinutes:queueTimes.length?Math.max(...queueTimes):0,overSla:queueTimes.filter(value=>value>WHATSAPP_SLA.queueMinutes).length};
+ return {currentQueue,liveAgents:[...liveAgents.values()].sort((a,b)=>b.critical-a.critical||b.active-a.active),clientRequests:[...clientRequests.values()].sort((a,b)=>b.messages-a.messages),responseP95Minutes:percentile(response),resolutionP95Minutes:percentile(resolution),resolutionCount:resolution.length,targets:WHATSAPP_SLA,weekdays,monthDays,demands:[...demands].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value),bottlenecks:[...bottlenecks.values()].map(row=>({name:row.name,conversations:row.conversations,averageQueueMinutes:mean(row.queue),averageResolutionMinutes:mean(row.resolution),failedMessages:row.failedMessages})).sort((a,b)=>b.averageResolutionMinutes-a.averageResolutionMinutes),sla,inboundMessages,outboundMessages,failedMessages,averageResolutionMinutes:mean(resolution),currentQueueMinutes:currentQueue.averageMinutes,risks,current:{active:live.length,queue:currentQueue.count,critical:risks.filter(row=>row.severity==="CRITICAL").length,warning:risks.filter(row=>row.severity==="WARNING").length}};
 }

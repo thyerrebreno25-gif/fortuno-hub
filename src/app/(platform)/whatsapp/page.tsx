@@ -852,6 +852,9 @@ export default function WhatsAppPage() {
         </section>
       ) : (
         bootstrap?.canViewManagement && <WhatsAppMonitoring
+          key={bootstrap.accountKey}
+          canEdit={bootstrap.canEdit}
+          onClosed={removeClosed}
           clients={clientOptions}
           members={memberOptions}
          onOpenTicket={(id) => {

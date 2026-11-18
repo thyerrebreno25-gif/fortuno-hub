@@ -1,4 +1,5 @@
 "use client";
+import {MonitoringAttentionList,MonitoringQueue} from "@/modules/whatsapp/monitoring-attention-list";
 import {MonitoringInsightsPanel} from "@/modules/whatsapp/monitoring-insights-panel";
 import { FilterPanel } from "@/components/filter-panel";
 
@@ -32,13 +33,6 @@ import { WhatsAppSurveyResults } from "@/modules/whatsapp/survey-panel";
 import styles from "./monitoring.module.css";
 
 type Option = { value: string; label: string };
-
-const statusLabels: Record<string, string> = {
-  NEW: "Na fila",
-  IN_PROGRESS: "Em atendimento",
-  WAITING_CUSTOMER: "Aguardando cliente",
-  WAITING_INTERNAL: "Aguardando resposta",
-};
 
 const areaColors = ["#228be6", "#20c997", "#845ef7", "#fd7e14", "#e64980", "#12b886"];
 
@@ -84,10 +78,14 @@ export function WhatsAppMonitoring({
   clients,
   members,
   onOpenTicket,
+  canEdit,
+  onClosed,
 }: {
   clients: Option[];
   members: Option[];
   onOpenTicket: (id: string) => void;
+  canEdit: boolean;
+  onClosed: (ids: string[]) => void;
 }) {
   const initialRange = useMemo(() => rangeFromDays(30), []);
   const [from, setFrom] = useState(initialRange.from);
@@ -183,25 +181,8 @@ export function WhatsAppMonitoring({
       ) : data ? (
         <>
           {mode==="operational"&&<>
-          <Paper withBorder radius="lg" className={styles.attentionCard}>
-            <div className={styles.cardHeading}>
-              <div><Text fw={850}>Atendimentos que precisam de atenção</Text><Text size="xs" c="dimmed">Chamados abertos agora, inclusive os iniciados antes do período selecionado. Espera desde o início das mensagens ainda sem resposta.</Text></div>
-              <Group gap="xs"><Badge color={data.summary.longestCurrentWaitMinutes > 60 ? "red" : "blue"} variant="light">Maior espera: {duration(data.summary.longestCurrentWaitMinutes)}</Badge></Group>
-            </div>
-            <div className={`${styles.tableScroll} ${styles.attentionScroll}`} role="region" aria-label="Atendimentos que precisam de atenção" tabIndex={0}>
-              <table>
-                <thead><tr><th>Contato</th><th>Cliente</th><th>Responsável</th><th>Status</th><th>Última mensagem</th><th>Sem resposta / risco</th><th></th></tr></thead>
-                <tbody>
-                  {data.attention.map((item) => (
-                    <tr key={item.id}>
-                      <td><strong>{item.contact}</strong></td><td>{item.client}</td><td>{item.assignee}</td><td><Badge size="sm" variant="light" color={item.status === "NEW" ? "orange" : "blue"}>{statusLabels[item.status] || item.status}</Badge></td><td>{dateTime(item.lastMessageAt)}</td><td><span className={item.waitingMinutes > 60 ? styles.dangerTime : styles.waitTime}>{duration(item.waitingMinutes)}</span>{data.insights?.risks.find(row=>row.id===item.id)?.reasons.map(reason=><Text key={reason} size="xs" c="orange">{reason}</Text>)}</td><td><Button size="compact-xs" variant="subtle" onClick={() => onOpenTicket(item.id)}>Abrir</Button></td>
-                    </tr>
-                  ))}
-                  {!data.attention.length && <tr><td colSpan={7} className={styles.emptyCell}>Nenhuma conversa aguardando resposta.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </Paper>
+          <MonitoringQueue data={data}/>
+          <MonitoringAttentionList data={data} canEdit={canEdit} onOpenTicket={onOpenTicket} onClosed={ids=>{onClosed(ids);setData(current=>current?{...current,attention:current.attention.filter(row=>!ids.includes(row.id))}:current);void load();}} onReset={()=>void load()}/>
           </>}
           <MonitoringInsightsPanel data={data} mode={mode}/>
           {mode==="operational"&&<><SimpleGrid cols={{ base: 2, sm: 3, xl: 6 }} spacing="sm">
@@ -229,7 +210,7 @@ export function WhatsAppMonitoring({
               <HourlyBars data={data.hourly} />
             </ChartCard>
             <ChartCard title="Carga por colaborador" subtitle="Conversas com participação no período">
-              <AgentLoad data={data.agents} />
+              <AgentLoad data={data.agents.filter(agent=>agent.id!=="queue")} />
             </ChartCard>
           </div>
 
@@ -237,19 +218,19 @@ export function WhatsAppMonitoring({
             <Paper withBorder radius="lg" className={styles.tableCard}>
               <div className={styles.cardHeading}>
                 <div><Text fw={850}>Desempenho da equipe</Text><Text size="xs" c="dimmed">Participações e respostas identificadas por colaborador; uma conversa pode envolver mais de uma pessoa</Text></div>
-                <Badge variant="light" leftSection={<IconUsers size={13} />}>{data.agents.length} colaboradores</Badge>
+                <Badge variant="light" leftSection={<IconUsers size={13} />}>{data.agents.filter(agent=>agent.id!=="queue").length} colaboradores</Badge>
               </div>
               <div className={styles.tableScroll}>
                 <table>
                   <thead><tr><th>Colaborador</th><th>Conversas</th><th>Respostas</th><th>1ª resposta</th><th>Duração</th><th>Resolvidas</th><th>CSAT</th></tr></thead>
                   <tbody>
-                    {data.agents.map((agent) => (
+                    {data.agents.filter(agent=>agent.id!=="queue").map((agent) => (
                       <tr key={agent.id}>
                         <td><strong>{agent.name}</strong><small>{agent.active} ativas agora</small></td>
                         <td>{agent.conversations}</td><td>{agent.messages}</td><td>{duration(agent.averageFirstResponseMinutes)}</td><td>{duration(agent.averageHandlingMinutes)}</td><td>{agent.resolved}</td><td>{agent.satisfaction ? `${agent.satisfaction}/5` : "—"}</td>
                       </tr>
                     ))}
-                    {!data.agents.length && <tr><td colSpan={7} className={styles.emptyCell}>Sem atendimentos no período.</td></tr>}
+                    {!data.agents.filter(agent=>agent.id!=="queue").length && <tr><td colSpan={7} className={styles.emptyCell}>Sem atendimentos no período.</td></tr>}
                   </tbody>
                 </table>
               </div>

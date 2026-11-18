@@ -1,4 +1,6 @@
 import {beforeEach,expect,it,vi} from "vitest";
+const invalidate=vi.hoisted(()=>vi.fn());
+vi.mock("next/cache",()=>({revalidateTag:invalidate}));
 const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),account:vi.fn(),find:vi.fn(),update:vi.fn(),history:vi.fn(),transaction:vi.fn(),unread:vi.fn(),notes:vi.fn()}));
 vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission,SERVICE_CENTER_MANAGER_ROLES:new Set(["MASTER","MANAGER"])}));
 vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:m.account}));
@@ -16,3 +18,7 @@ it("preserves changed or previously closed calls and never duplicates closure hi
 it("refuses disconnected accounts and duplicate snapshot IDs",async()=>{m.account.mockResolvedValueOnce({recipient:null,where:{id:{in:[]}}});expect((await preview()).status).toBe(409);expect((await post({action:"confirm",tickets:[snapshots[0],snapshots[0]]})).status).toBe(400);expect(m.update).not.toHaveBeenCalled();});
 
 it("records the actual finisher and a private timeline note in the same transaction",async()=>{await post({action:"confirm",tickets:snapshots});expect(m.update.mock.calls[0][0].data).toMatchObject({status:"RESOLVED",resolvedById:"me"});expect(m.notes.mock.calls[0][0].data[0]).toMatchObject({ticketId:"a",direction:"INTERNAL",toEmails:[],providerMetadata:{type:"WHATSAPP_RESOLVED",accountPhone:"5511",finalizedById:"me"}});});
+
+it("previews only explicitly selected active calls with unchanged tenant, account and ownership checks",async()=>{m.find.mockResolvedValue([{id:"a"}]);const r=await post({action:"previewSelected",ticketIds:["a","other"]});expect(r.status).toBe(200);expect(m.find.mock.calls[0][0].where).toMatchObject({organizationId:"org",recipientEmail:"wa-account:c:5511",assignedToId:"me",AND:[{id:{in:["a","other"]}}]});expect(m.unread).not.toHaveBeenCalled();expect(m.update).not.toHaveBeenCalled();});
+it("invalidates current monitoring after actual closure and not after skipped calls",async()=>{await post({action:"confirm",tickets:snapshots});expect(invalidate).toHaveBeenCalledWith("wa-live-monitor:org:wa-account:c:5511",{expire:0});invalidate.mockClear();m.update.mockResolvedValue([]);await post({action:"confirm",tickets:snapshots});expect(invalidate).not.toHaveBeenCalled();});
+it("rejects empty or repeated selected IDs",async()=>{expect((await post({action:"previewSelected",ticketIds:[]})).status).toBe(400);expect((await post({action:"previewSelected",ticketIds:["a","a"]})).status).toBe(400);expect(m.find).not.toHaveBeenCalled();});

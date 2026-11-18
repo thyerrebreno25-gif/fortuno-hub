@@ -1,0 +1,24 @@
+.card{overflow:hidden;background:var(--fortuno-surface);border:1px solid var(--fortuno-line);border-radius:18px;min-width:0}
+.heading{padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.toolbar{padding:8px 20px;border-top:1px solid var(--fortuno-line);background:var(--fortuno-surface-soft)}
+.scroll{max-height:min(340px,42vh);overflow:auto}
+.table{width:100%;border-collapse:collapse;min-width:820px;text-align:left;font-size:12px}
+.table th{position:sticky;top:0;z-index:1;background:var(--fortuno-surface-soft);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--fortuno-muted);padding:10px 16px;font-weight:700}
+.table td{padding:12px 16px;border-top:1px solid var(--fortuno-line);vertical-align:middle}
+.table tr:hover td{background:color-mix(in srgb,var(--mantine-color-blue-5) 4%,transparent)}
+.table td:first-child,.table th:first-child{width:32px;padding-right:0}
+.table td:last-child{white-space:nowrap}
+.contact{font:inherit;font-weight:750;color:var(--fortuno-ink);background:none;border:0;padding:3px 0;text-align:left;cursor:pointer;display:block;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.contact:hover,.contact:focus-visible{color:var(--mantine-color-blue-6);text-decoration:underline}
+.muted{color:var(--fortuno-muted);font-size:11px;display:block;margin-top:3px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reason{font-size:11px;color:var(--mantine-color-orange-7);margin-top:4px;max-width:230px}
+.empty{padding:28px!important;text-align:center;color:var(--fortuno-muted)}
+.preview{max-width:calc(100vw - 32px);background:var(--fortuno-surface);color:var(--fortuno-ink)}
+.messages{max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px}
+.message{max-width:95%;padding:9px 12px;background:var(--fortuno-surface-soft);border:1px solid var(--fortuno-line);border-radius:10px;align-self:flex-start}
+.outbound{align-self:flex-end;background:color-mix(in srgb,var(--mantine-color-teal-5) 9%,var(--fortuno-surface))}
+.internal{align-self:center;background:color-mix(in srgb,var(--mantine-color-yellow-5) 9%,var(--fortuno-surface))}
+.queue{padding:16px 20px;border:1px solid var(--fortuno-line);border-radius:18px;background:var(--fortuno-surface)}
+.queueGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:14px}
+.queueValue{font-size:25px;font-weight:800;line-height:1.4;color:var(--fortuno-ink)}
+@media(max-width:700px){.queueGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.heading{padding:14px}.contact{max-width:240px}}

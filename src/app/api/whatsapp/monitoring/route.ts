@@ -373,6 +373,8 @@ export async function GET(request: Request) {
   const scores = satisfactionSurveys.flatMap(row=>row.score===null?[]:[row.score]);
   return NextResponse.json({
     operationStartedAt:baseline,
+    attentionStartedAt:liveRows[0]?.attentionStartedAt||null,
+    accountRecipient:account.recipient,
     insights,coverage:{conversationLimitReached:rawTickets.length>=10000,messageLimitReached:rawTickets.some(row=>row.messages.length>2000),liveLimitReached:liveRows.length>1000},
     period: { from: start.toISOString(), to: end.toISOString(), days: periodDays },
     summary: {
@@ -397,7 +399,7 @@ export async function GET(request: Request) {
     hourly,
     areas,
     clients: finishBreakdown(clients),
-    agents: finishBreakdown(agents),
+    agents: finishBreakdown(agents).filter(agent=>agent.id!=="queue"),
     attention,
   });
 }

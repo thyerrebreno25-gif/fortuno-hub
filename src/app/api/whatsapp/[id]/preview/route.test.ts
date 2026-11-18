@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),permission:vi.fn(),account:vi.fn(),read:vi.fn()}));
+vi.mock("@/modules/atendimento/auth",()=>({getServiceCenterMember:m.member,getWhatsAppPermission:m.permission}));
+vi.mock("@/modules/whatsapp/account-scope",()=>({currentWhatsAppAccount:m.account}));
+vi.mock("@/modules/whatsapp/conversation-read",()=>({readWhatsAppConversation:m.read}));
+import {GET} from "./route";
+const get=()=>GET(new Request("https://hub.test/api/whatsapp/t/preview"),{params:Promise.resolve({id:"t"})});
+beforeEach(()=>{vi.clearAllMocks();m.member.mockResolvedValue({organizationId:"org",role:"MASTER"});m.permission.mockResolvedValue({canView:true,canEdit:false});m.account.mockResolvedValue({recipient:"current"});m.read.mockResolvedValue({id:"t",subject:"Contato",status:"NEW",messages:[],providerMetadata:{secret:"hidden"},senderEmail:"hidden",client:{document:"hidden"}});});
+it("only permits managers with view access, even if another role has canManage",async()=>{m.member.mockResolvedValueOnce(null);expect((await get()).status).toBe(401);m.member.mockResolvedValueOnce({organizationId:"org",role:"OPERATOR"});m.permission.mockResolvedValueOnce({canView:true,canManage:true});expect((await get()).status).toBe(403);expect(m.read).not.toHaveBeenCalled();});
+it("uses the read-only snapshot scoped to the tenant and connected account and returns a reduced private payload",async()=>{const r=await get();expect(r.status).toBe(200);expect(m.read).toHaveBeenCalledWith("t","org",undefined,{recipient:"current"});expect(r.headers.get("Cache-Control")).toBe("private, no-store");expect(await r.json()).toEqual({preview:{id:"t",contact:"Contato",status:"NEW",messages:[]}});});
+it("does not reveal conversations outside the connection or internal errors",async()=>{m.read.mockResolvedValueOnce(null);expect((await get()).status).toBe(404);m.read.mockRejectedValueOnce(new Error("database credential hidden"));const r=await get();expect(r.status).toBe(500);expect(JSON.stringify(await r.json())).not.toContain("credential");});

@@ -15,6 +15,8 @@ export type MonitoringData = {
   insights?:ReturnType<typeof monitoringInsights>;
   coverage?:{conversationLimitReached:boolean;messageLimitReached:boolean;liveLimitReached:boolean};
   operationStartedAt?: string|null;
+  attentionStartedAt?: string|null;
+  accountRecipient?: string|null;
   period: { from: string; to: string; days: number };
   summary: {
     conversations: number;
