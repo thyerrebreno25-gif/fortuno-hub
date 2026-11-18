@@ -881,7 +881,7 @@ export default function WhatsAppPage() {
         </section>
       ) : (
         bootstrap?.canViewManagement && <WhatsAppMonitoring
-          key={bootstrap.accountKey}
+          key={"monitoring:" + bootstrap.accountKey}
           canEdit={bootstrap.canEdit}
           onClosed={removeClosed}
           clients={clientOptions}
@@ -891,7 +891,7 @@ export default function WhatsAppPage() {
       )}
 
       {contactInfoId && detail?.id === contactInfoId && selectedId === contactInfoId && <ChatInfoDrawer key={contactInfoId} id={contactInfoId} name={detail.senderName || detail.subject} group={detail.senderEmail.startsWith("wa-group:")} onClose={() => setContactInfoId(null)}/>}
-      {connected && bootstrap && <WhatsAppQuickReplies key={bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setComposerSelection({start:text.length,end:text.length});setSection("INBOX");requestAnimationFrame(()=>{replyInput.current?.focus();replyInput.current?.setSelectionRange(text.length,text.length);});}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
+      {connected && bootstrap && <WhatsAppQuickReplies key={"quick-replies:" + bootstrap.accountKey} opened={quickRepliesOpened} onClose={()=>setQuickRepliesOpened(false)} onInsert={text=>{setCommentMode(false);setReply(text);setComposerSelection({start:text.length,end:text.length});setSection("INBOX");requestAnimationFrame(()=>{replyInput.current?.focus();replyInput.current?.setSelectionRange(text.length,text.length);});}} onSent={()=>{void loadList();}} scope={bootstrap.currentUser.id+":"+bootstrap.accountKey} canEdit={bootstrap.canEdit} canInsert={Boolean(detail?.id===selectedId&&detail?.status!=="RESOLVED"&&detail?.assignedTo?.id===bootstrap.currentUser.id)}/>}
       {connected && detail?.id === selectedId && bootstrap && <WhatsAppTransferDialog key={detail.id + String(transferOpened)} opened={transferOpened} onClose={() => setTransferOpened(false)} onTransfer={(data) => mutate(data, "Atendimento transferido com histórico.")} operators={bootstrap.members} departmentId={detail.whatsappDepartmentId} departmentName={detail.whatsappDepartmentName} canManageDepartments={bootstrap.canViewManagement&&bootstrap.canEdit} routingArea={detail.routingArea as "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "GENERAL" | "UNKNOWN"} saving={saving} />}
 
       {bootstrap?.canViewManagement&&<WhatsAppClosedGroupsAudit opened={closedGroupsOpened} onClose={()=>setClosedGroupsOpened(false)}/>}
