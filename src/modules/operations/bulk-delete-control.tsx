@@ -5,7 +5,7 @@ import { notifications } from "@mantine/notifications";
 import { IconTrash } from "@tabler/icons-react";
 import { announceOperationTimerChange } from "./timer-client";
 import type { BulkActivityPreview } from "./bulk-delete-model";
-const statuses: Record<string, string> = { OPEN: "Aberta", IN_PROGRESS: "Em andamento", BLOCKED: "Impedida", COMPLETED: "Concluída", DISREGARDED: "Desconsiderada" };
+const statuses: Record<string, string> = { OPEN: "Aberta", IN_PROGRESS: "Em andamento", PAUSED: "Pausadas", BLOCKED: "Impedida", COMPLETED: "Concluída", DISREGARDED: "Desconsiderada" };
 export function BulkActivityDeleteControl({ initialDay, onChanged }: { initialDay: string; onChanged: () => Promise<void> }) {
   const [opened, setOpened] = useState(false), [day, setDay] = useState(initialDay), [previewDay, setPreviewDay] = useState("");
   const [rows, setRows] = useState<BulkActivityPreview[]>([]), [ids, setIds] = useState<string[]>([]);

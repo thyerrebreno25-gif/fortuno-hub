@@ -42,8 +42,8 @@ export function normalizeUazapiEvent(payload: unknown) {
   }
   let content = object(message.content);
   if (typeof message.content === "string") { try { content = object(JSON.parse(message.content)); } catch { /* Plain text content. */ } }
-  const rawChatId = text(message.chatid || chat.wa_chatid,150);
-  const chatId = /^(?:call|calllogmessage)$/i.test(text(message.messageType)) && !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(rawChatId) ? text(object(message.callPeer).jid,150) : rawChatId, id = text(message.messageid || text(message.id).split(":").at(-1), 200);
+  const rawChatId = text(message.chatid || chat.wa_chatid || object(message.key).remoteJid,150);
+  const chatId = /^(?:call|calllogmessage)$/i.test(text(message.messageType)) && !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(rawChatId) ? text(object(message.callPeer).jid,150) : rawChatId, id = text(message.messageid || text(message.id).split(":").at(-1) || object(message.key).id, 200);
   if (!id || !/^[0-9]+(?:-[0-9]+)?@(s\.whatsapp\.net|g\.us|lid)$/.test(chatId)) return null;
   const flag = (value: unknown) => value === true || value === 1 || value === "true" || value === "1";
   const fromMe = flag(message.fromMe ?? message.from_me ?? object(message.key).fromMe) || flag(message.wasSentByApi);
@@ -54,8 +54,8 @@ export function normalizeUazapiEvent(payload: unknown) {
     return {kind:"messages_update" as const,ids:[target],status:"deleted",timestamp:Number(message.messageTimestamp)||Date.now()};
   }
 
-  if(/reaction/i.test(mediaType)){
-    const reaction=object(content.reactionMessage),targetId=text(message.reaction||object(content.key).id||object(reaction.key).id,200);
+  if(/reaction/i.test(mediaType)||Object.keys(object(content.reactionMessage)).length>0){
+    const reaction=object(content.reactionMessage),targetId=text(object(reaction.key).id||object(content.key).id||object(object(message.reaction).key).id||(typeof message.reaction==="string"?message.reaction:""),200);
     if(!targetId)return null;
     return {kind:"reaction" as const,id,chatId,fromMe,sender:text(message.sender,150),senderName:text(message.senderName,250),targetId,emoji:text(message.text??content.text??reaction.text,24),timestamp:Number(message.messageTimestamp)||Date.now()};
   }

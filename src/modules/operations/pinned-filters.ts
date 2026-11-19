@@ -4,7 +4,7 @@ const day=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>{const date=new 
 const custom=z.object({mode:z.literal("custom"),from:day,to:day}).refine(value=>value.from<=value.to);
 const activityPeriod=z.union([z.object({mode:z.enum(["today","tomorrow","next7"])}),custom]);
 const analyticsPeriod=z.union([z.object({mode:z.enum(["today","week","month","previous","30days"])}),custom]);
-export const activityFilterFields=z.object({responsibleId:id,clientId:id,processId:id,status:z.enum(["","OPEN","IN_PROGRESS","BLOCKED","COMPLETED","DISREGARDED"]),team:id,priority:z.enum(["","LOW","MEDIUM","HIGH","CRITICAL"]),cluster:z.enum(["","A","B","C"]),search});
+export const activityFilterFields=z.object({responsibleId:id,clientId:id,processId:id,status:z.enum(["","OPEN","IN_PROGRESS","PAUSED","BLOCKED","COMPLETED","DISREGARDED"]),team:id,priority:z.enum(["","LOW","MEDIUM","HIGH","CRITICAL"]),cluster:z.enum(["","A","B","C"]),search});
 const analyticsFields=z.object({clientId:id,operatorId:id,processId:id,team:id,cluster:z.enum(["","A","B","C"])});
 const activitySchema=z.object({version:z.literal(1),kind:z.literal("activities"),period:activityPeriod,mine:z.boolean(),pendingPrevious:z.boolean(),filters:activityFilterFields});
 const analyticsSchema=z.object({version:z.literal(1),kind:z.literal("analytics"),period:analyticsPeriod,filters:analyticsFields});

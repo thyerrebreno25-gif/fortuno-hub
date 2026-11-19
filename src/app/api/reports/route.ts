@@ -227,7 +227,7 @@ export async function GET(request: Request) {
         total: operations.length,
         completed: operationCompleted,
         pending: operations.filter((item) =>
-          ["OPEN", "IN_PROGRESS", "BLOCKED"].includes(item.status),
+          ["OPEN", "IN_PROGRESS", "PAUSED", "BLOCKED"].includes(item.status),
         ).length,
         blocked: operations.filter((item) => item.status === "BLOCKED").length,
         overdue: operationOverdue,

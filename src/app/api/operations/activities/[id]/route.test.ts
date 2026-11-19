@@ -1,11 +1,11 @@
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
-const m=vi.hoisted(()=>({member:vi.fn(),find:vi.fn(),unique:vi.fn(),update:vi.fn(),entries:vi.fn(),stop:vi.fn(),event:vi.fn(),mail:vi.fn(),lock:vi.fn(),row:vi.fn()}));
+const m=vi.hoisted(()=>({member:vi.fn(),find:vi.fn(),unique:vi.fn(),update:vi.fn(),entries:vi.fn(),stop:vi.fn(),event:vi.fn(),mail:vi.fn(),lock:vi.fn(),row:vi.fn(),checklist:vi.fn()}));
 vi.mock("@/modules/operations/auth",()=>({getOperationMember:m.member,canManageOperations:(role:string)=>["MASTER","ADMIN","MANAGER"].includes(role)}));
 vi.mock("@/modules/operations/activity",()=>({activityInclude:{},createEvent:m.event}));
 vi.mock("@/modules/operations/email",()=>({sendOperationCompletionEmail:m.mail}));
-vi.mock("@/lib/prisma",()=>{const tx={operationActivity:{findFirst:m.find,findUnique:m.unique,update:m.update},operationTimeEntry:{findMany:m.entries,updateMany:m.stop},operationEvent:{create:m.event},$executeRaw:m.lock,$queryRaw:m.row};return {prisma:{...tx,$transaction:(run:(tx:unknown)=>unknown)=>run(tx)}};});
+vi.mock("@/lib/prisma",()=>{const tx={operationActivity:{findFirst:m.find,findUnique:m.unique,update:m.update},operationChecklistItem:{update:m.checklist},operationTimeEntry:{findMany:m.entries,updateMany:m.stop},operationEvent:{create:m.event},$executeRaw:m.lock,$queryRaw:m.row};return {prisma:{...tx,$transaction:(run:(tx:unknown)=>unknown)=>run(tx)}};});
 import {PATCH} from "./route";
-const fixture=()=>({id:"task",organizationId:"org",responsibleId:"operator",status:"IN_PROGRESS",title:"Conciliação",completedAt:null,completionNote:null,checklistItems:[{id:"item",title:"Conferência",mandatory:true,completed:true,requiresAttachment:false,disregardedAt:null}],attachments:[] as Array<{id:string;name:string;checklistItemId:string}>,process:{requiresAttachment:false,notifyClient:true},clientProcess:null,client:{name:"Cliente",operationalEmail:"client@test",operationalEmailCc:null},responsible:{name:"Isabella"},timeEntries:[{id:"entry",startedAt:new Date(Date.now()-120000),endedAt:null,seconds:0}]});
+const fixture=()=>({id:"task",organizationId:"org",responsibleId:"operator",status:"IN_PROGRESS",title:"Conciliação",completedAt:null,completionNote:null,checklistItems:[{id:"item",title:"Conferência",mandatory:true,completed:true,requiresAttachment:false,requiresComment:false,allowDisregard:true,disregardedAt:null}],attachments:[] as Array<{id:string;name:string;checklistItemId:string}>,process:{requiresAttachment:false,notifyClient:true},clientProcess:null,client:{name:"Cliente",operationalEmail:"client@test",operationalEmailCc:null},responsible:{name:"Isabella"},timeEntries:[{id:"entry",startedAt:new Date(Date.now()-120000),endedAt:null,seconds:0}]});
 let current:ReturnType<typeof fixture>;
 const complete=()=>PATCH(new Request("https://hub.test/api/operations/activities/task",{method:"PATCH",body:JSON.stringify({action:"complete"})}),{params:Promise.resolve({id:"task"})});
 afterEach(()=>vi.useRealTimers());
@@ -14,3 +14,18 @@ it("does not finalize or stop time when a mandatory checklist item remains open"
 it("requires both process and checklist attachments without bypassing them from the global timer",async()=>{current.process.requiresAttachment=true;expect((await complete()).status).toBe(400);current.process.requiresAttachment=false;current.checklistItems[0].requiresAttachment=true;expect((await complete()).status).toBe(400);expect(m.update).not.toHaveBeenCalled();expect(m.mail).not.toHaveBeenCalled();});
 it("atomically stops active entries and finalizes once, without duplicating client notifications",async()=>{const response=await complete();expect(response.status).toBe(200);expect(current.status).toBe("COMPLETED");expect(m.lock.mock.calls[0][1]).toBe("operation-timer:operator");expect(m.row.mock.calls[0].slice(1)).toEqual(["task","org"]);expect(m.stop.mock.calls[0][0]).toMatchObject({where:{id:"entry",endedAt:null},data:{seconds:120}});expect(m.mail).toHaveBeenCalledOnce();expect((await complete()).status).toBe(200);expect(m.mail).toHaveBeenCalledOnce();expect(m.stop).toHaveBeenCalledOnce();});
 it("does not complete another operator's work or accept a profile without editing permission",async()=>{current.responsibleId="another";expect((await complete()).status).toBe(403);m.member.mockResolvedValueOnce({canEdit:false});expect((await complete()).status).toBe(403);expect(m.stop).not.toHaveBeenCalled();expect(m.mail).not.toHaveBeenCalled();});
+
+it("saves checklist checks from the top bar without finalizing before explicit confirmation",async()=>{
+ current.checklistItems[0].completed=false;
+ m.checklist.mockImplementation(async({data})=>Object.assign(current.checklistItems[0],data));
+ const response=await PATCH(new Request("https://hub.test/api/operations/activities/task",{method:"PATCH",body:JSON.stringify({action:"checklist",itemId:"item",completed:true,autoComplete:false})}),{params:Promise.resolve({id:"task"})});
+ expect(response.status).toBe(200);expect(current.checklistItems[0].completed).toBe(true);expect(current.status).toBe("IN_PROGRESS");expect(m.stop).not.toHaveBeenCalled();expect(m.mail).not.toHaveBeenCalled();
+ expect((await complete()).status).toBe(200);expect(m.mail).toHaveBeenCalledOnce();
+});
+it("allows disregarding an eligible document or task without a reason and keeps blocking justification mandatory",async()=>{
+ const patch=(body:Record<string,unknown>)=>PATCH(new Request("https://hub.test/api/operations/activities/task",{method:"PATCH",body:JSON.stringify(body)}),{params:Promise.resolve({id:"task"})});
+ expect((await patch({action:"disregardChecklist",itemId:"item"})).status).toBe(200);
+ expect(m.checklist).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({disregardReason:null,disregardedById:"operator"})}));
+ expect((await patch({action:"status",status:"DISREGARDED"})).status).toBe(200);expect(current.status).toBe("DISREGARDED");
+ expect((await patch({action:"status",status:"BLOCKED"})).status).toBe(400);
+});

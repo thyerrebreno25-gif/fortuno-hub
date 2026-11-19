@@ -1,0 +1,1 @@
+ALTER TYPE "OperationActivityStatus" ADD VALUE IF NOT EXISTS 'PAUSED';

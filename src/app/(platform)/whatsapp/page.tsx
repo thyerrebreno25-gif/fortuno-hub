@@ -4,7 +4,6 @@ import {WhatsAppSidebarSection} from "@/modules/whatsapp/sidebar-section";
 import {AutomaticDraftReview} from "@/modules/whatsapp/automatic-draft-review";
 import {ComposerEmojiPicker} from "@/modules/whatsapp/emoji-picker";
 import {insertComposerText,type ComposerSelection} from "@/modules/whatsapp/composer-text";
-import { FilterPanel } from "@/components/filter-panel";
 import { useUsageClient } from "@/modules/usage/client-context";
 import {WhatsAppTransferBatchDialog} from "@/modules/whatsapp/transfer-batch-dialog";
 import {PaymentRequestsPanel} from "@/modules/whatsapp/payment-requests-panel";
@@ -713,7 +712,7 @@ export default function WhatsAppPage() {
           <Group justify="space-between" wrap="nowrap" className={styles.listHeading}>{!listMinimized&&<Text fw={850} size="md">Conversas</Text>}{!listMinimized&&bootstrap?.canEdit&&<Menu position="bottom-end" withinPortal keepMounted><Menu.Target><ActionIcon variant="subtle" color="gray" aria-label="Ações da lista de conversas"><IconDotsVertical size={17}/></ActionIcon></Menu.Target><Menu.Dropdown><Menu.Item onClick={()=>setBatchRequests(current=>({...current,transfer:current.transfer+1}))}>Transferir em lote</Menu.Item><Menu.Item onClick={()=>setBatchRequests(current=>({...current,finalize:current.finalize+1}))}>Finalizar em lote</Menu.Item></Menu.Dropdown></Menu>}<Tooltip label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"}><ActionIcon variant="subtle" color="gray" aria-label={listMinimized?"Abrir lista de conversas":"Recolher lista de conversas"} aria-expanded={!listMinimized} aria-controls="whatsapp-list-content" onClick={()=>setListMinimized(value=>!value)}>{listMinimized?<IconChevronRight size={17}/>:<IconChevronLeft size={17}/>}</ActionIcon></Tooltip></Group>
           {listMinimized&&<span className={styles.railLabel}>Conversas</span>}
           <div id="whatsapp-list-content" className={styles.listContent}>
-          <div className={styles.listHeader}><FilterPanel title="Filtros de conversas" activeCount={Number(Boolean(search))+Number(onlyUnread)+Number(chatKind!=="ALL")}>
+          <div className={styles.listHeader}>
             <TextInput
               leftSection={<IconSearch size={16} />}
               placeholder="Buscar em todas as conversas"
@@ -726,7 +725,7 @@ export default function WhatsAppPage() {
               <button type="button" aria-pressed={onlyUnread} className={onlyUnread ? styles.conversationFilterActive : undefined} onClick={() => { setSelectedId(null); setOnlyUnread(value => !value); }}>Não lidas</button>
               {([{ value: "ALL", label: "Tudo" }, { value: "GROUP", label: "Grupos" }, { value: "CONTACT", label: "Individuais" }] as const).map(item => <button type="button" key={item.value} aria-pressed={chatKind === item.value} className={chatKind === item.value ? styles.conversationFilterActive : undefined} onClick={() => setChatKind(item.value)}>{item.label}</button>)}
             </div>
-          </FilterPanel></div>
+          </div>
           <div className={styles.ticketList}>
             {tickets.length ? (
               tickets.map((ticket) => (

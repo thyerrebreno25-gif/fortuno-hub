@@ -53,6 +53,11 @@ it.each([false, 0, "false", "0", undefined])("keeps incoming provider flag %s in
 });
 
 it("normalizes reactions separately so they never create calls or unread message bubbles",()=>{const event=normalizeUazapiEvent({EventType:"messages",message:{messageid:"reaction-id",chatid:"5511999999999@s.whatsapp.net",messageType:"ReactionMessage",sender:"5511999999999@s.whatsapp.net",text:"👍",content:{key:{id:"target"}},messageTimestamp:Date.now()}});expect(event).toMatchObject({kind:"reaction",targetId:"target",emoji:"👍",fromMe:false});});
+it("recognizes nested group reactions and their removal without rendering an empty message",()=>{
+ const message={key:{id:"reaction-id",remoteJid:"120363123@g.us"},sender:"5511999999999@s.whatsapp.net",senderName:"Cliente",content:{reactionMessage:{key:{id:"outbound-message"},text:"❤️"}}};
+ expect(normalizeUazapiEvent({EventType:"messages",message})).toMatchObject({kind:"reaction",id:"reaction-id",chatId:"120363123@g.us",targetId:"outbound-message",emoji:"❤️"});
+ expect(normalizeUazapiEvent({EventType:"messages",message:{...message,content:{reactionMessage:{key:{id:"outbound-message"},text:""}}}})).toMatchObject({kind:"reaction",targetId:"outbound-message",emoji:""});
+});
 
 it("preserves incoming replies to earlier messages independently of their reaction content",()=>{
  const event=normalizeUazapiEvent({EventType:"messages",message:{messageid:"answer",chatid:"5511999999999@s.whatsapp.net",messageType:"ExtendedTextMessage",quoted:"original",text:"Sim",content:{contextInfo:{stanzaId:"original",quotedMessage:{conversation:"Posso pagar amanhã?"}}}}});

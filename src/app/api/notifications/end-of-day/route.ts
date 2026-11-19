@@ -23,7 +23,7 @@ export async function GET() {
     if (holiday || ack) return NextResponse.json({...base,acknowledged:Boolean(ack)},{headers});
     const org = member.organizationId, user = member.userId;
     const account = permissions.WHATSAPP.canView ? await currentWhatsAppAccount(org) : null;
-    const pending = {organizationId:org,responsibleId:user,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"] as ("OPEN"|"IN_PROGRESS"|"BLOCKED")[]}};
+    const pending = {organizationId:org,responsibleId:user,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","PAUSED","BLOCKED"] as ("OPEN"|"IN_PROGRESS"|"PAUSED"|"BLOCKED")[]}};
     const agendaWhere = {organizationId:org,userId:user,status:"ACTIVE",startsAt:{lt:w.tomorrowEnd},endsAt:{gt:w.end},OR:[{meetingId:null},{meeting:{deletedAt:null,status:{not:"CANCELLED" as const}}}]};
     const [calls,email,tasks,overdue,unread,events,agendaTotal] = await Promise.all([
       account ? prisma.serviceTicket.count({where:{...account.where,assignedToId:user,mergedIntoId:null,isSpam:false,status:{notIn:["SPAM","RESOLVED"]}}}) : null,

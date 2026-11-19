@@ -20,7 +20,7 @@ it("blocks operators before reading or changing any routine", async () => {
 it("archives all pending dates within the organization, deactivates recurrence and records recovery ids", async () => {
   expect((await POST(request())).status).toBe(200);
   const scope = m.activities.findMany.mock.calls[0][0].where;
-  expect(scope).toEqual({ organizationId: "org", deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] } });
+  expect(scope).toEqual({ organizationId: "org", deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "PAUSED", "BLOCKED"] } });
   expect(m.configurations.updateMany.mock.calls[0][0]).toMatchObject({ where: { client: { organizationId: "org" } }, data: { active: false } });
   expect(m.audit.create.mock.calls[0][0].data.beforeData).toEqual({ configurations: ["routine"], activities: [{ id: "task", clientProcessId: "routine" }] });
   expect(m.activities.updateMany.mock.calls[0][0].data.deletedAt).toBeInstanceOf(Date);

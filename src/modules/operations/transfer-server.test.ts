@@ -21,7 +21,7 @@ beforeEach(()=>{
 afterEach(()=>vi.useRealTimers());
 it("atomically changes only the reviewed owners, preserving task identity, routine, dates, checklist and accumulated time",async()=>{
  expect(await transferActivities(member,input)).toEqual({transferredIds:["a","b"],unchanged:0,pausedTimers:0});
- expect(m.update.mock.calls[0][0]).toEqual({where:{id:{in:["a","b"]},organizationId:"org",deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]}},data:{responsibleId:"next"}});
+ expect(m.update.mock.calls[0][0]).toEqual({where:{id:{in:["a","b"]},organizationId:"org",deletedAt:null,status:{in:["OPEN","IN_PROGRESS","PAUSED","BLOCKED"]}},data:{responsibleId:"next"}});
  expect(m.events.mock.calls[0][0].data).toContainEqual(expect.objectContaining({activityId:"a",userId:"manager",type:"ASSIGNED",metadata:{fromResponsibleId:"old",toResponsibleId:"next",reason:input.reason,batch:true}}));expect(m.lock.mock.calls[0][1]).toBe("operations-reset-org");expect(m.query.mock.calls[1][0].sql).toContain("ORDER BY id FOR UPDATE");
 });
 it("pauses running timers at the actual elapsed duration without changing their authors",async()=>{
@@ -29,7 +29,7 @@ it("pauses running timers at the actual elapsed duration without changing their 
 });
 it("restricts operators to their own selected tasks in preview and confirmation",async()=>{
  const operator={...member,role:"OPERATOR" as const,userId:"old"};await previewActivityTransfer(operator,["a","b"]);await transferActivities(operator,input);
- for(const query of [m.preview.mock.calls[0][0],m.find.mock.calls[0][0],m.update.mock.calls[0][0]])expect(query.where).toMatchObject({organizationId:"org",responsibleId:"old",deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]}});
+ for(const query of [m.preview.mock.calls[0][0],m.find.mock.calls[0][0],m.update.mock.calls[0][0]])expect(query.where).toMatchObject({organizationId:"org",responsibleId:"old",deletedAt:null,status:{in:["OPEN","IN_PROGRESS","PAUSED","BLOCKED"]}});
 });
 it("rejects missing, completed, foreign or no-longer-owned activities before pausing timers or making partial transfers",async()=>{
  m.find.mockResolvedValue([{id:"a",updatedAt:new Date(updatedAt)}]);await expect(transferActivities(member,input)).rejects.toMatchObject({status:409});expect(m.timers).not.toHaveBeenCalled();expect(m.update).not.toHaveBeenCalled();expect(m.events).not.toHaveBeenCalled();

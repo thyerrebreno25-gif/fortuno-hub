@@ -18,7 +18,7 @@ export async function scheduleSurveyForTicket(ticketId:string,organizationId:str
   const ticket=await prisma.serviceTicket.findFirst({where:{...account.where,id:ticketId,status:"RESOLVED",mergedIntoId:null,isSpam:false,client:{active:true},resolvedAt:{gte:policy.activatedAt},firstResponseAt:{not:null}},include:{client:{select:{id:true,name:true}},assignedTo:{select:{id:true,name:true,email:true}}}});
   if(!ticket?.client||!ticket.assignedTo||!ticket.resolvedAt)return null;
   // Never send the invitation to an individual contact, even when that call triggered it.
-  const group=ticket.senderEmail.startsWith("wa-group:")?ticket:await prisma.serviceTicket.findFirst({where:{...account.where,clientId:ticket.client.id,senderEmail:{startsWith:"wa-group:"},status:"RESOLVED",mergedIntoId:null,isSpam:false},orderBy:{resolvedAt:"desc"}});
+  const group=await prisma.serviceTicket.findFirst({where:{...account.where,clientId:ticket.client.id,senderEmail:{startsWith:"wa-group:"},status:"RESOLVED",mergedIntoId:null,isSpam:false},orderBy:[{resolvedAt:"desc"},{id:"asc"}]});
   if(!group)return null;
 
   return prisma.$transaction(async tx=>{

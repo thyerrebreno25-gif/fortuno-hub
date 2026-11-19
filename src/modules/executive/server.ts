@@ -40,8 +40,8 @@ export async function executiveSnapshot(organizationId:string,key:ExecutivePerio
     WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${whatsappRecipient} AND t."mergedIntoId" IS NULL AND NOT t."isSpam" AND t.status NOT IN ('SPAM','RESOLVED') AND (last_out.at IS NULL OR last_in.at>last_out.at) AND last_in.at<=${now}
    ) waiting_messages`):[],
   () => prisma.organizationMember.findMany({where:{organizationId:org,role:{not:"CLIENT"}},select:{user:{select:{id:true,name:true}}},orderBy:{createdAt:"asc"}}),
-  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...activityScope},_count:{_all:true}}):[],
-  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","BLOCKED"]},...overdueActivityDates(now)},_count:{_all:true}}):[],
+  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId","status"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","PAUSED","BLOCKED"]},...activityScope},_count:{_all:true}}):[],
+  () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:{in:["OPEN","IN_PROGRESS","PAUSED","BLOCKED"]},...overdueActivityDates(now)},_count:{_all:true}}):[],
   () => scope.operations?prisma.operationActivity.groupBy({by:["responsibleId"],where:{organizationId:org,deletedAt:null,status:"COMPLETED",completedAt:{gte:start,lt:end}},_count:{_all:true}}):[],
   () => scope.operations?prisma.operationActivity.count({where:{organizationId:org,deletedAt:null,...activityScope}}):0,
   () => scope.operations?prisma.operationTimeEntry.count({where:{endedAt:null,activity:{organizationId:org,deletedAt:null}}}):0,

@@ -149,6 +149,7 @@ enum OnboardingTaskStatus {
 enum OperationActivityStatus {
   OPEN
   IN_PROGRESS
+  PAUSED
   BLOCKED
   COMPLETED
   DISREGARDED

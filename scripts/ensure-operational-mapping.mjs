@@ -19,6 +19,15 @@ if (!connectionString) {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-operational-mapping-v1'))");
     const sql = await readFile(new URL("../prisma/migrations/20261019000000_operational_mapping/migration.sql", import.meta.url), "utf8");
     await client.query(sql.replace(/^\uFEFF/, ""));
+    const pausedSql = await readFile(new URL("../prisma/migrations/20261119000000_operation_paused/migration.sql", import.meta.url), "utf8");
+    await client.query(pausedSql);
+    await client.query("COMMIT");
+    // New enum values must commit before use. Lock without waiting, then read timers
+    // in a fresh statement so a concurrent start can never be marked paused.
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('fortuno-schema-setup-global-v1'))");
+    const pausedCandidates = await client.query(`SELECT id FROM "OperationActivity" WHERE status='IN_PROGRESS' AND "deletedAt" IS NULL ORDER BY id FOR UPDATE SKIP LOCKED`);
+    if(pausedCandidates.rows.length)await client.query(`UPDATE "OperationActivity" a SET status='PAUSED',"updatedAt"=CURRENT_TIMESTAMP WHERE a.id=ANY($1::text[]) AND a.status='IN_PROGRESS' AND NOT EXISTS(SELECT 1 FROM "OperationTimeEntry" e WHERE e."activityId"=a.id AND e."endedAt" IS NULL) AND EXISTS(SELECT 1 FROM "OperationEvent" e WHERE e."activityId"=a.id AND e.type='PAUSED')`,[pausedCandidates.rows.map(row=>row.id)]);
     await client.query("COMMIT");
     console.log("Operational mapping storage ready.");
   } catch (error) {

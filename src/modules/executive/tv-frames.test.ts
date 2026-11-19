@@ -1,0 +1,5 @@
+import {expect,it} from "vitest";
+import {fitTvFrames} from "./tv-frames";
+it("fits complete panels without asking a viewer to scroll",()=>{const frames=fitTvFrames([154,480,430],680);expect(frames).toHaveLength(2);expect(frames[0].items.map(item=>item.index)).toEqual([0,1]);expect(frames[1].items.map(item=>item.index)).toEqual([2]);});
+it("scales an oversized block and preserves every block at smaller TV sizes",()=>{for(const available of [180,360,540,720,1080]){const heights=[154,650,300,430,45],frames=fitTvFrames(heights,available,[12,70,12,35,12]);expect(frames.flatMap(frame=>frame.items.map(item=>item.index))).toEqual([0,1,2,3,4]);for(const frame of frames){expect(frame.height*frame.scale).toBeLessThanOrEqual(available+.001);for(const item of frame.items)expect((item.top+heights[item.index])*frame.scale).toBeLessThanOrEqual(available+.001);}}});
+it("keeps each list visible long enough to complete its continuous loop",()=>{const frames=fitTvFrames([120,240,300],500,[12,75,40]);expect(frames[0].seconds).toBe(75);expect(frames[1].seconds).toBe(40);});

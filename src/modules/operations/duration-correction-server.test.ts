@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m = vi.hoisted(() => ({ activity: vi.fn(), entries: vi.fn(), update: vi.fn(), create: vi.fn(), previous: vi.fn(), event: vi.fn(), person: vi.fn(), lock: vi.fn(), row: vi.fn(), transaction: vi.fn() }));
+const m = vi.hoisted(() => ({ activity: vi.fn(), pauseState:vi.fn(), entries: vi.fn(), update: vi.fn(), create: vi.fn(), previous: vi.fn(), event: vi.fn(), person: vi.fn(), lock: vi.fn(), row: vi.fn(), transaction: vi.fn() }));
 vi.mock("@/modules/operations/auth", () => ({ canManageOperations: (role: string) => ["MASTER", "ADMIN", "MANAGER"].includes(role) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: m.transaction } }));
 import { correctActivityDuration } from "./duration-correction-server";
@@ -10,7 +10,7 @@ const old = { id: "one", activityId: "a", userId: "u", startedAt: new Date("2026
 const input = { mode: "duration" as const, requestId: "22c6f4cc-3cc8-479d-a5fb-24f9a05c7340", userId: "u", seconds: 2700, reason: "Esqueci de pausar", expectedEntries: [{ id: "one", updatedAt: version }] };
 beforeEach(() => {
   vi.resetAllMocks(); vi.useFakeTimers(); vi.setSystemTime(now);
-  m.transaction.mockImplementation(async run => run({ $executeRaw: m.lock, $queryRaw: m.row, operationActivity: { findFirst: m.activity }, operationTimeEntry: { findMany: m.entries, update: m.update, create: m.create }, organizationMember: { findFirst: m.person }, operationEvent: { findFirst: m.previous, create: m.event } }));
+  m.transaction.mockImplementation(async run => run({ $executeRaw: m.lock, $queryRaw: m.row, operationActivity: { findFirst: m.activity,updateMany:m.pauseState }, operationTimeEntry: { findMany: m.entries, update: m.update, create: m.create }, organizationMember: { findFirst: m.person }, operationEvent: { findFirst: m.previous, create: m.event } }));
   m.activity.mockResolvedValue({ id: "a", responsibleId: "u", status: "COMPLETED", scheduledDate: new Date("2026-11-16T00:00:00Z"), completedAt: now });
   m.entries.mockResolvedValue([old]); m.previous.mockResolvedValue(null); m.person.mockResolvedValue({ user: { name: "Pessoa", email: "u@test" } }); m.create.mockResolvedValue({ id: input.requestId });
 });

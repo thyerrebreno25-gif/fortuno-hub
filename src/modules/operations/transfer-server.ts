@@ -45,6 +45,7 @@ export async function transferActivities(member:Member,input:ActivityTransfer){
   for(const timer of timers){const result=await tx.operationTimeEntry.updateMany({where:{id:timer.id,endedAt:null},data:{endedAt:now,seconds:Math.max(0,Math.floor((+now-+timer.startedAt)/1000))}});pausedTimers+=result.count;}
   const result=await tx.operationActivity.updateMany({where:transferActivityScope(member,changedIds),data:{responsibleId:input.responsibleId}});
   if(result.count!==changedIds.length)throw new OperationTimerError("A seleção mudou durante a transferência. Atualize a lista.",409);
+  await tx.operationActivity.updateMany({where:{id:{in:changedIds},organizationId:member.organizationId,status:"IN_PROGRESS",timeEntries:{none:{endedAt:null}}},data:{status:"PAUSED"}});
   await tx.operationEvent.createMany({data:changed.map(item=>({activityId:item.id,userId:member.userId,type:"ASSIGNED" as const,message:`${member.user.name||member.user.email} transferiu a atividade de ${item.responsible?.name||item.responsible?.email||"Sem responsável"} para ${destination.user.name||destination.user.email}.${input.reason?` Observação: ${input.reason}`:""}`,metadata:{fromResponsibleId:item.responsibleId,toResponsibleId:input.responsibleId,reason:input.reason,batch:ids.length>1}}))});
   return {transferredIds:changedIds,unchanged:activities.length-changed.length,pausedTimers};
  },{maxWait:10000,timeout:30000});

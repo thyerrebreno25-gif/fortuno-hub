@@ -6,7 +6,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
 import { routineScheduleKey } from "@/modules/operations/routine-schedule";
 export const maxDuration = 120;
-const pending = (organizationId: string): Prisma.OperationActivityWhereInput => ({ organizationId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] } });
+const pending = (organizationId: string): Prisma.OperationActivityWhereInput => ({ organizationId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "PAUSED", "BLOCKED"] } });
 const saved = z.object({ configurations: z.array(z.string()), activities: z.array(z.object({ id: z.string(), clientProcessId: z.string().nullable() })) });
 async function manager() { const member = await getOperationMember(); return member && canManageOperations(member.role) ? member : null; }
 export async function GET() {

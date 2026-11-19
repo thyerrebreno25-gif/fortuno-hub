@@ -15,9 +15,9 @@ type Data = OperationsAnalytics & {workload:OperatorWorkload[]; options: Options
 const emptyOptions: Options = { clients: [], operators: [], processes: [], teams: [] };
 const time = (seconds: number, precise = false) => `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds % 3600 / 60)).padStart(2, "0")}m${precise ? ` ${String(Math.floor(seconds % 60)).padStart(2, "0")}s` : ""}`;
 const dateLabel = (value: string) => value.slice(0, 10).split("-").reverse().join("/");
-const statusNames: Record<string, string> = { OPEN: "Abertas", IN_PROGRESS: "Em andamento", BLOCKED: "Impedidas", COMPLETED: "Concluídas", DISREGARDED: "Desconsideradas" };
-const statusColors: Record<string, string> = { OPEN: "blue", IN_PROGRESS: "cyan", BLOCKED: "red", COMPLETED: "teal", DISREGARDED: "gray" };
-const statusHex: Record<string, string> = { OPEN: "#228be6", IN_PROGRESS: "#15aabf", BLOCKED: "#fa5252", COMPLETED: "#12b886", DISREGARDED: "#868e96" };
+const statusNames: Record<string, string> = { OPEN: "Abertas", IN_PROGRESS: "Em andamento", PAUSED: "Pausadas", BLOCKED: "Impedidas", COMPLETED: "Concluídas", DISREGARDED: "Desconsideradas" };
+const statusColors: Record<string, string> = { OPEN: "blue", IN_PROGRESS: "cyan", PAUSED: "yellow", BLOCKED: "red", COMPLETED: "teal", DISREGARDED: "gray" };
+const statusHex: Record<string, string> = { OPEN: "#228be6", IN_PROGRESS: "#15aabf", PAUSED: "#fab005", BLOCKED: "#fa5252", COMPLETED: "#12b886", DISREGARDED: "#868e96" };
 function comparison(value: number, previous: number, duration = false) {
   if (!previous) return value ? "Sem base no período anterior" : "Sem variação no período";
   const diff = value - previous, percentage = Math.round(diff / previous * 100);
@@ -117,7 +117,7 @@ export function OperationsAnalyticsPanel({ onOpenActivity, onOpenActivities }: {
     {error && <Alert color="red" title="Não foi possível carregar o painel">{error}</Alert>}
     {!data && loading && <Group justify="center" py={70}><Loader /><Text c="dimmed">Calculando indicadores da operação…</Text></Group>}
     {data && <>
-      <OperationsWorkloadPanel rows={data.workload||[]} onInspect={(id,name)=>drill("operator",id,name)}/>
+      <OperationsWorkloadPanel onOpenActivity={onOpenActivity} rows={data.workload||[]} onInspect={(id,name)=>drill("operator",id,name)}/>
       <SimpleGrid cols={{ base: 2, lg: 3, xl: 6 }}>{metrics.map((metric) => <div className={styles.metric} key={metric.label} style={{ "--accent": metric.color } as CSSProperties}><Text size="sm" c="dimmed">{metric.label}</Text><div className={styles.metricValue}>{metric.value}</div><Text size="xs" c="dimmed">{metric.detail}</Text></div>)}</SimpleGrid>
       {data.summary.longRunningTimers > 0 && <Alert color="orange" title="Confira os cronômetros em aberto">{data.summary.longRunningTimers} cronômetro(s) estão ativos há mais de 12 horas. O tempo continua entrando como provisório até a pausa; confira se foram esquecidos ligados.</Alert>}
       {!data.summary.seconds && <Group justify="space-between"><Text size="sm" c="dimmed">Sem tempo apontado neste período.</Text><Button variant="subtle" size="xs" onClick={onOpenActivities}>Abrir atividades</Button></Group>}

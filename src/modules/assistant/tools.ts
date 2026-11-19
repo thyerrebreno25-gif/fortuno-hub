@@ -402,8 +402,8 @@ async function auditClientFinancials(
   const receivables = await fetchFinancialRows(clientId, "receivable", period.start, period.end);
   const accountBalances = await fetchAccountBalances(clientId);
   const [openOperations, overdueOperations, activeAudits, openFindings, recentImports] = await Promise.all([
-    prisma.operationActivity.count({ where: { clientId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] } } }),
-    prisma.operationActivity.count({ where: { clientId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "BLOCKED"] }, dueAt: { lt: new Date() } } }),
+    prisma.operationActivity.count({ where: { clientId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "PAUSED", "BLOCKED"] } } }),
+    prisma.operationActivity.count({ where: { clientId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "PAUSED", "BLOCKED"] }, dueAt: { lt: new Date() } } }),
     prisma.audit.count({ where: { clientId, status: { notIn: ["COMPLETED", "CANCELLED"] } } }),
     prisma.auditFinding.count({ where: { audit: { clientId }, status: { in: ["IDENTIFIED", "SENT", "IN_PROGRESS"] } } }),
     prisma.importJob.findMany({

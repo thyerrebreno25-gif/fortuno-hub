@@ -42,6 +42,7 @@ export async function correctActivityDuration(member: Member, activityId: string
       const entry = await tx.operationTimeEntry.create({ data: { id: input.requestId, activityId, userId: input.userId, startedAt: reference, endedAt: reference, seconds: input.seconds, source: "MANUAL_DURATION", description: input.reason } });
       after.push({ id: entry.id, seconds: input.seconds });
     }
+    await tx.operationActivity.updateMany({where:{id:activityId,organizationId:member.organizationId,status:"IN_PROGRESS",timeEntries:{none:{endedAt:null}}},data:{status:"PAUSED"}});
     await tx.operationEvent.create({ data: { activityId, userId: member.userId, type: "TIME_ADJUSTED", message: `${member.user.name || member.user.email} corrigiu a duração de ${person.user.name || person.user.email}: ${durationLabel(previousSeconds)} → ${durationLabel(input.seconds)} (horas:minutos). Justificativa: ${input.reason}`, metadata: { mode: "duration", requestId: input.requestId, entryUserId: input.userId, reason: input.reason, previousSeconds, totalSeconds: input.seconds, before, after } } });
     return { seconds: input.seconds };
   }, { maxWait: 10000, timeout: 15000 });

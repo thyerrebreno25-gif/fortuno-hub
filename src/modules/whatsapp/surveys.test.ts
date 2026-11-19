@@ -15,6 +15,15 @@ it("sends one invitation without changing first response, assignment or preview 
 it("never retries an uncertain provider send automatically",async()=>{m.send.mockRejectedValueOnce(new Error("timeout"));await processWhatsAppSurveys(now);expect(m.update.mock.calls.at(-1)?.[0]).toMatchObject({where:{id:"s",status:"SENDING"},data:{status:"UNKNOWN"}});m.invitation.mockResolvedValueOnce({status:"UNKNOWN"});await processWhatsAppSurveys(now);expect(m.send).toHaveBeenCalledTimes(1);});
 it("reschedules outside working hours without sending",async()=>{await processWhatsAppSurveys(new Date("2026-11-08T14:00:00Z"));expect(m.send).not.toHaveBeenCalled();expect(m.update.mock.calls.at(-1)?.[0].data.scheduledAt.toISOString()).toBe("2026-11-09T19:45:00.000Z");});
 it("applies one client cooldown across different group or contact tickets",async()=>{m.closed.mockResolvedValue({id:"another-group",senderEmail:"wa-group:123@g.us",clientId:"client",client:{id:"client",name:"Cliente"},assignedTo:{id:"op",email:"op@test"},resolvedAt:now});m.previous.mockResolvedValue({status:"DECLINED",sentAt:new Date("2026-11-06T14:00:00Z"),createdAt:new Date("2026-11-06T13:00:00Z")});expect(await scheduleSurveyForTicket("another-group","org",now)).toBeNull();expect(m.previous.mock.calls[0][0].where).toMatchObject({organizationId:"org",clientId:"client",OR:expect.any(Array)});expect(m.create).not.toHaveBeenCalled();});
+it("queues only one linked group when multiple groups of the same client finish",async()=>{
+ const ticket={id:"first-group",senderEmail:"wa-group:first@g.us",clientId:"client",client:{id:"client",name:"Cliente"},assignedTo:{id:"op",email:"op@test"},resolvedAt:now};
+ m.closed.mockResolvedValueOnce(ticket).mockResolvedValueOnce({id:"selected-group",senderEmail:"wa-group:selected@g.us"}).mockResolvedValueOnce({...ticket,id:"second-group"}).mockResolvedValueOnce({id:"selected-group",senderEmail:"wa-group:selected@g.us"});
+ m.create.mockImplementation(async({data})=>{m.previous.mockResolvedValue({id:"pending"});return {id:"pending",...data};});
+ await scheduleSurveyForTicket("first-group","org",now);await scheduleSurveyForTicket("second-group","org",now);
+ expect(m.create).toHaveBeenCalledOnce();expect(m.create.mock.calls[0][0].data).toMatchObject({clientId:"client",ticketId:"selected-group",destination:"wa-group:selected@g.us"});
+ expect(m.closed.mock.calls[1][0]).toMatchObject({where:{clientId:"client",recipientEmail:"wa-account:c:5511",senderEmail:{startsWith:"wa-group:"}},orderBy:[{resolvedAt:"desc"},{id:"asc"}]});
+ expect(m.lock.mock.calls.map(call=>call[1])).toEqual(["survey:org:client","survey:org:client"]);
+});
 
 it("cancels an already queued invitation if any client response is still inside thirty days",async()=>{
  m.previous.mockResolvedValueOnce({id:"answered-in-another-group"});

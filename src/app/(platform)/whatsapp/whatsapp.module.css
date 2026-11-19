@@ -168,3 +168,5 @@ button.quotedMessage:focus-visible { outline: 2px solid var(--mantine-color-teal
 .internalEventDescription { color:var(--fortuno-muted); line-height:1.7; }
 .internalSector { display:inline-block; margin-left:7px; padding:0 6px; border-radius:4px; background:var(--fortuno-surface-soft); color:var(--fortuno-muted); font-size:10px; }
 :global([data-mantine-color-scheme="dark"]) .internal .bubble { --bubble-color:var(--fortuno-surface); }
+
+.reactionGroup{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;margin-top:6px}.reactionGroup .messageReaction{position:static;transform:none;margin:0;inset:auto;display:inline-flex;align-items:center;justify-content:center}

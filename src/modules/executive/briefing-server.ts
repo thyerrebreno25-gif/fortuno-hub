@@ -29,6 +29,7 @@ export async function executiveBriefing(org:string,data:ExecutiveData,scope:Exec
  const coverage:string[]=[];
  if(activities.length>20000)coverage.push("Cartões de tarefas indisponíveis: selecione um período menor para consultar mais de 20 mil atividades.");
  const workload=activities.length>20000?[]:buildOperatorWorkload(activities.map(a=>!a.scheduledDate&&a.dueAt?{...a,scheduledDate:new Date(operationToday(a.dueAt)+"T00:00:00Z")}:a),data.operators.map(p=>({id:p.id,name:p.name,email:""})),analyticsPeriod(from,to),now);
+ for(const row of workload)delete row.previews;
  const baseline=scope.whatsapp&&recipient&&phone?await operationStartedAt(org,recipient):null;
  const live=scope.whatsapp&&recipient&&phone?await liveMonitoringTickets(org,recipient,phone,baseline):[];
  if(live.length>1000)coverage.push("Atenção e fila exibem os primeiros mil atendimentos; confira o monitoramento para detalhar.");

@@ -99,7 +99,7 @@ export async function PATCH(request: Request, context: Context) {
     await createEvent(id, member.userId, completed ? "CHECKLIST_COMPLETED" : "CHECKLIST_REOPENED",
       `${member.user.name || member.user.email} ${completed ? "concluiu" : "reabriu"} o checklist “${item.title}”.`);
 
-    if (completed) {
+    if (completed && body.autoComplete !== false) {
       const fresh = await prisma.operationActivity.findUnique({ where: { id }, include: activityInclude });
       const allMandatoryDone = fresh?.checklistItems.filter((row) => row.mandatory).every((row) => row.completed || Boolean(row.disregardedAt));
       if (fresh && allMandatoryDone && fresh.status !== "COMPLETED") {
@@ -113,10 +113,10 @@ export async function PATCH(request: Request, context: Context) {
     if (!item) return NextResponse.json({ error: "Item não encontrado." }, { status: 404 });
     if (!item.allowDisregard) return NextResponse.json({ error: "Este documento não pode ser desconsiderado." }, { status: 400 });
     const reason = String(body.reason || "").trim();
-    if (!reason) return NextResponse.json({ error: "Informe a justificativa para desconsiderar o documento." }, { status: 400 });
+
     await prisma.operationChecklistItem.update({
       where: { id: item.id },
-      data: { completed: false, completedAt: null, completedById: null, disregardedAt: new Date(), disregardedById: member.userId, disregardReason: reason },
+      data: { completed: false, completedAt: null, completedById: null, disregardedAt: new Date(), disregardedById: member.userId, disregardReason: reason || null },
     });
     await createEvent(id, member.userId, "CHECKLIST_DISREGARDED", `${member.user.name || member.user.email} desconsiderou o documento “${item.title}”.`, { reason, itemId: item.id });
   } else if (body.action === "restoreChecklist") {
@@ -132,15 +132,15 @@ export async function PATCH(request: Request, context: Context) {
   } else if (body.action === "status") {
     const status = String(body.status || "");
     const reason = String(body.reason || "").trim();
-    if ((status === "BLOCKED" || status === "DISREGARDED") && !reason) {
+    if (status === "BLOCKED" && !reason) {
       return NextResponse.json({ error: "Informe a justificativa." }, { status: 400 });
     }
     await prisma.operationActivity.update({
       where: { id },
       data: {
-        status: status as "OPEN" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "DISREGARDED",
+        status: status as "OPEN" | "IN_PROGRESS" | "PAUSED" | "BLOCKED" | "COMPLETED" | "DISREGARDED",
         blockedReason: status === "BLOCKED" ? reason : current.blockedReason,
-        disregardedReason: status === "DISREGARDED" ? reason : current.disregardedReason,
+        disregardedReason: status === "DISREGARDED" ? reason || null : current.disregardedReason,
       },
     });
     await createEvent(id, member.userId, status === "BLOCKED" ? "BLOCKED" : status === "DISREGARDED" ? "DISREGARDED" : "STATUS_CHANGED",
