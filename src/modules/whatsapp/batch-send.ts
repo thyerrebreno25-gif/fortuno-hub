@@ -18,9 +18,9 @@ export async function deliverBatchMessage(deliveryId:string,actor:Actor) {
   // A claim is permanent: lost responses or timeouts must never trigger an automatic second send.
   if(delivery.status!=="PENDING")return NextResponse.json({id:delivery.id,status:delivery.status,error:delivery.error});
   const ticket=await getWhatsappTicket(delivery.ticketId,actor.organizationId,{});
-  if(!ticket||["RESOLVED","SPAM"].includes(ticket.status)||ticket.assignedToId!==actor.userId) {
-    await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Conversa indisponível ou atribuída a outro colaborador."}});
-    return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Conversa indisponível ou atribuída a outro colaborador."});
+  if(!ticket||["RESOLVED","SPAM"].includes(ticket.status)||ticket.isSpam||ticket.recipientEmail!==delivery.accountRecipient) {
+    await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Conversa indisponível, finalizada ou fora desta conexão."}});
+    return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Conversa indisponível, finalizada ou fora desta conexão."});
   }
   const claim=await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"SENDING"}});
   if(!claim.count)return NextResponse.json({id:delivery.id,status:"SENDING"});
@@ -35,12 +35,12 @@ export async function deliverBatchMessage(deliveryId:string,actor:Actor) {
     await prisma.$transaction(async tx=>{
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chatLock(sent.connectionId,ticket.senderEmail)}))`;
       const id=await resolveWhatsappTicketId(ticket.id,actor.organizationId,tx);
-      const active=await tx.serviceTicket.findFirst({where:{id,organizationId:actor.organizationId}});
       const author={fromName:actor.user.name||actor.user.email,fromEmail:actor.user.email,textBody:delivery.body};
       const metadata={provider:"UAZAPI",connectionId:sent.connectionId,instanceId:sent.instanceId,accountPhone:sent.accountPhone,batchId:delivery.batchId};
       // The webhook may have persisted the same outgoing message before the send response arrived.
       await tx.serviceMessage.upsert({where:{ticketId_externalMessageId:{ticketId:id,externalMessageId:sent.messageId}},create:{ticketId:id,externalMessageId:sent.messageId,deliveryStatus:"accepted",statusUpdatedAt:now,providerMetadata:metadata,direction:"OUTBOUND",...author,toEmails:[ticket.senderEmail],receivedAt:now},update:{...author,providerMetadata:metadata}});
-      await tx.serviceTicket.update({where:{id,mergedIntoId:null},data:{assignedToId:active?.assignedToId||actor.userId,assignedAt:active?.assignedAt||now,firstResponseAt:active?.firstResponseAt||now,lastMessageAt:now,snippet:delivery.body.slice(0,220),status:active?.status==="RESOLVED"?"RESOLVED":"IN_PROGRESS"}});
+      // Batch communication never claims a queue item or changes another operator's workflow/SLA.
+      await tx.serviceTicket.update({where:{id,mergedIntoId:null},data:{lastMessageAt:now,snippet:delivery.body.slice(0,220)}});
       await tx.serviceTicketHistory.create({data:{ticketId:id,userId:actor.userId,type:"WHATSAPP_REPLIED",message:"Mensagem padrão enviada em lote.",metadata:{batchId:delivery.batchId,externalMessageId:sent.messageId}}});
       await tx.whatsAppBatchDelivery.update({where:{id:delivery.id},data:{status:"SENT",externalMessageId:sent.messageId,error:null}});
     });

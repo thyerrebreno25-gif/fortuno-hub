@@ -19,8 +19,8 @@ export async function GET(request:Request) {
   if(batchId){if(!/^[\da-f-]{36}$/i.test(batchId))return NextResponse.json({error:"Lote inválido."},{status:400});return NextResponse.json({deliveries:await prisma.whatsAppBatchDelivery.findMany({where:{organizationId:member.organizationId,userId:member.userId,batchId,accountRecipient:account.recipient||"disconnected"},orderBy:[{createdAt:"asc"},{id:"asc"}],select:{id:true,recipientName:true,status:true,error:true,body:true,updatedAt:true}})},{headers:{"Cache-Control":"private, no-store"}});}
   const search=(params.get("search")||"").trim(),page=Number(params.get("page")||1);
   if(search.length>150||!Number.isSafeInteger(page)||page<1||page>10000)return NextResponse.json({error:"Filtro inválido."},{status:400});
-  const where:Prisma.ServiceTicketWhereInput={...account.where,mergedIntoId:null,isSpam:false,status:{notIn:["RESOLVED","SPAM"]},assignedToId:member.userId,...(search?{AND:[{OR:[{senderName:{contains:search,mode:"insensitive"}},{senderEmail:{contains:search,mode:"insensitive"}},{client:{name:{contains:search,mode:"insensitive"}}}]}]}:{})};
-  const [items,total]=await Promise.all([prisma.serviceTicket.findMany({where,orderBy:[{lastMessageAt:"desc"},{id:"asc"}],skip:(page-1)*50,take:50,select:{id:true,senderName:true,subject:true,senderEmail:true,client:{select:{name:true}}}}),prisma.serviceTicket.count({where})]);
+  const where:Prisma.ServiceTicketWhereInput={...account.where,mergedIntoId:null,isSpam:false,status:{notIn:["RESOLVED","SPAM"]},...(search?{AND:[{OR:[{senderName:{contains:search,mode:"insensitive"}},{senderEmail:{contains:search,mode:"insensitive"}},{client:{name:{contains:search,mode:"insensitive"}}}]}]}:{})};
+  const [items,total]=await Promise.all([prisma.serviceTicket.findMany({where,orderBy:[{lastMessageAt:"desc"},{id:"asc"}],skip:(page-1)*50,take:50,select:{id:true,senderName:true,subject:true,senderEmail:true,client:{select:{name:true}},assignedTo:{select:{name:true,email:true}}}}),prisma.serviceTicket.count({where})]);
   return NextResponse.json({items,total,pageSize:50},{headers:{"Cache-Control":"private, no-store"}});
 }
 export async function POST(request:Request) {
@@ -32,8 +32,8 @@ export async function POST(request:Request) {
   }
   const parsed=prepareBatchSchema.safeParse(input);if(!parsed.success)return NextResponse.json({error:"Revise a mensagem e selecione de 1 a 50 conversas diferentes."},{status:400});
   const account=await currentWhatsAppAccount(member.organizationId);if(!account.recipient)return NextResponse.json({error:"Conecte o WhatsApp antes de preparar o lote."},{status:409});
-  const tickets=await prisma.serviceTicket.findMany({where:{...account.where,id:{in:parsed.data.ticketIds},mergedIntoId:null,isSpam:false,status:{notIn:["SPAM","RESOLVED"]},assignedToId:member.userId},select:{id:true,senderName:true,subject:true,senderEmail:true}});
-  if(tickets.length!==parsed.data.ticketIds.length)return NextResponse.json({error:"Uma conversa foi finalizada, mudou de conexão ou está com outro colaborador. Revise os destinatários."},{status:409});
+  const tickets=await prisma.serviceTicket.findMany({where:{...account.where,id:{in:parsed.data.ticketIds},mergedIntoId:null,isSpam:false,status:{notIn:["SPAM","RESOLVED"]}},select:{id:true,senderName:true,subject:true,senderEmail:true}});
+  if(tickets.length!==parsed.data.ticketIds.length)return NextResponse.json({error:"Uma conversa foi finalizada ou não está disponível nesta conexão. Revise os destinatários."},{status:409});
   if(new Set(tickets.map(t=>t.senderEmail)).size!==tickets.length)return NextResponse.json({error:"Há mais de um chamado do mesmo contato ou grupo. Selecione apenas um por destinatário."},{status:400});
   const where={organizationId:member.organizationId,userId:member.userId,batchId:parsed.data.batchId};
   const deliveries=await prisma.$transaction(async tx=>{
