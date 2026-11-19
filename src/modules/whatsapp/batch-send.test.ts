@@ -18,9 +18,17 @@ it("a losing concurrent request cannot dispatch another copy",async()=>{m.claim.
 it("marks a provider timeout as uncertain instead of retryable",async()=>{m.send.mockRejectedValue(new Error("timeout"));expect((await(await deliverBatchMessage("d",actor)).json()).status).toBe("UNKNOWN");expect(m.claim.mock.calls.at(-1)?.[0]).toMatchObject({data:{status:"UNKNOWN"}});expect(m.send).toHaveBeenCalledTimes(1);});
 it("retains the accepted provider ID if local persistence fails",async()=>{m.transaction.mockRejectedValue(new Error("database unavailable"));expect((await(await deliverBatchMessage("d",actor)).json()).status).toBe("UNKNOWN");expect(m.claim.mock.calls.at(-1)?.[0].data.externalMessageId).toBe("uazapi:5511:m");});
 
-it.each([{status:"RESOLVED"},{status:"SPAM"},{isSpam:true},{recipientEmail:"wa-account:c:other"}])("cancels unavailable recipients before claiming or sending: %j",async change=>{
+it.each([{status:"SPAM"},{isSpam:true},{recipientEmail:"wa-account:c:other"}])("cancels unavailable recipients before claiming or sending: %j",async change=>{
  m.ticket.mockResolvedValue({id:"t",status:"IN_PROGRESS",assignedToId:"other",senderEmail:"wa-contact:5522",recipientEmail:"wa-account:c:5511",messages:[],...change});expect((await(await deliverBatchMessage("d",actor)).json()).status).toBe("CANCELLED");expect(m.send).not.toHaveBeenCalled();expect(m.ticketUpdate).not.toHaveBeenCalled();
 });
 it("allows the current assignee to change after preparation while still preserving the current assignment",async()=>{
  m.ticket.mockResolvedValue({id:"t",status:"IN_PROGRESS",assignedToId:"new-owner",senderEmail:"wa-contact:5522",recipientEmail:"wa-account:c:5511",messages:[]});expect((await(await deliverBatchMessage("d",actor)).json()).status).toBe("SENT");expect(m.ticketUpdate.mock.calls[0][0].data).not.toHaveProperty('assignedToId');expect(m.ticketUpdate.mock.calls[0][0].data).not.toHaveProperty('assignedAt');
+});
+
+it.each(['other',null])('sends to a finalized conversation without reopening it or changing its owner: %s',async assignedToId=>{
+ const resolvedAt=new Date('2026-11-18T18:00:00Z');
+ const ticket={id:'t',status:'RESOLVED',assignedToId,resolvedAt,senderEmail:'wa-contact:5522',recipientEmail:'wa-account:c:5511',messages:[]};m.ticket.mockResolvedValue(ticket);
+ expect((await(await deliverBatchMessage('d',actor)).json()).status).toBe('SENT');expect(m.send).toHaveBeenCalledOnce();
+ const data=m.ticketUpdate.mock.calls[0][0].data;expect(data).toEqual({lastMessageAt:expect.any(Date),snippet:'Bom dia!'});for(const key of ['status','resolvedAt','resolvedById','assignedToId','assignedAt','firstResponseAt','receivedAt'])expect(data).not.toHaveProperty(key);
+ expect(m.message.mock.calls[0][0].create).toMatchObject({ticketId:'t',direction:'OUTBOUND',textBody:'Bom dia!'});expect(ticket).toMatchObject({status:'RESOLVED',assignedToId,resolvedAt});
 });

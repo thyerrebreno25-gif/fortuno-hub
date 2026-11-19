@@ -18,9 +18,9 @@ export async function deliverBatchMessage(deliveryId:string,actor:Actor) {
   // A claim is permanent: lost responses or timeouts must never trigger an automatic second send.
   if(delivery.status!=="PENDING")return NextResponse.json({id:delivery.id,status:delivery.status,error:delivery.error});
   const ticket=await getWhatsappTicket(delivery.ticketId,actor.organizationId,{});
-  if(!ticket||["RESOLVED","SPAM"].includes(ticket.status)||ticket.isSpam||ticket.recipientEmail!==delivery.accountRecipient) {
-    await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Conversa indisponível, finalizada ou fora desta conexão."}});
-    return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Conversa indisponível, finalizada ou fora desta conexão."});
+  if(!ticket||ticket.status==="SPAM"||ticket.isSpam||ticket.recipientEmail!==delivery.accountRecipient) {
+    await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Conversa indisponível ou fora desta conexão."}});
+    return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Conversa indisponível ou fora desta conexão."});
   }
   const claim=await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"SENDING"}});
   if(!claim.count)return NextResponse.json({id:delivery.id,status:"SENDING"});
