@@ -78,3 +78,8 @@ it("accepts live call notifications without retaining any credential or arbitrar
  const result=normalizeUazapiEvent({EventType:"call",owner:"5511",token:"secret",event:{CallID:"c",CallCreator:"5522@s.whatsapp.net",Timestamp:"2026-11-11T13:20:00Z",Data:{Tag:"offer",Attrs:{token:"secret"}}}});
  expect(result).toMatchObject({kind:"call",chatId:"5522@s.whatsapp.net",fromMe:false,call:{id:"c",status:"offered"}});expect(JSON.stringify(result)).not.toContain("secret");
 });
+
+it("keeps distinct group reactors and uses the structured emoji even when the message text is blank",()=>{
+ const message={key:{id:"react",remoteJid:"120363123@g.us",participant:"5511988888888@s.whatsapp.net"},pushName:"Maria",text:"",content:{reactionMessage:{key:{id:"our-message"},text:"👍"}}};
+ expect(normalizeUazapiEvent({EventType:"messages",message})).toMatchObject({kind:"reaction",sender:"5511988888888@s.whatsapp.net",senderName:"Maria",targetId:"our-message",emoji:"👍"});
+});

@@ -57,7 +57,7 @@ export function normalizeUazapiEvent(payload: unknown) {
   if(/reaction/i.test(mediaType)||Object.keys(object(content.reactionMessage)).length>0){
     const reaction=object(content.reactionMessage),targetId=text(object(reaction.key).id||object(content.key).id||object(object(message.reaction).key).id||(typeof message.reaction==="string"?message.reaction:""),200);
     if(!targetId)return null;
-    return {kind:"reaction" as const,id,chatId,fromMe,sender:text(message.sender,150),senderName:text(message.senderName,250),targetId,emoji:text(message.text??content.text??reaction.text,24),timestamp:Number(message.messageTimestamp)||Date.now()};
+    return {kind:"reaction" as const,id,chatId,fromMe,sender:text(message.sender||object(message.key).participant,150),senderName:text(message.senderName||message.pushName,250),targetId,emoji:text(reaction.text??content.text??message.text,24),timestamp:Number(message.messageTimestamp)||Date.now()};
   }
   const call = messageCall(message, content);
   const media = !call && /image|document|audio|video|sticker/i.test(mediaType);
