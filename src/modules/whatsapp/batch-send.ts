@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {Prisma} from "@/generated/prisma/client";
 import { currentWhatsAppAccount } from "./account-scope";
 import { getWhatsappTicket, resolveWhatsappTicketId } from "./server";
 import { outgoingContext } from "./outgoing-context";
@@ -18,11 +19,18 @@ export async function deliverBatchMessage(deliveryId:string,actor:Actor) {
   // A claim is permanent: lost responses or timeouts must never trigger an automatic second send.
   if(delivery.status!=="PENDING")return NextResponse.json({id:delivery.id,status:delivery.status,error:delivery.error});
   const ticket=await getWhatsappTicket(delivery.ticketId,actor.organizationId,{});
-  if(!ticket||ticket.status==="SPAM"||ticket.isSpam||ticket.recipientEmail!==delivery.accountRecipient) {
+  if(!ticket||!ticket.clientId||ticket.status==="SPAM"||ticket.isSpam||ticket.recipientEmail!==delivery.accountRecipient) {
     await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Conversa indisponível ou fora desta conexão."}});
     return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Conversa indisponível ou fora desta conexão."});
   }
-  const claim=await prisma.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"SENDING"}});
+  const claim=await prisma.$transaction(async tx=>{
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`batch-client:${actor.organizationId}:${actor.userId}:${delivery.batchId}:${ticket.clientId}`}))`;
+    // Protect previously prepared lots too: two historical tickets/groups for one client are one recipient.
+    const previous=await tx.$queryRaw<Array<{id:string}>>(Prisma.sql`SELECT d.id FROM "WhatsAppBatchDelivery" d JOIN "ServiceTicket" t ON t.id=d."ticketId" WHERE d."organizationId"=${actor.organizationId} AND d."userId"=${actor.userId} AND d."batchId"=${delivery.batchId} AND d."accountRecipient"=${delivery.accountRecipient} AND d.id<>${delivery.id} AND d.status IN ('SENDING','SENT','UNKNOWN') AND t."organizationId"=${actor.organizationId} AND t."clientId"=${ticket.clientId} LIMIT 1`);
+    if(previous.length){await tx.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"CANCELLED",error:"Este cliente já possui um envio iniciado neste lote."}});return {count:0,cancelled:true};}
+    return tx.whatsAppBatchDelivery.updateMany({where:{...where,status:"PENDING"},data:{status:"SENDING"}});
+  });
+  if("cancelled" in claim)return NextResponse.json({id:delivery.id,status:"CANCELLED",error:"Este cliente já possui um envio iniciado neste lote."});
   if(!claim.count)return NextResponse.json({id:delivery.id,status:"SENDING"});
   let externalMessageId:string|null=null;
   try {
