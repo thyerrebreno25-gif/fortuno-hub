@@ -1,3 +1,4 @@
+import {attachDisregardNotices} from "@/modules/operations/disregard-notices";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -204,7 +205,7 @@ export async function GET(request: Request) {
         }));
 
     return NextResponse.json({
-      notices: visibleNotices.map((notice) => serializeNotice(notice, member.id)),
+      notices: await attachDisregardNotices(visibleNotices.map((notice) => serializeNotice(notice, member.id)),member.organizationId),
     });
   }
 
@@ -250,7 +251,7 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({
-    notices: notices.map((notice) => serializeNotice(notice, member.id)),
+    notices: await attachDisregardNotices(notices.map((notice) => serializeNotice(notice, member.id)),member.organizationId),
   });
 }
 

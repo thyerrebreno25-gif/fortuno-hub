@@ -1474,6 +1474,7 @@ model OperationActivity {
   clientCluster     ClientCluster           @default(C)
   blockedReason     String?
   disregardedReason String?
+  disregardReview   Json?
   completedAt       DateTime?
   completionNote    String?
   emailStatus       String?

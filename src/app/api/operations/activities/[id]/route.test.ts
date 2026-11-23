@@ -1,10 +1,12 @@
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
-const m=vi.hoisted(()=>({member:vi.fn(),find:vi.fn(),unique:vi.fn(),update:vi.fn(),entries:vi.fn(),stop:vi.fn(),event:vi.fn(),mail:vi.fn(),lock:vi.fn(),row:vi.fn(),checklist:vi.fn()}));
+vi.mock("server-only",()=>({}));
+const m=vi.hoisted(()=>({requestDisregard:vi.fn(),member:vi.fn(),find:vi.fn(),unique:vi.fn(),update:vi.fn(),entries:vi.fn(),stop:vi.fn(),event:vi.fn(),mail:vi.fn(),lock:vi.fn(),row:vi.fn(),checklist:vi.fn()}));
 vi.mock("@/modules/operations/auth",()=>({getOperationMember:m.member,canManageOperations:(role:string)=>["MASTER","ADMIN","MANAGER"].includes(role)}));
 vi.mock("@/modules/operations/activity",()=>({activityInclude:{},createEvent:m.event}));
 vi.mock("@/modules/operations/email",()=>({sendOperationCompletionEmail:m.mail}));
 vi.mock("@/lib/prisma",()=>{const tx={operationActivity:{findFirst:m.find,findUnique:m.unique,update:m.update},operationChecklistItem:{update:m.checklist},operationTimeEntry:{findMany:m.entries,updateMany:m.stop},operationEvent:{create:m.event},$executeRaw:m.lock,$queryRaw:m.row};return {prisma:{...tx,$transaction:(run:(tx:unknown)=>unknown)=>run(tx)}};});
-import {PATCH} from "./route";
+vi.mock("@/modules/operations/disregard-server",()=>({requestDisregard:m.requestDisregard}));
+import {PATCH,DELETE} from "./route";
 const fixture=()=>({id:"task",organizationId:"org",responsibleId:"operator",status:"IN_PROGRESS",title:"Conciliação",completedAt:null,completionNote:null,checklistItems:[{id:"item",title:"Conferência",mandatory:true,completed:true,requiresAttachment:false,requiresComment:false,allowDisregard:true,disregardedAt:null}],attachments:[] as Array<{id:string;name:string;checklistItemId:string}>,process:{requiresAttachment:false,notifyClient:true},clientProcess:null,client:{name:"Cliente",operationalEmail:"client@test",operationalEmailCc:null},responsible:{name:"Isabella"},timeEntries:[{id:"entry",startedAt:new Date(Date.now()-120000),endedAt:null,seconds:0}]});
 let current:ReturnType<typeof fixture>;
 const complete=()=>PATCH(new Request("https://hub.test/api/operations/activities/task",{method:"PATCH",body:JSON.stringify({action:"complete"})}),{params:Promise.resolve({id:"task"})});
@@ -22,10 +24,15 @@ it("saves checklist checks from the top bar without finalizing before explicit c
  expect(response.status).toBe(200);expect(current.checklistItems[0].completed).toBe(true);expect(current.status).toBe("IN_PROGRESS");expect(m.stop).not.toHaveBeenCalled();expect(m.mail).not.toHaveBeenCalled();
  expect((await complete()).status).toBe(200);expect(m.mail).toHaveBeenCalledOnce();
 });
-it("allows disregarding an eligible document or task without a reason and keeps blocking justification mandatory",async()=>{
+it("keeps document disregard optional while task disregard goes through manager approval",async()=>{
  const patch=(body:Record<string,unknown>)=>PATCH(new Request("https://hub.test/api/operations/activities/task",{method:"PATCH",body:JSON.stringify(body)}),{params:Promise.resolve({id:"task"})});
  expect((await patch({action:"disregardChecklist",itemId:"item"})).status).toBe(200);
  expect(m.checklist).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({disregardReason:null,disregardedById:"operator"})}));
- expect((await patch({action:"status",status:"DISREGARDED"})).status).toBe(200);expect(current.status).toBe("DISREGARDED");
+ expect((await patch({action:"status",status:"DISREGARDED",reason:"Não se aplica nesta competência"})).status).toBe(200);expect(m.requestDisregard).toHaveBeenCalledWith(expect.objectContaining({userId:"operator"}),"task","Não se aplica nesta competência");expect(current.status).toBe("IN_PROGRESS");
  expect((await patch({action:"status",status:"BLOCKED"})).status).toBe(400);
+});
+it("does not let a read-only manager delete a task",async()=>{
+ m.member.mockResolvedValue({organizationId:"org",userId:"manager",role:"MANAGER",canEdit:false,user:{name:"Gestora"}});
+ const response=await DELETE(new Request("https://hub.test/api/operations/activities/task",{method:"DELETE",body:JSON.stringify({reason:"Atividade duplicada"})}),{params:Promise.resolve({id:"task"})});
+ expect(response.status).toBe(403);expect(m.update).not.toHaveBeenCalled();
 });

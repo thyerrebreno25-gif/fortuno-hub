@@ -21,6 +21,7 @@ if (!connectionString) {
     await client.query(sql.replace(/^\uFEFF/, ""));
     const pausedSql = await readFile(new URL("../prisma/migrations/20261119000000_operation_paused/migration.sql", import.meta.url), "utf8");
     await client.query(pausedSql);
+    await client.query(await readFile(new URL("../prisma/migrations/20261123000000_operation_disregard_review/migration.sql", import.meta.url),"utf8"));
     await client.query("COMMIT");
     // New enum values must commit before use. Lock without waiting, then read timers
     // in a fresh statement so a concurrent start can never be marked paused.

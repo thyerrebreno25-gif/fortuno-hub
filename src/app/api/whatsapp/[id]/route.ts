@@ -277,7 +277,7 @@ export async function PATCH(request: Request, context: Context) {
       catch(error){return NextResponse.json({error:error instanceof ReplyTargetError?error.message:"Não foi possível validar a mensagem original."},{status:error instanceof ReplyTargetError?error.status:500});}
     }
     let externalMessageId: string | null = null;
-    let providerMetadata: { provider: string; instanceId: string; connectionId: string; accountPhone: string | null;replyToMessageId?:string } | undefined;
+    let providerMetadata: { provider: string; instanceId: string; connectionId: string; accountPhone: string | null;replyToMessageId?:string;mentionTargets?:Array<{phone:string;name:string;lid:string|null}> } | undefined;
     if (current.source === "WHATSAPP_API") {
       const latestInbound = [...current.messages]
         .reverse()
@@ -286,15 +286,15 @@ export async function PATCH(request: Request, context: Context) {
         const metadata = object(latestInbound?.providerMetadata);
         const connection = await whatsappConnection(member.organizationId);
         const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
-        let wireContent=content;
+        let wireContent=content;let mentionTargets:Array<{phone:string;name:string;lid:string|null}>=[];
         if(Array.isArray(body.mentionTargets)&&body.mentionTargets.length){
           if(!destination.to.endsWith("@g.us")||!connection)throw new Error("Menções são disponíveis apenas em grupos conectados.");
           const profile=await resolvedChatProfile(connection,destination.to,true);
-          wireContent=namedMentions(content,body.mentionTargets,new Set(profile.participants.flatMap(person=>person.phone?[person.phone]:[]))).wireBody;
+          const mentions=namedMentions(content,body.mentionTargets,new Set(profile.participants.flatMap(person=>person.phone?[person.phone]:[])));wireContent=mentions.wireBody;mentionTargets=mentions.targets.map(target=>({...target,lid:profile.participants.find(person=>person.phone===target.phone)?.lid||null}));
         }
         const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, wireContent),...destination,replyToMessageId:replyTarget?.providerId});
         externalMessageId = sent.messageId;
-        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone,...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{}) };
+        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone,...(mentionTargets.length?{mentionTargets}:{}),...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{}) };
       } catch (error) {
         console.error("Falha ao enviar resposta pelo WhatsApp:", error);
         return NextResponse.json(

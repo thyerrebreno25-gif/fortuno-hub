@@ -5,6 +5,13 @@ vi.mock("@/modules/operations/team-catalog",()=>({operationTeamCatalog:async()=>
 vi.mock("@/lib/prisma",()=>({prisma:{$transaction:m.transaction,client:{findFirst:m.client},operationProcess:{findFirst:m.process},operationClientProcess:{findMany:m.previous,create:m.create},organizationMember:{findFirst:m.person},operationActivity:{updateMany:m.detach}}}));
 vi.mock("@/modules/operations/recurrence",()=>({generateActivitiesForConfigurationRange:m.generate}));
 import {POST} from "./route";
+it("rejects routine creation for a management profile without edit permission",async()=>{m.member.mockResolvedValue({role:"MANAGER",organizationId:"org",canEdit:false});expect((await POST(request())).status).toBe(403);expect(m.create).not.toHaveBeenCalled();});
+it("requires valid monthly dates and persists multiple fixed dates",async()=>{
+ for(const monthDays of [[],[0],[32],[1.5],null])expect((await POST(request({recurrenceType:"MONTHLY",recurrenceData:{monthDays}}))).status).toBe(400);
+ expect(m.create).not.toHaveBeenCalled();
+ expect((await POST(request({recurrenceType:"MONTHLY",recurrenceData:{startDate:"2027-01-05",monthDays:[5,20]}}))).status).toBe(201);
+ expect(m.create.mock.calls[0][0].data.recurrenceData.monthDays).toEqual([5,20]);
+});
 const request=(patch:Record<string,unknown>={})=>new Request("https://hub.test/api/operations/configurations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId:"client",processId:"process",createOnly:true,recurrenceType:"CUSTOM",recurrenceData:{startDate:"2027-01-05",weekdays:[1,3,5]},...patch})});
 beforeEach(()=>{vi.resetAllMocks();m.member.mockResolvedValue({role:"MANAGER",userId:"user",organizationId:"org"});m.client.mockResolvedValue({id:"client"});m.process.mockResolvedValue({id:"process",defaultPriority:"MEDIUM"});m.previous.mockResolvedValue([]);m.transaction.mockImplementation(async fn=>fn({$executeRaw:m.lock,operationClientProcess:{findMany:m.previous,create:m.create}}));m.create.mockResolvedValue({id:"cfg"});m.generate.mockResolvedValue({created:39});});
 it("creates a scoped routine, retains weekdays and generates exactly 90 calendar days from a future start",async()=>{const r=await POST(request());expect(r.status).toBe(201);expect(m.client.mock.calls[0][0].where).toEqual({id:"client",organizationId:"org"});expect(m.create.mock.calls[0][0].data.recurrenceData.weekdays).toEqual([1,3,5]);const args=m.generate.mock.calls[0];expect(args[1].toISOString().slice(0,10)).toBe("2027-01-05");expect((args[2].getTime()-args[1].getTime())/86400000).toBe(89);});

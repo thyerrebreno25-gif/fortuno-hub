@@ -1,6 +1,21 @@
 import "server-only";
 import { apiItems, contaAzulOptions, normalizeContaAzulLabel } from "./financial-export";
 import { contaAzulRequest } from "@/modules/purchase-invoices/server/conta-azul";
+const profileNames:Record<string,string>={cliente:"Cliente",fornecedor:"Fornecedor",transportadora:"Transportadora"};
+function personProfiles(person:Record<string,unknown>){
+    if(!Array.isArray(person.perfis))throw Error("O CA não retornou os perfis do cadastro existente. Nenhum cadastro foi alterado.");
+    return person.perfis.map(item=>{const key=normalizeContaAzulLabel(typeof item==="string"?item:String((item as Record<string,unknown>)?.tipo_perfil||""));if(!profileNames[key])throw Error("O cadastro possui um perfil não reconhecido. Confira os perfis no CA.");return profileNames[key];});
+}
+async function ensureProfile(clientId:string,id:string,person:Record<string,unknown>,direction:"PAYABLE"|"RECEIVABLE"){
+    if(person.ativo===false)throw Error("O cadastro da adquirente está inativo no CA. Ative o cadastro antes de enviar.");
+    const required=direction==="PAYABLE"?"Fornecedor":"Cliente",profiles=personProfiles(person);
+    if(profiles.includes(required))return;
+    // Documented partial update: preserve all existing profiles and every other person attribute.
+    await contaAzulRequest(clientId,"/v1/pessoas/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({perfis:[...new Set([...profiles,required])].map(tipo_perfil=>({tipo_perfil}))})});
+    const response=await contaAzulRequest<Record<string,unknown>>(clientId,"/v1/pessoas/"+encodeURIComponent(id));
+    const confirmed=apiItems(response)[0]||response,actual=personProfiles(confirmed);
+    if(confirmed.ativo===false||[...profiles,required].some(profile=>!actual.includes(profile)))throw Error("O CA não confirmou o perfil da adquirente. Confira o cadastro antes de reenviar; nenhum novo fornecedor foi criado.");
+}
 export async function resolveAcquirerContact(clientId: string, direction: "PAYABLE" | "RECEIVABLE", name?: string | null, knownId?: string | null) {
     const label = name?.trim();
     if (!label || /^(adquirente|movimentacoes de adquirentes|lancamento automatico(?: receitas| financeiro)?)$/.test(normalizeContaAzulLabel(label)))
@@ -12,9 +27,9 @@ export async function resolveAcquirerContact(clientId: string, direction: "PAYAB
         const person = apiItems(body)[0] || body;
         const actualName = normalizeContaAzulLabel(String(person.nome || ""));
         const requestedName = normalizeContaAzulLabel(label);
-        const profiles = Array.isArray(person.perfis) ? person.perfis.map(item => normalizeContaAzulLabel(typeof item === "string" ? item : String((item as Record<string, unknown>)?.tipo_perfil || ""))) : [];
-        if (person.ativo !== false && actualName === requestedName && profiles.includes(direction === "PAYABLE" ? "fornecedor" : "cliente"))
-            return { value: knownId, label: String(person.nome) };
+        const actualDocument=String(person.documento||person.cnpj||"").replace(/\D/g,"");
+        if(document&&actualDocument&&actualDocument!==document&&actualName===requestedName)throw Error("O cadastro Cielo localizado possui outro CNPJ. Confira o cadastro no CA antes de enviar.");
+        if (actualName === requestedName){await ensureProfile(clientId,knownId,person,direction);return { value: knownId, label: String(person.nome) };}
     }
     const candidates = new Map<string, Record<string, unknown>>();
     for (const profile of ["Fornecedor", "Cliente", "Transportadora"]) {
@@ -58,10 +73,7 @@ export async function resolveAcquirerContact(clientId: string, direction: "PAYAB
         const person = apiItems(body)[0] || body;
         if (person.ativo === false)
             throw Error("O cadastro da adquirente está inativo no CA. Ative o cadastro antes de enviar.");
-        const profile = direction === "PAYABLE" ? "Fornecedor" : "Cliente";
-        const profiles = Array.isArray(person.perfis) ? person.perfis.map(item => normalizeContaAzulLabel(typeof item === "string" ? item : String((item as Record<string, unknown>)?.tipo_perfil || ""))) : [];
-        if (!profiles.includes(normalizeContaAzulLabel(profile)))
-            throw Error(`A adquirente já está cadastrada no CA. Habilite o perfil ${profile} nesse cadastro para enviar sem duplicá-lo.`);
+        await ensureProfile(clientId,String(row.id),person,direction);
         return { value: String(row.id), label: String(person.nome || row.nome || label) };
     }
     const created = await contaAzulRequest<unknown>(clientId, "/v1/pessoas", { method: "POST", body: JSON.stringify({ ativo: true, nome: label, tipo_pessoa: "Jurídica", ...(document ? { cnpj: document } : {}), perfis: document ? [{ tipo_perfil: "Fornecedor" }, { tipo_perfil: "Cliente" }] : [{ tipo_perfil: direction === "PAYABLE" ? "Fornecedor" : "Cliente" }], observacao: "Adquirente vinculada pelo Fortuno Hub para receitas e despesas de cartões." }) });

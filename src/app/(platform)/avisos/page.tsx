@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+import {DisregardNoticeActions,type OperationApprovalNotice} from "@/modules/operations/disregard-notice-actions";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -42,6 +43,7 @@ import {
 import styles from "./avisos.module.css";
 
 type Notice = {
+  operationApproval?:OperationApprovalNotice;
   id: string;
   kind: "ALERT" | "REMINDER" | "NOTE";
   scope: "PERSONAL" | "MEMBERS" | "CLIENTS" | "GENERAL";
@@ -123,13 +125,14 @@ function NoticeCard({
   management,
   currentMemberId,
   onAction,
-  onDelete,
+  onDelete, onRefresh,canDecideDisregard=false,
 }: {
   notice: Notice;
   management?: boolean;
   currentMemberId: string;
   onAction: (id: string, action: string) => void;
   onDelete: (id: string) => void;
+  onRefresh:()=>void;canDecideDisregard?:boolean;
 }) {
   const [showAudience, setShowAudience] = useState(false);
   const isExpired = !!notice.expiresAt && new Date(notice.expiresAt) < new Date();
@@ -187,7 +190,7 @@ function NoticeCard({
           </div>
         </Group>
 
-        {isAuthor && (
+        {isAuthor && !notice.operationApproval && (
           <Tooltip label="Excluir aviso">
             <ActionIcon
               variant="subtle"
@@ -207,6 +210,7 @@ function NoticeCard({
         </Text>
       )}
 
+      {notice.operationApproval&&<DisregardNoticeActions review={notice.operationApproval} canDecide={canDecideDisregard} onChanged={onRefresh}/>}
       {notice.clients.length > 0 && (
         <Group gap={6} mt="md">
           <IconUsers size={16} color="var(--mantine-color-blue-6)" />
@@ -296,7 +300,7 @@ function NoticeCard({
           Criado em {formatDate(notice.createdAt)}
         </Text>
         <Group gap="xs">
-          {!management && notice.mine && !isExpired && (
+          {!notice.operationApproval && !management && notice.mine && !isExpired && (
             <Button
               size="xs"
               variant={complete ? "light" : "filled"}
@@ -307,7 +311,7 @@ function NoticeCard({
               {complete ? "Reabrir" : "Marcar como concluído"}
             </Button>
           )}
-          {management && isAuthor && !notice.closedAt && (
+          {!notice.operationApproval && management && isAuthor && !notice.closedAt && (
             <Button
               size="xs"
               variant="light"
@@ -551,7 +555,7 @@ export default function AvisosPage() {
                     key={notice.id}
                     notice={notice}
                     currentMemberId={options?.member.id || ""}
-                    onAction={actionNotice}
+                    onAction={actionNotice} onRefresh={()=>void load()} canDecideDisregard={Boolean(options&&["MASTER","ADMIN","MANAGER"].includes(options.member.role))}
                     onDelete={setDeleteId}
                   />
                 ))}
@@ -573,8 +577,7 @@ export default function AvisosPage() {
                   notice={notice}
                   management
                   currentMemberId={options?.member.id || ""}
-                  onAction={actionNotice}
-                  onDelete={setDeleteId}
+                  onAction={actionNotice} onRefresh={()=>void load()} canDecideDisregard={Boolean(options&&["MASTER","ADMIN","MANAGER"].includes(options.member.role))} onDelete={setDeleteId}
                 />
               )) : (
                 <Paper withBorder radius="lg" p={48} ta="center">

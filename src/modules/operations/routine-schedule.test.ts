@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { routineScheduleKey, routineScheduleLabel } from "./routine-schedule";
+it("recognizes a legacy monthly start-day schedule and its explicit fixed date as equivalent",()=>expect(routineScheduleKey("MONTHLY",{startDate:"2026-11-05"})).toBe(routineScheduleKey("MONTHLY",{startDate:"2026-11-05",monthDays:[5]})));
 it("keeps weekdays, periods and deadlines independent",()=>{
   const base={startDate:"2026-11-16",weekdays:[1],dueTime:"18:00"};
   for(const patch of [{weekdays:[2]},{dueTime:"17:00"},{endDate:"2026-12-01"},{startDate:"2026-11-23"},{interval:2}])expect(routineScheduleKey("WEEKLY",base)).not.toBe(routineScheduleKey("WEEKLY",{...base,...patch}));

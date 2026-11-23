@@ -1,3 +1,4 @@
+import {activityDuplicateGroups} from "@/modules/operations/activity-duplicates";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getOperationMember } from "@/modules/operations/auth";
@@ -15,9 +16,10 @@ export async function GET(request: Request) {
     let scheduledDate;
     try { scheduledDate = operationDayRange(day); }
     catch { return NextResponse.json({ error: "Selecione uma data válida." }, { status: 400 }); }
-    const activities = await prisma.operationActivity.findMany({ where: { organizationId: member.organizationId, deletedAt: null, scheduledDate }, select: { id: true, title: true, status: true, updatedAt: true, client: { select: { name: true } }, responsible: { select: { name: true, email: true } } }, orderBy: [{ client: { name: "asc" } }, { title: "asc" }, { id: "asc" }], take: 2001 });
+    const activities = await prisma.operationActivity.findMany({ where: { organizationId: member.organizationId, deletedAt: null, scheduledDate }, select: { clientId:true, processId:true,id: true, title: true, status: true, updatedAt: true, client: { select: { name: true } }, responsible: { select: { name: true, email: true } } }, orderBy: [{ client: { name: "asc" } }, { title: "asc" }, { id: "asc" }], take: 2001 });
     if (activities.length > 2000) return NextResponse.json({ error: "Este dia possui mais de 2.000 atividades. Entre em contato com a gestão para dividir a seleção." }, { status: 422 });
-    return NextResponse.json({ day, activities }, { headers: { "Cache-Control": "private, no-store" } });
+    const duplicates=activityDuplicateGroups(activities);
+    return NextResponse.json({ day, activities:activities.map(activity=>({...activity,duplicateCount:duplicates.get(activity.id)||0})) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof OperationTimerError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: "Não foi possível consultar as atividades do dia." }, { status: 500 });

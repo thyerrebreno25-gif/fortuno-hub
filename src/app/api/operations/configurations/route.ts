@@ -19,15 +19,16 @@ export async function POST(request: Request) {
   try {
     const member = await getOperationMember();
     if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-    if (!canManageOperations(member.role)) return NextResponse.json({ error: "Sem permissão para configurar rotinas." }, { status: 403 });
+    if (!canManageOperations(member.role)||member.canEdit===false) return NextResponse.json({ error: "Sem permissão para configurar rotinas." }, { status: 403 });
 
     const body = (await request.json()) as Record<string, unknown>;
     const clientId = String(body.clientId || "");
     const processId = String(body.processId || "");
     if (!clientId || !processId) return NextResponse.json({ error: "Selecione cliente e processo." }, { status: 400 });
 
-    const recurrence=body.recurrenceData as {weekdays?:unknown;startDate?:string;dailyMode?:string}|undefined;
+    const recurrence=body.recurrenceData as {weekdays?:unknown;monthDays?:unknown;startDate?:string;dailyMode?:string}|undefined;
     if((body.recurrenceType==="CUSTOM"||body.recurrenceType==="WEEKLY"||(body.recurrenceType==="DAILY"&&recurrence?.dailyMode==="CUSTOM_DAYS")) && (!Array.isArray(recurrence?.weekdays)||!recurrence.weekdays.length||recurrence.weekdays.some(day=>!Number.isInteger(day)||Number(day)<0||Number(day)>6)))return NextResponse.json({error:"Selecione dias da semana válidos para a recorrência."},{status:400});
+    if(body.recurrenceType==="MONTHLY"&&(!Array.isArray(recurrence?.monthDays)||!recurrence.monthDays.length||recurrence.monthDays.some(day=>!Number.isInteger(day)||Number(day)<1||Number(day)>31)))return NextResponse.json({error:"Selecione dias do mês de 1 a 31 para a recorrência mensal."},{status:400});
     if(typeof body.responsibleId==="string"&&body.responsibleId){
       const responsible=await prisma.organizationMember.findFirst({where:{userId:body.responsibleId,organizationId:member.organizationId,role:{not:"CLIENT"}},select:{userId:true}});
       if(!responsible)return NextResponse.json({error:"Responsável não encontrado nesta organização."},{status:400});

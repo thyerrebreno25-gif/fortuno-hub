@@ -1,3 +1,4 @@
+import {pendingDisregard} from "./disregard-policy";
 import "server-only";
 import {prisma} from "@/lib/prisma";
 import {Prisma} from "@/generated/prisma/client";
@@ -18,6 +19,7 @@ export async function changeOperationTimer(member:Member,id:string,action:"start
   const active=await tx.operationTimeEntry.findMany({where:scope,orderBy:{startedAt:"desc"}});
   const now=new Date();
   if(action==="start"){
+   if(pendingDisregard(activity.disregardReview))throw new OperationTimerError("A atividade aguarda a decisão do gestor.",409);
    if(!canManageOperations(member.role)&&activity.responsibleId!==member.userId)throw new OperationTimerError("Você só pode iniciar as atividades atribuídas a você.",403);
    if(["COMPLETED","DISREGARDED","BLOCKED"].includes(activity.status))throw new OperationTimerError("Atividade concluída, desconsiderada ou impedida não pode iniciar um cronômetro.",409);
   }

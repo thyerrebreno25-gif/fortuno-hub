@@ -18,6 +18,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const body = (await request.json()) as { action?: unknown };
   const action = typeof body.action === "string" ? body.action : "";
+  if(id.startsWith("operation-disregard:")&&action!=="viewed")return NextResponse.json({error:"Use os botões de aceitar ou recusar a justificativa."},{status:400});
 
   if (action === "viewed" && !permissions.NOTICES.canView) {
     return NextResponse.json(
@@ -108,6 +109,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  if(id.startsWith("operation-disregard:"))return NextResponse.json({error:"Este aviso pertence à aprovação de uma atividade e deve ser resolvido pelos botões de decisão."},{status:400});
   const notice = await prisma.notice.findFirst({
     where: { id, organizationId: member.organizationId },
     select: { id: true, authorMemberId: true, scope: true },

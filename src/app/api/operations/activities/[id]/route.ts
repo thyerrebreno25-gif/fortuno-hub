@@ -1,3 +1,9 @@
+import {cancelDisregardNotices} from "@/modules/operations/disregard-cancel";
+import {editOperationActivity} from "@/modules/operations/activity-edit-server";
+import {activityEditSchema} from "@/modules/operations/edit-model";
+import {requestDisregard} from "@/modules/operations/disregard-server";
+import {pendingDisregard} from "@/modules/operations/disregard-policy";
+import {OperationTimerError} from "@/modules/operations/timer-server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getOperationMember,canManageOperations } from "@/modules/operations/auth";
@@ -15,6 +21,7 @@ async function finalizeActivity(id: string, member: Member, note?: string | null
     const current=await tx.operationActivity.findFirst({where:{id,organizationId:member.organizationId,deletedAt:null},include:activityInclude});
     if(!current)return {error:"Atividade não encontrada.",status:404} as const;
     if(!canManageOperations(member.role)&&current.responsibleId!==member.userId)return {error:"Você só pode concluir as atividades atribuídas a você.",status:403} as const;
+    if(pendingDisregard(current.disregardReview))return {error:"Aguarde a decisão do gestor sobre a desconsideração.",status:409} as const;
     if(current.status==="COMPLETED")return {activity:current,alreadyCompleted:true} as const;
     if(current.status==="DISREGARDED")return {error:"Esta atividade foi desconsiderada.",status:409} as const;
     const missing=current.checklistItems.filter(item=>item.mandatory&&!item.completed&&!item.disregardedAt);
@@ -84,6 +91,12 @@ export async function PATCH(request: Request, context: Context) {
   const current = await prisma.operationActivity.findFirst({ where: { id, organizationId: member.organizationId, deletedAt: null }, include: activityInclude });
   if (!current) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
 
+  if(pendingDisregard(current.disregardReview)&&body.action!=="comment"&&!(body.action==="status"&&body.status==="DISREGARDED"))return NextResponse.json({error:"A atividade aguarda aprovação do gestor."},{status:409});
+
+  if(body.action==="edit"){
+    const input=activityEditSchema.safeParse(body);if(!input.success)return NextResponse.json({error:input.error.issues[0]?.message||"Confira os dados da atividade."},{status:400});
+    try{return NextResponse.json({activity:await editOperationActivity(member,id,input.data)});}catch(error){return NextResponse.json({error:error instanceof OperationTimerError?error.message:"Não foi possível editar a atividade."},{status:error instanceof OperationTimerError?error.status:500});}
+  }
   if (body.action === "checklist") {
     const item = current.checklistItems.find((row) => row.id === body.itemId);
     if (!item) return NextResponse.json({ error: "Item não encontrado." }, { status: 404 });
@@ -132,6 +145,11 @@ export async function PATCH(request: Request, context: Context) {
   } else if (body.action === "status") {
     const status = String(body.status || "");
     const reason = String(body.reason || "").trim();
+    if(status==="DISREGARDED"){
+      try{await requestDisregard(member,id,reason);return NextResponse.json({activity:await prisma.operationActivity.findUnique({where:{id},include:activityInclude}),pendingApproval:true});}
+      catch(error){return NextResponse.json({error:error instanceof OperationTimerError?error.message:"Não foi possível solicitar aprovação."},{status:error instanceof OperationTimerError?error.status:500});}
+    }
+    if(!["OPEN","BLOCKED"].includes(status))return NextResponse.json({error:"Use os controles de cronômetro ou conclusão para alterar essa situação."},{status:400});
     if (status === "BLOCKED" && !reason) {
       return NextResponse.json({ error: "Informe a justificativa." }, { status: 400 });
     }
@@ -158,7 +176,7 @@ export async function PATCH(request: Request, context: Context) {
 export async function DELETE(request: Request, context: Context) {
   const member = await getOperationMember();
   if (!member) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  if (!["MASTER", "ADMIN", "MANAGER"].includes(member.role)) {
+  if (!["MASTER", "ADMIN", "MANAGER"].includes(member.role)||member.canEdit===false) {
     return NextResponse.json(
       { error: "Seu perfil não possui permissão para excluir atividades." },
       { status: 403 },
@@ -172,6 +190,10 @@ export async function DELETE(request: Request, context: Context) {
   if (!activity) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "OperationActivity" WHERE id=${id} AND "organizationId"=${member.organizationId} FOR UPDATE`;
+    const fresh=await tx.operationActivity.findFirst({where:{id,organizationId:member.organizationId,deletedAt:null}});
+    if(!fresh)return;
+    await cancelDisregardNotices(tx,member.organizationId,[fresh],now);
     const openEntries = await tx.operationTimeEntry.findMany({ where: { activityId: id, endedAt: null } });
     for (const entry of openEntries) {
       await tx.operationTimeEntry.update({ where: { id: entry.id }, data: { endedAt: now, seconds: Math.max(1, Math.floor((now.getTime() - entry.startedAt.getTime()) / 1000)) } });

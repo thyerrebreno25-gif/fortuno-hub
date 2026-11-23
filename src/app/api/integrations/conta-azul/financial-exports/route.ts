@@ -789,7 +789,7 @@ export async function POST(request: Request) {
           requestedBody.module,
           direction,
           requestedBody.module === "ACQUIRER" ? requestedBody.counterpartyHint : requestedBody.counterpartyHint || requestedBody.financialAccountName,
-          requestedBody.module === "ACQUIRER" ? primaryContact?.value || requestedBody.contactId : !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactId : null,
+          requestedBody.module === "ACQUIRER" ? Object.values(destinations.get(destinationId)!.contactIds).find(Boolean) || (!requestedBody.useLineAccounts ? requestedBody.contactId : null) : !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactId : null,
           !requestedBody.useLineAccounts && direction === directions[0] ? requestedBody.contactName : null,
         );
         destinations.get(destinationId)!.contactIds[direction] = technicalContact.value;
