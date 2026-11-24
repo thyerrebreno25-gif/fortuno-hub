@@ -5,7 +5,7 @@ import { getOperationMember } from "@/modules/operations/auth";
 import { OperationTimerError } from "@/modules/operations/timer-server";
 import { operationDayRange } from "@/modules/operations/activity-deadline";
 import { bulkActivityDeletionSchema } from "@/modules/operations/bulk-delete-model";
-import { deleteActivitiesForDay, requireBulkActivityDeletion } from "@/modules/operations/bulk-delete-server";
+import { deleteSelectedActivities, requireBulkActivityDeletion } from "@/modules/operations/bulk-delete-server";
 export const maxDuration = 60;
 export async function GET(request: Request) {
   try {
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     requireBulkActivityDeletion(member);
     const input = bulkActivityDeletionSchema.safeParse(await request.json().catch(() => null));
     if (!input.success) return NextResponse.json({ error: "Selecione de 1 a 2.000 atividades e informe uma justificativa com pelo menos 5 caracteres." }, { status: 400 });
-    return NextResponse.json(await deleteActivitiesForDay(member, input.data));
+    return NextResponse.json(await deleteSelectedActivities(member, input.data));
   } catch (error) {
     if (error instanceof OperationTimerError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: "Não foi possível excluir a seleção. Atualize a lista e tente novamente." }, { status: 500 });

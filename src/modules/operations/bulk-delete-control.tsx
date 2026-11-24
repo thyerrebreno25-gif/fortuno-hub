@@ -43,8 +43,8 @@ export function BulkActivityDeleteControl({ initialDay, onChanged }: { initialDa
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível excluir as atividades."); }
     finally { setSaving(false); }
   }
-  return <><Button variant="light" color="red" size="xs" leftSection={<IconTrash size={15} />} onClick={() => { setDay(initialDay); setRows([]); setIds([]); setPreviewDay(""); setSearch(""); setDuplicatesOnly(false); setReason(""); setError(""); setOpened(true); }}>Excluir atividades em lote</Button>
-    <Modal opened={opened} onClose={() => { if (!saving) setOpened(false); }} title="Excluir atividades em lote" size="lg" centered closeOnClickOutside={!saving} closeOnEscape={!saving}>
+  return <><Button variant="subtle" color="gray" size="xs" leftSection={<IconTrash size={15} />} onClick={() => { setDay(initialDay); setRows([]); setIds([]); setPreviewDay(""); setSearch(""); setDuplicatesOnly(false); setReason(""); setError(""); setOpened(true); }}>Selecionar por dia</Button>
+    <Modal opened={opened} onClose={() => { if (!saving) setOpened(false); }} title="Selecionar atividades por dia" size="lg" centered closeOnClickOutside={!saving} closeOnEscape={!saving}>
       <Stack>
         <TextInput label="Dia das atividades" type="date" required disabled={saving} value={day} onChange={event => setDay(event.currentTarget.value)} />
         <Text size="sm" c="dimmed">Selecione as atividades desse dia. As rotinas e as atividades dos outros dias serão mantidas. O histórico da exclusão fica registrado.</Text>

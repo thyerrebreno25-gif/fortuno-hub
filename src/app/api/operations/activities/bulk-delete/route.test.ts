@@ -5,7 +5,7 @@ vi.mock("@/modules/operations/auth", () => ({ getOperationMember: m.member, canM
 vi.mock("@/lib/prisma", () => ({ prisma: { operationActivity: { findMany: m.find } } }));
 vi.mock("@/modules/operations/bulk-delete-server", async importOriginal => {
   const original = await importOriginal<typeof import("@/modules/operations/bulk-delete-server")>();
-  return { ...original, deleteActivitiesForDay: m.remove };
+  return { ...original, deleteSelectedActivities: m.remove };
 });
 import { GET, POST } from "./route";
 const request = () => new Request("https://hub.test/api/operations/activities/bulk-delete?day=2026-11-17");
@@ -31,4 +31,12 @@ it("rejects an invalid date, missing justification, empty selection and duplicat
 it("passes only the reviewed selection to the service and never silently truncates large day previews", async () => {
   expect(await (await POST(post())).json()).toEqual({ deleted: 1, day: body.day }); expect(m.remove.mock.calls[0][1]).toEqual(body);
   m.find.mockResolvedValue(Array(2001).fill({ id: "row" })); expect((await GET(request())).status).toBe(422);
+});
+it("accepts exact selected IDs and versions without reopening a day-based preview",async()=>{
+ const selection={reason:body.reason,activities:[...body.activities,{id:"b",updatedAt:"2026-11-24T12:00:00.000Z"}]};
+ expect((await POST(post(selection))).status).toBe(200);expect(m.remove.mock.calls[0][1]).toEqual(selection);expect(m.find).not.toHaveBeenCalled();
+});
+it("still refuses an empty or repeated exact selection when no day is provided",async()=>{
+ for(const activities of [[],[...body.activities,...body.activities]])expect((await POST(post({reason:body.reason,activities}))).status).toBe(400);
+ expect(m.remove).not.toHaveBeenCalled();
 });
