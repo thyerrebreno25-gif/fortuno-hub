@@ -327,6 +327,59 @@ describe("confirmação real no CA e proteção contra reenvio", () => {
   });
 });
 
+describe("adquirentes com receitas e taxas no mesmo cadastro", () => {
+  function acquirerBody() {
+    const data = body(false, true);
+    return { ...data, module: "ACQUIRER", counterpartyHint: "REDE", sourceKey: "rede-fixture.xlsx", sourceName: "rede-fixture.xlsx",
+      lines: data.lines.map((line, index) => index ? line : { ...line, direction: "RECEIVABLE", categoryName: "Reembolsos" }),
+    };
+  }
+  function legacyRede({ throwAfterSave = false, reject = false } = {}) {
+    const original = mocks.request.getMockImplementation()!;
+    let updated = false;
+    mocks.request.mockImplementation(async (...args) => {
+      const [, path, init] = args;
+      if (path.startsWith("/v1/pessoas?")) return { items: [{ id: CONTACT, nome: "REDE" }], totalItems: 1 };
+      if (path === `/v1/pessoas/${CONTACT}`) {
+        if (init?.method === "PATCH") {
+          expect(JSON.parse(init.body)).toEqual({ cnpj: "01425787000104", tipo_pessoa: "Jurídica", perfis: [{ tipo_perfil: "Cliente" }, { tipo_perfil: "Fornecedor" }] });
+          if (reject) throw Object.assign(Error("Rejeição no cadastro"), { status: 400 });
+          updated = true;
+          if (throwAfterSave) throw Object.assign(Error("Ocorreu um erro ao tentar atualizar parcialmente a pessoa"), { status: 500 });
+          return {};
+        }
+        return { id: CONTACT, nome: "REDE", ativo: true, documento: updated ? "01425787000104" : "", tipo_pessoa: "JURIDICA", perfis: updated ? ["Cliente", "Fornecedor"] : ["Cliente"] };
+      }
+      return original(...args);
+    });
+  }
+  it.each([false, true])("confirma a identidade/perfis antes de criar e baixar receitas e despesas; erro após salvar=%s", async throwAfterSave => {
+    legacyRede({ throwAfterSave });
+    const response = await send(acquirerBody());
+    expect(response.status).toBe(200); expect((await response.json()).done).toBe(true);
+    const calls = mocks.request.mock.calls;
+    const patches = calls.filter(call => call[2]?.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect(calls.indexOf(patches[0])).toBeLessThan(calls.indexOf(financialCreates()[0]));
+    expect(financialCreates().map(call => [call[1], JSON.parse(call[2].body).id_cliente || JSON.parse(call[2].body).id_fornecedor])).toEqual([
+      ["/v1/financeiro/contas-a-receber", CONTACT], ["/v1/financeiro/contas-a-pagar", CONTACT],
+    ]);
+    expect(settlementCreates()).toHaveLength(2);
+    expect(calls.some(call => call[1] === "/v1/pessoas" && call[2]?.method === "POST")).toBe(false);
+    // Reopening the same send must neither recreate the person nor the entries.
+    expect((await (await send(acquirerBody())).json()).done).toBe(true);
+    expect(financialCreates()).toHaveLength(2); expect(settlementCreates()).toHaveLength(2);
+    expect(mocks.request.mock.calls.filter(call => call[2]?.method === "PATCH")).toHaveLength(1);
+  });
+  it("does not start financial writes when the required supplier profile is rejected", async () => {
+    legacyRede({ reject: true });
+    const response = await send(acquirerBody());
+    expect(response.status).toBe(502); expect((await response.json()).error).toContain("não confirmou o perfil Fornecedor");
+    expect(financialCreates()).toHaveLength(0); expect(settlementCreates()).toHaveLength(0); expect(batch).toBeNull();
+    expect(mocks.db.documentImportDispatchLease.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: { expiresAt: new Date(0) } }));
+  });
+});
+
 it("rejeita baixa futura antes de qualquer lançamento no CA", async () => { const data = body(true, true); data.lines[0].paymentDate = "2199-01-01"; expect((await send(data)).status).toBe(400); expect(mocks.request).not.toHaveBeenCalled(); });
 it("não troca silenciosamente valor ou categoria de um envio existente", async () => { await send(body()); const data = body(); data.lines[0].amount = 999; expect((await send(data)).status).toBe(409); expect(financialCreates()).toHaveLength(2); });
 
