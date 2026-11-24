@@ -20,7 +20,7 @@ import {ConversationSearch,type ConversationSearchResult} from "./conversation-s
 import { mediaKind } from "./media";
 import styles from "@/app/(platform)/whatsapp/whatsapp.module.css";
 type Attachment = { id: string; name: string; mimeType: string | null };
-type Message = { id: string; sourceTicketId?: string; direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; mentionTargets?:unknown;internalType?:string|null; call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null; replyTo?:QuotedMessage|null; reaction?:MessageReaction|null; customerReactions?:MessageReaction[]; attachments: Attachment[] };
+type Message = { id: string; sourceTicketId?: string; clientRequestId?:string|null;reconciledEchoId?:string|null;direction: "INBOUND" | "OUTBOUND" | "INTERNAL"; fromName: string | null; textBody: string | null; receivedAt: string; deliveryStatus: string | null; mentionTargets?:unknown;internalType?:string|null; call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null; replyTo?:QuotedMessage|null; reaction?:MessageReaction|null; customerReactions?:MessageReaction[]; attachments: Attachment[] };
 const delivery: Record<string, string> = { accepted: "Enviando", sent: "Enviada", delivered: "Entregue", read: "Lida", failed: "Falha no envio" };
 function AttachmentPreview({ conversationId, attachment, message, transcript }: { conversationId: string; attachment: Attachment; message: string;transcript?:string|null }) {
   const [opened, setOpened] = useState(false), [failed, setFailed] = useState(false);

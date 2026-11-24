@@ -66,9 +66,10 @@ export function normalizeUazapiEvent(payload: unknown) {
     body: call ? callLabel(call, fromMe) : text(message.text || content.caption || content.text || content.conversation || (!media && typeof message.content === "string" ? message.content : "")) || (media ? "[" + mediaType + "]" : "[Mensagem sem texto]"), timestamp: Number(message.messageTimestamp) || Date.now(),
     ...(call ? {call} : {}),
     quote:normalizeMessageQuote(message,content),
+    trackingId:text(message.track_id||object(message.sendPayload).track_id,200)||undefined, providerStatus:text(message.status,30).toLowerCase()||undefined,
     media: media ? { id: text(message.id || id, 250), name: text(content.fileName || content.filename, 250) || mediaType, mimeType: text(content.mimetype || content.mimeType, 150) || null } : null,
   };
-  return result as Omit<typeof result,"quote"> & {quote?:typeof result.quote;historical?:boolean;call?:WhatsAppCall};
+  return result as Omit<typeof result,"quote"|"trackingId"|"providerStatus"> & {trackingId?:string;providerStatus?:string;quote?:typeof result.quote;historical?:boolean;call?:WhatsAppCall};
 }
 export function normalizeUazapiHistory(payload: unknown, names: Record<string, string> = {}) {
   const root = object(payload);

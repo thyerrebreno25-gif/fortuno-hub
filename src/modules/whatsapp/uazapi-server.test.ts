@@ -60,3 +60,12 @@ it("sends replyid only when explicitly given for text and media",async()=>{
 
 it("edits the existing provider message instead of sending a new one",async()=>{m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockReset().mockResolvedValue({success:true});await changeUazapiMessage({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"existing",action:"edit",body:"*Ana*\nTexto corrigido"});expect(m.request.mock.calls[0].slice(2)).toEqual(["/message/edit",{id:"existing",text:"*Ana*\nTexto corrigido"}]);expect(m.request).toHaveBeenCalledOnce();});
 it("does not accept an unconfirmed edit or edit through a replaced number",async()=>{m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockReset().mockResolvedValue({success:false});await expect(changeUazapiMessage({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"existing",action:"edit",body:"Novo"})).rejects.toThrow("não foi confirmada");m.request.mockClear();await expect(changeUazapiMessage({organizationId:"org",accountRecipient:"wa-account:connection:old",messageId:"existing",action:"edit",body:"Novo"})).rejects.toThrow("número conectado mudou");expect(m.request).not.toHaveBeenCalled();});
+it("sends the durable tracking id with text so the webhook can reconcile an uncertain response",async()=>{
+ m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockReset().mockResolvedValue({messageid:"outbound"});
+ await sendUazapiText({organizationId:"org",accountRecipient:"wa-account:connection:5511",to:"123@g.us",body:"Texto",trackingId:"wa-text:intent"});
+ expect(m.request.mock.calls[0][3]).toMatchObject({track_source:"FORTUNO_HUB",track_id:"wa-text:intent"});expect(m.request).toHaveBeenCalledOnce();
+});
+it.each([{}, {success:false,messageid:"id"}, {error:"failed",messageid:"id"}])("does not retry an unconfirmed text response %j",async(response)=>{
+ m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockReset().mockResolvedValue(response);
+ await expect(sendUazapiText({organizationId:"org",to:"123@g.us",body:"Texto"})).rejects.toThrow("não confirmou");expect(m.request).toHaveBeenCalledOnce();
+});

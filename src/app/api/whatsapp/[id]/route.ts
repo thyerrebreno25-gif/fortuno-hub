@@ -1,3 +1,5 @@
+import {randomUUID} from "node:crypto";
+import {sendRecordedText,TextOutboxError} from "@/modules/whatsapp/text-outbox";
 import {namedMentions} from "@/modules/whatsapp/mentions";
 import {finalizationNote} from "@/modules/whatsapp/finalization";
 import {repairCallPlaceholders} from "@/modules/whatsapp/uazapi-events";
@@ -20,11 +22,12 @@ import {
   parseWhatsappChannelAddress,
   type WhatsAppRoutingArea,
 } from "@/modules/whatsapp/core";
-import { whatsappConnection, sendUazapiText } from "@/modules/whatsapp/uazapi-server";
+import { whatsappConnection } from "@/modules/whatsapp/uazapi-server";
 import { object } from "@/modules/whatsapp/uazapi";
 import { getWhatsappTicket, resolveWhatsappTicketId } from "@/modules/whatsapp/server";
-import { chatLock } from "@/modules/whatsapp/merge";
 import { transferWhatsappTicket, WhatsAppTransferError } from "@/modules/whatsapp/transfer";
+
+export const maxDuration = 60;
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -276,83 +279,29 @@ export async function PATCH(request: Request, context: Context) {
       try{replyTarget=await findReplyTarget(current,body.replyToMessageId);if(!replyTarget.providerId)throw new ReplyTargetError("Esta mensagem não está disponível para responder pelo WhatsApp.");}
       catch(error){return NextResponse.json({error:error instanceof ReplyTargetError?error.message:"Não foi possível validar a mensagem original."},{status:error instanceof ReplyTargetError?error.status:500});}
     }
-    let externalMessageId: string | null = null;
-    let providerMetadata: { provider: string; instanceId: string; connectionId: string; accountPhone: string | null;replyToMessageId?:string;mentionTargets?:Array<{phone:string;name:string;lid:string|null}> } | undefined;
-    if (current.source === "WHATSAPP_API") {
-      const latestInbound = [...current.messages]
-        .reverse()
-        .find((message) => message.direction === "INBOUND");
-      try {
-        const metadata = object(latestInbound?.providerMetadata);
-        const connection = await whatsappConnection(member.organizationId);
-        const destination = outgoingContext(current.recipientEmail, current.senderEmail, connection, metadata);
-        let wireContent=content;let mentionTargets:Array<{phone:string;name:string;lid:string|null}>=[];
+    if(current.source==="WHATSAPP_API"){
+      if(body.requestId!==undefined&&(typeof body.requestId!=="string"||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(body.requestId)))return NextResponse.json({error:"Identificação do envio inválida. Atualize a conversa."},{status:400});
+      try{
+        const connection=await whatsappConnection(member.organizationId);
+        if(!connection?.phone||connection.status!=="CONNECTED"||!connection.webhookConfiguredAt)throw new Error("Conecte o WhatsApp antes de enviar.");
+        const inbound=[...current.messages].reverse().find(message=>message.direction==="INBOUND");
+        const destination=outgoingContext(current.recipientEmail,current.senderEmail,connection,object(inbound?.providerMetadata));
+        let wireContent=content,mentionTargets:Array<{phone:string;name:string;lid:string|null}>=[];
         if(Array.isArray(body.mentionTargets)&&body.mentionTargets.length){
-          if(!destination.to.endsWith("@g.us")||!connection)throw new Error("Menções são disponíveis apenas em grupos conectados.");
-          const profile=await resolvedChatProfile(connection,destination.to,true);
-          const mentions=namedMentions(content,body.mentionTargets,new Set(profile.participants.flatMap(person=>person.phone?[person.phone]:[])));wireContent=mentions.wireBody;mentionTargets=mentions.targets.map(target=>({...target,lid:profile.participants.find(person=>person.phone===target.phone)?.lid||null}));
+          if(!destination.to.endsWith("@g.us"))throw new Error("Menções são disponíveis apenas em grupos conectados.");
+          const profile=await resolvedChatProfile(connection,destination.to,true),mentions=namedMentions(content,body.mentionTargets,new Set(profile.participants.flatMap(person=>person.phone?[person.phone]:[])));
+          wireContent=mentions.wireBody;mentionTargets=mentions.targets.map(target=>({...target,lid:profile.participants.find(person=>person.phone===target.phone)?.lid||null}));
         }
-        const sent = await sendUazapiText({ accountRecipient: current.recipientEmail,organizationId:member.organizationId,body:signedWhatsappText(member.user.name, wireContent),...destination,replyToMessageId:replyTarget?.providerId});
-        externalMessageId = sent.messageId;
-        providerMetadata = { provider: "UAZAPI", instanceId: sent.instanceId, connectionId: sent.connectionId, accountPhone: sent.accountPhone,...(mentionTargets.length?{mentionTargets}:{}),...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{}) };
-      } catch (error) {
-        console.error("Falha ao enviar resposta pelo WhatsApp:", error);
-        return NextResponse.json(
-          {
-            error:
-              error instanceof Error
-                ? error.message
-                : "Não foi possível enviar a mensagem pelo WhatsApp.",
-          },
-          { status: 502 },
-        );
-      }
+        const result=await sendRecordedText({organizationId:member.organizationId,connectionId:connection.id,instanceId:connection.instanceId,accountPhone:connection.phone,accountRecipient:current.recipientEmail!,senderEmail:current.senderEmail,ticketId:current.id,actor:{userId:member.userId,user:member.user},requestId:typeof body.requestId==="string"?body.requestId:randomUUID(),content,wireBody:signedWhatsappText(member.user.name,wireContent),to:destination.to,replyProviderId:replyTarget?.providerId||undefined,replyToMessageId:replyTarget?.quote.id||undefined,mentionTargets});
+        return NextResponse.json({ticket:await readWhatsAppConversation(result.ticketId,member.organizationId),messageId:result.messageId,...(!result.confirmed?{sendWarning:"Envio sem confirmação. O registro foi preservado no histórico; confira o WhatsApp antes de repetir."}:{})},{status:result.confirmed?200:202});
+      }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Não foi possível preparar o envio."},{status:error instanceof TextOutboxError?error.status:502});}
     }
-
-    const now = new Date();
-    await prisma.$transaction(async (tx) => {
-      if (providerMetadata) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chatLock(providerMetadata.connectionId, current.senderEmail)}))`;
-      const currentId = await resolveWhatsappTicketId(id, member.organizationId, tx);
-      const active = await tx.serviceTicket.findFirst({ where: { id: currentId, organizationId: member.organizationId } });
-      const assignedToId = active?.assignedToId || current.assignedToId || member.userId;
-      await tx.serviceMessage.create({
-        data: {
-          ticketId: currentId,
-          externalMessageId,
-          deliveryStatus: externalMessageId ? "accepted" : null,
-          statusUpdatedAt: externalMessageId ? now : null,
-          providerMetadata,
-          direction: "OUTBOUND",
-          fromName: member.user.name || member.user.email,
-          fromEmail: member.user.email,
-          toEmails: [current.senderEmail],
-          textBody: content,
-          receivedAt: now,
-        },
-      });
-      await tx.serviceTicket.update({
-        where: { id: currentId, mergedIntoId: null },
-        data: {
-          assignedToId,
-          assignedAt: active?.assignedAt || current.assignedAt || now,
-          firstResponseAt: active?.firstResponseAt || current.firstResponseAt || now,
-          lastMessageAt: now,
-          snippet: content.slice(0, 220),
-          status: "IN_PROGRESS",
-        },
-      });
-      await tx.serviceTicketHistory.create({
-        data: {
-          ticketId: currentId,
-          userId: member.userId,
-          type: "WHATSAPP_REPLIED",
-          message:
-            current.source === "WHATSAPP_API"
-              ? "Resposta enviada pelo WhatsApp."
-              : "Resposta registrada no ambiente de teste.",
-          metadata: externalMessageId ? { externalMessageId } : undefined,
-        },
-      });
+    const now=new Date();
+    await prisma.$transaction(async tx=>{
+      const currentId=await resolveWhatsappTicketId(id,member.organizationId,tx),active=await tx.serviceTicket.findFirst({where:{id:currentId,organizationId:member.organizationId}}),assignedToId=active?.assignedToId||current.assignedToId||member.userId;
+      await tx.serviceMessage.create({data:{ticketId:currentId,direction:"OUTBOUND",fromName:member.user.name||member.user.email,fromEmail:member.user.email,toEmails:[current.senderEmail],textBody:content,receivedAt:now}});
+      await tx.serviceTicket.update({where:{id:currentId,mergedIntoId:null},data:{assignedToId,assignedAt:active?.assignedAt||current.assignedAt||now,firstResponseAt:active?.firstResponseAt||current.firstResponseAt||now,lastMessageAt:now,snippet:content.slice(0,220),status:"IN_PROGRESS"}});
+      await tx.serviceTicketHistory.create({data:{ticketId:currentId,userId:member.userId,type:"WHATSAPP_REPLIED",message:"Resposta registrada no ambiente de teste."}});
     });
   } else if (action === "finalize") {
     if (current.status === "RESOLVED") return NextResponse.json({ticket:current});

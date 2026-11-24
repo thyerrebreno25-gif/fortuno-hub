@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const m = vi.hoisted(() => ({ existing: vi.fn(), rebind: vi.fn(), media: vi.fn(), touch: vi.fn(), transaction: vi.fn(), lock: vi.fn(), duplicate: vi.fn(), findTicket: vi.fn(), updateTicket: vi.fn(), createTicket: vi.fn(), createMessage: vi.fn(), createMedia: vi.fn(), history: vi.fn(), classify: vi.fn(), route: vi.fn() }));
+const m = vi.hoisted(() => ({ reconcile:vi.fn(), existing: vi.fn(), rebind: vi.fn(), media: vi.fn(), touch: vi.fn(), transaction: vi.fn(), lock: vi.fn(), duplicate: vi.fn(), findTicket: vi.fn(), updateTicket: vi.fn(), createTicket: vi.fn(), createMessage: vi.fn(), createMedia: vi.fn(), history: vi.fn(), classify: vi.fn(), route: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppDirectoryEntry: { findUnique: vi.fn(async () => null) }, serviceMessage: { findFirst: m.existing, update: m.rebind }, serviceAttachment: { updateMany: m.media }, serviceTicket: { update: m.touch }, $transaction: m.transaction } }));
+vi.mock("./text-outbox",()=>({reconcileTextEcho:m.reconcile}));
 vi.mock("./uazapi-server", () => ({ checkConnection: vi.fn() }));
 vi.mock("@/modules/atendimento/routing/classifier", () => ({ classifyAndRouteEmail: m.classify }));
 vi.mock("./server", () => ({ resolveWhatsappRouting: m.route }));
@@ -12,7 +13,7 @@ const connection = { id: "c", organizationId: "org", phone: "5511999999999", ins
 const event = normalizeUazapiHistory({ EventType: "history", event: "messages", messages: [{ id: "owner:msg", messageid: "msg", chatid: "123@g.us", senderName: "Participante", text: "Pagamento", messageTimestamp: Date.parse("2026-10-29T13:00:00Z") }] })[0];
 const active = { id: "t", senderName: "Grupo do cliente", assignedToId: "responsible", status: "IN_PROGRESS", clientId: "client", firstResponseAt: null, lastMessageAt: new Date("2026-10-29T12:00:00Z") };
 beforeEach(() => {
-  vi.clearAllMocks(); m.existing.mockResolvedValue(null); m.duplicate.mockResolvedValue(null); m.findTicket.mockImplementation(async (args) => args.where.status === "RESOLVED" ? null : active); m.updateTicket.mockResolvedValue(active); m.createMessage.mockResolvedValue({ id: "message" }); m.createTicket.mockResolvedValue(active);
+  vi.clearAllMocks(); m.reconcile.mockResolvedValue(false); m.existing.mockResolvedValue(null); m.duplicate.mockResolvedValue(null); m.findTicket.mockImplementation(async (args) => args.where.status === "RESOLVED" ? null : active); m.updateTicket.mockResolvedValue(active); m.createMessage.mockResolvedValue({ id: "message" }); m.createTicket.mockResolvedValue(active);
   m.classify.mockResolvedValue({ area: "GENERAL", reason: "Conteúdo" }); m.route.mockResolvedValue({ clientId: "client", assignedToId: "general", routingSquad: null, ambiguous: false, reason: "Vínculo" });
   m.transaction.mockImplementation(async (fn) => fn({ $queryRaw: vi.fn(async () => [{ id: "c" }]), $executeRaw: m.lock, serviceMessage: { findFirst: m.duplicate, create: m.createMessage }, serviceTicket: { findFirst: m.findTicket, update: m.updateTicket, create: m.createTicket }, serviceAttachment: { create: m.createMedia }, serviceTicketHistory: { create: m.history } }));
 });
@@ -67,4 +68,10 @@ it("preserves an incoming reply's original even when it belongs to a previous ca
  await receiveMessage(connection,{...event,historical:false,quote:{externalId:"yesterday-provider",apiId:"owner:yesterday-provider",fallback:{id:null,sourceTicketId:null,fromName:null,textBody:"Pergunta de ontem",receivedAt:null,attachmentName:null}}});
  expect(m.createMessage.mock.calls[0][0].data.providerMetadata).toMatchObject({replyToMessageId:"yesterday-hub",quotedExternalId:"yesterday-provider",quotedFallback:{textBody:"Pergunta de ontem"}});
  expect(m.existing.mock.calls[0][0].where).toMatchObject({direction:{not:"INTERNAL"},ticket:{organizationId:"org",source:"WHATSAPP_API",senderEmail:"wa-group:123@g.us",recipientEmail:"wa-account:c:5511999999999"}});
+});
+it("reconciles a tracked API echo before the legacy echo guard without duplicating or routing it",async()=>{
+ m.reconcile.mockResolvedValueOnce(true);
+ await receiveMessage(connection,{...event,historical:false,fromMe:true,wasSentByApi:true,trackingId:"wa-text:intent"});
+ expect(m.reconcile).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org",senderEmail:"wa-group:123@g.us",accountRecipient:"wa-account:c:5511999999999"}),expect.objectContaining({trackingId:"wa-text:intent"}));
+ expect(m.createMessage).not.toHaveBeenCalled();expect(m.route).not.toHaveBeenCalled();expect(m.createTicket).not.toHaveBeenCalled();
 });

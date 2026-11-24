@@ -1,3 +1,4 @@
+import {reconcileTextEcho} from "./text-outbox";
 import {isContactName} from "./contact-name";
 import {callLabel, mergeCall, type WhatsAppCall} from "./call-core";
 import {detectPaymentRequest} from "./payment-core";
@@ -40,11 +41,14 @@ export async function enqueueUazapiHistory(connection: Connection, events: Array
 }
 
 export async function receiveMessage(connection: Connection, event: Extract<Event, { kind: "messages" }>) {
-  if (event.fromMe && event.wasSentByApi && !event.historical && !event.call) return;
   const kind = event.group ? "GROUP" : "CONTACT";
   const identifier = normalizeWhatsappIdentity(kind, event.chatId);
   const address = whatsappChannelAddress(kind, identifier);
   const recipient = `wa-account:${connection.id}:${connection.phone || connection.instanceId}`;
+  if(event.fromMe&&event.trackingId&&connection.phone&&await reconcileTextEcho({organizationId:connection.organizationId,connectionId:connection.id,instanceId:connection.instanceId,accountPhone:connection.phone,senderEmail:address,accountRecipient:recipient},event))return;
+  // Older batch/media senders own their persistence. Only tracked text attempts
+  // are reconciled here; history can still recover a legacy unrecorded send.
+  if(event.fromMe&&event.wasSentByApi&&!event.historical&&!event.call)return;
   const externalMessageId = `uazapi:${connection.phone || connection.instanceId}:${event.id}`;
   const quotedOriginal=event.quote?await prisma.serviceMessage.findFirst({where:{direction:{not:"INTERNAL"},ticket:{organizationId:connection.organizationId,source:"WHATSAPP_API",senderEmail:address,recipientEmail:recipient,isSpam:false,mergedIntoId:null},OR:[{externalMessageId:`uazapi:${connection.phone}:${event.quote.externalId}`},{providerMetadata:{path:["apiMessageId"],equals:event.quote.apiId}}]},select:{id:true}}):null;
   const quoteMetadata=event.quote?{quotedExternalId:event.quote.externalId,quotedFallback:event.quote.fallback,...(quotedOriginal?{replyToMessageId:quotedOriginal.id}:{})}:{};

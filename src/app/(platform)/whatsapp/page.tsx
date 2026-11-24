@@ -145,6 +145,8 @@ type TicketDetail = Omit<Ticket, "lastDirection" | "channel" | "_count"> & {
   messages: Array<{
     id: string;
     sourceTicketId?: string;
+    clientRequestId?:string|null;
+    reconciledEchoId?:string|null;
     direction: "INBOUND" | "OUTBOUND" | "INTERNAL";
     fromName: string | null;
     textBody: string | null;
@@ -525,7 +527,7 @@ export default function WhatsAppPage() {
     ++detailRequest.current;
     setSaving(true);
     try {
-      const payload = await readResponse<{ ticket: TicketDetail }>(
+      const payload = await readResponse<{ ticket: TicketDetail;sendWarning?:string }>(
         await fetch(`/api/whatsapp/${selectedId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -534,7 +536,7 @@ export default function WhatsAppPage() {
       );
       if(!payload.ticket)throw new Error("O chamado foi aberto, mas não foi possível carregar a conversa. Atualize a lista.");
       const previous = detailCache.current.get(id);
-      const next = {...payload.ticket, messages:mergeChatMessages((previous?.messages || []).filter(message => !message.id.startsWith("pending:")),payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
+      const next = {...payload.ticket, messages:mergeChatMessages((previous?.messages || []).filter(message=>message.id!==action.optimisticId),payload.ticket.messages),hasOlderMessages:previous && previous.messages.length > payload.ticket.messages.length ? previous.hasOlderMessages : payload.ticket.hasOlderMessages};
       detailCache.current.set(next.id, next);
       if(action.action==="reopen"){
         detailCache.current.delete(id);rememberDetail(next.id,next);
@@ -542,6 +544,7 @@ export default function WhatsAppPage() {
       }
       if (action.action === "finalize") removeClosed([id]);
       else { if (selectedRef.current === id) setDetail(next); void loadList(); }
+      if(payload.sendWarning)notifications.show({color:"orange",title:"Aguardando confirmação do envio",message:payload.sendWarning});
       if (action.action !== "reply") notifications.show({ color: "green", title: "Tudo certo", message: success });
       return true;
     } catch (error) {
@@ -588,15 +591,15 @@ export default function WhatsAppPage() {
     if(commentMode)setComment("");else setReply("");
     const quote=commentMode?null:selectedQuote;
     if(!commentMode)setReplyTarget(null);
-    const pendingId = "pending:" + crypto.randomUUID();
+    const requestId=crypto.randomUUID(),pendingId="pending:"+requestId;
     const previous = detailCache.current.get(id) || detail;
     if (previous) {
-      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, direction: commentMode?"INTERNAL":"OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: commentMode?null:"accepted", replyTo:quote, attachments: []}]};
+      const optimistic: TicketDetail = {...previous, messages: [...previous.messages, {id: pendingId, clientRequestId:requestId,direction: commentMode?"INTERNAL":"OUTBOUND", fromName: bootstrap?.currentUser.name || "Você", textBody: content, receivedAt: new Date().toISOString(), deliveryStatus: commentMode?null:"accepted", replyTo:quote, attachments: []}]};
       detailCache.current.set(id, optimistic);
       setDetail(optimistic);
     }
     try {
-      const sent = await mutate({ action: commentMode?"comment":"reply", content,...(!commentMode&&mentionTargets.current.ticketId===id?{mentionTargets:mentionTargets.current.targets}:{}),...(!commentMode&&quote?.id?{replyToMessageId:quote.id}:{}) }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
+      const sent = await mutate({ action: commentMode?"comment":"reply", content,requestId,optimisticId:pendingId,...(!commentMode&&mentionTargets.current.ticketId===id?{mentionTargets:mentionTargets.current.targets}:{}),...(!commentMode&&quote?.id?{replyToMessageId:quote.id}:{}) }, commentMode?"Comentário interno salvo.":"Resposta enviada.");
       if(sent&&!commentMode&&mentionTargets.current.ticketId===id)mentionTargets.current.targets=[];
       if (!sent) {
         const cached = detailCache.current.get(id);

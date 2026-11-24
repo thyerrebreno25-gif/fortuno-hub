@@ -5,7 +5,7 @@ import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {currentWhatsAppAccount} from "./account-scope";
 
-export type ConversationMessage={id:string;sourceTicketId?:string;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;mentionTargets?:unknown;internalType?:string|null;call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null;replyTo?:QuotedMessage|null;reaction?:{emoji:string;name:string}|null;customerReactions?:Array<{emoji:string;name:string}>;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
+export type ConversationMessage={id:string;sourceTicketId?:string;clientRequestId?:string|null;reconciledEchoId?:string|null;direction:"INBOUND"|"OUTBOUND"|"INTERNAL";fromName:string|null;textBody:string|null;receivedAt:string;deliveryStatus:string|null;mentionTargets?:unknown;internalType?:string|null;call?:WhatsAppCall|null;forwarded?:boolean;audioTranscript?:string|null;deletedAt?:string|null;editedAt?:string|null;replyTo?:QuotedMessage|null;reaction?:{emoji:string;name:string}|null;customerReactions?:Array<{emoji:string;name:string}>;attachments:Array<{id:string;name:string;mimeType:string|null;size:number|null}>};
 type Person={id:string;name:string|null;email:string};
 export type ConversationSnapshot={
   id:string;subject:string;senderName:string|null;senderEmail:string;source:string;snippet:string|null;status:string;
@@ -62,7 +62,7 @@ export async function readWhatsAppConversation(id:string,organizationId:string,b
         'assignedTo',(SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email) FROM "User" u WHERE u.id=t."assignedToId"),
         'previousTicketCount',(SELECT GREATEST(COUNT(*)-1,0) FROM thread_tickets),
         'messages',COALESCE((SELECT jsonb_agg(jsonb_build_object(
-          'id',m.id,'sourceTicketId',m."ticketId",'direction',m.direction,'fromName',m."fromName",'textBody',m."textBody",'deliveryStatus',m."deliveryStatus",'receivedAt',to_char(m."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+          'id',m.id,'sourceTicketId',m."ticketId",'clientRequestId',m."providerMetadata"->>'requestId','reconciledEchoId',m."providerMetadata"->>'reconciledEchoId','direction',m.direction,'fromName',m."fromName",'textBody',m."textBody",'deliveryStatus',m."deliveryStatus",'receivedAt',to_char(m."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
           'replyTo',CASE WHEN m."providerMetadata"?'replyToMessageId' OR m."providerMetadata"?'quotedExternalId' THEN COALESCE((
             SELECT jsonb_build_object('id',q.id,'sourceTicketId',q."ticketId",'fromName',q."fromName",'textBody',left(q."textBody",1000),'receivedAt',to_char(q."receivedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'attachmentName',(SELECT qa.name FROM "ServiceAttachment" qa WHERE qa."messageId"=q.id ORDER BY qa."createdAt" LIMIT 1))
             FROM "ServiceMessage" q JOIN thread_tickets qt ON qt.id=q."ticketId"

@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { instanceState, normalizeUazapiEvent, serverUrl, tokenHash, tokenMatches, uazapiRequest } from "./uazapi";
 import { normalizeWhatsappIdentity } from "./core";
 afterEach(() => vi.unstubAllGlobals());
+it("preserves only the tracking id and status needed to reconcile a provider echo",()=>{
+ const result=normalizeUazapiEvent({EventType:"messages",message:{id:"owner:out",chatid:"123@g.us",fromMe:true,wasSentByApi:true,text:"Texto",track_id:"wa-text:intent",status:"Read",sendPayload:{token:"discard"}}});
+ expect(result).toMatchObject({kind:"messages",trackingId:"wa-text:intent",providerStatus:"read",fromMe:true});expect(JSON.stringify(result)).not.toContain("discard");
+ const nested=normalizeUazapiEvent({EventType:"messages",message:{id:"out",chatid:"123@g.us",sendPayload:{track_id:"wa-text:nested",token:"discard"}}});expect(nested).toMatchObject({trackingId:"wa-text:nested"});
+});
 describe("Uazapi credentials and server isolation", () => {
   it.each(["http://free.uazapi.com", "https://evil.example", "https://uazapi.com.evil.example", "https://free.uazapi.com@evil.example", "https://user:pass@free.uazapi.com", "https://free.uazapi.com/path", "https://free.uazapi.com?token=secret", "https://free.uazapi.com#secret", "https://free.uazapi.com:8443"])("rejects an unsafe destination: %s", (url) => expect(() => serverUrl(url)).toThrow());
   it("accepts the official free server and compares credential hashes", () => {

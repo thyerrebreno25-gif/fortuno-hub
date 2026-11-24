@@ -37,14 +37,14 @@ export async function configureWebhook(connection: NonNullable<Awaited<ReturnTyp
   if (!confirmed) throw new Error("A configuração do recebimento não foi confirmada pela Uazapi.");
   await prisma.whatsAppConnection.update({ where: { id: connection.id }, data: { webhookId: text(confirmed.id, 200) || null, webhookConfiguredAt: new Date(), lastError: null } });
 }
-export async function sendUazapiText(input: { organizationId: string; to: string; body: string; accountRecipient?: string | null; instanceId?: string; replyToMessageId?: string | null;forward?:boolean }) {
+export async function sendUazapiText(input: { organizationId: string; to: string; body: string; accountRecipient?: string | null; instanceId?: string; replyToMessageId?: string | null;trackingId?:string;forward?:boolean }) {
   const connection = await whatsappConnection(input.organizationId);
   if (!connection || connection.status !== "CONNECTED" || !connection.webhookConfiguredAt || connection.expiresAt && connection.expiresAt < new Date()) throw new Error("Conecte o WhatsApp na aba Conexão Uazapi antes de enviar.");
   if (input.accountRecipient && input.accountRecipient !== `wa-account:${connection.id}:${connection.phone}`) throw new Error("O número conectado mudou. Abra a conversa na conta atual antes de enviar.");
   if (input.instanceId && input.instanceId !== connection.instanceId) throw new Error("A conversa pertence a outra instância. Aguarde uma mensagem recebida pela conexão atual.");
-  const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/send/text", { number: input.to, text: input.body, mentions:mentionedNumbers(input.body,input.to),...(input.forward?{forward:true}:{}), ...(input.replyToMessageId ? { replyid: input.replyToMessageId } : {}) }));
+  const response = object(await uazapiRequest(connection.serverUrl, decryptIntegrationSecret(connection.tokenEncrypted), "/send/text", { number: input.to, text: input.body, ...(input.trackingId?{track_source:"FORTUNO_HUB",track_id:input.trackingId}:{}), mentions:mentionedNumbers(input.body,input.to),...(input.forward?{forward:true}:{}), ...(input.replyToMessageId ? { replyid: input.replyToMessageId } : {}) }));
   const id = text(response.messageid || text(response.id).split(":").at(-1), 250);
-  if (!id) throw new Error("A Uazapi não confirmou o identificador da mensagem. Confira o WhatsApp antes de repetir.");
+  if (!id||response.error||response.success===false) throw new Error("A Uazapi não confirmou o identificador da mensagem. Confira o WhatsApp antes de repetir.");
   return { messageId: "uazapi:" + (connection.phone || connection.instanceId) + ":" + id, instanceId: connection.instanceId, connectionId: connection.id, accountPhone: connection.phone };
 }
 type MediaFile = { body: Uint8Array; mimeType: string; size: number };
