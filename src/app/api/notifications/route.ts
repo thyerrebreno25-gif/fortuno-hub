@@ -31,6 +31,9 @@ export async function GET(request:Request) {
     }
 
     const now = new Date();
+    // Also stop delivery to already-open tabs running an older client bundle.
+    // This preference never deletes notices or marks them as read.
+    if(member.notificationsMuted)return NextResponse.json({viewerKey:`${member.organizationId}:${member.userId}`,notificationsMuted:true,whatsappNotificationsMuted:true,whatsappSoundEvents:[],whatsappSoundCursor:now.toISOString(),items:[],total:0},{headers:{"Cache-Control":"private, no-store"}});
 
     const [imports, tickets, onboardings, blockedTasks] = await Promise.all([
       prisma.importJob.findMany({

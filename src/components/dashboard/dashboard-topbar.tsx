@@ -252,17 +252,17 @@ export function DashboardTopbar() {
                   <strong>Notificações</strong>
                   <span>{notificationPreference.ready?(notificationPreference.muted?"Desativadas em todas as áreas":`${unread} não lida(s)`):"Carregando preferência…"}</span>
                 </div>
-                <div className={styles.notificationHeaderActions}><Tooltip label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"}><button type="button" className={styles.notificationMuteButton} disabled={!notificationPreference.ready||notificationPreference.busy} aria-label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"} aria-pressed={notificationPreference.muted} onClick={()=>void notificationPreference.changeMuted(!notificationPreference.muted)}>{notificationPreference.muted?<IconBellOff size={20}/>:<IconBell size={20}/>}</button></Tooltip>{unread > 0 && (
+                <div className={styles.notificationHeaderActions}><Tooltip label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"}><button type="button" className={styles.notificationMuteButton} disabled={!notificationPreference.ready||notificationPreference.busy} aria-label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"} aria-pressed={notificationPreference.muted} onClick={()=>void notificationPreference.changeMuted(!notificationPreference.muted)}>{notificationPreference.muted?<IconBellOff size={20}/>:<IconBell size={20}/>}</button></Tooltip>{notificationPreference.enabled&&unread > 0 && (
                   <button type="button" onClick={markAllRead}>
                     Marcar todas como lidas
                   </button>
                 )}</div>
               </div>
               {notificationPreference.error&&<div className={styles.notificationPreferenceError} role="alert">{notificationPreference.error}</div>}
-              {notificationPreference.muted&&notificationPreference.ready&&<div className={styles.notificationPreferenceHint}>Sons, pop-ups e lembretes automáticos de todos os módulos estão desativados. Você pode consultar os registros abaixo.</div>}
+              {notificationPreference.muted&&notificationPreference.ready&&<div className={styles.notificationPreferenceHint}>Sons, pop-ups e lembretes automáticos de todos os módulos estão desativados para a sua conta.</div>}
 
               <div className={styles.notificationsList}>
-                {unreadItems.length === 0 ? (
+                {notificationPreference.muted ? <div className={styles.emptyNotifications}>Nenhuma nova notificação será exibida enquanto esta opção estiver desativada.</div> : unreadItems.length === 0 ? (
                   <div className={styles.emptyNotifications}>
                     Nenhuma notificação não lida no momento.
                   </div>

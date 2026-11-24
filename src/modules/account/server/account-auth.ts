@@ -10,7 +10,7 @@ export async function getAccountMember() {
 
   if (error || !user) return null;
 
-  return prisma.organizationMember.findFirst({
+  const member = await prisma.organizationMember.findFirst({
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
     select: {
@@ -37,4 +37,5 @@ export async function getAccountMember() {
       },
     },
   });
+  return member ? {...member, notificationsMuted:user.user_metadata?.fortuno_notifications_muted===true} : null;
 }
