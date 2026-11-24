@@ -1,14 +1,16 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import {useNotificationPreferences} from "./preferences";
 import { Modal } from "@mantine/core";
 import {EndOfDayContent} from "./end-of-day-content";
 import { endOfDayWindow, type EndOfDaySummary } from "./end-of-day-policy";
 
 export function EndOfDayReminder({enabled}:{enabled:boolean}) {
+  const {enabled:notificationsEnabled}=useNotificationPreferences();
   const [data,setData] = useState<EndOfDaySummary|null>(null),[opened,setOpened] = useState(false),[busy,setBusy] = useState(false),[error,setError] = useState("");
   const seen = useRef("");
   useEffect(()=>{
-    if (!enabled || new URLSearchParams(window.location.search).get("tv") === "1") return;
+    if (!enabled || !notificationsEnabled || new URLSearchParams(window.location.search).get("tv") === "1") return;
     let active=true,fetching=false;
     const check=async()=>{
       if(document.hidden||fetching)return;
@@ -29,7 +31,7 @@ export function EndOfDayReminder({enabled}:{enabled:boolean}) {
     const visible=()=>{if(!document.hidden)void check();};document.addEventListener("visibilitychange",visible);
     // Shared TV windows keep their unattended presentation running.
     return()=>{active=false;clearInterval(timer);document.removeEventListener("visibilitychange",visible);};
-  },[enabled]);
+  },[enabled,notificationsEnabled]);
   useEffect(()=>{
     if(!data)return;
     const changed=(event:StorageEvent)=>{if(event.key===`fortuno:eod:${data.viewerKey}:${data.day}`)setOpened(false);};
@@ -40,5 +42,5 @@ export function EndOfDayReminder({enabled}:{enabled:boolean}) {
     try{const r=await fetch("/api/notifications/end-of-day",{method:"POST"});if(!r.ok)throw new Error();setOpened(false);if(data){try{localStorage.setItem(`fortuno:eod:${data.viewerKey}:${data.day}`,"read");}catch{}}if(href)window.location.assign(href);}
     catch{setError("Não foi possível registrar a leitura. Tente novamente.");}finally{setBusy(false);}
   }
-  return <Modal fullScreen opened={opened&&enabled} onClose={()=>void close()} withCloseButton={false} closeOnEscape={false} closeOnClickOutside={false} zIndex={11000} styles={{header:{display:"none"},body:{padding:0}}}>{data&&<EndOfDayContent data={data} busy={busy} error={error} onContinue={href=>void close(href)}/>}</Modal>;
+  return <Modal fullScreen opened={opened&&enabled&&notificationsEnabled} onClose={()=>void close()} withCloseButton={false} closeOnEscape={false} closeOnClickOutside={false} zIndex={11000} styles={{header:{display:"none"},body:{padding:0}}}>{data&&<EndOfDayContent data={data} busy={busy} error={error} onContinue={href=>void close(href)}/>}</Modal>;
 }

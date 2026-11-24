@@ -7,7 +7,7 @@ import {
   localStorageColorSchemeManager,
 } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
-import { Notifications } from "@mantine/notifications";
+import {NotificationPreferencesProvider,NotificationToasts} from "@/modules/notifications/preferences";
 import {
   QueryClient,
   QueryClientProvider,
@@ -90,12 +90,9 @@ export default function Providers({
         colorSchemeManager={colorSchemeManager}
       >
         <ModalsProvider>
-          <Notifications
-            position="top-right"
-            limit={4}
-          />
-
+          <NotificationPreferencesProvider><NotificationToasts/>
           {children}
+          </NotificationPreferencesProvider>
         </ModalsProvider>
       </MantineProvider>
     </QueryClientProvider>

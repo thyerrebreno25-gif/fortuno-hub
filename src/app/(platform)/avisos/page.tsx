@@ -2,7 +2,9 @@
 "use client";
 import {DisregardNoticeActions,type OperationApprovalNotice} from "@/modules/operations/disregard-notice-actions";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {FilterPanel} from "@/components/filter-panel";
+import {noticeOriginOptions,type NoticeOrigin} from "@/modules/notices/origin";
 import {
   ActionIcon,
   Badge,
@@ -43,6 +45,7 @@ import {
 import styles from "./avisos.module.css";
 
 type Notice = {
+  originLabel?:string;
   operationApproval?:OperationApprovalNotice;
   id: string;
   kind: "ALERT" | "REMINDER" | "NOTE";
@@ -171,6 +174,7 @@ function NoticeCard({
               <Badge size="sm" variant="outline" color="gray">
                 {kindLabels[notice.kind]}
               </Badge>
+              {notice.originLabel&&<Badge size="sm" variant="light" color="blue">{notice.originLabel}</Badge>}
               {notice.scope === "GENERAL" && (
                 <Badge size="sm" variant="light" color="violet">
                   Geral
@@ -333,6 +337,8 @@ export default function AvisosPage() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [managementNotices, setManagementNotices] = useState<Notice[]>([]);
   const [status, setStatus] = useState("active");
+  const [origin,setOrigin]=useState<NoticeOrigin>("all"),[tab,setTab]=useState<string|null>("mine");
+  const requestSequence=useRef(0);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -349,6 +355,7 @@ export default function AvisosPage() {
   const [targetMemberId, setTargetMemberId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const sequence=++requestSequence.current;
     setLoading(true);
     try {
       const optionsResponse = await fetch("/api/notices?view=options", {
@@ -357,32 +364,35 @@ export default function AvisosPage() {
       const optionsPayload = await optionsResponse.json();
       if (!optionsResponse.ok) throw new Error(optionsPayload.error || "Falha ao carregar avisos.");
 
-      const inboxResponse = await fetch(`/api/notices?status=${status}`, {
+      const inboxResponse = await fetch(`/api/notices?${new URLSearchParams({status,origin})}`, {
         cache: "no-store",
       });
       const inboxPayload = await inboxResponse.json();
       if (!inboxResponse.ok) throw new Error(inboxPayload.error || "Falha ao carregar avisos.");
+      if(sequence!==requestSequence.current)return;
 
       setOptions(optionsPayload);
       setNotices(inboxPayload.notices || []);
 
       if (optionsPayload.capabilities?.canManage) {
-        const managementResponse = await fetch("/api/notices?view=management", {
+        const managementResponse = await fetch(`/api/notices?${new URLSearchParams({view:"management",origin})}`, {
           cache: "no-store",
         });
         const managementPayload = await managementResponse.json();
-        if (managementResponse.ok) setManagementNotices(managementPayload.notices || []);
+        if (managementResponse.ok&&sequence===requestSequence.current) setManagementNotices(managementPayload.notices || []);
+      } else {setManagementNotices([]);setTab("mine");
       }
     } catch (error) {
+      if(sequence!==requestSequence.current)return;
       notifications.show({
         color: "red",
         title: "Avisos",
         message: error instanceof Error ? error.message : "Falha ao carregar a central.",
       });
     } finally {
-      setLoading(false);
+      if(sequence===requestSequence.current)setLoading(false);
     }
-  }, [status]);
+  }, [status,origin]);
 
   useEffect(() => {
     void load();
@@ -520,10 +530,11 @@ export default function AvisosPage() {
         </Button>
       </Group>
 
+      <FilterPanel title="Filtros de avisos" activeCount={Number(origin!=="all")}><Select label="Origem do aviso" data={noticeOriginOptions} value={origin} allowDeselect={false} onChange={value=>setOrigin((value||"all") as NoticeOrigin)} maw={390}/></FilterPanel>
       {loading ? (
         <Group justify="center" py={80}><Loader /></Group>
       ) : (
-        <Tabs defaultValue="mine">
+        <Tabs value={tab} onChange={setTab}>
           <Tabs.List>
             <Tabs.Tab value="mine" leftSection={<IconBell size={16} />}>Meus avisos</Tabs.Tab>
             {options?.capabilities.canManage && (

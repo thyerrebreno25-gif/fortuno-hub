@@ -3,13 +3,16 @@ import {GlobalOperationTimer} from "@/modules/operations/global-timer";
 import { notifications as toastNotifications } from "@mantine/notifications";
 import {unlockMessageSound,messageSoundReady,freshMessageSound,playMessageBlip} from "@/modules/notifications/message-sound";
 import { notificationIds, popupBatch } from "@/modules/notifications/popup-state";
+import {useNotificationPreferences} from "@/modules/notifications/preferences";
+import {notificationsAllowed} from "@/modules/notifications/notification-gate";
+import {IconBell,IconBellOff} from "@tabler/icons-react";
 
 import {rememberLoginProfile} from "@/modules/profile/remembered-login";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Avatar, Button, useMantineColorScheme } from "@mantine/core";
+import { Avatar, Button, Tooltip, useMantineColorScheme } from "@mantine/core";
 import styles from "@/app/dashboard.module.css";
 
 type ProfileData = {
@@ -54,6 +57,7 @@ export function DashboardTopbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const notificationPreference=useNotificationPreferences();
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +73,7 @@ export function DashboardTopbar() {
   const notificationStartedAt=useRef(0);
   const soundCursor=useRef("initial");
   const whatsappMuted=useRef(false);
+  const quietBaseline=useRef(true);
   const darkMode = colorScheme === "dark";
 
   const loadNotifications = useCallback(async () => {
@@ -89,11 +94,13 @@ export function DashboardTopbar() {
         if(payload.whatsappNotificationsMuted){storedShown=[...new Set([...storedShown,...payload.items.filter((item:NotificationItem)=>item.href.startsWith("/whatsapp")).map((item:NotificationItem)=>item.id)])].slice(-1000);activePopups.current=activePopups.current.filter(id=>{if(id.includes(":whatsapp-message-")){toastNotifications.hide(id);return false;}return true;});}
         readMemory.current=storedRead;setReadIds(current=>current.length===storedRead.length&&current.every((id,index)=>id===storedRead[index])?current:storedRead);
         whatsappMuted.current=Boolean(payload.whatsappNotificationsMuted);
-        const batch=popupBatch<NotificationItem>(payload.items,storedShown,storedRead);
+        const deliver=notificationsAllowed()&&!quietBaseline.current;
+        const batch=popupBatch<NotificationItem>(payload.items,storedShown,storedRead,deliver);
         const arrivals=Array.isArray(payload.whatsappSoundEvents)?payload.whatsappSoundEvents:payload.items.filter((item:NotificationItem)=>!storedShown.includes(item.id)&&!storedRead.includes(item.id));
         const soundId=freshMessageSound(arrivals,Array.isArray(payload.whatsappSoundEvents)?0:notificationStartedAt.current);
         if(typeof payload.whatsappSoundCursor === "string")soundCursor.current=payload.whatsappSoundCursor;
-        if(soundId&&!whatsappMuted.current)void playMessageBlip(scope,soundId);
+        if(soundId&&!whatsappMuted.current&&deliver)void playMessageBlip(scope,soundId);
+        quietBaseline.current=!notificationsAllowed();
         shownMemory.current=batch.seen;
         if(batch.show.some(item=>item.href.startsWith("/reunioes"))) window.dispatchEvent(new Event("fortuno:calendar-changed"));
         try{window.localStorage.setItem(popupKey,JSON.stringify(batch.seen));}catch{}
@@ -105,6 +112,12 @@ export function DashboardTopbar() {
       // Mantém a última lista disponível quando a conexão oscilar.
     } finally { notificationBusy.current=false; }
   }, [router]);
+
+  useEffect(()=>{
+    if(!notificationPreference.enabled){quietBaseline.current=true;return;}
+    soundCursor.current="initial";
+    void loadNotifications();
+  },[notificationPreference.enabled,loadNotifications]);
 
   useEffect(() => {
     const loadProfile=()=>{void fetch("/api/profile", { cache: "no-store" })
@@ -122,7 +135,7 @@ export function DashboardTopbar() {
 
   useEffect(() => {
     if(!notificationStartedAt.current)notificationStartedAt.current=Date.now();
-    const unlock=()=>unlockMessageSound();
+    const unlock=()=>{if(notificationsAllowed())void unlockMessageSound();};
     document.addEventListener("pointerdown",unlock,{passive:true});document.addEventListener("keydown",unlock);
     const initialLoad = window.setTimeout(() => void loadNotifications(), 0);
     const interval = window.setInterval(() => void loadNotifications(), 15000);
@@ -224,11 +237,8 @@ export function DashboardTopbar() {
               setProfileOpen(false);
             }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-              <path d="M10 21h4" />
-            </svg>
-            {unread > 0 && (
+            {notificationPreference.muted?<IconBellOff size={22}/>:<IconBell size={22}/>}
+            {notificationPreference.enabled&&unread > 0 && (
               <span className={styles.notificationBadge}>
                 {unread > 9 ? "9+" : unread}
               </span>
@@ -240,14 +250,16 @@ export function DashboardTopbar() {
               <div className={styles.notificationsHeader}>
                 <div>
                   <strong>Notificações</strong>
-                  <span>{unread} não lida(s)</span>
+                  <span>{notificationPreference.ready?(notificationPreference.muted?"Desativadas em todas as áreas":`${unread} não lida(s)`):"Carregando preferência…"}</span>
                 </div>
-                {unread > 0 && (
+                <div className={styles.notificationHeaderActions}><Tooltip label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"}><button type="button" className={styles.notificationMuteButton} disabled={!notificationPreference.ready||notificationPreference.busy} aria-label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"} aria-pressed={notificationPreference.muted} onClick={()=>void notificationPreference.changeMuted(!notificationPreference.muted)}>{notificationPreference.muted?<IconBellOff size={20}/>:<IconBell size={20}/>}</button></Tooltip>{unread > 0 && (
                   <button type="button" onClick={markAllRead}>
                     Marcar todas como lidas
                   </button>
-                )}
+                )}</div>
               </div>
+              {notificationPreference.error&&<div className={styles.notificationPreferenceError} role="alert">{notificationPreference.error}</div>}
+              {notificationPreference.muted&&notificationPreference.ready&&<div className={styles.notificationPreferenceHint}>Sons, pop-ups e lembretes automáticos de todos os módulos estão desativados. Você pode consultar os registros abaixo.</div>}
 
               <div className={styles.notificationsList}>
                 {unreadItems.length === 0 ? (

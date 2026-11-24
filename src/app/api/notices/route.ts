@@ -9,6 +9,7 @@ import {
   getNoticeMember,
 } from "@/modules/notices/server/notice-auth";
 import { targetableNoticeMemberWhere } from "@/modules/notices/server/notice-targeting";
+import {noticeOriginLabel,noticeOriginWhere,validNoticeOrigin} from "@/modules/notices/origin";
 
 const VALID_KINDS = new Set(["ALERT", "REMINDER", "NOTE"]);
 const VALID_SCOPES = new Set(["PERSONAL", "MEMBERS", "CLIENTS", "GENERAL"]);
@@ -40,6 +41,7 @@ function serializeNotice(
 
   return {
     id: notice.id,
+    originLabel:noticeOriginLabel(notice),
     kind: notice.kind,
     scope: notice.scope,
     priority: notice.priority,
@@ -98,6 +100,9 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const view = url.searchParams.get("view") || "inbox";
+  const origin=url.searchParams.get("origin")||"all";
+  if(!validNoticeOrigin(origin))return NextResponse.json({error:"Origem de aviso inválida."},{status:400});
+  const originWhere=noticeOriginWhere(origin);
   const now = new Date();
 
   if (view === "options") {
@@ -189,6 +194,7 @@ export async function GET(request: Request) {
         organizationId: member.organizationId,
         scope: { not: "PERSONAL" },
         ...managementRestriction,
+        AND:[originWhere],
       },
       include,
       orderBy: { createdAt: "desc" },
@@ -219,6 +225,7 @@ export async function GET(request: Request) {
   };
   const noticeCondition: Prisma.NoticeWhereInput = {
     organizationId: member.organizationId,
+    AND:[originWhere],
   };
 
   if (status === "completed") {

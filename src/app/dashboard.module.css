@@ -1290,6 +1290,13 @@
   overflow-y: auto;
 }
 
+.notificationsHeader > .notificationHeaderActions { flex-direction: row; align-items: center; gap: 10px; }
+.notificationsHeader .notificationMuteButton { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; color: var(--text); }
+.notificationsHeader .notificationMuteButton:hover { background: var(--mantine-color-blue-light); }
+.notificationsHeader .notificationMuteButton:disabled { cursor: wait; opacity: .5; }
+.notificationPreferenceHint, .notificationPreferenceError { padding: 10px 16px; font-size: 11px; line-height: 1.5; background: var(--mantine-color-blue-light); color: var(--muted); }
+.notificationPreferenceError { color: var(--mantine-color-red-7); }
+
 .notificationItem {
   position: relative;
   display: flex;

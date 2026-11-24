@@ -1,4 +1,5 @@
 "use client";
+import {useNotificationPreferences} from "@/modules/notifications/preferences";
 import {useEffect,useState} from "react";
 import {Alert,Button,Group,Loader,Modal,Stack,Text,Textarea,TextInput} from "@mantine/core";
 import {TIMER_REVIEW_MS,timerReviewDue} from "./timer-reminder-policy";
@@ -6,10 +7,11 @@ import type {OperationTimerSnapshot} from "./timer-client";
 import {parseActivityDuration,durationLabel} from "./duration-correction";
 type Entry={id:string;userId:string;startedAt:string;updatedAt:string;endedAt:string|null;seconds:number};
 export function OperationTimerReview({timer,now,onPause,onFinish,onChanged,controlError="",pending=false}:{controlError?:string;pending?:boolean;timer:OperationTimerSnapshot;now:number;onPause:()=>Promise<void>;onFinish:()=>void;onChanged:()=>Promise<void>}){
+ const {enabled:notificationsEnabled}=useNotificationPreferences();
  const key=`fortuno:timer-review:${timer.activityId}:${timer.startedAt}`;
  const [until,setUntil]=useState(0),[adjust,setAdjust]=useState(false),[entries,setEntries]=useState<Entry[]|null>(null),[value,setValue]=useState(""),[reason,setReason]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  useEffect(()=>{const sync=()=>{try{setUntil(Number(localStorage.getItem(key))||0);}catch{}};const initial=setTimeout(sync,0);window.addEventListener("storage",sync);return()=>{clearTimeout(initial);window.removeEventListener("storage",sync);};},[key]);
- const opened=timerReviewDue(timer.running,timer.startedAt,now,until),seconds=parseActivityDuration(value);
+ const opened=notificationsEnabled&&timerReviewDue(timer.running,timer.startedAt,now,until),seconds=parseActivityDuration(value);
  const keep=()=>{const next=now+TIMER_REVIEW_MS;setUntil(next);try{localStorage.setItem(key,String(next));}catch{}};
  async function prepare(){setAdjust(true);setEntries(null);setError("");try{const response=await fetch(`/api/operations/activities/${timer.activityId}`,{cache:"no-store"});const body=await response.json();if(!response.ok)throw Error(body.error);const all=body.activity.timeEntries as Entry[],own=all.find(entry=>entry.startedAt===timer.startedAt&&!entry.endedAt)?.userId;if(!own)throw Error("O cronômetro mudou. Atualize antes de corrigir.");const selected=all.filter(entry=>entry.userId===own);setEntries(selected);setValue(durationLabel(selected.reduce((sum,entry)=>sum+(entry.endedAt?entry.seconds:Math.max(0,Math.floor((now-Date.parse(entry.startedAt))/1000))),0)));}catch(cause){setError(cause instanceof Error?cause.message:"Não foi possível carregar o tempo.");}}
  async function save(){if(busy||seconds===null||!entries?.length)return;setBusy(true);setError("");try{const response=await fetch(`/api/operations/activities/${timer.activityId}/time-correction`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"duration",requestId:crypto.randomUUID(),userId:entries[0].userId,seconds,reason,expectedEntries:entries.map(({id,updatedAt})=>({id,updatedAt}))})});const body=await response.json();if(!response.ok)throw Error(body.error);setAdjust(false);await onChanged();}catch(cause){setError(cause instanceof Error?cause.message:"Não foi possível corrigir o tempo.");}finally{setBusy(false);}}
