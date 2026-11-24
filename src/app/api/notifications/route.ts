@@ -31,9 +31,6 @@ export async function GET(request:Request) {
     }
 
     const now = new Date();
-    // Also stop delivery to already-open tabs running an older client bundle.
-    // This preference never deletes notices or marks them as read.
-    if(member.notificationsMuted)return NextResponse.json({viewerKey:`${member.organizationId}:${member.userId}`,notificationsMuted:true,whatsappNotificationsMuted:true,whatsappSoundEvents:[],whatsappSoundCursor:now.toISOString(),items:[],total:0},{headers:{"Cache-Control":"private, no-store"}});
 
     const [imports, tickets, onboardings, blockedTasks] = await Promise.all([
       prisma.importJob.findMany({
@@ -110,7 +107,7 @@ export async function GET(request:Request) {
     if(permissions.WHATSAPP.canView&&SERVICE_CENTER_MANAGER_ROLES.has(member.role))whatsappItems.push(...await whatsappManagerRiskNotifications(member.organizationId,now).catch(()=>[]));
     const whatsappPreference = permissions.WHATSAPP.canView ? await prisma.whatsAppOperatorPreference.findUnique({ where: { organizationId_userId: { organizationId: member.organizationId, userId: member.userId } }, select: { notificationsMuted: true } }) : null;
     const soundAfter=new URL(request.url).searchParams.get("whatsappSoundAfter");
-    const soundEvents=permissions.WHATSAPP.canView&&!whatsappPreference?.notificationsMuted?await whatsappSoundEvents(member.organizationId,member.userId,permissions.WHATSAPP.canEdit||SERVICE_CENTER_MANAGER_ROLES.has(member.role),soundAfter,now):[];
+    const soundEvents=permissions.WHATSAPP.canView&&!member.notificationsMuted&&!whatsappPreference?.notificationsMuted?await whatsappSoundEvents(member.organizationId,member.userId,permissions.WHATSAPP.canEdit||SERVICE_CENTER_MANAGER_ROLES.has(member.role),soundAfter,now):[];
     const items: NotificationItem[] = [...meetingItems,...activityItems,...whatsappItems.map(item => ({ ...item, popup: !whatsappPreference?.notificationsMuted }))];
 
     for (const item of imports) {
@@ -175,11 +172,14 @@ export async function GET(request:Request) {
 
     return NextResponse.json({
       viewerKey: `${member.organizationId}:${member.userId}`,
-      whatsappNotificationsMuted: Boolean(whatsappPreference?.notificationsMuted),
+      notificationsMuted:Boolean(member.notificationsMuted),
+      whatsappNotificationsMuted: Boolean(member.notificationsMuted||whatsappPreference?.notificationsMuted),
       whatsappSoundEvents:soundEvents,whatsappSoundCursor:now.toISOString(),
-      items: visibleItems.slice(0, 60),
+      // Keep the bell inbox available. Muting controls interruption only,
+      // including older clients which rely on the provider's popup flag.
+      items: visibleItems.slice(0, 60).map(item=>member.notificationsMuted?{...item,popup:false}:item),
       total: visibleItems.length,
-    });
+    },{headers:{"Cache-Control":"private, no-store"}});
   } catch (error) {
     console.error("Erro ao carregar notificações:", error);
     return NextResponse.json(

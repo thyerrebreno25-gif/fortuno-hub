@@ -238,7 +238,7 @@ export function DashboardTopbar() {
             }}
           >
             {notificationPreference.muted?<IconBellOff size={22}/>:<IconBell size={22}/>}
-            {notificationPreference.enabled&&unread > 0 && (
+            {unread > 0 && (
               <span className={styles.notificationBadge}>
                 {unread > 9 ? "9+" : unread}
               </span>
@@ -250,19 +250,19 @@ export function DashboardTopbar() {
               <div className={styles.notificationsHeader}>
                 <div>
                   <strong>Notificações</strong>
-                  <span>{notificationPreference.ready?(notificationPreference.muted?"Desativadas em todas as áreas":`${unread} não lida(s)`):"Carregando preferência…"}</span>
+                  <span>{notificationPreference.ready?(notificationPreference.muted?`${unread} não lida(s) · Pop-ups silenciados`:`${unread} não lida(s)`):"Carregando preferência…"}</span>
                 </div>
-                <div className={styles.notificationHeaderActions}><Tooltip label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"}><button type="button" className={styles.notificationMuteButton} disabled={!notificationPreference.ready||notificationPreference.busy} aria-label={notificationPreference.muted?"Ativar todas as notificações":"Desativar todas as notificações"} aria-pressed={notificationPreference.muted} onClick={()=>void notificationPreference.changeMuted(!notificationPreference.muted)}>{notificationPreference.muted?<IconBellOff size={20}/>:<IconBell size={20}/>}</button></Tooltip>{notificationPreference.enabled&&unread > 0 && (
+                <div className={styles.notificationHeaderActions}><Tooltip label={notificationPreference.muted?"Ativar pop-ups e sons":"Silenciar pop-ups e sons"}><button type="button" className={styles.notificationMuteButton} disabled={!notificationPreference.ready||notificationPreference.busy} aria-label={notificationPreference.muted?"Ativar pop-ups e sons":"Silenciar pop-ups e sons"} aria-pressed={notificationPreference.muted} onClick={()=>void notificationPreference.changeMuted(!notificationPreference.muted)}>{notificationPreference.muted?<IconBellOff size={20}/>:<IconBell size={20}/>}</button></Tooltip>{unread > 0 && (
                   <button type="button" onClick={markAllRead}>
                     Marcar todas como lidas
                   </button>
                 )}</div>
               </div>
               {notificationPreference.error&&<div className={styles.notificationPreferenceError} role="alert">{notificationPreference.error}</div>}
-              {notificationPreference.muted&&notificationPreference.ready&&<div className={styles.notificationPreferenceHint}>Sons, pop-ups e lembretes automáticos de todos os módulos estão desativados para a sua conta.</div>}
+              {notificationPreference.muted&&notificationPreference.ready&&<div className={styles.notificationPreferenceHint}>Os avisos continuam aparecendo aqui. Pop-ups e sons estão silenciados em todas as áreas do Hub.</div>}
 
               <div className={styles.notificationsList}>
-                {notificationPreference.muted ? <div className={styles.emptyNotifications}>Nenhuma nova notificação será exibida enquanto esta opção estiver desativada.</div> : unreadItems.length === 0 ? (
+                {unreadItems.length === 0 ? (
                   <div className={styles.emptyNotifications}>
                     Nenhuma notificação não lida no momento.
                   </div>
