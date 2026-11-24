@@ -29,7 +29,7 @@ export function scheduledDay(activity: AnalyticsActivity) { return activity.sche
 const personName = (person: AnalyticsPerson | null) => person?.name || person?.email || "Sem responsável";
 
 /** Closed entries use recorded seconds; boundary overlaps are prorated, not counted twice. */
-export function entryAllocation(entry: AnalyticsEntry, period: AnalyticsPeriod, now: Date) {
+export function entryAllocation(entry: Pick<AnalyticsEntry,"startedAt"|"endedAt"|"seconds"|"source">, period: AnalyticsPeriod, now: Date) {
   const start = stamp(entry.startedAt), finish = entry.endedAt ? stamp(entry.endedAt) : +now, end = Math.min(finish, +now);
   if (entry.endedAt && start === finish && Number.isFinite(start) && start <= +now && start >= +period.start && start < +period.end && ["MANUAL_DURATION", "CORRECTED_DURATION"].includes(entry.source || "")) {
     const seconds = Math.max(0, entry.seconds);

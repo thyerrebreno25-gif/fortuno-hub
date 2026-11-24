@@ -113,7 +113,7 @@ export function ManagementPage() {
   if (loading) return <Group justify="center" py={80}><Loader /></Group>;
   const snapshot = selected?.management?.snapshot;
   return <Stack gap="lg">
-    <Group justify="space-between"><div><Title order={2}>Gestão</Title></div><Button leftSection={<IconRefresh size={16} />} loading={Boolean(busy)} disabled={!data.clients.some(connected)} onClick={() => void refresh(data.clients.filter(connected))}>Atualizar clientes conectados</Button></Group>
+    <Group justify="space-between"><div><Title order={2}>Gestão</Title></div>{data.canViewUsage&&<Button component="a" href="/gestao/relatorio-diario" variant="light">Relatório diário da equipe</Button>}<Button leftSection={<IconRefresh size={16} />} loading={Boolean(busy)} disabled={!data.clients.some(connected)} onClick={() => void refresh(data.clients.filter(connected))}>Atualizar clientes conectados</Button></Group>
     <Tabs value={managementTab} onChange={setManagementTab}><Tabs.List><Tabs.Tab value="overview">Visão geral e clientes</Tabs.Tab>{data.canViewUsage && <Tabs.Tab value="usage">Uso da ferramenta</Tabs.Tab>}</Tabs.List></Tabs>
     {managementTab === "usage" && data.canViewUsage ? <UsagePanel /> : <>
     {data.canViewUsage && <ManagementOverview />}

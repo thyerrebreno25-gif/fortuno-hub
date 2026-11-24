@@ -4,6 +4,9 @@ import {IconPaperclip,IconTrash,IconUpload} from "@tabler/icons-react";
 import {notifications} from "@mantine/notifications";
 import {useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import {clipboardImageFiles} from "./clipboard-images";
+import {MentionPicker} from "./mention-picker";
+import {insertComposerText,type ComposerSelection} from "./composer-text";
+import type {MentionTarget} from "./mentions";
 import {QuotedMessagePreview} from "./quoted-message";
 import type {QuotedMessage} from "./quote-core";
 import {createClient} from "@/lib/supabase/client";
@@ -14,9 +17,13 @@ function ImagePreview({file}:{file:File}){
  const src=useMemo(()=>URL.createObjectURL(file),[file]);useEffect(()=>()=>URL.revokeObjectURL(src),[src]);
  return <Image src={src} alt={file.name} fit="contain" h={110} radius="sm"/>;
 }
-export function WhatsAppAttachmentSender({ticketId,recipient,canSend,onSent,children,replyTo}:{ticketId:string;recipient:string;canSend:boolean;onSent:()=>void;children:(attachmentButton:ReactNode,busy:boolean)=>ReactNode;replyTo?:QuotedMessage|null}){
+export function WhatsAppAttachmentSender({ticketId,recipient,canSend,onSent,children,replyTo,isGroup=false}:{ticketId:string;recipient:string;canSend:boolean;onSent:()=>void;children:(attachmentButton:ReactNode,busy:boolean)=>ReactNode;replyTo?:QuotedMessage|null;isGroup?:boolean}){
  const input=useRef<HTMLInputElement>(null),mounted=useRef(true),active=useRef(false),dragDepth=useRef(0);
  const [files,setFiles]=useState<Upload[]>([]),[opened,setOpened]=useState(false),[busy,setBusy]=useState(false),[dragging,setDragging]=useState(false),[caption,setCaption]=useState("");
+ const captionInput=useRef<HTMLTextAreaElement>(null),mentionTargets=useRef<MentionTarget[]>([]);
+ const [selection,setSelection]=useState<ComposerSelection>({start:0,end:0});
+ const captionLocked=busy||files.some(file=>file.state==="SENT"||file.state==="UNCONFIRMED");
+ function insertCaption(text:string,range:ComposerSelection){const next=insertComposerText(caption,text,range);if(!next||captionLocked)return;setCaption(next.value);setSelection({start:next.cursor,end:next.cursor});requestAnimationFrame(()=>{captionInput.current?.focus();captionInput.current?.setSelectionRange(next.cursor,next.cursor);});}
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  function choose(chosen:File[]){
    if(!canSend||active.current){notifications.show({color:"orange",message:"Assuma o chamado e aguarde o envio atual antes de anexar."});return;}
@@ -43,7 +50,7 @@ export function WhatsAppAttachmentSender({ticketId,recipient,canSend,onSent,chil
          if(stored.error)throw new Error("Não foi possível carregar o arquivo. Tente novamente.");
          if(!mounted.current)break;
          update(item.id,{state:"SENDING"});sendStarted=true;
-         const response=await fetch(`/api/whatsapp/${ticketId}/media`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",uploadId:upload.uploadId,caption,asDocument:item.asDocument,replyToMessageId:replyTo?.id})});
+         const response=await fetch(`/api/whatsapp/${ticketId}/media`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",uploadId:upload.uploadId,caption,mentionTargets:mentionTargets.current,asDocument:item.asDocument,replyToMessageId:replyTo?.id})});
          const body=await response.json();if(!response.ok)throw new Error(body.error||"Envio sem confirmação. Confira a conversa.");
          update(item.id,{state:"SENT"});onSent();
        }catch(error){update(item.id,{state:sendStarted?"UNCONFIRMED":"FAILED",error:error instanceof Error?error.message:"Falha ao enviar o anexo."});break;}
@@ -57,10 +64,11 @@ export function WhatsAppAttachmentSender({ticketId,recipient,canSend,onSent,chil
    <input hidden ref={input} type="file" aria-label="Selecionar anexos do WhatsApp" accept={WHATSAPP_FILE_ACCEPT} multiple onChange={event=>{choose(Array.from(event.currentTarget.files||[]));event.currentTarget.value="";}}/>
    {children(attachmentButton,busy)}
    {dragging&&<div className={styles.attachmentDropOverlay}><IconUpload size={34}/><strong>Solte os arquivos aqui</strong><span>Você poderá revisar antes de enviar</span></div>}
-   <Modal opened={opened} onClose={()=>{if(!busy){setOpened(false);setFiles([]);setCaption("");}}} title="Enviar anexos" size="lg" centered closeOnClickOutside={!busy} closeOnEscape={!busy} withCloseButton={!busy}>
+   <Modal opened={opened} onClose={()=>{if(!busy){setOpened(false);setFiles([]);setCaption("");mentionTargets.current=[];setSelection({start:0,end:0});}}} title="Enviar anexos" size="lg" centered closeOnClickOutside={!busy} closeOnEscape={!busy} withCloseButton={!busy}>
     <Stack><Text size="sm">Para: <strong>{recipient}</strong></Text>{replyTo&&<QuotedMessagePreview quote={replyTo}/>}<Text size="xs" c="dimmed">Até 10 arquivos, com até 25 MB cada. O envio ocorre somente ao clicar em Enviar anexos.</Text>
      {files.map(item=>{const info=whatsappFileInfo(item.file.name,item.file.size);return <Paper key={item.id} withBorder radius="md" p="sm"><Group wrap="nowrap" align="flex-start"><div style={{flex:1,minWidth:0}}><Text fw={650} size="sm" style={{overflowWrap:"anywhere"}}>{item.file.name}</Text><Text size="xs" c="dimmed">{(item.file.size/1024/1024).toLocaleString("pt-BR",{maximumFractionDigits:2})} MB · {labels[item.state]}</Text>{info.type==="image"&&<ImagePreview file={item.file}/>} {info.type!=="document"&&<Select label="Enviar como" size="xs" mt="xs" value={item.asDocument?"document":info.type} disabled={busy||["SENT","UNCONFIRMED"].includes(item.state)} data={[{value:info.type,label:info.type==="image"?"Imagem":info.type==="video"?"Vídeo":"Áudio"},{value:"document",label:"Documento (arquivo original)"}]} onChange={value=>update(item.id,{asDocument:value==="document"})}/>} {item.error&&<Alert color="red" mt="xs">{item.error}</Alert>}{["UPLOADING","SENDING"].includes(item.state)&&<Progress animated value={item.state==="UPLOADING"?40:85} mt="xs"/>}</div><ActionIcon variant="subtle" color="gray" aria-label={`Remover ${item.file.name}`} disabled={busy||item.state==="SENT"||item.state==="UNCONFIRMED"} onClick={()=>setFiles(previous=>previous.filter(file=>file.id!==item.id))}><IconTrash size={17}/></ActionIcon></Group></Paper>;})}
-     <Textarea label="Legenda (opcional)" placeholder="Escreva uma mensagem para acompanhar os arquivos" maxLength={5000} value={caption} onChange={event=>setCaption(event.currentTarget.value)} disabled={busy||files.some(file=>file.state==="SENT")}/>
+     <Textarea ref={captionInput} label="Legenda (opcional)" placeholder={isGroup?"Escreva uma mensagem e use @ para mencionar":"Escreva uma mensagem para acompanhar os arquivos"} maxLength={5000} value={caption} onChange={event=>{setCaption(event.currentTarget.value);setSelection({start:event.currentTarget.selectionStart,end:event.currentTarget.selectionEnd});}} onSelect={event=>setSelection({start:event.currentTarget.selectionStart,end:event.currentTarget.selectionEnd})} disabled={captionLocked}/>
+     {isGroup&&!captionLocked&&<Group gap="xs"><MentionPicker ticketId={ticketId} value={caption} selection={selection} onInsert={insertCaption} onMention={target=>{mentionTargets.current=[...mentionTargets.current.filter(row=>row.name!==target.name),target].slice(-50);}}/><Text size="xs" c="dimmed">Mencionar participante na legenda</Text></Group>}
      <Group justify="space-between"><Button variant="subtle" leftSection={<IconPaperclip size={16}/>} onClick={open} disabled={busy||files.length>=WHATSAPP_FILE_COUNT}>Adicionar arquivos</Button><Button leftSection={<IconUpload size={16}/>} onClick={()=>void send()} loading={busy} disabled={!canSend||!pending}>Enviar anexos</Button></Group>
     </Stack>
    </Modal>

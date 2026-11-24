@@ -5,14 +5,16 @@ import {prisma} from "@/lib/prisma";
 import {createAdminClient} from "@/lib/supabase/admin";
 import {whatsappSendAccess,WhatsAppSendError} from "@/modules/whatsapp/outbound-access";
 import {WhatsAppFileError,WHATSAPP_FILES_BUCKET,WHATSAPP_FILE_LIMIT,whatsappFileInfo,validFileContent} from "@/modules/whatsapp/outbound-files";
-import {sendUazapiMedia} from "@/modules/whatsapp/uazapi-server";
+import {sendUazapiMedia,whatsappConnection} from "@/modules/whatsapp/uazapi-server";
 import {parseWhatsappChannelAddress} from "@/modules/whatsapp/core";
 import {signedWhatsappText} from "@/modules/whatsapp/operator-signature";
+import {namedMentions} from "@/modules/whatsapp/mentions";
+import {resolvedChatProfile} from "@/modules/whatsapp/contact-profile";
 export const runtime="nodejs";
 export const maxDuration=60;
 const inputSchema=z.discriminatedUnion("action",[
   z.object({action:z.literal("prepare"),name:z.string().min(1).max(200),size:z.number().int().positive().max(WHATSAPP_FILE_LIMIT)}),
-  z.object({action:z.literal("send"),uploadId:z.string().min(1).max(100),caption:z.string().max(5000).default(""),asDocument:z.boolean().default(false),replyToMessageId:z.string().min(1).max(100).nullish()}),
+  z.object({action:z.literal("send"),uploadId:z.string().min(1).max(100),caption:z.string().max(5000).default(""),mentionTargets:z.array(z.object({phone:z.string().regex(/^\d{8,15}$/),name:z.string().trim().min(1).max(250).regex(/^[^\r\n]+$/)})).max(50).default([]),asDocument:z.boolean().default(false),replyToMessageId:z.string().min(1).max(100).nullish()}),
 ]);
 export async function POST(request:Request,context:{params:Promise<{id:string}>}){
   try{
@@ -47,6 +49,17 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
     if(Date.now()-draft.createdAt.getTime()>60*60*1000)throw new WhatsAppSendError("A preparação do anexo expirou. Selecione o arquivo novamente.",410);
     const replyTarget=input.replyToMessageId?await findReplyTarget({...ticket,organizationId:member.organizationId},input.replyToMessageId,account):null;
     if(replyTarget&&!replyTarget.providerId)throw new WhatsAppSendError("Mensagem original indisponível para responder.");
+    const to=parseWhatsappChannelAddress(ticket.senderEmail).externalId;
+    let wireCaption=input.caption;
+    let mentionTargets:Array<{phone:string;name:string;lid:string|null}>=[];
+    if(input.mentionTargets.length){
+      if(!to.endsWith("@g.us"))throw new WhatsAppSendError("Menções são disponíveis apenas em grupos conectados.");
+      const connection=await whatsappConnection(member.organizationId);
+      if(!connection||`wa-account:${connection.id}:${connection.phone}`!==account.recipient)throw new WhatsAppSendError("A conexão mudou. Abra a conversa na conta atual.",409);
+      const profile=await resolvedChatProfile(connection,to,true);
+      try{const mentions=namedMentions(input.caption,input.mentionTargets,new Set(profile.participants.flatMap(person=>person.phone?[person.phone]:[])));wireCaption=mentions.wireBody;mentionTargets=mentions.targets.map(target=>({...target,lid:profile.participants.find(person=>person.phone===target.phone)?.lid||null}));}
+      catch(error){throw new WhatsAppSendError(error instanceof Error?error.message:"Revise as menções na legenda.");}
+    }
     const info=whatsappFileInfo(String(meta.name),Number(meta.size)),path=String(meta.path);
     if(!path.startsWith(`${member.organizationId}/${ticket.id}/`))throw new WhatsAppSendError("Anexo inválido.");
     const file=await storage.download(path);
@@ -59,10 +72,10 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
     if(!claimed.count)throw new WhatsAppSendError("Este anexo já está em processamento.",409);
     try{
       await whatsappSendAccess(id);
-      const sent=await sendUazapiMedia({organizationId:member.organizationId,accountRecipient:account.recipient!,to:parseWhatsappChannelAddress(ticket.senderEmail).externalId,type:input.asDocument?"document":info.type,file:signed.data.signedUrl,name:info.name,mimeType:info.mimeType,caption:signedWhatsappText(member.user.name,input.caption||info.name),trackingId:draft.id,replyToMessageId:replyTarget?.providerId});
+      const sent=await sendUazapiMedia({organizationId:member.organizationId,accountRecipient:account.recipient!,to,type:input.asDocument?"document":info.type,file:signed.data.signedUrl,name:info.name,mimeType:info.mimeType,caption:signedWhatsappText(member.user.name,wireCaption||info.name),trackingId:draft.id,replyToMessageId:replyTarget?.providerId});
       const now=new Date();
       const message=await prisma.$transaction(async tx=>{
-        const result=await tx.serviceMessage.upsert({where:{ticketId_externalMessageId:{ticketId:ticket.id,externalMessageId:sent.messageId}},create:{ticketId:ticket.id,externalMessageId:sent.messageId,direction:"OUTBOUND",deliveryStatus:"accepted",statusUpdatedAt:now,fromName:member.user.name||member.user.email,fromEmail:member.user.email,toEmails:[ticket.senderEmail],textBody:input.caption||info.name,receivedAt:now,providerMetadata:{provider:"UAZAPI",connectionId:sent.connectionId,instanceId:sent.instanceId,accountPhone:sent.accountPhone,messageId:sent.providerMessageId,uploadId:draft.id,...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{})}},update:{}});
+        const result=await tx.serviceMessage.upsert({where:{ticketId_externalMessageId:{ticketId:ticket.id,externalMessageId:sent.messageId}},create:{ticketId:ticket.id,externalMessageId:sent.messageId,direction:"OUTBOUND",deliveryStatus:"accepted",statusUpdatedAt:now,fromName:member.user.name||member.user.email,fromEmail:member.user.email,toEmails:[ticket.senderEmail],textBody:input.caption||info.name,receivedAt:now,providerMetadata:{provider:"UAZAPI",connectionId:sent.connectionId,instanceId:sent.instanceId,accountPhone:sent.accountPhone,messageId:sent.providerMessageId,uploadId:draft.id,...(mentionTargets.length?{mentionTargets}:{}),...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{})}},update:{}});
         await tx.serviceAttachment.upsert({where:{id:`wa_upload_${draft.id}`},create:{id:`wa_upload_${draft.id}`,messageId:result.id,name:info.name,mimeType:info.mimeType,size:Number(meta.size),storagePath:path,externalAttachmentId:`uazapi:${sent.instanceId}:${sent.providerMessageId}`},update:{}});
         await tx.serviceTicket.updateMany({where:{id:ticket.id,assignedToId:member.userId,status:{notIn:["RESOLVED","SPAM"]}},data:{lastMessageAt:now,snippet:(input.caption||info.name).slice(0,220),status:"IN_PROGRESS"}});
         await tx.serviceTicket.updateMany({where:{id:ticket.id,firstResponseAt:null},data:{firstResponseAt:now}});

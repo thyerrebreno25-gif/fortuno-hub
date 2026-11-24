@@ -1,9 +1,10 @@
 import {beforeEach,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-const m=vi.hoisted(()=>({access:vi.fn(),send:vi.fn(),draft:vi.fn(),claim:vi.fn(),update:vi.fn(),create:vi.fn(),count:vi.fn(),upload:vi.fn(),download:vi.fn(),signed:vi.fn(),getBucket:vi.fn(),message:vi.fn(),attachment:vi.fn(),ticket:vi.fn(),target:vi.fn()}));
+const m=vi.hoisted(()=>({access:vi.fn(),send:vi.fn(),draft:vi.fn(),claim:vi.fn(),update:vi.fn(),create:vi.fn(),count:vi.fn(),upload:vi.fn(),download:vi.fn(),signed:vi.fn(),getBucket:vi.fn(),message:vi.fn(),attachment:vi.fn(),ticket:vi.fn(),target:vi.fn(),profile:vi.fn()}));
+vi.mock("@/modules/whatsapp/contact-profile",()=>({resolvedChatProfile:m.profile}));
 vi.mock("@/modules/whatsapp/outbound-access",async original=>({...await original<typeof import("@/modules/whatsapp/outbound-access")>(),whatsappSendAccess:m.access}));
 vi.mock("@/modules/whatsapp/reply-target",()=>({findReplyTarget:m.target,ReplyTargetError:class extends Error{status=404;}}));
-vi.mock("@/modules/whatsapp/uazapi-server",()=>({sendUazapiMedia:m.send}));
+vi.mock("@/modules/whatsapp/uazapi-server",()=>({sendUazapiMedia:m.send,whatsappConnection:async()=>({id:"conn",phone:"5511"})}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({storage:{getBucket:m.getBucket,from:()=>({createSignedUploadUrl:m.upload,download:m.download,createSignedUrl:m.signed})}})}));
 vi.mock("@/lib/prisma",()=>{const tx={serviceTicketHistory:{findFirst:m.draft,updateMany:m.claim,update:m.update,create:m.create,count:m.count},serviceMessage:{upsert:m.message},serviceAttachment:{upsert:m.attachment},serviceTicket:{updateMany:m.ticket}};return {prisma:{...tx,$transaction:(fn:(t:typeof tx)=>unknown)=>fn(tx)}};});
 import {POST} from "./route";
@@ -22,4 +23,19 @@ it("enforces ownership again just before external send",async()=>{m.access.mockR
 it("keeps a pasted image or document attached to the explicitly selected original message",async()=>{
  m.target.mockResolvedValueOnce({providerId:"quoted-provider",quote:{id:"quoted-hub"}});expect((await post({action:"send",uploadId:"upload",replyToMessageId:"quoted-hub"})).status).toBe(200);
  expect(m.send.mock.calls[0][0].replyToMessageId).toBe("quoted-provider");expect(m.message.mock.calls[0][0].create.providerMetadata.replyToMessageId).toBe("quoted-hub");
+});
+it("validates named caption mentions against this group's current members and keeps the names in history",async()=>{
+ const access=await m.access();m.access.mockResolvedValue({...access,ticket:{...access.ticket,senderEmail:"wa-group:123@g.us"},account:{...access.account,connection:{id:"conn"}}});
+ m.profile.mockResolvedValue({participants:[{phone:"5561999999999",name:"João",lid:"987654321@lid"}]});
+ expect((await post({action:"send",uploadId:"upload",caption:"Confira @João, por favor",mentionTargets:[{phone:"5561999999999",name:"João"}]})).status).toBe(200);
+ expect(m.send.mock.calls[0][0]).toMatchObject({to:"123@g.us",caption:"*Ana*\nConfira @5561999999999, por favor"});
+ expect(m.message.mock.calls[0][0].create).toMatchObject({textBody:"Confira @João, por favor",providerMetadata:{mentionTargets:[{phone:"5561999999999",name:"João",lid:"987654321@lid"}]}});
+});
+it("rejects mentions in individual chats, forged participants and excessive targets before claiming or sending",async()=>{
+ const targets=[{phone:"5561999999999",name:"João"}];
+ expect((await post({action:"send",uploadId:"upload",caption:"@João",mentionTargets:targets})).status).toBe(400);
+ const access=await m.access();m.access.mockResolvedValue({...access,ticket:{...access.ticket,senderEmail:"wa-group:123@g.us"},account:{...access.account,connection:{id:"conn"}}});m.profile.mockResolvedValue({participants:[]});
+ expect((await post({action:"send",uploadId:"upload",caption:"@João",mentionTargets:targets})).status).toBe(400);
+ expect((await post({action:"send",uploadId:"upload",caption:"@João",mentionTargets:Array(51).fill(targets[0])})).status).toBe(400);
+ expect(m.claim).not.toHaveBeenCalled();expect(m.send).not.toHaveBeenCalled();
 });

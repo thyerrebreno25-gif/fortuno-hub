@@ -51,6 +51,12 @@ it("uses id and text for provider reactions and rejects old physical accounts",a
  await sendUazapiReaction({organizationId:"org",accountRecipient:"wa-account:connection:5511",messageId:"target",emoji:"👍"});expect(m.request.mock.calls[0].slice(2)).toEqual(["/message/react",{id:"target",text:"👍"}]);
  await expect(sendUazapiReaction({organizationId:"org",accountRecipient:"wa-account:connection:old",messageId:"target",emoji:"👍"})).rejects.toThrow("número conectado mudou");expect(m.request).toHaveBeenCalledTimes(1);
 });
+it("includes group caption mentions in a media send without adding mentions to individual chats",async()=>{
+ m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockResolvedValue({messageid:"media"});
+ const common={organizationId:"org",accountRecipient:"wa-account:connection:5511",type:"image" as const,file:"https://storage.example/image",name:"image.png",mimeType:"image/png",caption:"Confira @5561999999999",trackingId:"upload"};
+ await sendUazapiMedia({...common,to:"123@g.us"});expect(m.request.mock.calls[0][3].mentions).toBe("5561999999999");
+ await sendUazapiMedia({...common,to:"5522"});expect(m.request.mock.calls[1][3].mentions).toBeUndefined();
+});
 
 it("sends replyid only when explicitly given for text and media",async()=>{
  m.find.mockResolvedValue({...connection,status:"CONNECTED",webhookConfiguredAt:new Date(),phone:"5511"});m.request.mockResolvedValue({messageid:"answer"});
