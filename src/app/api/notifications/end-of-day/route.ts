@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentMember, getRolePermissions } from "@/modules/permissions/permissions";
 import { currentWhatsAppAccount } from "@/modules/whatsapp/account-scope";
-import { endOfDayWindow, type EndOfDaySummary } from "@/modules/notifications/end-of-day-policy";
+import { END_OF_DAY_TIME, endOfDayWindow, type EndOfDaySummary } from "@/modules/notifications/end-of-day-policy";
 
 const headers = {"Cache-Control":"private, no-store"};
 const ACK = "END_OF_DAY_ACK";
@@ -45,7 +45,7 @@ export async function POST() {
   if (!member) return NextResponse.json({error:"Sessão inválida."},{status:401});
   if (member.role === "CLIENT") return NextResponse.json({error:"Acesso restrito à equipe."},{status:403});
   const w = endOfDayWindow();
-  if (!w.due) return NextResponse.json({error:"Resumo disponível após as 18h dos dias úteis."},{status:400});
+  if (!w.due) return NextResponse.json({error:`Resumo disponível a partir das ${END_OF_DAY_TIME.replace(":", "h")} dos dias úteis.`},{status:400});
   await prisma.auditLog.create({data:{userId:member.userId,action:ACK,entity:"Organization",entityId:member.organizationId,afterData:{day:w.day}}});
   return NextResponse.json({acknowledged:true,day:w.day},{headers});
   } catch { return NextResponse.json({error:"Não foi possível registrar a leitura."},{status:503,headers}); }
