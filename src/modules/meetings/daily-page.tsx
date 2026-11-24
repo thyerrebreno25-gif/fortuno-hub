@@ -7,10 +7,11 @@ import { IconCalendarCheck, IconRefresh } from "@tabler/icons-react";
 import { FilterPanel } from "@/components/filter-panel";
 import { formatMeetingDate, jsonRequest, meetingRequest, type MeetingAction } from "./client";
 import styles from "./meetings.module.css";
-type DailyData = {actions: Array<MeetingAction & {originalDueAt: string | null; autoExtendedAt: string | null; meeting: {id: string; title: string; type: string}}>; total: number; summary: {pending: number; overdue: number; completed: number}; userId: string; manager: boolean; canEdit: boolean; canViewMeetings: boolean};
+type DailyData = {actions: Array<MeetingAction & {originalDueAt: string | null; autoExtendedAt: string | null; meeting: {id: string; title: string; type: string}}>; total: number; summary: {pending: number; overdue: number; completed: number}; teams:string[]; teamRestricted:boolean; userId: string; manager: boolean; canEdit: boolean; canViewMeetings: boolean};
 export function DailyActivitiesPage() {
   const [data, setData] = useState<DailyData | null>(null), [error, setError] = useState("");
   const [scope, setScope] = useState("mine"), [status, setStatus] = useState("pending"), [type, setType] = useState("all"), [query, setQuery] = useState(""), [page, setPage] = useState(0);
+  const [team,setTeam]=useState<string|null>(null);
   const [busy, setBusy] = useState<string | null>(null), [loading, setLoading] = useState(false);
   const sequence = useRef(0);
   const [now, setNow] = useState(() => Date.now());
@@ -18,11 +19,11 @@ export function DailyActivitiesPage() {
     const current = ++sequence.current;
     setLoading(true);
     try {
-      const result = await meetingRequest<DailyData>(`/api/meetings/daily?${new URLSearchParams({scope, status, type, q: query, page: String(page)})}`);
+      const result = await meetingRequest<DailyData>(`/api/meetings/daily?${new URLSearchParams({scope, status, type, team:team||"", q: query, page: String(page)})}`);
       if (current === sequence.current) {setData(result); setNow(Date.now()); setError("");}
     } catch (cause) {if (current === sequence.current) setError(cause instanceof Error ? cause.message : "Não foi possível carregar.");}
     finally {if (current === sequence.current) setLoading(false);}
-  }, [scope, status, type, query, page]);
+  }, [scope, status, type, team, query, page]);
   useEffect(() => {
     const first = window.setTimeout(() => void load(), 250);
     const refresh = () => {if (!document.hidden) void load();};
@@ -47,13 +48,14 @@ export function DailyActivitiesPage() {
     {!data && loading && <Loader/>}
     {data && <>
       <SimpleGrid cols={{base: 1, sm: 3}}>{[["Pendentes", data.summary.pending, "blue"], ["Em atraso", data.summary.overdue, "red"], ["Concluídas", data.summary.completed, "teal"]].map(([label, value, color]) => <Paper withBorder radius="md" p="md" key={label}><Text size="sm" c="dimmed">{label}</Text><Text size="30px" fw={800} c={String(color)}>{value}</Text></Paper>)}</SimpleGrid>
-      <FilterPanel title="Filtros de atividades" activeCount={Number(scope !== "mine") + Number(status !== "pending") + Number(type !== "all") + Number(Boolean(query))}><SimpleGrid cols={{base: 1, sm: 2, lg: 4}}>
-        {data.manager && <Select label="Responsabilidade" value={scope} allowDeselect={false} onChange={value => {setScope(value || "mine"); setPage(0);}} data={[{value: "mine", label: "Minhas atividades"}, {value: "all", label: "Toda a equipe"}]}/>}
+      <FilterPanel title="Filtros de atividades" activeCount={Number(scope !== "mine") + Number(status !== "pending") + Number(type !== "all") + Number(Boolean(team)) + Number(Boolean(query))}><SimpleGrid cols={{base: 1, sm: 2, lg: 3}}>
+        {data.manager && <Select label="Responsabilidade" value={scope} allowDeselect={false} onChange={value => {setScope(value || "mine"); setPage(0);}} data={[{value: "mine", label: "Minhas atividades"}, {value: "all", label: data.teamRestricted?"Meus colaboradores":"Toda a equipe"}]}/>}
+        <Select label="Equipe" placeholder="Todas as equipes" searchable clearable data={data.teams} value={team} onChange={value=>{setTeam(value);setPage(0);}}/>
         <Select label="Situação" value={status} allowDeselect={false} onChange={value => {setStatus(value || "pending"); setPage(0);}} data={[{value: "pending", label: "Pendentes"}, {value: "overdue", label: "Em atraso"}, {value: "completed", label: "Concluídas"}, {value: "all", label: "Todas"}]}/>
         <Select label="Tipo da reunião" value={type} allowDeselect={false} onChange={value => {setType(value || "all"); setPage(0);}} data={[{value: "all", label: "Daily e Semanal de squad"}, {value: "Daily", label: "Daily"}, {value: "Semanal de squad", label: "Semanal de squad"}]}/>
         <TextInput label="Buscar" placeholder="Atividade ou reunião" value={query} onChange={event => {setQuery(event.currentTarget.value); setPage(0);}}/>
       </SimpleGrid></FilterPanel>
-      <Text size="xs" c="dimmed">{scope === "mine" ? "Minhas atividades" : "Toda a equipe"} · {data.total} resultado(s) · Daily: uma única prorrogação para o próximo dia útil, no mesmo horário. O gestor recebe um aviso no vencimento original.</Text>
+      <Text size="xs" c="dimmed">{scope === "mine" ? "Minhas atividades" : data.teamRestricted?"Meus colaboradores":"Toda a equipe"}{team?` · ${team}`:""} · {data.total} resultado(s) · Daily: uma única prorrogação para o próximo dia útil, no mesmo horário. O gestor recebe um aviso no vencimento original.</Text>
       {!data.actions.length && <Paper p="xl" withBorder radius="lg"><Text ta="center" c="dimmed">Nenhuma atividade neste filtro. As entregas atribuídas nas reuniões aparecem aqui automaticamente.</Text></Paper>}
       {data.actions.map(item => {
         const overdue = !item.completedAt && +new Date(item.dueAt) < now;
