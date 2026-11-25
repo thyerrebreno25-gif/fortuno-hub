@@ -7,14 +7,14 @@ const types: Record<string, string> = {
   pdf:"application/pdf", doc:"application/msword", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xls:"application/vnd.ms-excel", xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ppt:"application/vnd.ms-powerpoint", pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  txt:"text/plain", csv:"text/csv", zip:"application/zip", rar:"application/vnd.rar",
+  txt:"text/plain", csv:"text/csv", xml:"application/xml", zip:"application/zip", rar:"application/vnd.rar",
   mp3:"audio/mpeg", ogg:"audio/ogg", wav:"audio/wav", m4a:"audio/mp4", mp4:"video/mp4",
 };
 export const WHATSAPP_FILE_ACCEPT = Object.keys(types).map(ext=>"."+ext).join(",");
 export function whatsappFileInfo(name: string, size: number) {
   const extension=name.split(".").at(-1)?.toLowerCase()||"";
   const mimeType=types[extension];
-  if(!name.trim()||name.length>200||/[\x00-\x1f/\\]/.test(name)||!mimeType) throw new WhatsAppFileError("Formato não suportado. Use imagens, PDF, documentos, planilhas, arquivos ZIP/RAR, áudio ou MP4.");
+  if(!name.trim()||name.length>200||/[\x00-\x1f/\\]/.test(name)||!mimeType) throw new WhatsAppFileError("Formato não suportado. Use imagens, PDF, XML, documentos, planilhas, arquivos ZIP/RAR, áudio ou MP4.");
   if(!Number.isSafeInteger(size)||size<=0||size>WHATSAPP_FILE_LIMIT) throw new WhatsAppFileError("Cada anexo deve ter entre 1 byte e 25 MB.");
   return {name,mimeType,type:mimeType.startsWith("image/")?"image" as const:mimeType.startsWith("audio/")?"audio" as const:mimeType.startsWith("video/")?"video" as const:"document" as const};
 }
@@ -33,5 +33,13 @@ export function validFileContent(name: string, bytes: Uint8Array) {
   if(ext==="ogg")return ascii(0,4)==="OggS";
   if(ext==="wav")return ascii(0,4)==="RIFF"&&ascii(8,12)==="WAVE";
   if(ext==="mp3")return ascii(0,3)==="ID3"||bytes[0]===255&&(bytes[1]&224)===224;
+  if(ext==="xml"){
+    // Sniff XML text without parsing entities or rewriting the signed invoice.
+    // UTF-16 exports can include a BOM or start directly with an XML tag.
+    const utf16le=bytes[0]===255&&bytes[1]===254||bytes[0]===60&&bytes[1]===0;
+    const utf16be=bytes[0]===254&&bytes[1]===255||bytes[0]===0&&bytes[1]===60;
+    const prefix=new TextDecoder(utf16le?"utf-16le":utf16be?"utf-16be":"utf-8").decode(bytes.slice(0,4096)).trimStart();
+    return !prefix.includes("\0")&&/^(?:<\?xml\s|<!--|<!DOCTYPE\s|<[\p{L}_][\p{L}\p{N}_.:-]*(?=[\s/>]))/u.test(prefix);
+  }
   return (ext==="txt"||ext==="csv")&&!bytes.slice(0,4096).includes(0);
 }
