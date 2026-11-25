@@ -2,6 +2,7 @@ import {jsPDF} from "jspdf";
 import autoTable from "jspdf-autotable";
 import {reportWordmark} from "@/modules/meetings/report-brand";
 import {reportDuration,type OperatorDayReport} from "./operator-report-model";
+import {serviceMinutes} from "./operator-service-attention";
 const clean=(value:string)=>value.normalize("NFC").replace(/[\u2010-\u2015\u2212]/g,"-").replace(/\p{Extended_Pictographic}/gu,"").replace(/[\u0000-\u001f]/g," ");
 const quantity=(count:number,one:string,many:string)=>`${count} ${count===1?one:many}`;
 export const operatorPdfName=(day:string)=>`Fortuno-Relatorio-Diario-${day}.pdf`;
@@ -16,12 +17,28 @@ export function createOperatorReportPdf(report:OperatorDayReport){
  const cards=[{title:"MENSAGENS ENVIADAS",value:report.available.whatsapp?String(sum("messages")):"-",color:[35,132,223]},{title:"TAREFAS CONCLUÍDAS",value:report.available.operations?String(sum("tasksCompleted")):"-",color:[13,163,126]},{title:"ENTREGAS DAILY",value:report.available.daily?String(sum("dailyCompleted")):"-",color:[112,80,190]},{title:"TEMPO CONFIRMADO",value:report.available.operations?reportDuration(sum("seconds"))+" h":"-",color:[20,133,156]}];
  y+=3;cards.forEach((card,index)=>{const x=left+index*45.5;doc.setFillColor(243,247,251);doc.roundedRect(x,y,41.5,23,2,2,"F");doc.setTextColor(94,112,131);doc.setFont("helvetica","bold");doc.setFontSize(6.8);doc.text(card.title,x+3,y+6);doc.setTextColor(card.color[0],card.color[1],card.color[2]);doc.setFontSize(18);doc.text(card.value,x+3,y+16);});y+=33;
  text("Atendimento pelo WhatsApp",12,true);
- const table=(head:string[],body:string[][])=>{autoTable(doc,{startY:y,head:[head],body,margin:{left,right:left,top:37,bottom:22},styles:{font:"helvetica",fontSize:8.5,cellPadding:3,overflow:"linebreak",textColor:[32,50,73],lineWidth:0},headStyles:{fillColor:[228,237,247],textColor:[31,61,95],fontStyle:"bold",fontSize:8},alternateRowStyles:{fillColor:[246,249,252]},columnStyles:{0:{cellWidth:51,fontStyle:"bold"}},rowPageBreak:"avoid",didDrawPage:header});y=(doc as jsPDF&{lastAutoTable:{finalY:number}}).lastAutoTable.finalY+8;};
+ const table=(head:string[],body:string[][],widths?:number[])=>{autoTable(doc,{startY:y,head:[head],body,margin:{left,right:left,top:37,bottom:22},styles:{font:"helvetica",fontSize:8.5,cellPadding:3,overflow:"linebreak",textColor:[32,50,73],lineWidth:0},headStyles:{fillColor:[228,237,247],textColor:[31,61,95],fontStyle:"bold",fontSize:8},alternateRowStyles:{fillColor:[246,249,252]},columnStyles:{...Object.fromEntries((widths||[]).map((cellWidth,index)=>[index,{cellWidth}])),0:{cellWidth:widths?.[0]||51,fontStyle:"bold"}},rowPageBreak:"avoid",didDrawPage:header});y=(doc as jsPDF&{lastAutoTable:{finalY:number}}).lastAutoTable.finalY+8;};
  if(report.available.whatsapp&&report.rows.length)table(["Colaborador","Mensagens","Conversas","Clientes","Finalizações","Em aberto"],report.rows.map(row=>[clean(row.name),String(row.messages),String(row.conversations),String(row.clients),String(row.resolved),String(row.openCalls)]));
  else text(report.available.whatsapp?"Nenhum operador neste escopo.":"Indicadores de WhatsApp indisponíveis neste escopo.");
  text("Mensagens e finalizações são os registros do dia. Conversas e clientes movimentados são contados por colaborador; a mesma conversa pode envolver mais de uma pessoa.",8,false,[103,119,138]);
  text("Chamados em aberto mostram a situação na geração, entre os recebidos até o dia de referência. Novas atualizações no Hub podem alterar as pendências.",8,false,[103,119,138]);
  for(const warning of report.warnings)text(warning,9,true,[151,91,18]);
+ if(report.available.whatsapp&&report.serviceAttention){
+  const attention=report.serviceAttention,people=report.rows.filter(row=>row.service).sort((a,b)=>b.service!.overdueResponses-a.service!.overdueResponses||b.service!.closureReviewCalls-a.service!.closureReviewCalls||b.service!.longOpenCalls-a.service!.longOpenCalls);
+  const total=(key:"overdueResponses"|"longOpenCalls"|"closureReviewCalls"|"waitingCustomerCalls")=>people.reduce((sum,row)=>sum+row.service![key],0);
+  doc.addPage();header();y=40;text("Pontos de atenção no atendimento",16,true);text("Posição na geração | tempos corridos | resposta: 30 min | aberto: 8h",8,false,[103,119,138]);
+  text(`${total("overdueResponses")} aguardando resposta por 30 min ou mais | ${total("longOpenCalls")} abertos há 8h ou mais`,10,true,[151,91,18]);
+  text(`${total("closureReviewCalls")} para revisar finalização | ${total("waitingCustomerCalls")} aguardando o cliente`,9);
+  table(["Colaborador","Resposta no dia\nmédia / maior","Sem resposta\n30 min ou mais","Tempo aberto\nmédia / maior","Revisar\nfinalização"],people.map(row=>{const s=row.service!;return [clean(row.name),s.responseSamples?`${serviceMinutes(s.averageResponseMinutes)} / ${serviceMinutes(s.longestResponseMinutes)}\n${s.responseSamples} amostra(s)` : "Sem amostra",`${s.overdueResponses}\nMaior espera: ${serviceMinutes(s.longestWaitMinutes)}`,`${serviceMinutes(s.averageOpenMinutes)} / ${serviceMinutes(s.longestOpenMinutes)}`,String(s.closureReviewCalls)];}));
+  text("Respostas: tempo desde a primeira mensagem de cada sequência do cliente até a resposta da equipe, atribuído a quem respondeu. Sem amostra não significa resposta imediata.",8,false,[103,119,138]);
+  if(y>242){doc.addPage();header();y=39;}text("Alertas por colaborador",12,true);
+  const flagged=people.filter(row=>row.service!.alerts.length);if(!flagged.length)text("Sem alertas nos critérios de atendimento deste recorte.",9);
+  for(const row of flagged){if(y>245){doc.addPage();header();y=39;}text(row.name,10,true);for(const alert of row.service!.alerts)text("- "+alert,9);}
+  if(attention.cases.length){if(y>220){doc.addPage();header();y=39;}text("Chamados para conferir primeiro",12,true);text(`Exibindo ${attention.cases.length} de ${attention.totalCases} chamado(s) sinalizado(s), por criticidade e espera.`,8,false,[103,119,138]);
+   table(["Cliente / conversa","Responsável","Tempo\naberto","Sem\nresposta","Ponto de atenção"],attention.cases.map(item=>[clean(item.client+(item.contact!==item.client?"\n"+item.contact:"")),clean(item.operator),serviceMinutes(item.openMinutes),serviceMinutes(item.waitingMinutes),item.reasons.map(clean).join("\n")]),[47,31,23,23,54]);
+  }
+  text("Aguardando o cliente, sem nova mensagem pendente, não gera alerta de duração ou revisão de encerramento. Os alertas pedem conferência: não concluem que o serviço terminou ou que houve falha do colaborador.",8,false,[103,119,138]);
+ }
  doc.addPage();header();y=40;text("Tarefas, Daily e tempo registrado",16,true);text("Produção do dia e pendências para acompanhamento da gestão.",9);y+=3;
  if(report.rows.length&&(report.available.operations||report.available.daily)){
   const number=(value:number,allowed:boolean)=>allowed?String(value):"-";
@@ -32,6 +49,6 @@ export function createOperatorReportPdf(report:OperatorDayReport){
  if(!attention.length)text("Sem pendências identificadas neste recorte.");
  for(const row of attention){const parts=[report.available.whatsapp&&row.openCalls?quantity(row.openCalls,"chamado aberto","chamados abertos"):null,report.available.operations&&row.tasksPending?quantity(row.tasksPending,"tarefa pendente","tarefas pendentes"):null,report.available.daily&&row.dailyPending?quantity(row.dailyPending,"atividade Daily pendente","atividades Daily pendentes"):null,report.available.operations&&row.openTimers?quantity(row.openTimers,"cronômetro aberto","cronômetros abertos"):null].filter(Boolean);text(clean(row.name)+": "+parts.join(" | "),9);}
  y+=3;text("Critérios de leitura",10,true);text("Pendências: posição na geração, com prazos até o dia indicado, incluindo prazos originais das atividades Daily prorrogadas. Não representa uma reconstrução do saldo à meia-noite.",8,false,[103,119,138]);text("Tempo confirmado: somente apontamentos encerrados, proporcionais ao período. Cronômetros abertos ficam fora desse total. Conclusões de tarefas são atribuídas ao autor registrado no evento.",8,false,[103,119,138]);text("O documento apresenta indicadores operacionais, sem conteúdo das mensagens ou anexos dos clientes.",8,false,[103,119,138]);
- const pages=doc.getNumberOfPages();for(let page=1;page<=pages;page++){doc.setPage(page);doc.setDrawColor(217,226,237);doc.line(left,height-15,width-left,height-15);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(103,119,138);doc.text("Fortuno Hub | Uso interno da gestão",left,height-10);doc.text(`Página ${page} de ${pages}`,width-left,height-10,{align:"right"});}
+ const pages=doc.getNumberOfPages();for(let page=1;page<=pages;page++){doc.setPage(page);header();doc.setDrawColor(217,226,237);doc.line(left,height-15,width-left,height-15);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(103,119,138);doc.text("Fortuno Hub | Uso interno da gestão",left,height-10);doc.text(`Página ${page} de ${pages}`,width-left,height-10,{align:"right"});}
  return doc;
 }

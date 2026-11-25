@@ -1,4 +1,6 @@
 import {NextResponse} from "next/server";
 import {beginReportChatConnection,listReportSpaces,reportConfigurationMember} from "@/modules/management/operator-report-google";
-export async function POST(request:Request){try{return NextResponse.json(await beginReportChatConnection(request));}catch{return NextResponse.json({error:"Não foi possível iniciar a conexão. Confira suas permissões e a configuração Google do Hub."},{status:403});}}
-export async function GET(){try{const member=await reportConfigurationMember();return NextResponse.json({spaces:await listReportSpaces(member.organizationId,member.userId)},{headers:{"Cache-Control":"private, no-store"}});}catch{return NextResponse.json({error:"Não foi possível consultar os espaços. Conecte a conta e verifique se a API Google Chat está habilitada."},{status:403});}}
+import {OperatorChatError,operatorChatErrorBody} from "@/modules/management/operator-chat-error";
+const headers={"Cache-Control":"private, no-store"};
+export async function POST(request:Request){try{return NextResponse.json(await beginReportChatConnection(request),{headers});}catch(error){return NextResponse.json(operatorChatErrorBody(error),{status:error instanceof OperatorChatError?error.status:503,headers});}}
+export async function GET(){try{const member=await reportConfigurationMember();return NextResponse.json({spaces:await listReportSpaces(member.organizationId,member.userId)},{headers});}catch(error){return NextResponse.json(operatorChatErrorBody(error),{status:error instanceof OperatorChatError?error.status:503,headers});}}
