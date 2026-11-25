@@ -51,3 +51,17 @@ it("rejects mentions in individual chats, forged participants and excessive targ
  expect((await post({action:"send",uploadId:"upload",caption:"@João",mentionTargets:Array(51).fill(targets[0])})).status).toBe(400);
  expect(m.claim).not.toHaveBeenCalled();expect(m.send).not.toHaveBeenCalled();
 });
+it("prepares and sends a selected MP4 as video with the original private attachment and caption",async()=>{
+ const file=new Blob([new Uint8Array([0,0,0,16,102,116,121,112,105,115,111,109,0,0,0,0])]),name="video.MP4";
+ expect((await post({action:"prepare",name,size:file.size})).status).toBe(200);
+ m.draft.mockResolvedValueOnce({id:"upload",createdAt:new Date(),metadata:{...meta,name,size:file.size,mimeType:"video/mp4"}});m.download.mockResolvedValueOnce({data:file});
+ expect((await post({action:"send",uploadId:"upload",caption:"Segue o vídeo"})).status).toBe(200);expect(m.send.mock.calls[0][0]).toMatchObject({type:"video",name,mimeType:"video/mp4",caption:"*Ana*\nSegue o vídeo"});expect(m.attachment.mock.calls[0][0].create).toMatchObject({name,size:file.size,mimeType:"video/mp4"});
+});
+it("sends MOV originals as documents even if a client attempts to force native video",async()=>{
+ const file=new Blob([new Uint8Array([0,0,0,16,102,116,121,112,113,116,32,32,0,0,0,0])]);m.draft.mockResolvedValueOnce({id:"upload",createdAt:new Date(),metadata:{...meta,name:"iphone.mov",size:file.size,mimeType:"video/quicktime"}});m.download.mockResolvedValueOnce({data:file});
+ expect((await post({action:"send",uploadId:"upload",asDocument:false})).status).toBe(200);expect(m.send.mock.calls[0][0]).toMatchObject({type:"document",name:"iphone.mov",mimeType:"video/quicktime"});
+});
+it("rejects corrupt videos and oversized preparations before sending or claiming an external request",async()=>{
+ expect((await post({action:"prepare",name:"video.mp4",size:26*1024*1024})).status).toBe(400);
+ const file=new Blob(["not a video"]);m.draft.mockResolvedValueOnce({id:"upload",createdAt:new Date(),metadata:{...meta,name:"video.mov",size:file.size,mimeType:"video/quicktime"}});m.download.mockResolvedValueOnce({data:file});expect((await post({action:"send",uploadId:"upload"})).status).toBe(400);expect(m.claim).not.toHaveBeenCalled();expect(m.send).not.toHaveBeenCalled();
+});

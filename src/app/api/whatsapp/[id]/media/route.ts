@@ -72,7 +72,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
     if(!claimed.count)throw new WhatsAppSendError("Este anexo já está em processamento.",409);
     try{
       await whatsappSendAccess(id);
-      const sent=await sendUazapiMedia({organizationId:member.organizationId,accountRecipient:account.recipient!,to,type:input.asDocument?"document":info.type,file:signed.data.signedUrl,name:info.name,mimeType:info.mimeType,caption:signedWhatsappText(member.user.name,wireCaption||info.name),trackingId:draft.id,replyToMessageId:replyTarget?.providerId});
+      const sent=await sendUazapiMedia({organizationId:member.organizationId,accountRecipient:account.recipient!,to,type:input.asDocument||info.videoAsDocument?"document":info.type,file:signed.data.signedUrl,name:info.name,mimeType:info.mimeType,caption:signedWhatsappText(member.user.name,wireCaption||info.name),trackingId:draft.id,replyToMessageId:replyTarget?.providerId});
       const now=new Date();
       const message=await prisma.$transaction(async tx=>{
         const result=await tx.serviceMessage.upsert({where:{ticketId_externalMessageId:{ticketId:ticket.id,externalMessageId:sent.messageId}},create:{ticketId:ticket.id,externalMessageId:sent.messageId,direction:"OUTBOUND",deliveryStatus:"accepted",statusUpdatedAt:now,fromName:member.user.name||member.user.email,fromEmail:member.user.email,toEmails:[ticket.senderEmail],textBody:input.caption||info.name,receivedAt:now,providerMetadata:{provider:"UAZAPI",connectionId:sent.connectionId,instanceId:sent.instanceId,accountPhone:sent.accountPhone,messageId:sent.providerMessageId,uploadId:draft.id,...(mentionTargets.length?{mentionTargets}:{}),...(replyTarget?{replyToMessageId:replyTarget.quote.id!}:{})}},update:{}});

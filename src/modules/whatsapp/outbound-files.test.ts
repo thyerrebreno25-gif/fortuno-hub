@@ -1,5 +1,5 @@
 import {expect,it} from "vitest";
-import {validFileContent,whatsappFileInfo,WHATSAPP_FILE_LIMIT,WHATSAPP_FILE_ACCEPT} from "./outbound-files";
+import {validFileContent,whatsappFileInfo,WHATSAPP_FILE_LIMIT,WHATSAPP_FILE_ACCEPT,reviewWhatsAppFiles} from "./outbound-files";
 import {validReactionEmoji} from "./reaction-core";
 it("accepts PDF, office files and images with canonical MIME types",()=>{
  expect(whatsappFileInfo("fatura.PDF",25)).toMatchObject({type:"document",mimeType:"application/pdf"});
@@ -38,4 +38,22 @@ it("rejects unrelated binary, PDF or plain text renamed to XML",()=>{
 it("accepts a single composed emoji or removal and rejects arbitrary text or multiple reactions",()=>{
  for(const value of ["👍","❤️","⚠️","👩🏽‍💻",""])expect(validReactionEmoji(value)).toBe(true);
  for(const value of ["approved","👍👍","x❤️",null,12])expect(validReactionEmoji(value)).toBe(false);
+});
+it("accepts common video extensions while preserving non-MP4 originals as documents",()=>{
+ expect(whatsappFileInfo("a.MP4",100)).toMatchObject({type:"video",videoAsDocument:false,mimeType:"video/mp4"});
+ for(const [ext,mime] of Object.entries({mov:"video/quicktime",m4v:"video/x-m4v",webm:"video/webm","3gp":"video/3gpp",avi:"video/x-msvideo",mkv:"video/x-matroska"})){
+  expect(WHATSAPP_FILE_ACCEPT.split(",")).toContain("."+ext);expect(whatsappFileInfo("Gravação."+ext,100)).toMatchObject({type:"video",videoAsDocument:true,mimeType:mime});
+ }
+});
+it("verifies video container signatures and rejects renamed executables or unrelated content",()=>{
+ const bytes=(s:string)=>new TextEncoder().encode(s),ftyp=bytes("\0\0\0\x18ftypisom\0\0\0\0");
+ for(const ext of ["mp4","mov","m4v","3gp"])expect(validFileContent("video."+ext,ftyp)).toBe(true);
+ expect(validFileContent("video.mov",bytes("\0\0\0\x08wide1234"))).toBe(true);expect(validFileContent("video.avi",bytes("RIFF1234AVI test"))).toBe(true);
+ const ebml=(type:string)=>new Uint8Array([0x1a,0x45,0xdf,0xa3,...bytes(type)]);expect(validFileContent("a.webm",ebml("webm"))).toBe(true);expect(validFileContent("a.mkv",ebml("matroska"))).toBe(true);expect(validFileContent("a.webm",ebml("matroska"))).toBe(false);
+ for(const ext of ["mp4","mov","m4v","3gp","webm","mkv","avi"])for(const b of [new Uint8Array(),bytes("MZexecutable"),bytes("<html>not video</html>")])expect(validFileContent("a."+ext,b)).toBe(false);
+});
+it("keeps valid videos when another selected file fails and returns visible, file-specific errors",()=>{
+ const good={name:"video.mp4",size:100},large={name:"grande.mp4",size:WHATSAPP_FILE_LIMIT+1},mov={name:"iphone.MOV",size:200};
+ const result=reviewWhatsAppFiles([good,large,{name:"programa.exe",size:20},mov]);expect(result.accepted).toEqual([{file:good,asDocument:false},{file:mov,asDocument:true}]);expect(result.errors).toHaveLength(2);expect(result.errors[0]).toContain("grande.mp4");expect(result.errors[0]).toContain("25 MB");
+ expect(reviewWhatsAppFiles([good,mov],9)).toMatchObject({accepted:[{file:good}],errors:[expect.stringContaining("10 anexos")]});
 });
