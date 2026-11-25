@@ -1,0 +1,6 @@
+// National holidays plus the organization's state/local calendar (OperationHoliday).
+// https://www.gov.br/hubrasil/pt-br/acesso-a-informacao/boletim-de-servico/sede/2026/boletim-de-servico-no-2294-20-05-2026
+const fixed=new Set(["01-01","04-21","05-01","09-07","10-12","11-02","11-15","11-20","12-25"]);
+function goodFriday(year:number){const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),n=h+l-7*m+114,date=new Date(Date.UTC(year,Math.floor(n/31)-1,n%31+1));date.setUTCDate(date.getUTCDate()-2);return date.toISOString().slice(0,10);}
+export function operationBusinessDay(day:string,holidays:Set<string>){const weekday=new Date(day+"T12:00Z").getUTCDay();return weekday!==0&&weekday!==6&&!fixed.has(day.slice(5))&&day!==goodFriday(Number(day.slice(0,4)))&&!holidays.has(day);}
+export function previousOperationBusinessDay(day:string,holidays:Set<string>){let candidate=day;for(let n=0;n<370;n++){if(operationBusinessDay(candidate,holidays))return candidate;const date=new Date(candidate+"T12:00Z");date.setUTCDate(date.getUTCDate()-1);candidate=date.toISOString().slice(0,10);}throw new Error("Calendário sem dia útil disponível.");}

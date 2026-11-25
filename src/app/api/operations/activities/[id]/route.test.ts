@@ -7,7 +7,7 @@ vi.mock("@/modules/operations/email",()=>({sendOperationCompletionEmail:m.mail})
 vi.mock("@/lib/prisma",()=>{const tx={operationActivity:{findFirst:m.find,findUnique:m.unique,update:m.update},operationChecklistItem:{update:m.checklist},operationTimeEntry:{findMany:m.entries,updateMany:m.stop},operationEvent:{create:m.event},$executeRaw:m.lock,$queryRaw:m.row};return {prisma:{...tx,$transaction:(run:(tx:unknown)=>unknown)=>run(tx)}};});
 vi.mock("@/modules/operations/disregard-server",()=>({requestDisregard:m.requestDisregard}));
 import {PATCH,DELETE} from "./route";
-const fixture=()=>({id:"task",organizationId:"org",responsibleId:"operator",status:"IN_PROGRESS",title:"Conciliação",completedAt:null,completionNote:null,checklistItems:[{id:"item",title:"Conferência",mandatory:true,completed:true,requiresAttachment:false,requiresComment:false,allowDisregard:true,disregardedAt:null}],attachments:[] as Array<{id:string;name:string;checklistItemId:string}>,process:{requiresAttachment:false,notifyClient:true},clientProcess:null,client:{name:"Cliente",operationalEmail:"client@test",operationalEmailCc:null},responsible:{name:"Isabella"},timeEntries:[{id:"entry",startedAt:new Date(Date.now()-120000),endedAt:null,seconds:0}]});
+const fixture=()=>({id:"task",organizationId:"org",responsibleId:"operator",status:"IN_PROGRESS",title:"Agenda de Pagamentos",completedAt:null,completionNote:null,checklistItems:[{id:"item",title:"Conferência",mandatory:true,completed:true,requiresAttachment:false,requiresComment:false,allowDisregard:true,disregardedAt:null}],attachments:[] as Array<{id:string;name:string;checklistItemId:string}>,process:{name:"Agenda de Pagamentos",requiresAttachment:false,notifyClient:true},clientProcess:null,client:{name:"Cliente",operationalEmail:"client@test",operationalEmailCc:null},responsible:{name:"Isabella"},timeEntries:[{id:"entry",startedAt:new Date(Date.now()-120000),endedAt:null,seconds:0}]});
 let current:ReturnType<typeof fixture>;
 const complete=()=>PATCH(new Request("https://hub.test/api/operations/activities/task",{method:"PATCH",body:JSON.stringify({action:"complete"})}),{params:Promise.resolve({id:"task"})});
 afterEach(()=>vi.useRealTimers());
@@ -36,3 +36,5 @@ it("does not let a read-only manager delete a task",async()=>{
  const response=await DELETE(new Request("https://hub.test/api/operations/activities/task",{method:"DELETE",body:JSON.stringify({reason:"Atividade duplicada"})}),{params:Promise.resolve({id:"task"})});
  expect(response.status).toBe(403);expect(m.update).not.toHaveBeenCalled();
 });
+
+it("never sends completion emails for reconciliations even when an old routine enabled them",async()=>{current.process.name="Conciliação de Recebimentos";current.title="Atividade renomeada";expect((await complete()).status).toBe(200);expect(current.status).toBe("COMPLETED");expect(m.mail).not.toHaveBeenCalled();});

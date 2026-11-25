@@ -1,3 +1,4 @@
+import {reconciliation} from "@/modules/operations/routine-policy";
 import {cancelDisregardNotices} from "@/modules/operations/disregard-cancel";
 import {editOperationActivity} from "@/modules/operations/activity-edit-server";
 import {activityEditSchema} from "@/modules/operations/edit-model";
@@ -43,7 +44,7 @@ async function finalizeActivity(id: string, member: Member, note?: string | null
   const recipients = [fresh.client.operationalEmail, ...(fresh.client.operationalEmailCc || "").split(",")]
     .map((value) => value?.trim()).filter(Boolean) as string[];
   const totalSeconds = fresh.timeEntries.reduce((sum, entry) => sum + Number(entry.seconds || 0), 0);
-  const shouldNotify = fresh.clientProcess ? fresh.clientProcess.notifyClient : fresh.process.notifyClient;
+  const shouldNotify = !reconciliation(fresh.process.name) && !reconciliation(fresh.title) && (fresh.clientProcess ? fresh.clientProcess.notifyClient : fresh.process.notifyClient);
 
   if (shouldNotify && recipients.length) {
     const mail = await sendOperationCompletionEmail({

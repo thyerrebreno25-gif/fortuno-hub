@@ -13,7 +13,7 @@ it("filters all historical spellings and returns canonical labels with a standar
   const body = await response.json();
   expect(body.teams).toEqual(["Elite do Fluxo", "Força Tática Financeira"]);
   expect(body.activities[0].team).toBe("Força Tática Financeira"); expect(body.configurations[0].team).toBe("Elite do Fluxo");
-  expect(m.activities.mock.calls[0][0].where).toMatchObject({ organizationId: "org", deletedAt: null, team: { in: ["Força Tática Financeira", "Força Tatica Financeira", "Força Tatitca Financeira"] } });
+  expect(m.activities.mock.calls[0][0].where).toMatchObject({ organizationId: "org", deletedAt: null, AND: [{OR:expect.arrayContaining([{team:{in:["Força Tática Financeira", "Força Tatica Financeira", "Força Tatitca Financeira"]}}])}] });
 });
 it("keeps operator assignment and organization boundaries while making standard teams selectable", async () => {
   m.member.mockResolvedValue({ userId: "u", organizationId: "org", role: "OPERATOR", canEdit: true });

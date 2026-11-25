@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { canonicalTeam, operationTeamOptions, teamAliases } from "./teams";
+import { canonicalTeam, operationTeamOptions, teamAliases,operationClientTeam,activityTeamWhere } from "./teams";
 import { analyticsPeriod, buildOperationsAnalytics, type AnalyticsActivity } from "./analytics";
 
 it("unifies accents, case, repeated spaces and invisible characters using the standard names", () => {
@@ -11,6 +11,7 @@ it("keeps every legacy variant available to the database filter without matching
   const variants = teamAliases("Força Tática Financeira", ["Força Tática Financeira ", "forca tatica financeira", "Elite Do Fluxo"]);
   expect(variants).toEqual(["Força Tática Financeira", "Força Tática Financeira ", "forca tatica financeira"]);
 });
+it("inherits the team registered for the client and lets filters include records without an explicit team",()=>{expect(operationClientTeam({notionSquad:"Elite Do Fluxo",serviceSquad:"SQUAD_2"})).toBe("Elite do Fluxo");expect(operationClientTeam({notionSquad:null,serviceSquad:"SQUAD_2"})).toBe("Squad 2");expect(operationClientTeam()).toBeNull();expect(activityTeamWhere("Elite do Fluxo",[])).toMatchObject({OR:expect.arrayContaining([{team:null,client:{notionSquad:{in:["Elite do Fluxo"],mode:"insensitive"}}}])});});
 it("consolidates workload and time from legacy labels without duplicating activities or losing time", () => {
   const now = new Date("2026-11-17T18:00:00Z");
   const activity = (id: string, team: string): AnalyticsActivity => ({ id, team, title: "Atividade", status: "COMPLETED", scheduledDate: now, createdAt: now, dueAt: now, completedAt: now, responsibleId: "u", responsible: { id: "u", name: "Pessoa", email: "u@test" }, client: { id: "c", name: "Cliente", cluster: "A" }, clientCluster: "A", process: { id: "p", name: "Processo" } });

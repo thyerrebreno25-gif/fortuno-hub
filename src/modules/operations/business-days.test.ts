@@ -1,0 +1,4 @@
+import {expect,it} from "vitest";
+import {operationBusinessDay,previousOperationBusinessDay} from "./business-days";
+it("anticipates weekends, national and registered local holidays, including year boundaries",()=>{for(const [source,target] of [["2026-11-29","2026-11-27"],["2026-12-25","2026-12-24"],["2027-01-01","2026-12-31"],["2026-04-03","2026-04-02"]])expect(previousOperationBusinessDay(source,new Set())).toBe(target);expect(previousOperationBusinessDay("2026-11-30",new Set(["2026-11-30","2026-11-27"]))).toBe("2026-11-26");});
+it("never returns an off-day and keeps ordinary working days unchanged",()=>{for(let i=1;i<=31;i++){const day=`2026-12-${String(i).padStart(2,"0")}`,target=previousOperationBusinessDay(day,new Set(["2026-12-24"]));expect(operationBusinessDay(target,new Set(["2026-12-24"]))).toBe(true);expect(target<=day).toBe(true);}expect(previousOperationBusinessDay("2026-11-26",new Set())).toBe("2026-11-26");});

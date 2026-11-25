@@ -1,3 +1,4 @@
+import {reconciliation,routinePriority} from "./routine-policy";
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { type Prisma } from "@/generated/prisma/client";
@@ -6,7 +7,7 @@ import { type getOperationMember } from "./auth";
 import { OperationTimerError } from "./timer-server";
 import { operationToday } from "./activity-deadline";
 import { operationTeamCatalog } from "./team-catalog";
-import { canonicalTeam } from "./teams";
+import { operationClientTeam, canonicalTeam } from "./teams";
 import { responsibleForProcess } from "./responsible";
 import { routineScheduleKey } from "./routine-schedule";
 import { routineDates, ROUTINE_EDIT_REMOVAL, untouchedRoutineActivity } from "./routine-edit-plan";
@@ -62,16 +63,16 @@ export async function editRoutine(member: Member, id: string, input: RoutineEdit
     if (activities.length > 10000) throw new OperationTimerError("Esta rotina possui muitas atividades futuras. Divida a programação em períodos menores.", 422);
     const horizon = new Date(Math.max(+new Date((input.recurrenceData.startDate>today?input.recurrenceData.startDate:today)+"T00:00:00Z") + 89 * 86400000, ...activities.map(activity => +(activity.scheduledDate || start))));
     if (+horizon - +start > 730 * 86400000) throw new OperationTimerError("O horizonte desta rotina excede dois anos. Reduza a programação antes de editar.", 422);
-    const holidays = await tx.operationHoliday.findMany({ where: { organizationId: member.organizationId, date: { gte: new Date(+start - 10 * 86400000), lte: new Date(+horizon + 10 * 86400000) } }, select: { date: true } });
+    const holidays = await tx.operationHoliday.findMany({ where: { organizationId: member.organizationId, date: { gte: new Date(+start - 370 * 86400000), lte: new Date(+horizon + 370 * 86400000) } }, select: { date: true } });
     const dates = routineDates(input, today, horizon.toISOString().slice(0, 10), new Set(holidays.map(holiday => holiday.date.toISOString().slice(0, 10))));
-    await tx.operationClientProcess.update({ where: { id }, data: { responsibleId: input.responsibleId, team, priority: input.priority, notifyClient: input.notifyClient, auditEnabled: input.auditEnabled, recurrenceType: input.recurrenceType, recurrenceData: input.recurrenceData } });
+    await tx.operationClientProcess.update({ where: { id }, data: { responsibleId: input.responsibleId, team, priority: routinePriority(configuration.process.name,input.priority) as typeof input.priority, notifyClient: !reconciliation(configuration.process.name)&&input.notifyClient, auditEnabled: input.auditEnabled, recurrenceType: input.recurrenceType, recurrenceData: {...input.recurrenceData,holidayBehavior:"PREVIOUS_BUSINESS_DAY"} } });
     let updated = 0, removed = 0, created = 0, preserved = 0;
     const existing = new Map(activities.map(activity => [activity.scheduledDate!.toISOString().slice(0, 10), activity]));
     for (const activity of activities) {
       const day = activity.scheduledDate!.toISOString().slice(0, 10), dueAt = dates.get(day);
       if (!untouchedRoutineActivity(activity) || activity.deletedAt && activity.deletionReason !== ROUTINE_EDIT_REMOVAL) { preserved++; continue; }
       if (dueAt) {
-        await tx.operationActivity.update({ where: { id: activity.id }, data: { ...(!responsibleChanged ? { responsibleId } : {}), team, priority: input.priority, dueAt, deletedAt: null, deletedById: null, deletionReason: null } }); updated++;
+        await tx.operationActivity.update({ where: { id: activity.id }, data: { ...(!responsibleChanged ? { responsibleId } : {}), team:operationClientTeam(configuration.client)||team, priority: routinePriority(configuration.process.name,input.priority) as typeof input.priority, dueAt, deletedAt: null, deletedById: null, deletionReason: null } }); updated++;
         await tx.operationEvent.create({ data: { activityId: activity.id, userId: member.userId, type: "STATUS_CHANGED", message: "Programação atualizada pela edição da rotina.", metadata: { routineId: id, action: "EDIT_ROUTINE" } } });
       } else if (!activity.deletedAt) {
         await tx.operationActivity.update({ where: { id: activity.id }, data: { deletedAt: new Date(), deletedById: member.userId, deletionReason: ROUTINE_EDIT_REMOVAL } }); removed++;
@@ -81,7 +82,7 @@ export async function editRoutine(member: Member, id: string, input: RoutineEdit
     for (const [day, dueAt] of dates) {
       if (existing.has(day)) continue;
       const scheduledDate = new Date(day + "T00:00:00Z"), process = configuration.process;
-      const data: Prisma.OperationActivityUncheckedCreateInput = { organizationId: member.organizationId, clientId: configuration.clientId, processId: configuration.processId, clientProcessId: id, responsibleId, team, scheduledDate, title: process.name, department: process.department, description: process.description, dueAt, legalDate: scheduledDate, competence: day.slice(0, 7), subjectToFine: process.subjectToFine, priority: input.priority, clientCluster: configuration.client.cluster, checklistItems: { create: process.checklistTemplates.map(item => ({ templateId: item.id, title: item.title, description: item.description, mandatory: item.mandatory, requiresComment: item.requiresComment, requiresAttachment: item.requiresAttachment, allowedFileTypes: item.allowedFileTypes, allowDisregard: item.allowDisregard, position: item.position })) }, events: { create: { userId: member.userId, type: "CREATED", message: "Atividade gerada pela edição da rotina." } } };
+      const data: Prisma.OperationActivityUncheckedCreateInput = { organizationId: member.organizationId, clientId: configuration.clientId, processId: configuration.processId, clientProcessId: id, responsibleId, team:operationClientTeam(configuration.client)||team, scheduledDate, title: process.name, department: process.department, description: process.description, dueAt, legalDate: scheduledDate, competence: day.slice(0, 7), subjectToFine: process.subjectToFine, priority: input.priority, clientCluster: configuration.client.cluster, checklistItems: { create: process.checklistTemplates.map(item => ({ templateId: item.id, title: item.title, description: item.description, mandatory: item.mandatory, requiresComment: item.requiresComment, requiresAttachment: item.requiresAttachment, allowedFileTypes: item.allowedFileTypes, allowDisregard: item.allowDisregard, position: item.position })) }, events: { create: { userId: member.userId, type: "CREATED", message: "Atividade gerada pela edição da rotina." } } };
       await tx.operationActivity.create({ data }); created++;
     }
     const transfer = responsibleChanged ? await reassignRoutine(tx, member, id, responsibleId) : { transferred: 0, pausedTimers: 0 };

@@ -20,7 +20,7 @@ it("rejects invalid dates before querying activity and time records", async () =
 it("scopes both workload and time to the organization, excludes deleted records and keeps filter semantics", async () => {
   const response = await GET(request("&clientId=c&processId=p&team=Equipe+A&cluster=B&operatorId=person"));
   expect(response.status).toBe(200);
-  expect(mocks.activities.mock.calls[0][0].where).toMatchObject({ organizationId: "org", deletedAt: null, clientId: "c", processId: "p", team: { in: ["Equipe A", "equipe a "] }, clientCluster: "B", responsibleId: "person" });
+  expect(mocks.activities.mock.calls[0][0].where).toMatchObject({ organizationId: "org", deletedAt: null, clientId: "c", processId: "p", AND:[{OR:expect.arrayContaining([{team:{in:["Equipe A","equipe a "]}}])}], clientCluster: "B", responsibleId: "person" });
   expect(mocks.entries.mock.calls[0][0].where).toMatchObject({ userId: "person", activity: { organizationId: "org", deletedAt: null, clientId: "c" } });
   expect(mocks.entries.mock.calls[0][0].where.startedAt.lt.toISOString()).toBe("2026-10-28T03:00:00.000Z");
 });

@@ -1,6 +1,6 @@
 import {buildOperatorWorkload} from "@/modules/operations/workload";
 import { operationTeamCatalog } from "@/modules/operations/team-catalog";
-import { teamAliases } from "@/modules/operations/teams";
+import { canonicalTeam,operationClientTeam,activityTeamWhere } from "@/modules/operations/teams";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -9,7 +9,7 @@ import { getOperationMember } from "@/modules/operations/auth";
 import { analyticsPeriod, brazilDay, buildOperationsAnalytics, precedingPeriod, shiftDay } from "@/modules/operations/analytics";
 export const maxDuration = 60;
 const person = { id: true, name: true, email: true } as const;
-const activitySelect = {subjectToFine:true, id: true, title: true, status: true, scheduledDate: true, createdAt: true, dueAt: true, completedAt: true, responsibleId: true, team: true, clientCluster: true, client: { select: { id: true, name: true, cluster: true } }, process: { select: { id: true, name: true } }, responsible: { select: person } } as const;
+const activitySelect = {subjectToFine:true, id: true, title: true, status: true, scheduledDate: true, createdAt: true, dueAt: true, completedAt: true, responsibleId: true, team: true, clientCluster: true, client: { select: { id: true, name: true, cluster: true,notionSquad:true,serviceSquad:true } }, process: { select: { id: true, name: true } }, responsible: { select: person } } as const;
 const filters = z.object({ from: z.string().optional(), to: z.string().optional(), clientId: z.string().max(100).optional(), operatorId: z.string().max(100).optional(), processId: z.string().max(100).optional(), team: z.string().max(200).optional(), cluster: z.enum(["A", "B", "C"]).optional() });
 export async function GET(request: Request) {
   try {
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const operatorId = ownOnly ? member.userId : params.operatorId || undefined;
     const catalog = await operationTeamCatalog(member.organizationId);
     const base: Prisma.OperationActivityWhereInput = { organizationId: member.organizationId, deletedAt: null,
-      ...(params.clientId ? { clientId: params.clientId } : {}), ...(params.processId ? { processId: params.processId } : {}), ...(params.team ? { team: { in: teamAliases(params.team, catalog.values) } } : {}), ...(params.cluster ? { clientCluster: params.cluster } : {}) };
+      ...(params.clientId ? { clientId: params.clientId } : {}), ...(params.processId ? { processId: params.processId } : {}), ...(params.team ? { AND:[activityTeamWhere(params.team,catalog.values)] } : {}), ...(params.cluster ? { clientCluster: params.cluster } : {}) };
     const previous = precedingPeriod(period), rangeStart = new Date(`${previous.from}T00:00:00Z`), rangeEnd = new Date(`${shiftDay(period.to, 1)}T00:00:00Z`);
     const [activities, entries, clients, members, processes] = await Promise.all([
       prisma.operationActivity.findMany({ where: { ...base, ...(operatorId ? { responsibleId: operatorId } : {}), OR: [{ scheduledDate: { gte: rangeStart, lt: rangeEnd } }, { scheduledDate: null, createdAt: { gte: previous.start, lt: period.end } }] }, select: activitySelect, orderBy: { id: "asc" }, take: 20001 }),
@@ -35,8 +35,9 @@ export async function GET(request: Request) {
       prisma.operationProcess.findMany({ where: { organizationId: member.organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]);
     if (activities.length > 20000 || entries.length > 100000) return NextResponse.json({ error: "O período possui muitos registros. Reduza as datas ou filtre um cliente ou operador para consultar os totais completos." }, { status: 422 });
-    const analytics = buildOperationsAnalytics(activities, entries, period, new Date(), operatorId);
-    const result = { ...analytics,workload:buildOperatorWorkload(activities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: catalog.options }, ownOnly, preferenceScope:member.organizationId+":"+member.userId, currentUserId: member.userId };
+    const normalizedActivities=activities.map(a=>({...a,team:canonicalTeam(a.team)||operationClientTeam(a.client)})),normalizedEntries=entries.map(e=>({...e,activity:{...e.activity,team:canonicalTeam(e.activity.team)||operationClientTeam(e.activity.client)}}));
+    const analytics = buildOperationsAnalytics(normalizedActivities, normalizedEntries, period, new Date(), operatorId);
+    const result = { ...analytics,workload:buildOperatorWorkload(normalizedActivities,members.map(m=>m.user).filter(m=>!operatorId||m.id===operatorId),period,new Date()), options: { clients, operators: members.map((item) => ({ id: item.user.id, name: item.user.name || item.user.email })), processes, teams: catalog.options }, ownOnly, preferenceScope:member.organizationId+":"+member.userId, currentUserId: member.userId };
     if (Buffer.byteLength(JSON.stringify(result), "utf8") > 4000000) return NextResponse.json({ error: "O detalhamento deste período é muito extenso. Filtre por cliente, operador ou um período menor para obter o relatório completo." }, { status: 422 });
     return NextResponse.json(result);
   } catch (error) {

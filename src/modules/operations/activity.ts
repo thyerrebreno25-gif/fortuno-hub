@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
 export const activityInclude = {
-  client: { select: { id: true, name: true, operationalEmail: true, operationalEmailCc: true, cluster: true } },
+  client: { select: { id: true, name: true, operationalEmail: true, operationalEmailCc: true, cluster: true, notionSquad:true,serviceSquad:true } },
   process: { select: { id: true, name: true, department: true, requiresAttachment: true, notifyClient: true } },
   clientProcess: { select: { id: true, team: true, recurrenceType: true, recurrenceData: true, notifyClient: true, priority: true, auditEnabled: true } },
   responsible: { select: { id: true, name: true, email: true } },

@@ -14,7 +14,7 @@ type Input={clientId:string;columnId:string;routines:{id:string;updatedAt:string
 /** Keep the other weekdays of a combined agenda when a single column is unchecked. */
 export function remainingRoutineSchedule(type:string,data:Record<string,unknown>,weekday?:number):Record<string,unknown>|null{
  if(!weekday)return null;
- const days=type==="DAILY"&&data.dailyMode==="BUSINESS_DAYS"?[1,2,3,4,5]:Array.isArray(data.weekdays)?data.weekdays as number[]:[];
+ const days=type==="DAILY"&&data.dailyMode==="BUSINESS_DAYS"?[1,2,3,4,5]:type==="DAILY"&&data.dailyMode!=="CUSTOM_DAYS"?[0,1,2,3,4,5,6]:Array.isArray(data.weekdays)?data.weekdays as number[]:[];
  const remaining=days.filter(day=>day!==weekday);if(!remaining.length)return null;
  return {...data,weekdays:remaining,...(type==="DAILY"?{dailyMode:"CUSTOM_DAYS"}:{})};
 }
@@ -32,9 +32,9 @@ export async function uncheckRoutineCell(member:Member,input:Input){
   await tx.$queryRaw(Prisma.sql`SELECT id FROM "OperationActivity" WHERE "organizationId"=${member.organizationId} AND "clientProcessId" IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`);
   const activities=await tx.operationActivity.findMany({where:{organizationId:member.organizationId,clientProcessId:{in:ids},deletedAt:null,scheduledDate:{gte:tomorrow}},include:{timeEntries:{select:{id:true}},comments:{select:{id:true}},attachments:{select:{id:true}},checklistItems:{select:{completed:true,disregardedAt:true,comment:true}}},orderBy:{id:"asc"},take:20001});
   if(activities.length>20000)throw new OperationTimerError("Há muitas atividades futuras nesta célula. Reduza a programação antes de desmarcar.",422);
-  const horizon=new Date(Math.max(+tomorrow,...activities.map(a=>+(a.scheduledDate||tomorrow))));
+  const horizon=new Date(Math.max(+tomorrow,...activities.map(a=>+(a.scheduledDate||tomorrow)))+10*86400000);
   if(+horizon-+tomorrow>730*86400000)throw new OperationTimerError("A programação excede dois anos. Reduza o período antes de desmarcar.",422);
-  const holidays=column.weekday?await tx.operationHoliday.findMany({where:{organizationId:member.organizationId,date:{gte:new Date(+tomorrow-10*86400000),lte:new Date(+horizon+10*86400000)}},select:{date:true}}):[];
+  const holidays=column.weekday?await tx.operationHoliday.findMany({where:{organizationId:member.organizationId,date:{gte:new Date(+tomorrow-370*86400000),lte:new Date(+horizon+370*86400000)}},select:{date:true}}):[];
   const holidaySet=new Set(holidays.map(h=>h.date.toISOString().slice(0,10))),remove:string[]=[],before:Prisma.InputJsonValue[]=[];let preserved=0;
   for(const configuration of selected){
    const data=(configuration.recurrenceData||{}) as Record<string,unknown>,remaining=remainingRoutineSchedule(configuration.recurrenceType,data,column.weekday);

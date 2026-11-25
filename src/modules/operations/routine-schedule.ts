@@ -9,7 +9,7 @@ export function routineScheduleKey(type: string, value: unknown) {
   return JSON.stringify({type, startDate:data.startDate || null, endDate:data.endDate || null,
     dueTime:data.dueTime || "18:00", interval:type === "CUSTOM" ? 1 : Number(data.interval || 1),
     dailyMode:mode, weekdays:type === "WEEKLY" || type === "CUSTOM" || mode === "CUSTOM_DAYS" ? days("weekdays") : [],
-    monthDays:type === "MONTHLY" || type === "CUSTOM" ? monthDays : [], holidayBehavior:data.holidayBehavior || "KEEP"});
+    monthDays:type === "MONTHLY" || type === "CUSTOM" ? monthDays : [], holidayBehavior:"PREVIOUS_BUSINESS_DAY"});
 }
 
 export function routineScheduleLabel(type: string, value: unknown) {

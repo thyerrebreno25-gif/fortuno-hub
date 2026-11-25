@@ -1,4 +1,7 @@
-import { canonicalTeam } from "./teams";
+import {previousOperationBusinessDay} from "./business-days";
+import {operationToday} from "./activity-deadline";
+import {routinePriority} from "./routine-policy";
+import { operationClientTeam, canonicalTeam } from "./teams";
 import { responsibleForProcess } from "./responsible";
 import { prisma } from "@/lib/prisma";
 import { activityInclude, createEvent } from "@/modules/operations/activity";
@@ -15,23 +18,19 @@ type RecurrenceData = {
 };
 
 const DAY = 86_400_000;
-export const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-export const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-const parseDate = (value?: string | null) => value ? new Date(`${value}T12:00:00`) : null;
-const addDays = (date: Date, days: number) => { const d=startOfDay(date); d.setDate(d.getDate()+days); return d; };
-const isWeekend = (date: Date) => date.getDay()===0 || date.getDay()===6;
+export const startOfDay = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+export const dateKey = (date: Date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}-${String(date.getUTCDate()).padStart(2,"0")}`;
+const parseDate = (value?: string | null) => value ? new Date(`${value}T12:00:00Z`) : null;
+const addDays = (date: Date, days: number) => { const d=startOfDay(date); d.setUTCDate(d.getUTCDate()+days); return d; };
+const isWeekend = (date: Date) => date.getUTCDay()===0 || date.getUTCDay()===6;
 
-function withDueTime(date: Date, dueTime?: string) {
-  const result=startOfDay(date); const [h,m]=String(dueTime||"18:00").split(":").map(Number);
-  result.setHours(Number.isFinite(h)?h:18,Number.isFinite(m)?m:0,0,0); return result;
-}
+function withDueTime(date:Date,dueTime?:string){return new Date(dateKey(date)+"T"+(dueTime||"18:00")+":00-03:00");}
 
 async function holidaySet(organizationId: string, from: Date, to: Date) {
-  const rows=await prisma.operationHoliday.findMany({where:{organizationId,date:{gte:startOfDay(from),lte:startOfDay(to)}},select:{date:true}});
+  const rows=await prisma.operationHoliday.findMany({where:{organizationId,date:{gte:addDays(from,-370),lte:addDays(to,370)}},select:{date:true}});
   return new Set(rows.map(r=>dateKey(r.date)));
 }
 
-function isBusinessDay(date: Date, holidays: Set<string>) { return !isWeekend(date) && !holidays.has(dateKey(date)); }
 
 export function matchesRecurrence(type: string, data: RecurrenceData | null | undefined, date: Date) {
   const cfg=data||{}; const current=startOfDay(date); const start=parseDate(cfg.startDate)||current; const end=parseDate(cfg.endDate);
@@ -40,35 +39,27 @@ export function matchesRecurrence(type: string, data: RecurrenceData | null | un
   if(type==="DAILY") {
     const mode=cfg.dailyMode||"ALL_DAYS";
     if(mode==="BUSINESS_DAYS" && isWeekend(current)) return false;
-    if(mode==="CUSTOM_DAYS" && !(cfg.weekdays||[]).includes(current.getDay())) return false;
+    if(mode==="CUSTOM_DAYS" && !(cfg.weekdays||[]).includes(current.getUTCDay())) return false;
     const days=Math.floor((current.getTime()-startOfDay(start).getTime())/DAY);
     return days%Math.max(1,Number(cfg.interval||1))===0;
   }
   if(type==="WEEKLY") {
-    const weekdays=cfg.weekdays?.length?cfg.weekdays:[start.getDay()];
-    if(!weekdays.includes(current.getDay())) return false;
+    const weekdays=cfg.weekdays?.length?cfg.weekdays:[start.getUTCDay()];
+    if(!weekdays.includes(current.getUTCDay())) return false;
     const weeks=Math.floor((current.getTime()-startOfDay(start).getTime())/(DAY*7));
     return weeks%Math.max(1,Number(cfg.interval||1))===0;
   }
   if(type==="MONTHLY") {
-    const days=cfg.monthDays?.length?cfg.monthDays:[start.getDate()];
-    if(!days.includes(current.getDate())) return false;
-    const months=(current.getFullYear()-start.getFullYear())*12+current.getMonth()-start.getMonth();
+    const days=cfg.monthDays?.length?cfg.monthDays:[start.getUTCDate()];
+    if(!days.includes(current.getUTCDate())) return false;
+    const months=(current.getUTCFullYear()-start.getUTCFullYear())*12+current.getUTCMonth()-start.getUTCMonth();
     return months%Math.max(1,Number(cfg.interval||1))===0;
   }
-  if(type==="CUSTOM") return (!(cfg.weekdays||[]).length||(cfg.weekdays||[]).includes(current.getDay()))&&(!(cfg.monthDays||[]).length||(cfg.monthDays||[]).includes(current.getDate()));
+  if(type==="CUSTOM") return (!(cfg.weekdays||[]).length||(cfg.weekdays||[]).includes(current.getUTCDay()))&&(!(cfg.monthDays||[]).length||(cfg.monthDays||[]).includes(current.getUTCDate()));
   return false;
 }
 
-async function adjustedDate(original: Date, organizationId: string, cfg: RecurrenceData, holidays: Set<string>) {
-  const behavior=cfg.holidayBehavior||"KEEP";
-  if(!holidays.has(dateKey(original)) || behavior==="KEEP") return original;
-  if(behavior==="SKIP") return null;
-  const direction=behavior==="PREVIOUS_BUSINESS_DAY"?-1:1;
-  let candidate=original;
-  for(let i=0;i<10;i++){ candidate=addDays(candidate,direction); if(isBusinessDay(candidate,holidays)) return candidate; }
-  return null;
-}
+async function adjustedDate(original:Date,_organizationId:string,_cfg:RecurrenceData,holidays:Set<string>){const day=previousOperationBusinessDay(dateKey(original),holidays);return new Date(day+"T00:00:00Z");}
 
 export async function generateActivityForConfiguration(configurationId: string, sourceDate: Date, actorUserId?: string, preloadedHolidays?: Set<string>) {
   const configuration=await prisma.operationClientProcess.findUnique({where:{id:configurationId},include:{client:true,process:{include:{checklistTemplates:{orderBy:{position:"asc"}}}},responsible:true}});
@@ -77,7 +68,7 @@ export async function generateActivityForConfiguration(configurationId: string, 
   const cfg=(configuration.recurrenceData||{}) as RecurrenceData;
   const holidays=preloadedHolidays||await holidaySet(configuration.client.organizationId,addDays(sourceDate,-10),addDays(sourceDate,10));
   const scheduledDate=await adjustedDate(startOfDay(sourceDate),configuration.client.organizationId,cfg,holidays);
-  if(!scheduledDate) return null;
+  if(!scheduledDate||dateKey(scheduledDate)<operationToday()||(cfg.startDate&&dateKey(scheduledDate)<cfg.startDate)) return null;
   const existing=await prisma.operationActivity.findUnique({where:{clientProcessId_scheduledDate:{clientProcessId:configuration.id,scheduledDate}}});
   if(existing) return prisma.operationActivity.findUnique({where:{id:existing.id},include:activityInclude});
 
@@ -87,7 +78,7 @@ export async function generateActivityForConfiguration(configurationId: string, 
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"operations-reset-"+configuration.client.organizationId}))`;
     const live=await tx.operationClientProcess.findFirst({where:{id:configuration.id,active:true,client:{organizationId:configuration.client.organizationId}},select:{id:true,updatedAt:true}});
     if(!live||(configuration.updatedAt&&live.updatedAt?.getTime()!==configuration.updatedAt.getTime()))return null;
-    return tx.operationActivity.create({data:{organizationId:configuration.client.organizationId,clientId:configuration.clientId,processId:configuration.processId,clientProcessId:configuration.id,responsibleId:configuration.responsibleId || responsibleForProcess(configuration.client, configuration.process),team:canonicalTeam(configuration.team),scheduledDate,title:configuration.process.name,department:configuration.process.department,description:configuration.process.description,dueAt:withDueTime(scheduledDate,cfg.dueTime),legalDate:scheduledDate,competence:`${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth()+1).padStart(2,"0")}`,subjectToFine:configuration.process.subjectToFine,priority:configuration.priority,clientCluster:configuration.client.cluster,checklistItems:{create:configuration.process.checklistTemplates.map(i=>({templateId:i.id,title:i.title,description:i.description,mandatory:i.mandatory,requiresComment:i.requiresComment,requiresAttachment:i.requiresAttachment,allowedFileTypes:i.allowedFileTypes,allowDisregard:i.allowDisregard,position:i.position}))}},include:activityInclude});
+    return tx.operationActivity.create({data:{organizationId:configuration.client.organizationId,clientId:configuration.clientId,processId:configuration.processId,clientProcessId:configuration.id,responsibleId:configuration.responsibleId || responsibleForProcess(configuration.client, configuration.process),team:operationClientTeam(configuration.client)||canonicalTeam(configuration.team),scheduledDate,title:configuration.process.name,department:configuration.process.department,description:configuration.process.description,dueAt:withDueTime(scheduledDate,cfg.dueTime),legalDate:scheduledDate,competence:`${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth()+1).padStart(2,"0")}`,subjectToFine:configuration.process.subjectToFine,priority:routinePriority(configuration.process.name,configuration.priority) as typeof configuration.priority,clientCluster:configuration.client.cluster,checklistItems:{create:configuration.process.checklistTemplates.map(i=>({templateId:i.id,title:i.title,description:i.description,mandatory:i.mandatory,requiresComment:i.requiresComment,requiresAttachment:i.requiresAttachment,allowedFileTypes:i.allowedFileTypes,allowDisregard:i.allowDisregard,position:i.position}))}},include:activityInclude});
    },{maxWait:10000,timeout:60000});
    if(!activity)return null;
   } catch(error) {

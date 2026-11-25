@@ -1,5 +1,8 @@
+import type {Prisma} from "@/generated/prisma/client";
 /** The same identity is used when saving, filtering and grouping legacy team names. */
 export const STANDARD_OPERATION_TEAMS = ["Força Tática Financeira", "Elite do Fluxo"];
+export function operationClientTeam(client?:{notionSquad?:string|null;serviceSquad?:string|null}|null){return canonicalTeam(client?.notionSquad)||(client?.serviceSquad==="SQUAD_1"?"Squad 1":client?.serviceSquad==="SQUAD_2"?"Squad 2":null);}
+export function activityTeamWhere(selected:string,values:Array<string|null|undefined>):Prisma.OperationActivityWhereInput{const aliases=teamAliases(selected,values),squad=canonicalTeam(selected)==="Squad 1"?"SQUAD_1":canonicalTeam(selected)==="Squad 2"?"SQUAD_2":null;return {OR:[{team:{in:aliases}},{team:null,client:{notionSquad:{in:aliases,mode:"insensitive"}}},...(squad?[{team:null,client:{serviceSquad:squad as "SQUAD_1"|"SQUAD_2",OR:[{notionSquad:null},{notionSquad:""}]}}]:[])]};}
 export function teamKey(value: string | null | undefined) {
   const key = (value || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
   // Known historical spelling in the organization's routine records.

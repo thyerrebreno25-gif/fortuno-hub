@@ -1,3 +1,4 @@
+import {previousOperationBusinessDay} from "./business-days";
 import { matchesRecurrence } from "./recurrence";
 import type { RoutineEdit } from "./edit-model";
 export const ROUTINE_EDIT_REMOVAL = "Programação da rotina alterada";
@@ -9,18 +10,9 @@ export function routineDates(input: RoutineEdit, from: string, to: string, holid
   const result = new Map<string, Date>(), dayKey = (date: Date) => date.toISOString().slice(0, 10);
   for (const date = new Date(from + "T12:00:00Z"); dayKey(date) <= to; date.setUTCDate(date.getUTCDate() + 1)) {
     if (!matchesRecurrence(input.recurrenceType, input.recurrenceData, date)) continue;
-    const scheduled = new Date(date), behavior = input.recurrenceData.holidayBehavior;
-    if (holidays.has(dayKey(date)) && behavior !== "KEEP") {
-      if (behavior === "SKIP") continue;
-      let found = false;
-      for (let day = 0; day < 10; day++) {
-        scheduled.setUTCDate(scheduled.getUTCDate() + (behavior === "PREVIOUS_BUSINESS_DAY" ? -1 : 1));
-        if (![0, 6].includes(scheduled.getUTCDay()) && !holidays.has(dayKey(scheduled))) { found = true; break; }
-      }
-      if (!found) continue;
-    }
+    const scheduled = new Date(previousOperationBusinessDay(dayKey(date),holidays)+"T12:00:00Z");
     const key = dayKey(scheduled);
-    if (key >= from) result.set(key, new Date(key + "T" + input.recurrenceData.dueTime + ":00-03:00"));
+    if (key >= from && key >= input.recurrenceData.startDate) result.set(key, new Date(key + "T" + input.recurrenceData.dueTime + ":00-03:00"));
   }
   return result;
 }

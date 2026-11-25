@@ -1,5 +1,6 @@
+import {reconciliation,routinePriority} from "@/modules/operations/routine-policy";
 import { operationTeamCatalog } from "@/modules/operations/team-catalog";
-import { canonicalTeam } from "@/modules/operations/teams";
+import { operationClientTeam, canonicalTeam } from "@/modules/operations/teams";
 import { routineScheduleKey } from "@/modules/operations/routine-schedule";
 import { brazilDay } from "@/modules/operations/analytics";
 import { NextResponse } from "next/server";
@@ -60,9 +61,9 @@ export async function POST(request: Request) {
       const configuration = await tx.operationClientProcess.create({data:{
         clientId,processId,
         responsibleId:typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
-        team,
-        recurrenceType:type as never,recurrenceData:(body.recurrenceData || {}) as never,
-        notifyClient:body.notifyClient !== false,priority:(typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
+        team:team||operationClientTeam(client),
+        recurrenceType:type as never,recurrenceData:({...(body.recurrenceData as Record<string,unknown> || {}),holidayBehavior:"PREVIOUS_BUSINESS_DAY"}) as never,
+        notifyClient:!reconciliation(process.name)&&body.notifyClient !== false,priority:routinePriority(process.name,typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
         auditEnabled:body.auditEnabled === true,auditRecurrenceData:(body.auditRecurrenceData || null) as never,active:true,
       },include:{client:true,process:true,responsible:true}});
       return {configuration,skipped:false};
