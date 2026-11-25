@@ -5,26 +5,30 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
 import { routineScheduleKey } from "@/modules/operations/routine-schedule";
+import {resetPreservation} from "@/modules/operations/reset-preservation";
 export const maxDuration = 120;
 const pending = (organizationId: string): Prisma.OperationActivityWhereInput => ({ organizationId, deletedAt: null, status: { in: ["OPEN", "IN_PROGRESS", "PAUSED", "BLOCKED"] } });
 const saved = z.object({ configurations: z.array(z.string()), activities: z.array(z.object({ id: z.string(), clientProcessId: z.string().nullable() })) });
-async function manager() { const member = await getOperationMember(); return member && canManageOperations(member.role) ? member : null; }
+async function manager() { const member = await getOperationMember(); return member && canManageOperations(member.role) && member.canEdit!==false ? member : null; }
 export async function GET() {
   const member = await manager();
   if (!member) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  const [activities, allActivities, configurations, last] = await Promise.all([
+  const preservation=resetPreservation(member.organizationId);
+  const [activities, allActivities, configurations, last,protectedActivities,removableActivities] = await Promise.all([
     prisma.operationActivity.count({ where: pending(member.organizationId) }),
     prisma.operationActivity.count({ where: { organizationId: member.organizationId, deletedAt: null } }),
     prisma.operationClientProcess.count({ where: { active: true, client: { organizationId: member.organizationId } } }),
     prisma.auditLog.findFirst({ where: { entity: "OperationsReset", entityId: member.organizationId, action: "OPERATIONS_RESET" }, orderBy: { createdAt: "desc" }, select: { id: true } }),
+    prisma.operationActivity.count({where:preservation.protectedWhere}),
+    prisma.operationActivity.count({where:preservation.removableWhere}),
   ]);
   const restored = last ? await prisma.auditLog.findFirst({ where: { entity: "OperationsReset", entityId: last.id, action: "OPERATIONS_RESET_RESTORED" }, select: { id: true } }) : null;
-  return NextResponse.json({ activities, allActivities, configurations, restoreId: last && !restored ? last.id : null });
+  return NextResponse.json({ activities, allActivities, configurations,protectedActivities,removableActivities,preserveDay:preservation.day, restoreId: last && !restored ? last.id : null },{headers:{"Cache-Control":"private, no-store"}});
 }
 export async function POST(request: Request) {
   const member = await manager();
   if (!member) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  const input = z.object({ action: z.enum(["archive", "restore"]), scope:z.enum(["pending","all"]).default("pending"), restoreId: z.string().max(100).nullish() }).safeParse(await request.json().catch(() => null));
+  const input = z.object({ action: z.enum(["archive", "restore"]), scope:z.enum(["pending","all","except_today"]).default("pending"), preserveDay:z.string().optional(),restoreId: z.string().max(100).nullish() }).strict().safeParse(await request.json().catch(() => null));
   if (!input.success) return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -49,23 +53,28 @@ export async function POST(request: Request) {
         return { activities: snapshot.data.activities.length, configurations: configurations.length, restored: true };
       }
       const now = new Date(), id = randomUUID();
-      const scope:Prisma.OperationActivityWhereInput=input.data.scope==="all"?{organizationId:member.organizationId,deletedAt:null}:pending(member.organizationId);
+      const preservation=resetPreservation(member.organizationId,now),preserving=input.data.scope==="except_today";
+      if(preserving&&input.data.preserveDay!==preservation.day)throw new Error("DAY_CHANGED");
+      // Timer starts lock the same activity rows. A running task cannot slip into the removal set.
+      if(preserving)await tx.$queryRaw`SELECT id FROM "OperationActivity" WHERE "organizationId"=${member.organizationId} AND "deletedAt" IS NULL ORDER BY id FOR UPDATE`;
+      const scope:Prisma.OperationActivityWhereInput=preserving?preservation.removableWhere:input.data.scope==="all"?{organizationId:member.organizationId,deletedAt:null}:pending(member.organizationId);
       const [activities, configurations] = await Promise.all([
         tx.operationActivity.findMany({ where: scope, select: { id: true, clientProcessId: true }, take: 10001 }),
         tx.operationClientProcess.findMany({ where: { active: true, client: { organizationId: member.organizationId } }, select: { id: true }, take: 10001 }),
       ]);
       if (activities.length > 10000 || configurations.length > 10000) throw new Error("LIMIT");
-      if (!activities.length && !configurations.length) return { activities: 0, configurations: 0 };
+      const protectedActivities=preserving?await tx.operationActivity.count({where:preservation.protectedWhere}):undefined;
+      if (!activities.length && !configurations.length) return { activities: 0, configurations: 0,...(preserving?{preserveDay:preservation.day,protectedActivities}: {}) };
       const ids = activities.map((activity) => activity.id);
       const timers = await tx.operationTimeEntry.findMany({ where: { activityId: { in: ids }, endedAt: null }, select: { id: true, startedAt: true } });
       for (const timer of timers) await tx.operationTimeEntry.update({ where: { id: timer.id }, data: { endedAt: now, seconds: Math.max(0, Math.floor((+now - +timer.startedAt) / 1000)) } });
       await tx.operationActivity.updateMany({ where: { ...scope, id: { in: ids } }, data: { deletedAt: now, deletedById: member.userId, deletionReason: `Limpeza de rotinas: ${id}` } });
       await tx.operationClientProcess.updateMany({ where: { id: { in: configurations.map((c) => c.id) }, client: { organizationId: member.organizationId } }, data: { active: false } });
-      await tx.auditLog.create({ data: { id, userId: member.userId, entity: "OperationsReset", entityId: member.organizationId, action: "OPERATIONS_RESET", beforeData: { configurations: configurations.map((c) => c.id), activities }, afterData: { activities: activities.length, configurations: configurations.length, scope:input.data.scope } } });
-      return { activities: activities.length, configurations: configurations.length };
+      await tx.auditLog.create({ data: { id, userId: member.userId, entity: "OperationsReset", entityId: member.organizationId, action: "OPERATIONS_RESET", beforeData: { configurations: configurations.map((c) => c.id), activities }, afterData: { activities: activities.length, configurations: configurations.length, scope:input.data.scope,...(preserving?{preserveDay:preservation.day,protectedActivities}: {}) } } });
+      return { activities: activities.length, configurations: configurations.length,...(preserving?{preserveDay:preservation.day,protectedActivities}: {}) };
     }, { timeout: 60000 });
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error && error.message === "LIMIT" ? "Há registros demais para uma única limpeza." : "Não foi possível concluir. Os dados foram preservados; a restauração pode conflitar com novas rotinas." }, { status: 409 });
+    return NextResponse.json({ error: error instanceof Error && error.message === "DAY_CHANGED"?"O dia mudou desde a prévia. Confira novamente antes de limpar.":error instanceof Error && error.message === "LIMIT" ? "Há registros demais para uma única limpeza." : "Não foi possível concluir. Os dados foram preservados; a restauração pode conflitar com novas rotinas." }, { status: 409 });
   }
 }

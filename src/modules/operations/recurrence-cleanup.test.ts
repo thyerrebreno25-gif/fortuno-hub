@@ -1,0 +1,8 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({configuration:vi.fn(),live:vi.fn(),existing:vi.fn(),create:vi.fn(),lock:vi.fn(),event:vi.fn()}));
+vi.mock("@/lib/prisma",()=>({prisma:{operationClientProcess:{findUnique:m.configuration},operationActivity:{findUnique:m.existing},$transaction:async(fn:(tx:unknown)=>unknown)=>fn({$executeRaw:m.lock,operationClientProcess:{findFirst:m.live},operationActivity:{create:m.create}})}}));
+vi.mock("./activity",()=>({activityInclude:{},createEvent:m.event}));
+import {generateActivityForConfiguration} from "./recurrence";
+beforeEach(()=>{vi.resetAllMocks();m.configuration.mockResolvedValue({id:"routine",active:true,recurrenceData:{},clientId:"client",processId:"process",responsibleId:"operator",client:{organizationId:"org",cluster:"A"},process:{name:"Tarefa",checklistTemplates:[]}});m.existing.mockResolvedValue(null);m.create.mockResolvedValue({id:"new"});});
+it("does not create tomorrow's task from a configuration loaded before cleanup deactivated it",async()=>{m.live.mockResolvedValue(null);expect(await generateActivityForConfiguration("routine",new Date("2026-11-26T12:00Z"),"master",new Set())).toBeNull();expect(m.lock.mock.calls[0][1]).toBe("operations-reset-org");expect(m.create).not.toHaveBeenCalled();expect(m.event).not.toHaveBeenCalled();});
+it("continues normal generation for a configuration still active under the same organization lock",async()=>{m.live.mockResolvedValue({id:"routine"});expect(await generateActivityForConfiguration("routine",new Date("2026-11-26T12:00Z"),"master",new Set())).toEqual({id:"new"});expect(m.live.mock.calls[0][0].where).toEqual({id:"routine",active:true,client:{organizationId:"org"}});expect(m.event).toHaveBeenCalledOnce();});
