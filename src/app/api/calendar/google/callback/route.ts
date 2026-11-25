@@ -1,3 +1,4 @@
+import {completeReportChatConnection} from "@/modules/management/operator-report-google";
 import { ensurePersonalMeetingEvents } from "@/modules/meetings/service";
 import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
@@ -7,6 +8,7 @@ import { decryptIntegrationSecret, encryptIntegrationSecret } from "@/modules/pu
 import { meetingAccess } from "@/modules/meetings/auth";
 import { calendarScope, redirectUri, syncCalendarEvents } from "@/modules/meetings/google-calendar";
 export async function GET(request: Request) {
+  if(new URL(request.url).searchParams.get("state")?.startsWith("report-chat."))return completeReportChatConnection(request);
   const target = new URL("/agenda", request.url);
   const jar = await cookies();
   const cookie = jar.get("fortuno-calendar-oauth")?.value;
