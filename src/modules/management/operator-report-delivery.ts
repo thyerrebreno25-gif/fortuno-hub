@@ -19,7 +19,7 @@ function attachmentRef(value:unknown):AttachmentRef{
 export async function reportConfig(organizationId:string,userId:string){
  const [config]=await prisma.$queryRaw<Config[]>(Prisma.sql`SELECT "organizationId",revision,"configuredById","destinationName","spaceName",enabled,"updatedAt" FROM "OperatorReportConfig" WHERE "organizationId"=${organizationId}`);
  const [last]=await prisma.$queryRaw<Array<{day:string;status:string;sentAt:Date|null;lastError:string|null}>>(Prisma.sql`SELECT day,status,"sentAt","lastError" FROM "OperatorReportDelivery" WHERE "organizationId"=${organizationId} ORDER BY day DESC LIMIT 1`);
- return {configured:Boolean(config?.spaceName),destinationName:config?.destinationName||"",spaceName:config?.spaceName||null,enabled:config?.enabled||false,updatedAt:config?.updatedAt||null,last:last||null,google:await reportGoogleStatus(organizationId,userId)};
+ return {configured:Boolean(config?.spaceName),revision:config?.revision||null,destinationName:config?.destinationName||"",spaceName:config?.spaceName||null,enabled:config?.enabled||false,updatedAt:config?.updatedAt||null,last:last||null,google:await reportGoogleStatus(organizationId,userId)};
 }
 export async function saveReportConfig(input:{organizationId:string;userId:string;spaceName:string;enabled:boolean}){
  const token=await reportChatAccessToken(input.organizationId,input.userId),space=await readReportSpace(token,input.spaceName),revision=randomUUID();

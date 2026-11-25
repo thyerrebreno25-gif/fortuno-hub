@@ -20,4 +20,10 @@ The PDF distinguishes daily recorded production from pending work at generation 
 
 Existing webhook-only configurations are disabled by the additive migration until the Google connection/space is selected. Disabling delivery needs no working Google connection. No real messages are sent by the test suite.
 
+## Manual delivery
+
+Master/Admin with Management view/manage/export can use **Enviar agora** to send the selected past day's greeting and PDF to the saved space, at any hour. The saved destination is displayed next to the report; unsaved destination edits are not used. This works with automatic sending disabled and never consumes or changes the scheduled 08:00 delivery.
+
+`POST /api/management/operator-report/send` accepts only `day`, a UUIDv4 `requestId`, and the saved configuration `revision`. It derives organization, requester and sender from authenticated server state, requires JSON from the same origin, and checks both requester/sender permissions. A changed destination requires refreshing before sending. The separate private `OperatorReportManualDelivery` table freezes each request's snapshot/PDF/attachment, serializes active manual sends per organization and leases attempts. Retrying an uncertain request reuses its Google message request ID and attachment; confirmed requests return success without sending again. A new deliberate click after confirmation creates a new independent delivery. Manual failures require clicking again (maximum eight attempts); the scheduled worker does not pick them up. No message contents, access tokens, PDF bytes or attachment references appear in the API response/audit.
+
 Sources: https://developers.google.com/workspace/chat/upload-media-attachments and https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create

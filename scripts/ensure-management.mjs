@@ -46,6 +46,7 @@ if (!connectionString) {
     await client.query(await readFile(new URL("../prisma/migrations/20261124010000_payment_alert_cleanup/migration.sql", import.meta.url), "utf8"));
     await client.query(await readFile(new URL("../prisma/migrations/20261124020000_daily_operator_reports/migration.sql", import.meta.url), "utf8"));
     await client.query(await readFile(new URL("../prisma/migrations/20261125000000_operator_report_pdf_chat/migration.sql", import.meta.url), "utf8"));
+    await client.query(await readFile(new URL("../prisma/migrations/20261125010000_operator_report_manual/migration.sql", import.meta.url), "utf8"));
     await client.query("COMMIT");
     console.log("Management storage ready.");
     try { await setupManagementSchedule(client); }
