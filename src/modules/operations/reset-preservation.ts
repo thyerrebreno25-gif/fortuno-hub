@@ -16,5 +16,14 @@ export function resetPreservation(organizationId:string,now=new Date()){
   {OR:[{scheduledDate:{not:null}},{dueAt:{not:null}},{createdAt:{lt:period.start}},{createdAt:{gte:period.end}}]},
   {timeEntries:{none:{endedAt:null}}},
  ]};
- return {day,protectedWhere,removableWhere};
+ // Keep past/current work, completed history and any task with recorded time.
+ const futureWhere:Prisma.OperationActivityWhereInput={...base,
+  status:{in:["OPEN","PAUSED","BLOCKED"]},
+  AND:[
+   {OR:[{scheduledDate:{gte:end}},{scheduledDate:null,dueAt:{gte:period.end}}]},
+   {OR:[{dueAt:null},{dueAt:{gte:period.end}}]},
+   {timeEntries:{none:{}}},
+  ],
+ };
+ return {day,protectedWhere,removableWhere,futureWhere};
 }

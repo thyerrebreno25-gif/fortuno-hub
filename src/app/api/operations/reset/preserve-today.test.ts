@@ -18,6 +18,17 @@ it("rejects a stale day, unauthorized profiles and read-only managers before mut
  expect(m.deactivate).not.toHaveBeenCalled();
 });
 it("keeps the existing restore path available and limits oversized cleanups before writes",async()=>{
- m.activities.mockResolvedValue(Array.from({length:10001},(_,id)=>({id:String(id),clientProcessId:null})));expect((await post({action:"archive",scope:"except_today",preserveDay:"2026-11-25"})).status).toBe(409);expect(m.archive).not.toHaveBeenCalled();
+ m.activities.mockResolvedValue(Array.from({length:20001},(_,id)=>({id:String(id),clientProcessId:null})));expect((await post({action:"archive",scope:"except_today",preserveDay:"2026-11-25"})).status).toBe(409);expect(m.archive).not.toHaveBeenCalled();
  m.activities.mockResolvedValue([]);m.auditFind.mockResolvedValueOnce({id:"undo",beforeData:{configurations:[],activities:[{id:"old",clientProcessId:null}]}}).mockResolvedValueOnce(null);m.configs.mockResolvedValue([]);expect((await post({action:"restore",restoreId:"undo"})).status).toBe(200);expect(m.archive.mock.calls.at(-1)![0].data).toMatchObject({deletedAt:null,deletionReason:null});
+});
+it("cleans future tasks with past/current work excluded and retains the full undo snapshot",async()=>{
+ const rows=Array.from({length:10857},(_,id)=>({id:String(id),clientProcessId:"routine"}));m.activities.mockResolvedValue(rows);
+ const response=await post({action:"archive",scope:"future_only",preserveDay:"2026-11-25"});expect(response.status).toBe(200);expect(await response.json()).toMatchObject({activities:10857});
+ expect(m.activities.mock.calls[0][0].where).toEqual(resetPreservation("org").futureWhere);expect(m.archive).toHaveBeenCalledTimes(22);expect(m.archive.mock.calls.flatMap(([arg])=>arg.where.id.in)).toEqual(rows.map(r=>r.id));expect(m.auditCreate.mock.calls[0][0].data.beforeData.activities).toHaveLength(10857);
+});
+it("restores large snapshots in batches, retaining each original routine and checking every row",async()=>{
+ const rows=Array.from({length:10857},(_,id)=>({id:String(id),clientProcessId:id<10000?"routine":null}));
+ m.auditFind.mockResolvedValueOnce({id:"undo",beforeData:{configurations:[],activities:rows}}).mockResolvedValueOnce(null);m.configs.mockResolvedValue([]);m.archive.mockImplementation(async(arg)=>({count:arg.where.id.in.length}));
+ expect((await post({action:"restore",restoreId:"undo"})).status).toBe(200);expect(m.archive).toHaveBeenCalledTimes(22);expect(m.archive.mock.calls.flatMap(([arg])=>arg.where.id.in)).toEqual(rows.map(r=>r.id));expect(m.archive.mock.calls.at(-1)![0].data.clientProcessId).toBeNull();
+ m.auditFind.mockResolvedValueOnce({id:"undo",beforeData:{configurations:[],activities:rows}}).mockResolvedValueOnce(null);m.archive.mockResolvedValueOnce({count:499});expect((await post({action:"restore",restoreId:"undo"})).status).toBe(409);
 });

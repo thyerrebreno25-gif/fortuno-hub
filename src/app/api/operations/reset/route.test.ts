@@ -42,7 +42,7 @@ it("restores the saved activities and recurrences without changing completed his
   m.configurations.findMany.mockResolvedValueOnce([{ id: "routine", active: false }]).mockResolvedValueOnce([]);
   m.activities.updateMany.mockResolvedValueOnce({ count: 1 });
   expect((await POST(request("restore"))).status).toBe(200);
-  expect(m.activities.updateMany.mock.calls[0][0]).toMatchObject({ where: { organizationId: "org", id: "task", deletionReason: "Limpeza de rotinas: batch" }, data: { deletedAt: null, clientProcessId: "routine" } });
+  expect(m.activities.updateMany.mock.calls[0][0]).toMatchObject({ where: { organizationId: "org", id: {in:["task"]}, deletionReason: "Limpeza de rotinas: batch" }, data: { deletedAt: null, clientProcessId: "routine" } });
   expect(m.configurations.updateMany.mock.calls[0][0].data).toEqual({ active: true });
 });
 it("accepts a first cleanup when the interface has no previous restore id", async () => {
