@@ -14,7 +14,7 @@ import {buildOperatorDayReport} from "./operator-report-server";
 type Member=Pick<AssistantMember,"id"|"organizationId"|"userId"|"role">;
 type Config={revision:string;configuredById:string;destinationName:string;spaceName:string|null};
 type Delivery={requestId:string;requestedById:string;day:string;configRevision:string;destinationName:string;status:string;attempts:number;snapshot:OperatorDayReport;messages:string[];pdfBase64:string|null;attachmentRef:Parameters<typeof postReportPdf>[3]|null;sentAt:Date|null};
-const failure=()=>new OperatorChatError("REPORT_DELIVERY_UNCONFIRMED","Não foi possível confirmar o envio do PDF. Clique em Enviar agora para retomar a mesma tentativa com segurança.",503);
+const failure=(phase="envio")=>new OperatorChatError("REPORT_DELIVERY_UNCONFIRMED",`Falha na etapa de ${phase} do relatório. Clique em Enviar agora para retomar a mesma tentativa com segurança.`,503);
 const allowedReport=(permissions:Awaited<ReturnType<typeof getRolePermissions>>,report:OperatorDayReport)=>
  permissions.MANAGEMENT.canView&&permissions.MANAGEMENT.canManage&&permissions.MANAGEMENT.canExport&&
  (!report.available.whatsapp||permissions.WHATSAPP.canView)&&(!report.available.operations||permissions.OPERATIONS.canView)&&(!report.available.daily||permissions.DAILY_ACTIVITIES.canView);
@@ -57,24 +57,26 @@ export async function sendManualOperatorReport(member:Member,input:{day:string;r
  const liveLease=Prisma.sql`"organizationId"=${member.organizationId} AND "requestId"=${input.requestId}::uuid AND "leaseId"=${leaseId}::uuid`;
  const allowed=()=>prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" d SET "leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes' WHERE ${liveLease}
   AND EXISTS(SELECT 1 FROM "OperatorReportConfig" c WHERE c."organizationId"=d."organizationId" AND c.revision=d."configRevision")`);
+ let phase="autorização Google";
  try{
   if(!allowedReport(permissions,delivery.snapshot)||!allowedReport(senderPermissions,delivery.snapshot))throw new OperatorChatError("REPORT_PERMISSION_CHANGED","As permissões atuais não permitem enviar este relatório.",403);
   const token=await reportChatAccessToken(member.organizationId,config.configuredById);
-  if(!delivery.pdfBase64){delivery.pdfBase64=Buffer.from(createOperatorReportPdf(delivery.snapshot).output("arraybuffer")).toString("base64");
-   if(!await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET "pdfBase64"=${delivery.pdfBase64} WHERE ${liveLease}`))throw failure();}
-  if(!delivery.attachmentRef){if(!await allowed())throw failure();delivery.attachmentRef=await uploadReportPdf(token,config.spaceName,input.day,Buffer.from(delivery.pdfBase64,"base64"));
-   if(!await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET "attachmentRef"=${JSON.stringify(delivery.attachmentRef)}::jsonb WHERE ${liveLease}`))throw failure();}
-  if(!await allowed())throw failure();
+  if(!delivery.pdfBase64){phase="geração do PDF";delivery.pdfBase64=Buffer.from(createOperatorReportPdf(delivery.snapshot).output("arraybuffer")).toString("base64");
+   phase="registro do PDF";if(!await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET "pdfBase64"=${delivery.pdfBase64} WHERE ${liveLease}`))throw failure(phase);}
+  if(!delivery.attachmentRef){phase="upload do PDF";if(!await allowed())throw failure(phase);delivery.attachmentRef=await uploadReportPdf(token,config.spaceName,input.day,Buffer.from(delivery.pdfBase64,"base64"));
+   phase="registro do anexo";if(!await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET "attachmentRef"=${JSON.stringify(delivery.attachmentRef)}::jsonb WHERE ${liveLease}`))throw failure(phase);}
+  phase="publicação no Google Chat";if(!await allowed())throw failure(phase);
   await postReportPdf(token,config.spaceName,delivery.messages[0],delivery.attachmentRef,chatRequestId(member.organizationId,"manual:"+input.requestId));
-  const sentAt=await prisma.$transaction(async tx=>{
+  phase="confirmação da entrega";const sentAt=await prisma.$transaction(async tx=>{
    const [sent]=await tx.$queryRaw<Array<{sentAt:Date}>>(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET status='SENT',"sentAt"=CURRENT_TIMESTAMP,"lastError"=NULL,"leaseId"=NULL,"leaseUntil"=NULL WHERE ${liveLease} RETURNING "sentAt"`);
-   if(!sent)throw failure();
+   if(!sent)throw failure(phase);
    await tx.auditLog.create({data:{userId:member.userId,action:"OPERATOR_REPORT_SENT_MANUALLY",entity:"Organization",entityId:member.organizationId,afterData:{requestId:input.requestId,day:input.day,destinationName:config.destinationName,spaceName:config.spaceName,format:"PDF"}}});
    return sent.sentAt;
   });
   return result(false,sentAt);
  }catch(error){
-  await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET status='FAILED',"lastError"='Entrega manual do PDF não confirmada.',"leaseId"=NULL,"leaseUntil"=NULL WHERE ${liveLease}`).catch(()=>undefined);
-  throw error instanceof OperatorChatError?error:failure();
+  const safeError=error instanceof OperatorChatError?error:failure(phase);
+  await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET status='FAILED',"lastError"=${safeError.message},"leaseId"=NULL,"leaseUntil"=NULL WHERE ${liveLease}`).catch(()=>undefined);
+  throw safeError;
  }
 }

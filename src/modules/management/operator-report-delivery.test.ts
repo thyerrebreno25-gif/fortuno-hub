@@ -41,3 +41,16 @@ it("revalidates current export/module permissions and stops before sending when 
  m.query.mockResolvedValueOnce([config]).mockResolvedValueOnce([{status:"FAILED",configRevision:"revision",snapshot}]);m.permissions.mockResolvedValueOnce({MANAGEMENT:{canView:true,canManage:true,canExport:true},WHATSAPP:{canView:false},OPERATIONS:{canView:true},DAILY_ACTIVITIES:{canView:true}});await processDailyOperatorReports(new Date("2026-11-24T11:01Z"));expect(m.fetch).not.toHaveBeenCalled();
  m.query.mockResolvedValueOnce([config]).mockResolvedValueOnce([]).mockResolvedValueOnce([delivery()]);m.execute.mockImplementation(async(query:{sql:string})=>query.sql.includes('SET "attachmentRef"')?0:1);await processDailyOperatorReports(new Date("2026-11-24T11:02Z"));expect(m.fetch).toHaveBeenCalledOnce();expect(String(m.fetch.mock.calls[0][0])).toContain("attachments:upload");expect(m.execute.mock.calls.at(-1)![0].sql).toContain("status='FAILED'");
 });
+it("preserves the safe Chat app setup diagnosis for upload and message failures",async()=>{
+ for(const stage of ["upload","message"]){
+  m.fetch.mockResolvedValueOnce(new Response(JSON.stringify({error:{message:"Google Chat app not found. private-token"}}),{status:404}));
+  const result=stage==="upload"?uploadReportPdf("token",config.spaceName!,"2026-11-23",pdfBytes):postReportPdf("token",config.spaceName!,"Bom dia",ref,"id");
+  await expect(result).rejects.toMatchObject({code:"CHAT_APP_NOT_CONFIGURED",status:409});
+ }
+});
+it("does not expose provider payloads for malformed uploads, denied scopes, and failed publications",async()=>{
+ m.fetch.mockResolvedValueOnce(new Response(JSON.stringify({error:{message:"private-token",details:[{reason:"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}),{status:403}));await expect(uploadReportPdf("token",config.spaceName!,"2026-11-23",pdfBytes)).rejects.toMatchObject({code:"CHAT_SCOPE_MISSING"});
+ m.fetch.mockResolvedValueOnce(new Response("private-provider-body",{status:400}));await expect(uploadReportPdf("token",config.spaceName!,"2026-11-23",pdfBytes)).rejects.toMatchObject({code:"REPORT_UPLOAD_REJECTED",message:expect.not.stringContaining("private-")});
+ m.fetch.mockResolvedValueOnce(new Response("private-provider-body",{status:200}));await expect(uploadReportPdf("token",config.spaceName!,"2026-11-23",pdfBytes)).rejects.toMatchObject({code:"REPORT_UPLOAD_UNCONFIRMED"});
+ m.fetch.mockResolvedValueOnce(new Response("private-provider-body",{status:500}));await expect(postReportPdf("token",config.spaceName!,"Bom dia",ref,"id")).rejects.toMatchObject({code:"REPORT_MESSAGE_REJECTED",message:expect.not.stringContaining("private-")});
+});

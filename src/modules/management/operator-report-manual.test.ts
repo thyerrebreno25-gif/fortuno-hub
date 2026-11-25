@@ -41,7 +41,7 @@ it("reuses frozen bytes, attachment and Google id after an uncertain delivery, n
  for(const fn of [m.build,m.pdf,m.upload])expect(fn).not.toHaveBeenCalled();
 });
 it("never sends a greeting without its PDF when upload or attachment persistence fails",async()=>{
- prepare();m.upload.mockRejectedValueOnce(new Error("upload unavailable"));await expect(sendManualOperatorReport(member,input,now)).rejects.toMatchObject({code:"REPORT_DELIVERY_UNCONFIRMED"});expect(m.post).not.toHaveBeenCalled();
+ prepare();m.upload.mockRejectedValueOnce(new Error("upload unavailable private-token"));await expect(sendManualOperatorReport(member,input,now)).rejects.toMatchObject({code:"REPORT_DELIVERY_UNCONFIRMED",message:expect.stringContaining("upload do PDF")});expect(m.post).not.toHaveBeenCalled();expect(m.execute.mock.calls.at(-1)![0].values.join(" ")).not.toContain("private-token");
  m.query.mockReset();prepare();m.execute.mockImplementation(async(q:{sql:string})=>q.sql.includes('SET "attachmentRef"')?0:1);await expect(sendManualOperatorReport(member,input,now)).rejects.toThrow();expect(m.post).not.toHaveBeenCalled();
 });
 it("rejects a changed destination, forged request reuse, removed sender, invalid day and unauthorized roles",async()=>{

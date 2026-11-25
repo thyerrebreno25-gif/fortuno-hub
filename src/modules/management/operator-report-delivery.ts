@@ -8,6 +8,7 @@ import {buildOperatorDayReport} from "./operator-report-server";
 import {reportChatMessages,type OperatorDayReport} from "./operator-report-model";
 import {createOperatorReportPdf,operatorPdfName} from "./operator-report-pdf";
 import {readReportSpace,reportChatAccessToken,reportGoogleStatus,validReportSpace} from "./operator-report-google";
+import {googleChatFailure,OperatorChatError} from "./operator-chat-error";
 type Config={organizationId:string;revision:string;configuredById:string;destinationName:string;spaceName:string|null;enabled:boolean;updatedAt:Date};
 type AttachmentRef={resourceName?:string;attachmentUploadToken?:string};
 function attachmentRef(value:unknown):AttachmentRef{
@@ -15,6 +16,15 @@ function attachmentRef(value:unknown):AttachmentRef{
  const ref=value as AttachmentRef;
  if(!(typeof ref.resourceName==="string"&&ref.resourceName.length>0||typeof ref.attachmentUploadToken==="string"&&ref.attachmentUploadToken.length>0))throw new Error("O Google Chat não confirmou o anexo.");
  return {...(typeof ref.resourceName==="string"?{resourceName:ref.resourceName}:{}),...(typeof ref.attachmentUploadToken==="string"?{attachmentUploadToken:ref.attachmentUploadToken}:{})};
+}
+async function transferResponse(response:Response,stage:"upload"|"message"){
+ let body:unknown;try{body=await response.json();}catch{body=null;}
+ if(!response.ok){
+  const error=googleChatFailure(response.status,body),prefix=stage==="upload"?"O Google recusou o upload do PDF. ":"O Google recusou a publicação da mensagem. ";
+  if(error.code!=="CHAT_UNAVAILABLE")throw new OperatorChatError(error.code,prefix+error.message,error.status,error.actionUrl);
+  throw new OperatorChatError(stage==="upload"?"REPORT_UPLOAD_REJECTED":"REPORT_MESSAGE_REJECTED",prefix+(response.status===400?"Confira a configuração do aplicativo Chat e o formato do anexo.":"Tente novamente para retomar a mesma tentativa."),503);
+ }
+ return body as {attachmentDataRef?:unknown;name?:unknown}|null;
 }
 export async function reportConfig(organizationId:string,userId:string){
  const [config]=await prisma.$queryRaw<Config[]>(Prisma.sql`SELECT "organizationId",revision,"configuredById","destinationName","spaceName",enabled,"updatedAt" FROM "OperatorReportConfig" WHERE "organizationId"=${organizationId}`);
@@ -38,12 +48,12 @@ export async function uploadReportPdf(token:string,spaceName:string,day:string,p
  const boundary="fortuno_"+randomUUID(),name=operatorPdfName(day);
  const body=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({filename:name})}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`),Buffer.from(pdf),Buffer.from(`\r\n--${boundary}--\r\n`)]);
  const response=await fetch(`https://chat.googleapis.com/upload/v1/${spaceName}/attachments:upload?uploadType=multipart`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":`multipart/related; boundary=${boundary}`},body:new Uint8Array(body),redirect:"error",signal:AbortSignal.timeout(20000)});
- if(!response.ok)throw new Error("Não foi possível carregar o PDF no Google Chat.");const result=await response.json();return attachmentRef(result.attachmentDataRef);
+ const result=await transferResponse(response,"upload");try{return attachmentRef(result?.attachmentDataRef);}catch{throw new OperatorChatError("REPORT_UPLOAD_UNCONFIRMED","O Google respondeu ao upload, mas não confirmou o anexo do PDF. A mensagem não foi enviada.",503);}
 }
 export async function postReportPdf(token:string,spaceName:string,text:string,ref:AttachmentRef,requestId:string){
  if(!validReportSpace(spaceName))throw new Error("Espaço inválido.");const url=new URL(`https://chat.googleapis.com/v1/${spaceName}/messages`);url.searchParams.set("requestId",requestId);
  const response=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({text,attachment:[{attachmentDataRef:attachmentRef(ref)}]}),redirect:"error",signal:AbortSignal.timeout(20000)});
- if(!response.ok)throw new Error("Não foi possível confirmar a entrega do PDF.");const result=await response.json();if(typeof result.name!=="string"||!result.name.startsWith(spaceName+"/messages/"))throw new Error("O Google Chat não confirmou a mensagem.");
+ const result=await transferResponse(response,"message");if(typeof result?.name!=="string"||!result.name.startsWith(spaceName+"/messages/"))throw new OperatorChatError("REPORT_MESSAGE_UNCONFIRMED","O Google Chat não confirmou a mensagem. Retome a mesma tentativa para verificar sem duplicar.",503);
 }
 export async function processDailyOperatorReports(now=new Date()){
  const today=brazilDay(now),cutoff=new Date(`${today}T08:00:00-03:00`);if(now<cutoff)return;const day=shiftDay(today,-1);
@@ -68,5 +78,5 @@ export async function processDailyOperatorReports(now=new Date()){
   if(!await allowed())throw new Error("Configuração alterada.");
   await postReportPdf(token,config.spaceName,delivery.messages[0],delivery.attachmentRef,chatRequestId(config.organizationId,day));
   await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET status='SENT',"sentParts"=1,"sentAt"=CURRENT_TIMESTAMP,"lastError"=NULL,"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);
- }catch{if(leaseId)await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET status='FAILED',"lastError"='Entrega do PDF não confirmada. Confira a conexão Google e o espaço de gestores.',"retryAt"=CURRENT_TIMESTAMP+INTERVAL '5 minutes',"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`).catch(()=>undefined);}}
+ }catch(error){const message=error instanceof OperatorChatError?error.message:"Entrega do PDF não confirmada. Confira a conexão Google e o espaço de gestores.";if(leaseId)await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET status='FAILED',"lastError"=${message},"retryAt"=CURRENT_TIMESTAMP+INTERVAL '5 minutes',"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`).catch(()=>undefined);}}
 }

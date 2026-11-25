@@ -24,7 +24,7 @@ export function OperatorReportPage(){
   sending.current=true;setSendingManual(true);setBusy(true);setError("");setSaved("");setChatAction(null);
   try{
    const response=await fetch("/api/management/operator-report/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({day,revision,requestId:manualAttempt.current.requestId})});
-   const body=await response.json();if(!response.ok)throw new Error(body.error||"Não foi possível confirmar o envio.");
+   const body=await response.json();if(!response.ok){if(typeof body.actionUrl==="string"&&body.actionUrl.startsWith("https://console.cloud.google.com/apis/api/chat.googleapis.com/overview"))setChatAction(body.actionUrl);throw new Error(body.error||"Não foi possível confirmar o envio.");}
    manualAttempt.current=null;
    setSaved(`PDF de ${body.day.split("-").reverse().join("/")} ${body.alreadySent?"já entregue":"enviado"} para ${body.destinationName}. O envio automático das 08h continua com a configuração atual.`);
   }catch(e){setError(e instanceof Error?e.message:"Não foi possível confirmar o envio. Clique novamente para retomar a mesma tentativa.");}
