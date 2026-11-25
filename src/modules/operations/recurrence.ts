@@ -73,6 +73,7 @@ async function adjustedDate(original: Date, organizationId: string, cfg: Recurre
 export async function generateActivityForConfiguration(configurationId: string, sourceDate: Date, actorUserId?: string, preloadedHolidays?: Set<string>) {
   const configuration=await prisma.operationClientProcess.findUnique({where:{id:configurationId},include:{client:true,process:{include:{checklistTemplates:{orderBy:{position:"asc"}}}},responsible:true}});
   if(!configuration||!configuration.active) return null;
+  if(!matchesRecurrence(configuration.recurrenceType,configuration.recurrenceData as RecurrenceData,sourceDate))return null;
   const cfg=(configuration.recurrenceData||{}) as RecurrenceData;
   const holidays=preloadedHolidays||await holidaySet(configuration.client.organizationId,addDays(sourceDate,-10),addDays(sourceDate,10));
   const scheduledDate=await adjustedDate(startOfDay(sourceDate),configuration.client.organizationId,cfg,holidays);
@@ -84,8 +85,8 @@ export async function generateActivityForConfiguration(configurationId: string, 
   try {
     activity=await prisma.$transaction(async tx=>{
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"operations-reset-"+configuration.client.organizationId}))`;
-    const live=await tx.operationClientProcess.findFirst({where:{id:configuration.id,active:true,client:{organizationId:configuration.client.organizationId}},select:{id:true}});
-    if(!live)return null;
+    const live=await tx.operationClientProcess.findFirst({where:{id:configuration.id,active:true,client:{organizationId:configuration.client.organizationId}},select:{id:true,updatedAt:true}});
+    if(!live||(configuration.updatedAt&&live.updatedAt?.getTime()!==configuration.updatedAt.getTime()))return null;
     return tx.operationActivity.create({data:{organizationId:configuration.client.organizationId,clientId:configuration.clientId,processId:configuration.processId,clientProcessId:configuration.id,responsibleId:configuration.responsibleId || responsibleForProcess(configuration.client, configuration.process),team:canonicalTeam(configuration.team),scheduledDate,title:configuration.process.name,department:configuration.process.department,description:configuration.process.description,dueAt:withDueTime(scheduledDate,cfg.dueTime),legalDate:scheduledDate,competence:`${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth()+1).padStart(2,"0")}`,subjectToFine:configuration.process.subjectToFine,priority:configuration.priority,clientCluster:configuration.client.cluster,checklistItems:{create:configuration.process.checklistTemplates.map(i=>({templateId:i.id,title:i.title,description:i.description,mandatory:i.mandatory,requiresComment:i.requiresComment,requiresAttachment:i.requiresAttachment,allowedFileTypes:i.allowedFileTypes,allowDisregard:i.allowDisregard,position:i.position}))}},include:activityInclude});
    },{maxWait:10000,timeout:60000});
    if(!activity)return null;

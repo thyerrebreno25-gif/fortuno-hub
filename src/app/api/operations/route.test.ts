@@ -20,5 +20,7 @@ it("keeps operator assignment and organization boundaries while making standard 
   const body = await (await GET(new Request("https://hub.test/api/operations?responsibleId=someone-else"))).json();
   expect(m.activities.mock.calls[0][0].where).toMatchObject({ responsibleId: "u", organizationId: "org", deletedAt: null });
   expect(body.configurations).toEqual([]); expect(body.teams).toHaveLength(2);
+  expect(body.routineClients).toEqual([]);expect(m.clients).toHaveBeenCalledTimes(1);
   expect(m.configurations).not.toHaveBeenCalled();
 });
+it("includes every registered client for the routines matrix without changing activity client selection",async()=>{m.clients.mockResolvedValueOnce([{id:"active",active:true}]).mockResolvedValueOnce([{id:"active",active:true},{id:"inactive",active:false}]);const body=await(await GET(new Request("https://hub.test/api/operations"))).json();expect(body.clients).toHaveLength(1);expect(body.routineClients).toHaveLength(2);expect(m.clients.mock.calls[1][0].where).toEqual({organizationId:"org"});expect(m.clients.mock.calls[0][0].where).toEqual({organizationId:"org",active:true});});

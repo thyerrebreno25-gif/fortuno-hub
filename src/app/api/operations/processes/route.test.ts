@@ -1,0 +1,10 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({member:vi.fn(),create:vi.fn()}));
+vi.mock("@/modules/operations/auth",()=>({getOperationMember:m.member,canManageOperations:(role:string)=>["MASTER","ADMIN","MANAGER"].includes(role)}));
+vi.mock("@/lib/prisma",()=>({prisma:{operationProcess:{create:m.create}}}));
+import {POST} from "./route";
+const request=(data:unknown={name:"Conferência extra",department:"Rotinas configuradas",notifyClient:false,checklist:[{title:"Conferir dados"}]})=>new Request("https://hub/api/operations/processes",{method:"POST",body:JSON.stringify(data)});
+beforeEach(()=>{vi.resetAllMocks();m.member.mockResolvedValue({role:"MASTER",organizationId:"org",canEdit:true});m.create.mockResolvedValue({id:"section"});});
+it("creates a persistent section with its checklist only in the authenticated organization",async()=>{expect((await POST(request())).status).toBe(201);expect(m.create.mock.calls[0][0].data).toMatchObject({organizationId:"org",normalizedName:"CONFERENCIA EXTRA",department:"Rotinas configuradas",notifyClient:false,checklistTemplates:{create:[{title:"Conferir dados",position:0,mandatory:true}]}});});
+it("blocks operators, read-only managers and unauthenticated users before writes",async()=>{for(const member of [null,{role:"OPERATOR",canEdit:true},{role:"MANAGER",canEdit:false}]){m.member.mockResolvedValue(member);expect((await POST(request())).status).toBe(member?403:401);}expect(m.create).not.toHaveBeenCalled();});
+it("rejects invalid names and priority without writing and identifies duplicate names",async()=>{for(const data of [{name:"x"},{name:"x".repeat(121)},{name:"Seção",defaultPriority:"OTHER"}])expect((await POST(request(data))).status).toBe(400);expect(m.create).not.toHaveBeenCalled();m.create.mockRejectedValue({code:"P2002"});expect((await POST(request())).status).toBe(409);});
