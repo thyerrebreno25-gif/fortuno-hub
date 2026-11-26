@@ -5,7 +5,7 @@ import {prisma} from "@/lib/prisma";
 import {brazilDay,shiftDay} from "@/modules/operations/analytics";
 import {getRolePermissions} from "@/modules/permissions/permissions";
 import {buildOperatorDayReport} from "./operator-report-server";
-import {reportChatMessages,type OperatorDayReport} from "./operator-report-model";
+import {reportChatMessages,type OperatorDayReport,type ReportKind} from "./operator-report-model";
 import {createOperatorReportPdf,operatorPdfName} from "./operator-report-pdf";
 import {readReportSpace,reportChatAccessToken,reportGoogleStatus,validReportSpace} from "./operator-report-google";
 import {googleChatFailure,OperatorChatError} from "./operator-chat-error";
@@ -43,9 +43,9 @@ export async function disableReportConfig(organizationId:string,userId:string){
  await prisma.$transaction(async tx=>{await tx.$executeRaw(Prisma.sql`UPDATE "OperatorReportConfig" SET enabled=false,revision=${randomUUID()},"updatedAt"=CURRENT_TIMESTAMP WHERE "organizationId"=${organizationId}`);await tx.auditLog.create({data:{userId,action:"OPERATOR_REPORT_DISABLED",entity:"Organization",entityId:organizationId}});});return reportConfig(organizationId,userId);
 }
 export function chatRequestId(organizationId:string,day:string,part=0){const hex=createHash("sha256").update(`fortuno-operator-pdf:${organizationId}:${day}:${part}`).digest("hex");return `${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;}
-export async function uploadReportPdf(token:string,spaceName:string,day:string,pdf:Uint8Array){
+export async function uploadReportPdf(token:string,spaceName:string,day:string,pdf:Uint8Array,kind:ReportKind="GENERAL"){
  if(!validReportSpace(spaceName)||pdf.length>20*1024*1024||Buffer.from(pdf.subarray(0,5)).toString()!=="%PDF-")throw new Error("PDF ou espaço inválido.");
- const boundary="fortuno_"+randomUUID(),name=operatorPdfName(day);
+ const boundary="fortuno_"+randomUUID(),name=operatorPdfName(day,kind);
  const body=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({filename:name})}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`),Buffer.from(pdf),Buffer.from(`\r\n--${boundary}--\r\n`)]);
  const response=await fetch(`https://chat.googleapis.com/upload/v1/${spaceName}/attachments:upload?uploadType=multipart`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":`multipart/related; boundary=${boundary}`},body:new Uint8Array(body),redirect:"error",signal:AbortSignal.timeout(20000)});
  const result=await transferResponse(response,"upload");try{return attachmentRef(result?.attachmentDataRef);}catch{throw new OperatorChatError("REPORT_UPLOAD_UNCONFIRMED","O Google respondeu ao upload, mas não confirmou o anexo do PDF. A mensagem não foi enviada.",503);}
@@ -55,28 +55,32 @@ export async function postReportPdf(token:string,spaceName:string,text:string,re
  const response=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({text,attachment:[{attachmentDataRef:attachmentRef(ref)}]}),redirect:"error",signal:AbortSignal.timeout(20000)});
  const result=await transferResponse(response,"message");if(typeof result?.name!=="string"||!result.name.startsWith(spaceName+"/messages/"))throw new OperatorChatError("REPORT_MESSAGE_UNCONFIRMED","O Google Chat não confirmou a mensagem. Retome a mesma tentativa para verificar sem duplicar.",503);
 }
-export async function processDailyOperatorReports(now=new Date()){
- const today=brazilDay(now),cutoff=new Date(`${today}T08:00:00-03:00`);if(now<cutoff)return;const day=shiftDay(today,-1);
+export function reportSchedule(now:Date,kind:ReportKind="GENERAL"){
+ const today=brazilDay(now),weekday=new Date(today+"T12:00:00Z").getUTCDay(),cutoff=new Date(`${today}T${kind==="SERVICE"?"13":"08"}:00:00-03:00`);
+ return weekday===0||weekday===6||now<cutoff?null:{day:kind==="SERVICE"?today:shiftDay(today,-1),cutoff};
+}
+export async function processDailyOperatorReports(now=new Date(),kind:ReportKind="GENERAL"){
+ const schedule=reportSchedule(now,kind);if(!schedule)return;const {day,cutoff}=schedule,table=Prisma.raw(kind==="SERVICE"?'"OperatorServiceReportDelivery"':'"OperatorReportDelivery"');
  const configs=await prisma.$queryRaw<Config[]>(Prisma.sql`SELECT "organizationId",revision,"configuredById","destinationName","spaceName",enabled,"updatedAt" FROM "OperatorReportConfig" WHERE enabled=true AND "spaceName" IS NOT NULL AND "updatedAt"<=${cutoff} ORDER BY "organizationId" LIMIT 50`);
  for(const config of configs){let leaseId:string|undefined;try{
   if(!config.spaceName||!validReportSpace(config.spaceName))continue;
   const member=await prisma.organizationMember.findFirst({where:{organizationId:config.organizationId,userId:config.configuredById,role:{in:["MASTER","ADMIN"]}},select:{id:true,userId:true,organizationId:true,role:true}});if(!member)continue;
   const permission=await getRolePermissions(member.organizationId,member.role);if(!permission.MANAGEMENT.canView||!permission.MANAGEMENT.canManage||!permission.MANAGEMENT.canExport)continue;
-  const [existing]=await prisma.$queryRaw<Array<{status:string;configRevision:string;snapshot:OperatorDayReport}>>(Prisma.sql`SELECT status,"configRevision",snapshot FROM "OperatorReportDelivery" WHERE "organizationId"=${config.organizationId} AND day=${day}`);
+  const [existing]=await prisma.$queryRaw<Array<{status:string;configRevision:string;snapshot:OperatorDayReport}>>(Prisma.sql`SELECT status,"configRevision",snapshot FROM ${table} WHERE "organizationId"=${config.organizationId} AND day=${day}`);
   if(existing?.status==="SENT"||existing&&existing.configRevision!==config.revision)continue;
   if(existing&&((existing.snapshot.available.whatsapp&&!permission.WHATSAPP.canView)||(existing.snapshot.available.operations&&!permission.OPERATIONS.canView)||(existing.snapshot.available.daily&&!permission.DAILY_ACTIVITIES.canView)))continue;
-  if(!existing){const snapshot=await buildOperatorDayReport(member,day,now),messages=reportChatMessages(snapshot);await prisma.$executeRaw(Prisma.sql`INSERT INTO "OperatorReportDelivery" ("organizationId",day,"configRevision",snapshot,messages) VALUES (${config.organizationId},${day},${config.revision},${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(messages)}::jsonb) ON CONFLICT ("organizationId",day) DO NOTHING`);}
+  if(!existing){const snapshot=await buildOperatorDayReport(member,day,now,kind),messages=reportChatMessages(snapshot);await prisma.$executeRaw(Prisma.sql`INSERT INTO ${table} ("organizationId",day,"configRevision",snapshot,messages) VALUES (${config.organizationId},${day},${config.revision},${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(messages)}::jsonb) ON CONFLICT ("organizationId",day) DO NOTHING`);}
   leaseId=randomUUID();
-  const [delivery]=await prisma.$queryRaw<Array<{messages:string[];snapshot:OperatorDayReport;pdfBase64:string|null;attachmentRef:AttachmentRef|null;sentParts:number}>>(Prisma.sql`UPDATE "OperatorReportDelivery" d SET status='SENDING',"leaseId"=${leaseId},"leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes',attempts=attempts+1
+  const [delivery]=await prisma.$queryRaw<Array<{messages:string[];snapshot:OperatorDayReport;pdfBase64:string|null;attachmentRef:AttachmentRef|null;sentParts:number}>>(Prisma.sql`UPDATE ${table} d SET status='SENDING',"leaseId"=${leaseId},"leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes',attempts=attempts+1
    WHERE d."organizationId"=${config.organizationId} AND day=${day} AND "configRevision"=${config.revision} AND status IN ('READY','FAILED','SENDING') AND attempts<8
    AND ("leaseUntil" IS NULL OR "leaseUntil"<CURRENT_TIMESTAMP) AND ("retryAt" IS NULL OR "retryAt"<=CURRENT_TIMESTAMP)
    AND EXISTS(SELECT 1 FROM "OperatorReportConfig" c WHERE c."organizationId"=d."organizationId" AND c.enabled=true AND c.revision=d."configRevision") RETURNING messages,snapshot,"pdfBase64","attachmentRef","sentParts"`);if(!delivery)continue;
-  const allowed=()=>prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" d SET "leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes' WHERE d."organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId} AND EXISTS(SELECT 1 FROM "OperatorReportConfig" c WHERE c."organizationId"=d."organizationId" AND c.enabled=true AND c.revision=d."configRevision")`);
+  const allowed=()=>prisma.$executeRaw(Prisma.sql`UPDATE ${table} d SET "leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes' WHERE d."organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId} AND EXISTS(SELECT 1 FROM "OperatorReportConfig" c WHERE c."organizationId"=d."organizationId" AND c.enabled=true AND c.revision=d."configRevision")`);
   const token=await reportChatAccessToken(config.organizationId,config.configuredById);
-  if(!delivery.pdfBase64){delivery.pdfBase64=Buffer.from(createOperatorReportPdf(delivery.snapshot).output("arraybuffer")).toString("base64");const saved=await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET "pdfBase64"=${delivery.pdfBase64} WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);if(!saved)throw new Error("PDF não confirmado.");}
-  if(!delivery.attachmentRef){if(!await allowed())throw new Error("Configuração alterada.");delivery.attachmentRef=await uploadReportPdf(token,config.spaceName,day,Buffer.from(delivery.pdfBase64,"base64"));const saved=await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET "attachmentRef"=${JSON.stringify(delivery.attachmentRef)}::jsonb WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);if(!saved)throw new Error("Anexo não confirmado.");}
+  if(!delivery.pdfBase64){delivery.pdfBase64=Buffer.from(createOperatorReportPdf(delivery.snapshot).output("arraybuffer")).toString("base64");const saved=await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET "pdfBase64"=${delivery.pdfBase64} WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);if(!saved)throw new Error("PDF não confirmado.");}
+  if(!delivery.attachmentRef){if(!await allowed())throw new Error("Configuração alterada.");delivery.attachmentRef=await uploadReportPdf(token,config.spaceName,day,Buffer.from(delivery.pdfBase64,"base64"),kind);const saved=await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET "attachmentRef"=${JSON.stringify(delivery.attachmentRef)}::jsonb WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);if(!saved)throw new Error("Anexo não confirmado.");}
   if(!await allowed())throw new Error("Configuração alterada.");
-  await postReportPdf(token,config.spaceName,delivery.messages[0],delivery.attachmentRef,chatRequestId(config.organizationId,day));
-  await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET status='SENT',"sentParts"=1,"sentAt"=CURRENT_TIMESTAMP,"lastError"=NULL,"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);
- }catch(error){const message=error instanceof OperatorChatError?error.message:"Entrega do PDF não confirmada. Confira a conexão Google e o espaço de gestores.";if(leaseId)await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportDelivery" SET status='FAILED',"lastError"=${message},"retryAt"=CURRENT_TIMESTAMP+INTERVAL '5 minutes',"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`).catch(()=>undefined);}}
+  await postReportPdf(token,config.spaceName,delivery.messages[0],delivery.attachmentRef,chatRequestId(config.organizationId,kind==="SERVICE"?"service:"+day:day));
+  await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET status='SENT',"sentParts"=1,"sentAt"=CURRENT_TIMESTAMP,"lastError"=NULL,"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);
+ }catch(error){const message=error instanceof OperatorChatError?error.message:"Entrega do PDF não confirmada. Confira a conexão Google e o espaço de gestores.";if(leaseId)await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET status='FAILED',"lastError"=${message},"retryAt"=CURRENT_TIMESTAMP+INTERVAL '5 minutes',"leaseId"=NULL,"leaseUntil"=NULL WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`).catch(()=>undefined);}}
 }

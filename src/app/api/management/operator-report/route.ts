@@ -10,11 +10,11 @@ export const maxDuration=60;
 export async function GET(request:Request){
  const member=await getMemberForModule("MANAGEMENT");
  if(!member||!["MASTER","ADMIN","MANAGER"].includes(member.role))return NextResponse.json({error:"Sem permissão para relatórios da equipe."},{status:403});
- const day=new URL(request.url).searchParams.get("day")||undefined;
- try{reportPeriod(day);}catch{return NextResponse.json({error:"Selecione uma data válida anterior a hoje."},{status:400});}
+ const params=new URL(request.url).searchParams,kind=params.get("kind")==="SERVICE"?"SERVICE":"GENERAL",day=params.get("day")||undefined;
+ try{if(kind!=="SERVICE")reportPeriod(day);else if(day&&!/^\d{4}-\d{2}-\d{2}$/.test(day))throw new Error("Data inválida");}catch{return NextResponse.json({error:"Selecione uma data válida anterior a hoje."},{status:400});}
  try{
   const permissions=await getRolePermissions(member.organizationId,member.role),canConfigure=["MASTER","ADMIN"].includes(member.role)&&permissions.MANAGEMENT.canManage&&permissions.MANAGEMENT.canExport;
-  const report=await buildOperatorDayReport(member,day);
+  const report=await buildOperatorDayReport(member,day,new Date(),kind);
   return NextResponse.json({report,messages:reportChatMessages(report),canConfigure,canDownloadPdf:permissions.MANAGEMENT.canExport,config:canConfigure?await reportConfig(member.organizationId,member.userId):null},{headers:{"Cache-Control":"private, no-store"}});
  }catch{return NextResponse.json({error:"Não foi possível gerar o relatório. Tente novamente."},{status:503});}
 }

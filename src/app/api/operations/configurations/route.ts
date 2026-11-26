@@ -1,3 +1,6 @@
+import {inheritedOwner,propagateRoutineOwner} from "@/modules/operations/routine-ownership-server";
+import {routineClientSuspended} from "@/modules/operations/routine-client-state";
+import {OperationTimerError} from "@/modules/operations/timer-server";
 import {reconciliation,routinePriority} from "@/modules/operations/routine-policy";
 import { operationTeamCatalog } from "@/modules/operations/team-catalog";
 import { operationClientTeam, canonicalTeam } from "@/modules/operations/teams";
@@ -49,6 +52,8 @@ export async function POST(request: Request) {
     const saved = await prisma.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"operations-reset-" + member.organizationId}))`;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${member.organizationId + ":" + clientId + ":" + processId}))`;
+      if(await routineClientSuspended(tx,member.organizationId,clientId))throw new OperationTimerError("Reative as rotinas deste cliente antes de marcar atividades.",409);
+      const responsibleId=await inheritedOwner(tx,clientId,process.name,true)|| (typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null);
       const existing = await tx.operationClientProcess.findMany({where:{clientId,processId,active:true,client:{organizationId:member.organizationId}},orderBy:{createdAt:"asc"}});
       if (resume) {
         const configuration = existing.find(row => row.id === resume);
@@ -60,14 +65,15 @@ export async function POST(request: Request) {
       if (same) return {configuration:same,skipped:true};
       const configuration = await tx.operationClientProcess.create({data:{
         clientId,processId,
-        responsibleId:typeof body.responsibleId === "string" && body.responsibleId ? body.responsibleId : null,
+        responsibleId,
         team:team||operationClientTeam(client),
         recurrenceType:type as never,recurrenceData:({...(body.recurrenceData as Record<string,unknown> || {}),holidayBehavior:"PREVIOUS_BUSINESS_DAY"}) as never,
         notifyClient:!reconciliation(process.name)&&body.notifyClient !== false,priority:routinePriority(process.name,typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
         auditEnabled:body.auditEnabled === true,auditRecurrenceData:(body.auditRecurrenceData || null) as never,active:true,
       },include:{client:true,process:true,responsible:true}});
+      await propagateRoutineOwner(tx,member,clientId,process.name,responsibleId);
       return {configuration,skipped:false};
-    },{maxWait:5000,timeout:10000});
+    },{maxWait:5000,timeout:50000});
     if (!saved) return NextResponse.json({error:"A rotina para retomar não corresponde a este cliente e processo."},{status:409});
     const {configuration} = saved;
     if (saved.skipped) return NextResponse.json({skipped:true,configurationId:configuration.id});
@@ -80,6 +86,7 @@ export async function POST(request: Request) {
     catch{return NextResponse.json({error:"A rotina foi salva, mas a agenda não terminou de ser gerada. Tente novamente para retomar sem duplicar atividades.",configurationId:configuration.id},{status:503});}
     return NextResponse.json({ configuration, generation }, { status: 201 });
   } catch (error) {
+    if(error instanceof OperationTimerError)return NextResponse.json({error:error.message},{status:error.status});
     if((error as {code?:string})?.code==="P2002")return NextResponse.json({error:"Uma rotina deste processo já foi criada para o cliente. Atualize a lista antes de tentar novamente."},{status:409});
     console.error("Erro ao salvar rotina operacional:", error);
     return NextResponse.json({ error: "Não foi possível salvar a rotina. Tente novamente." }, { status: 500 });

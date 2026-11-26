@@ -22,6 +22,7 @@ export async function POST(request: Request) {
   after(async () => { await Promise.allSettled([
     processDailyActivities(),
     processDailyOperatorReports(),
+    processDailyOperatorReports(new Date(),"SERVICE"),
     processPasswordRecoveryQueue(),
     processWhatsAppSurveys(),
     processQueuedMeetingReports(),

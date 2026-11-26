@@ -20,12 +20,12 @@ export async function operatorServiceAttention(org:string,recipient:string,phone
  const floor=baseline&&reset?new Date(Math.max(+baseline,+reset)):baseline||reset;
  const [openRows,responses]=await Promise.all([
   prisma.$queryRaw<ServiceOpenRow[]>(Prisma.sql`
-   SELECT t.id,t."assignedToId" AS "userId",COALESCE(t."senderName",t.subject,'Conversa') AS contact,COALESCE(c.name,'Sem cliente vinculado') AS client,t.status::text,t."receivedAt" AS "openedAt",outgoing."lastOutboundAt",pending."pendingSince"
+   SELECT t.id,COALESCE(t."assignedToId",'QUEUE') AS "userId",COALESCE(t."senderName",t.subject,'Conversa') AS contact,COALESCE(c.name,'Sem cliente vinculado') AS client,t.status::text,t."receivedAt" AS "openedAt",outgoing."lastOutboundAt",pending."pendingSince"
    FROM "ServiceTicket" t LEFT JOIN "Client" c ON c.id=t."clientId" AND c."organizationId"=t."organizationId"
    LEFT JOIN LATERAL (SELECT MAX(o."receivedAt") AS "lastOutboundAt" FROM "ServiceMessage" o WHERE o."ticketId"=t.id AND o.direction::text='OUTBOUND' AND o."receivedAt">=t."receivedAt" AND o."receivedAt"<=${now} AND ${messageScope("o",phone)}) outgoing ON true
    LEFT JOIN LATERAL (SELECT MIN(i."receivedAt") AS "pendingSince" FROM "ServiceMessage" i WHERE i."ticketId"=t.id AND i.direction::text='INBOUND' AND i."receivedAt">=t."receivedAt" AND i."receivedAt"<=${now} AND (outgoing."lastOutboundAt" IS NULL OR i."receivedAt">outgoing."lastOutboundAt") AND ${messageScope("i",phone)}) pending ON true
    WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${recipient} AND t."isSpam"=false AND t."mergedIntoId" IS NULL
-   AND t.status::text NOT IN ('RESOLVED','SPAM') AND t."assignedToId" IN (${Prisma.join(ids)}) AND t."receivedAt"<${period.end} AND t."receivedAt"<=${now}
+   AND t.status::text NOT IN ('RESOLVED','SPAM') AND COALESCE(t."assignedToId",'QUEUE') IN (${Prisma.join(ids)}) AND t."receivedAt"<${period.end} AND t."receivedAt"<=${now}
    AND (${baseline}::timestamptz IS NULL OR t."receivedAt">=${baseline}) ORDER BY t."receivedAt",t.id LIMIT 5001`),
   prisma.$queryRaw<Array<ServiceResponseRow&{limited?:boolean}>>(Prisma.sql`
    WITH outgoing AS (SELECT o.id,o."ticketId",o."providerMetadata",o."fromEmail",o."externalMessageId",o."receivedAt" FROM "ServiceMessage" o JOIN "ServiceTicket" t ON t.id=o."ticketId"

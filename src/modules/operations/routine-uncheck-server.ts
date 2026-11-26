@@ -1,4 +1,5 @@
 import "server-only";
+import {routineClientSuspended} from "./routine-client-state";
 import {randomUUID} from "node:crypto";
 import {prisma} from "@/lib/prisma";
 import {Prisma} from "@/generated/prisma/client";
@@ -23,6 +24,7 @@ export async function uncheckRoutineCell(member:Member,input:Input){
  return prisma.$transaction(async tx=>{
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"operations-reset-"+member.organizationId}))`;
   await tx.$queryRaw`SELECT cp.id FROM "OperationClientProcess" cp JOIN "Client" c ON c.id=cp."clientId" WHERE cp."clientId"=${input.clientId} AND c."organizationId"=${member.organizationId} ORDER BY cp.id FOR UPDATE OF cp`;
+  if(await routineClientSuspended(tx,member.organizationId,input.clientId))throw new OperationTimerError("Reative as rotinas deste cliente antes de desmarcar atividades.",409);
   const configurations=await tx.operationClientProcess.findMany({where:{clientId:input.clientId,active:true,client:{organizationId:member.organizationId}},include:{process:{select:{id:true,name:true,department:true}}}});
   const columns=routineColumns(configurations.map(c=>c.process)),column=columns.find(c=>c.id===input.columnId);
   const selected=configurations.filter(c=>columnsForRoutine(c as unknown as ConfiguredRoutine,columns).includes(input.columnId));

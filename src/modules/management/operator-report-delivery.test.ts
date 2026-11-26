@@ -5,7 +5,7 @@ vi.mock("@/lib/prisma",()=>{const tx={$queryRaw:m.query,$executeRaw:m.execute,au
 vi.mock("@/modules/permissions/permissions",()=>({getRolePermissions:m.permissions}));vi.mock("./operator-report-server",()=>({buildOperatorDayReport:m.build}));
 vi.mock("./operator-report-google",()=>({reportChatAccessToken:m.token,readReportSpace:m.space,reportGoogleStatus:m.status,validReportSpace:(value:string)=>/^spaces\/[A-Za-z0-9_-]+$/.test(value)}));
 vi.mock("./operator-report-pdf",()=>({createOperatorReportPdf:m.pdf,operatorPdfName:(day:string)=>`Fortuno-Relatorio-Diario-${day}.pdf`}));
-import {chatRequestId,postReportPdf,uploadReportPdf,processDailyOperatorReports,saveReportConfig} from "./operator-report-delivery";
+import {chatRequestId,postReportPdf,uploadReportPdf,processDailyOperatorReports,saveReportConfig,reportSchedule} from "./operator-report-delivery";
 const config={organizationId:"org",revision:"revision",configuredById:"master",destinationName:"Gestores",spaceName:"spaces/managers",enabled:true,updatedAt:new Date("2026-11-23T12:00Z")};
 const snapshot={day:"2026-11-23",generatedAt:"2026-11-24T11:00Z",scope:"Todos",available:{whatsapp:true,operations:true,daily:true},warnings:[],rows:[]};
 const pdfBytes=new TextEncoder().encode("%PDF-1.7 sample"),ref={attachmentUploadToken:"private-attachment-token"};
@@ -14,7 +14,7 @@ beforeEach(()=>{vi.clearAllMocks();vi.stubGlobal("fetch",m.fetch);m.fetch.mockIm
 it("does nothing before 08h or without a configured space",async()=>{await processDailyOperatorReports(new Date("2026-11-24T10:59:59Z"));expect(m.query).not.toHaveBeenCalled();await processDailyOperatorReports(new Date("2026-11-24T11:00Z"));expect(m.fetch).not.toHaveBeenCalled();});
 it("freezes the report and PDF, uploads the file then sends one greeting with its attachment",async()=>{
  m.query.mockResolvedValueOnce([config]).mockResolvedValueOnce([]).mockResolvedValueOnce([delivery()]);await processDailyOperatorReports(new Date("2026-11-24T11:00Z"));
- expect(m.build).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org"}),"2026-11-23",expect.any(Date));expect(m.query.mock.calls[2][0].sql).toContain("attempts<8");expect(m.fetch).toHaveBeenCalledTimes(2);
+ expect(m.build).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org"}),"2026-11-23",expect.any(Date),"GENERAL");expect(m.query.mock.calls[2][0].sql).toContain("attempts<8");expect(m.fetch).toHaveBeenCalledTimes(2);
  const [uploadUrl,upload]=m.fetch.mock.calls[0];expect(String(uploadUrl)).toContain("/upload/v1/spaces/managers/attachments:upload?uploadType=multipart");expect(upload.headers.Authorization).toBe("Bearer private-access-token");expect(Buffer.from(upload.body).toString()).toContain("application/pdf");expect(Buffer.from(upload.body).toString()).toContain("Fortuno-Relatorio-Diario-2026-11-23.pdf");
  const [url,options]=m.fetch.mock.calls[1];expect(url.searchParams.get("requestId")).toBe(chatRequestId("org","2026-11-23"));expect(JSON.parse(options.body)).toEqual({text:"Bom dia! Segue em anexo o relatório.",attachment:[{attachmentDataRef:ref}]});expect(m.execute.mock.calls.at(-1)![0].sql).toContain("status='SENT'");
 });
@@ -53,4 +53,18 @@ it("does not expose provider payloads for malformed uploads, denied scopes, and 
  m.fetch.mockResolvedValueOnce(new Response("private-provider-body",{status:400}));await expect(uploadReportPdf("token",config.spaceName!,"2026-11-23",pdfBytes)).rejects.toMatchObject({code:"REPORT_UPLOAD_REJECTED",message:expect.not.stringContaining("private-")});
  m.fetch.mockResolvedValueOnce(new Response("private-provider-body",{status:200}));await expect(uploadReportPdf("token",config.spaceName!,"2026-11-23",pdfBytes)).rejects.toMatchObject({code:"REPORT_UPLOAD_UNCONFIRMED"});
  m.fetch.mockResolvedValueOnce(new Response("private-provider-body",{status:500}));await expect(postReportPdf("token",config.spaceName!,"Bom dia",ref,"id")).rejects.toMatchObject({code:"REPORT_MESSAGE_REJECTED",message:expect.not.stringContaining("private-")});
+});
+
+it("uses Brasília weekday schedules and keeps 08h and 13h delivery identities independent",async()=>{
+ expect(reportSchedule(new Date("2026-11-28T16:00Z"),"SERVICE")).toBeNull();
+ expect(reportSchedule(new Date("2026-11-29T11:00Z"))).toBeNull();
+ expect(reportSchedule(new Date("2026-11-26T15:59:59Z"),"SERVICE")).toBeNull();
+ expect(reportSchedule(new Date("2026-11-26T16:00Z"),"SERVICE")?.day).toBe("2026-11-26");
+ expect(reportSchedule(new Date("2026-11-26T11:00Z"))?.day).toBe("2026-11-25");
+ expect(chatRequestId("org","service:2026-11-26")).not.toBe(chatRequestId("org","2026-11-26"));
+ m.query.mockResolvedValueOnce([config]).mockResolvedValueOnce([]).mockResolvedValueOnce([delivery()]);
+ await processDailyOperatorReports(new Date("2026-11-26T16:00Z"),"SERVICE");
+ expect(m.build).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org"}),"2026-11-26",expect.any(Date),"SERVICE");
+ expect(m.query.mock.calls[1][0].sql).toContain('"OperatorServiceReportDelivery"');
+ expect(m.fetch.mock.calls[1][0].searchParams.get("requestId")).toBe(chatRequestId("org","service:2026-11-26"));
 });

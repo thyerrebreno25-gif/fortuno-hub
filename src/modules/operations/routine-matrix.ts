@@ -1,6 +1,6 @@
 import type {ConfiguredRoutine} from "./routine-filters";
 import type {RoutineEdit} from "./edit-model";
-export type RoutineClient={id:string;name:string;cluster:string;active?:boolean;team?:string|null};
+export type RoutineClient={id:string;name:string;cluster:string;active?:boolean;team?:string|null;suspended?:boolean;onboarding?:boolean};
 export type RoutineProcess={id:string;name:string;department?:string;defaultPriority?:string;notifyClient?:boolean};
 export type RoutineColumn={id:string;label:string;processName:string;processId?:string;kind:"receipts"|"payments"|"agenda"|"monthlyAudit"|"fortnightAudit"|"customAgenda"|"report"|"process";weekday?:number;notifyClient?:boolean};
 const normalized=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();

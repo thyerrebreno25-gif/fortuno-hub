@@ -3,33 +3,39 @@ import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import type {AssistantMember} from "@/modules/assistant/auth";
 import {getRolePermissions} from "@/modules/permissions/permissions";
-import {entryAllocation} from "@/modules/operations/analytics";
+import {analyticsPeriod,brazilDay,entryAllocation} from "@/modules/operations/analytics";
 import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {whatsappUsage} from "@/modules/whatsapp/usage-server";
 import {dailyMeetingTypes} from "@/modules/meetings/daily-model";
-import {reportPeriod,type OperatorDayReport,type OperatorDayRow} from "./operator-report-model";
+import {reportPeriod,type OperatorDayReport,type OperatorDayRow,type ReportKind,type PendingReportWork} from "./operator-report-model";
+import {buildServiceSnapshot} from "./service-report-snapshot";
 import {operatorServiceAttention} from "./operator-service-attention-server";
-export async function buildOperatorDayReport(member:Pick<AssistantMember,"id"|"organizationId"|"userId"|"role">,day?:string,now=new Date()):Promise<OperatorDayReport>{
+export async function buildOperatorDayReport(member:Pick<AssistantMember,"id"|"organizationId"|"userId"|"role">,day?:string,now=new Date(),kind:ReportKind="GENERAL"):Promise<OperatorDayReport>{
  if(!["MASTER","ADMIN","MANAGER"].includes(member.role))throw new Error("Sem permissão para relatórios da equipe.");
- const period=reportPeriod(day,now),org=member.organizationId,permissions=await getRolePermissions(org,member.role);
+ const period=kind==="SERVICE"?analyticsPeriod(day||brazilDay(now),day||brazilDay(now)):reportPeriod(day,now),org=member.organizationId,permissions=await getRolePermissions(org,member.role);
+ if(kind==="SERVICE"&&period.from>brazilDay(now))throw new Error("Selecione uma data até hoje.");
  if(!permissions.MANAGEMENT.canView)throw new Error("Sem permissão para Gestão.");
- const members=await prisma.organizationMember.findMany({where:{organizationId:org,role:"OPERATOR",...(member.role==="MANAGER"?{OR:[{userId:member.userId},{teamLeaderId:member.id}]}:{})},select:{userId:true,user:{select:{name:true,email:true}},teamLeader:{select:{user:{select:{name:true,email:true}}}}},orderBy:{user:{name:"asc"}}});
+ const members=await prisma.organizationMember.findMany({where:{organizationId:org,role:kind==="SERVICE"?{not:"CLIENT"}:"OPERATOR",...(member.role==="MANAGER"?{OR:[{userId:member.userId},{teamLeaderId:member.id}]}:{})},select:{userId:true,user:{select:{name:true,email:true}},teamLeader:{select:{user:{select:{name:true,email:true}}}}},orderBy:{user:{name:"asc"}}});
  const rows:OperatorDayRow[]=members.map(person=>({userId:person.userId,name:person.user.name||person.user.email,leader:person.teamLeader?.user.name||person.teamLeader?.user.email||null,messages:0,conversations:0,clients:0,resolved:0,openCalls:0,tasksCompleted:0,tasksPending:0,dailyCompleted:0,dailyPending:0,seconds:0,openTimers:0}));
  const index=new Map(rows.map(row=>[row.userId,row])),ids=rows.map(row=>row.userId);
- const available={whatsapp:permissions.WHATSAPP.canView,operations:permissions.OPERATIONS.canView,daily:permissions.DAILY_ACTIVITIES.canView},warnings:string[]=[];
+ const available={whatsapp:permissions.WHATSAPP.canView,operations:kind!=="SERVICE"&&permissions.OPERATIONS.canView,daily:kind!=="SERVICE"&&permissions.DAILY_ACTIVITIES.canView},warnings:string[]=[];
+ const pendingWork:PendingReportWork[]=[];
+ let serviceSnapshot:OperatorDayReport["serviceSnapshot"];
  let serviceAttention:OperatorDayReport["serviceAttention"];
- if(ids.length)await Promise.all([
+ await Promise.all([
   (async()=>{if(!available.whatsapp)return;const account=await currentWhatsAppAccount(org);if(!account.accountKey||!account.connection?.phone){available.whatsapp=false;warnings.push("WhatsApp sem conta identificada; indicadores indisponíveis.");return;}
    const recipient=account.accountKey;
    const [usage,counts]=await Promise.all([whatsappUsage(org,recipient,account.connection.phone,period.start,period.end),prisma.$queryRaw<Array<{userId:string;resolved:number}>>(Prisma.sql`
     WITH closures AS (SELECT h."userId",COUNT(*)::int AS resolved FROM "ServiceTicketHistory" h JOIN "ServiceTicket" t ON t.id=h."ticketId"
      LEFT JOIN "WhatsAppOperationStart" b ON b."organizationId"=t."organizationId" AND b."accountRecipient"=t."recipientEmail"
      WHERE t."organizationId"=${org} AND t.source='WHATSAPP_API' AND t."recipientEmail"=${recipient} AND t."isSpam"=false AND t."mergedIntoId" IS NULL
-     AND h.type='WHATSAPP_RESOLVED' AND h."userId" IN (${Prisma.join(ids)}) AND h."createdAt">=${period.start} AND h."createdAt"<${period.end}
+     AND h.type='WHATSAPP_RESOLVED' AND h."userId" IN (${ids.length?Prisma.join(ids):Prisma.sql`NULL`}) AND h."createdAt">=${period.start} AND h."createdAt"<${period.end}
      AND (b."startedAt" IS NULL OR h."createdAt">=b."startedAt") GROUP BY h."userId") SELECT "userId",resolved FROM closures`)]);
    for(const row of usage.rows){const target=index.get(row.userId);if(target)Object.assign(target,{messages:row.messages,conversations:row.conversations,clients:row.clients});}
    for(const row of counts){const target=index.get(row.userId);if(target)target.resolved=row.resolved;}
-   const service=await operatorServiceAttention(org,recipient,account.connection.phone,rows,period,now);serviceAttention=service.attention;
+   const queueRow:OperatorDayRow={userId:"QUEUE",name:"Fila de atendimento",leader:null,messages:0,conversations:0,clients:0,resolved:0,openCalls:0,tasksCompleted:0,tasksPending:0,dailyCompleted:0,dailyPending:0,seconds:0,openTimers:0};
+   const service=await operatorServiceAttention(org,recipient,account.connection.phone,[...rows,queueRow],period,now);
+   serviceSnapshot=await buildServiceSnapshot(org,recipient,ids,period,now);serviceAttention=service.attention;
    for(const [id,metrics] of service.metrics){const target=index.get(id);if(target){target.service=metrics;target.openCalls=metrics.openCalls;}}
    if(service.attention.truncated)warnings.push("A análise de atendimento atingiu o limite de consulta; tempos e alertas podem estar parciais.");
   })(),
@@ -40,6 +46,9 @@ export async function buildOperatorDayReport(member:Pick<AssistantMember,"id"|"o
     prisma.operationTimeEntry.findMany({where:{userId:{in:ids},activity:{organizationId:org,deletedAt:null},startedAt:{lt:period.end},OR:[{endedAt:null},{endedAt:{gte:period.start}}]},select:{userId:true,startedAt:true,endedAt:true,seconds:true,source:true}}),
    ]);
    for(const row of completions){const target=index.get(row.userId);if(target)target.tasksCompleted++;}
+   const details=await prisma.operationActivity.findMany({where:{organizationId:org,deletedAt:null,responsibleId:{in:ids},status:{notIn:["COMPLETED","DISREGARDED"]},createdAt:{lt:period.end},OR:[{dueAt:{lt:period.end}},{dueAt:null,scheduledDate:{lt:period.end}},{dueAt:null,scheduledDate:null}]},select:{id:true,title:true,responsibleId:true,dueAt:true,status:true,client:{select:{name:true}}},orderBy:[{dueAt:"asc"},{id:"asc"}],take:1001});
+   for(const item of details.slice(0,1000))pendingWork.push({id:item.id,userId:item.responsibleId!,title:item.title,client:item.client.name,dueAt:item.dueAt?.toISOString()||null,status:item.status,kind:"TASK"});
+   if(details.length>1000)warnings.push("A lista detalhada de tarefas mostra as primeiras 1.000 pendências; os totais por colaborador incluem todas.");
    for(const row of pending){const target=index.get(row.responsibleId||"");if(target)target.tasksPending=row._count._all;}
    for(const row of entries){const target=index.get(row.userId);if(target){if(!row.endedAt)target.openTimers++;else target.seconds+=entryAllocation(row,period,now).seconds;}}
   })(),
@@ -48,9 +57,12 @@ export async function buildOperatorDayReport(member:Pick<AssistantMember,"id"|"o
     prisma.meetingActionItem.groupBy({by:["responsibleId"],where:{...scope,completedAt:{gte:period.start,lt:period.end}},_count:{_all:true}}),
     prisma.meetingActionItem.groupBy({by:["responsibleId"],where:{...scope,completedAt:null,createdAt:{lt:period.end},OR:[{dueAt:{lt:period.end}},{originalDueAt:{lt:period.end}}]},_count:{_all:true}}),
    ]);
+   const details=await prisma.meetingActionItem.findMany({where:{...scope,completedAt:null,createdAt:{lt:period.end},OR:[{dueAt:{lt:period.end}},{originalDueAt:{lt:period.end}}]},select:{id:true,title:true,responsibleId:true,dueAt:true,meeting:{select:{title:true}}},orderBy:[{dueAt:"asc"},{id:"asc"}],take:1001});
+   for(const item of details.slice(0,1000))pendingWork.push({id:item.id,userId:item.responsibleId,title:item.title,client:item.meeting.title,dueAt:item.dueAt.toISOString(),status:"OPEN",kind:"DAILY"});
+   if(details.length>1000)warnings.push("A lista detalhada de Daily mostra as primeiras 1.000 pendências; os totais incluem todas.");
    for(const row of completed){const target=index.get(row.responsibleId);if(target)target.dailyCompleted=row._count._all;}
    for(const row of pending){const target=index.get(row.responsibleId);if(target)target.dailyPending=row._count._all;}
   })(),
  ]);
- return {day:period.from,generatedAt:now.toISOString(),scope:member.role==="MANAGER"?"Minha equipe":"Todos os operadores",available,warnings,rows:rows.sort((a,b)=>b.messages-a.messages||b.tasksCompleted-a.tasksCompleted||a.name.localeCompare(b.name,"pt-BR")),...(serviceAttention?{serviceAttention}:{})};
+ return {kind,pendingWork,serviceSnapshot,day:period.from,generatedAt:now.toISOString(),scope:member.role==="MANAGER"?"Minha equipe":kind==="SERVICE"?"Equipe de atendimento":"Todos os operadores",available,warnings,rows:rows.sort((a,b)=>b.messages-a.messages||b.tasksCompleted-a.tasksCompleted||a.name.localeCompare(b.name,"pt-BR")),...(serviceAttention?{serviceAttention}:{})};
 }

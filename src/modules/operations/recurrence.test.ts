@@ -5,6 +5,7 @@ it("custom recurrence generates only selected weekdays within its date range",()
 it("monthly dates recur independently and do not roll a missing day into another month",()=>{
  const cfg={startDate:"2027-01-01",monthDays:[5,20,31]};
  const days=[];for(let day=1;day<=28;day++)if(matchesRecurrence("MONTHLY",cfg,new Date(2027,1,day,12)))days.push(day);
- expect(days).toEqual([5,20]);expect(matchesRecurrence("MONTHLY",cfg,new Date(2027,2,31,12))).toBe(true);
+ expect(days).toEqual([5]); // 20/02/2027 is Saturday: no task or anticipation.
+ expect(matchesRecurrence("MONTHLY",cfg,new Date(2027,2,31,12))).toBe(true);
  expect(matchesRecurrence("MONTHLY",{...cfg,interval:2},new Date(2027,1,5,12))).toBe(false);
 });
