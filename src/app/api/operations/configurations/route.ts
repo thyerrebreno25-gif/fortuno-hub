@@ -7,6 +7,7 @@ import { operationClientTeam, canonicalTeam } from "@/modules/operations/teams";
 import { routineScheduleKey } from "@/modules/operations/routine-schedule";
 import { brazilDay } from "@/modules/operations/analytics";
 import {operationDayRange} from "@/modules/operations/activity-deadline";
+import {routineHolidayBehavior} from "@/modules/operations/routine-calendar";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
         clientId,processId,
         responsibleId,
         team:team||operationClientTeam(client),
-        recurrenceType:type as never,recurrenceData:({...(body.recurrenceData as Record<string,unknown> || {}),holidayBehavior:"PREVIOUS_BUSINESS_DAY"}) as never,
+        recurrenceType:type as never,recurrenceData:({...(body.recurrenceData as Record<string,unknown> || {}),holidayBehavior:routineHolidayBehavior(type,recurrence)}) as never,
         notifyClient:!reconciliation(process.name)&&body.notifyClient !== false,priority:routinePriority(process.name,typeof body.priority === "string" ? body.priority : process.defaultPriority) as never,
         auditEnabled:body.auditEnabled === true,auditRecurrenceData:(body.auditRecurrenceData || null) as never,active:true,
       },include:{client:true,process:true,responsible:true}});

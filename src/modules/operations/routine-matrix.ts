@@ -1,5 +1,6 @@
 import type {ConfiguredRoutine} from "./routine-filters";
 import type {RoutineEdit} from "./edit-model";
+import {routineHolidayBehavior} from "./routine-calendar";
 export type RoutineClient={id:string;name:string;cluster:string;active?:boolean;team?:string|null;suspended?:boolean;onboarding?:boolean};
 export type RoutineProcess={id:string;name:string;department?:string;defaultPriority?:string;notifyClient?:boolean};
 export type RoutineColumn={id:string;label:string;processName:string;processId?:string;kind:"receipts"|"payments"|"agenda"|"monthlyAudit"|"fortnightAudit"|"customAgenda"|"report"|"process";weekday?:number;notifyClient?:boolean};
@@ -47,5 +48,6 @@ export function routineColumnNeedsFrequency(column:RoutineColumn){return column.
 export function routinePreset(column:RoutineColumn,day:string,frequency?:RoutineFrequency|null):Pick<RoutineEdit,"recurrenceType"|"recurrenceData"> {
  const cadence=routineFixedFrequency(column)||frequency;
  const fortnight=cadence==="FORTNIGHTLY",monthly=cadence==="MONTHLY"||column.kind==="customAgenda",weekday=new Date(day+"T12:00Z").getUTCDay();
- return {recurrenceType:column.kind==="agenda"?"WEEKLY":monthly?"MONTHLY":cadence==="WEEKLY"?"WEEKLY":"DAILY",recurrenceData:{startDate:day,endDate:null,dueTime:"18:00",interval:fortnight?15:1,dailyMode:fortnight?"ALL_DAYS":"BUSINESS_DAYS",weekdays:column.weekday?[column.weekday]:[weekday],monthDays:monthly?[Number(day.slice(-2))]:[],holidayBehavior:"PREVIOUS_BUSINESS_DAY"}};
+ const recurrenceType=column.kind==="agenda"?"WEEKLY":monthly?"MONTHLY":cadence==="WEEKLY"?"WEEKLY":"DAILY",interval=fortnight?15:1;
+ return {recurrenceType,recurrenceData:{startDate:day,endDate:null,dueTime:"18:00",interval,dailyMode:fortnight?"ALL_DAYS":"BUSINESS_DAYS",weekdays:column.weekday?[column.weekday]:[weekday],monthDays:monthly?[Number(day.slice(-2))]:[],holidayBehavior:routineHolidayBehavior(recurrenceType,{interval})}};
 }

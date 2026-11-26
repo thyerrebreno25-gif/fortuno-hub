@@ -34,7 +34,20 @@ export function RoutineManagementPanel({ routines, clients, processes, canDelete
   const visibleClients=clients.filter(client=>(!filters.clientId||client.id===filters.clientId)&&client.name.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR"))&&(!(filters.responsibleId||filters.processId||filters.from||filters.to||filters.duplicatesOnly)||filtered.some(r=>r.clientId===client.id)));
   async function addSection(){setSectionBusy(true);setSectionError("");try{const response=await fetch("/api/operations/processes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:sectionName,department:"Rotinas configuradas",notifyClient:false,checklist:sectionSteps.split("\n").filter(s=>s.trim()).map(title=>({title,mandatory:true}))})});const body=await response.json();if(!response.ok)throw new Error(body.error||"Não foi possível adicionar a seção.");await onChanged();setSectionOpen(false);setSectionName("");setSectionSteps("");}catch(cause){setSectionError(cause instanceof Error?cause.message:"Não foi possível adicionar a seção.");}finally{setSectionBusy(false);}}
   async function control(body:Record<string,unknown>){setControlBusy(true);setToggleError("");try{const response=await fetch("/api/operations/routine-controls",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error);await onChanged();setTransfer(null);setToggleResult(result.warning||(body.action==="transfer"?`${result.transferred} atividade(s) transferida(s). Tempos registrados preservados.`:"Rotinas atualizadas."));}catch(e){setToggleError(e instanceof Error?e.message:"Não foi possível atualizar.");}finally{setControlBusy(false);}}
-  useEffect(()=>{if(!canDelete||synchronized.current)return;synchronized.current=true;void fetch("/api/operations/routine-controls",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"synchronize"})}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);if(result.transferred)await onChanged();}).catch(e=>setToggleError(e instanceof Error?e.message:"Não foi possível sincronizar responsáveis."));},[canDelete,onChanged]);
+  useEffect(()=>{
+   if(!canDelete||synchronized.current)return;synchronized.current=true;
+   void (async()=>{
+    const response=await fetch("/api/operations/routine-controls",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"synchronize"})});
+    const result=await response.json();if(!response.ok)throw new Error(result.error);
+    let changed=Boolean(result.transferred),after:string|undefined;
+    do{
+     const refresh=await fetch("/api/operations/calendar-refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({after})});
+     const calendar=await refresh.json();if(!refresh.ok)throw new Error(calendar.error);
+     changed=changed||Boolean(calendar.changed);after=calendar.next||undefined;
+    }while(after);
+    if(changed)await onChanged();
+   })().catch(e=>setToggleError(e instanceof Error?e.message:"Não foi possível sincronizar as rotinas."));
+  },[canDelete,onChanged]);
   const active = Object.entries(filters).filter(([, value]) => Boolean(value)).length;
   const invalidPeriod = Boolean(filters.from && filters.to && filters.from > filters.to);
   async function uncheck(client:RoutineClient,column:RoutineColumn){

@@ -15,6 +15,7 @@ import { responsibleForProcess } from "./responsible";
 import { routineScheduleKey } from "./routine-schedule";
 import { routineDates, ROUTINE_EDIT_REMOVAL, untouchedRoutineActivity } from "./routine-edit-plan";
 import type { RoutineEdit } from "./edit-model";
+import {routineHolidayBehavior} from "./routine-calendar";
 type Member = NonNullable<Awaited<ReturnType<typeof getOperationMember>>>;
 
 export async function editRoutine(member: Member, id: string, input: RoutineEdit) {
@@ -46,7 +47,7 @@ export async function editRoutine(member: Member, id: string, input: RoutineEdit
     if (+horizon - +start > 730 * 86400000) throw new OperationTimerError("O horizonte desta rotina excede dois anos. Reduza a programação antes de editar.", 422);
     const holidays = await tx.operationHoliday.findMany({ where: { organizationId: member.organizationId, date: { gte: new Date(+start - 370 * 86400000), lte: new Date(+horizon + 370 * 86400000) } }, select: { date: true } });
     const dates = routineDates(input, today, horizon.toISOString().slice(0, 10), new Set(holidays.map(holiday => holiday.date.toISOString().slice(0, 10))));
-    await tx.operationClientProcess.update({ where: { id }, data: { responsibleId, team, priority: routinePriority(configuration.process.name,input.priority) as typeof input.priority, notifyClient: !reconciliation(configuration.process.name)&&input.notifyClient, auditEnabled: input.auditEnabled, recurrenceType: input.recurrenceType, recurrenceData: {...input.recurrenceData,holidayBehavior:"PREVIOUS_BUSINESS_DAY"} } });
+    await tx.operationClientProcess.update({ where: { id }, data: { responsibleId, team, priority: routinePriority(configuration.process.name,input.priority) as typeof input.priority, notifyClient: !reconciliation(configuration.process.name)&&input.notifyClient, auditEnabled: input.auditEnabled, recurrenceType: input.recurrenceType, recurrenceData: {...input.recurrenceData,holidayBehavior:routineHolidayBehavior(input.recurrenceType,input.recurrenceData)} } });
     let updated = 0, removed = 0, created = 0, preserved = 0;
     const existing = new Map(activities.map(activity => [activity.scheduledDate!.toISOString().slice(0, 10), activity]));
     for (const activity of activities) {

@@ -1,3 +1,4 @@
+import {routineHolidayBehavior} from "./routine-calendar";
 type Schedule = Record<string, unknown>;
 /** Compare the actual schedule, ignoring UI-only fields and weekday order. */
 export function routineScheduleKey(type: string, value: unknown) {
@@ -9,7 +10,7 @@ export function routineScheduleKey(type: string, value: unknown) {
   return JSON.stringify({type, startDate:data.startDate || null, endDate:data.endDate || null,
     dueTime:data.dueTime || "18:00", interval:type === "CUSTOM" ? 1 : Number(data.interval || 1),
     dailyMode:mode, weekdays:type === "WEEKLY" || type === "CUSTOM" || mode === "CUSTOM_DAYS" ? days("weekdays") : [],
-    monthDays:type === "MONTHLY" || type === "CUSTOM" ? monthDays : [], holidayBehavior:"PREVIOUS_BUSINESS_DAY"});
+    monthDays:type === "MONTHLY" || type === "CUSTOM" ? monthDays : [], holidayBehavior:routineHolidayBehavior(type,data)});
 }
 
 export function routineScheduleLabel(type: string, value: unknown) {

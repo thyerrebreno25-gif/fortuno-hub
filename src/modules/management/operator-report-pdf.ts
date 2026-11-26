@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import {reportWordmark} from "@/modules/meetings/report-brand";
 import {reportDuration,type OperatorDayReport,type ReportKind} from "./operator-report-model";
 import {serviceMinutes} from "./operator-service-attention";
+import {drawOperatorPdfOverview} from "./operator-report-pdf-overview";
 const clean=(value:string)=>value.normalize("NFC").replace(/[\u2010-\u2015\u2212]/g,"-").replace(/\p{Extended_Pictographic}/gu,"").replace(/[\u0000-\u001f]/g," ");
 export const operatorPdfName=(day:string,kind:ReportKind="GENERAL")=>`Fortuno-Relatorio-${kind==="SERVICE"?"Atendimento":"Diario"}-${day}.pdf`;
 export function createOperatorReportPdf(report:OperatorDayReport){
@@ -11,7 +12,7 @@ export function createOperatorReportPdf(report:OperatorDayReport){
  doc.setProperties({title:`${serviceOnly?"Relatório de atendimento":"Relatório diário"} | Fortuno | ${report.day}`,author:"Fortuno",creator:"Fortuno Hub"});doc.setCreationDate(new Date(report.generatedAt));
  const date=report.day.split("-").reverse().join("/"),sum=(key:"messages"|"tasksCompleted"|"dailyCompleted"|"seconds")=>report.rows.reduce((total,row)=>total+row[key],0);
  const header=()=>{doc.saveGraphicsState();doc.setFillColor(15,39,70);doc.rect(0,0,width,28,"F");doc.addImage(reportWordmark,"PNG",left,7,49,9.6,"fortuno-report-wordmark");doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(255);doc.text(serviceOnly?"RELATÓRIO DE ATENDIMENTO":"RELATÓRIO DIÁRIO",width-left,12,{align:"right"});doc.setFont("helvetica","normal");doc.setFontSize(9);doc.text(date+" | Brasília",width-left,19,{align:"right"});doc.restoreGraphicsState();};
- let y=39;header();
+ let y=39;drawOperatorPdfOverview(doc,report,header);
  function text(value:string,size=9,bold=false,color:[number,number,number]=[32,50,73]){doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);const lines=doc.splitTextToSize(clean(value),usable) as string[];for(const line of lines){if(y+size*.5>277){doc.addPage();header();y=39;}doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.setTextColor(...color);doc.text(line,left,y);y+=size*.48;}y+=2;}
  text(serviceOnly?"Panorama de atendimento | 13h":"Pendências e prioridades da operação",17,true);text(report.scope,10);text("Referência: "+date+" | Gerado em "+new Date(report.generatedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"}),8,false,[103,119,138]);
 

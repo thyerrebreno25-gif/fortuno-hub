@@ -18,9 +18,14 @@ it("validates calendar dates, intervals, fixed month days and the end of the rec
   for (const patch of [{ startDate: "2026-02-30" }, { endDate: "2026-11-01" }, { weekdays: [] }, { interval: 0 }]) expect(routineEditSchema.safeParse({ ...input, recurrenceData: { ...input.recurrenceData, ...patch } }).success).toBe(false);
   expect(routineEditSchema.safeParse({ ...input, recurrenceType: "MONTHLY" }).success).toBe(false);
 });
-it("does not move monthly or fortnightly weekend occurrences onto Friday when editing or unchecking routines",()=>{for(const recurrence of [{recurrenceType:"MONTHLY" as const,recurrenceData:{...input.recurrenceData,startDate:"2026-11-01",monthDays:[28,29]}},{recurrenceType:"DAILY" as const,recurrenceData:{...input.recurrenceData,startDate:"2026-11-13",interval:15}}])expect([...routineDates({...input,...recurrence},"2026-11-27","2026-11-29",new Set())]).toEqual([]);const mondayHoliday={...input,recurrenceData:{...input.recurrenceData,weekdays:[1]}};expect([...routineDates(mondayHoliday,"2026-11-27","2026-11-30",new Set(["2026-11-30"]))].map(([day])=>day)).toEqual(["2026-11-27"]);});
-it("keeps the selected 15-day anchor after holiday anticipation and skipped weekends",()=>{
+it("moves monthly and fortnightly weekend occurrences to Monday, retaining weekly anticipation",()=>{for(const recurrence of [{recurrenceType:"MONTHLY" as const,recurrenceData:{...input.recurrenceData,startDate:"2026-11-01",monthDays:[28,29]}},{recurrenceType:"DAILY" as const,recurrenceData:{...input.recurrenceData,startDate:"2026-11-13",interval:15}}])expect([...routineDates({...input,...recurrence},"2026-11-27","2026-11-29",new Set())].map(([day])=>day)).toEqual(["2026-11-30"]);const mondayHoliday={...input,recurrenceData:{...input.recurrenceData,weekdays:[1]}};expect([...routineDates(mondayHoliday,"2026-11-27","2026-11-30",new Set(["2026-11-30"]))].map(([day])=>day)).toEqual(["2026-11-27"]);});
+it("keeps the selected 15-day anchor after moving holidays and weekends forward",()=>{
  const schedule={...input,recurrenceType:"DAILY" as const,recurrenceData:{...input.recurrenceData,startDate:"2026-12-01",interval:15,dailyMode:"ALL_DAYS" as const}};
  const dates=[...routineDates(schedule,"2026-12-01","2027-03-01",new Set(["2026-12-16"]))].map(([day])=>day);
- expect(dates).toEqual(["2026-12-01","2026-12-15","2026-12-31","2027-01-15","2027-03-01"]);
+ expect(dates).toEqual(["2026-12-01","2026-12-17","2026-12-31","2027-01-15","2027-02-01","2027-02-15","2027-03-01"]);
+});
+it("includes a prior-month occurrence postponed into the selected range without creating nonexistent dates",()=>{
+ const schedule={...input,recurrenceType:"MONTHLY" as const,recurrenceData:{...input.recurrenceData,startDate:"2027-01-31",endDate:"2027-01-31",monthDays:[31]}};
+ expect([...routineDates(schedule,"2027-02-01","2027-02-01",new Set())].map(([day])=>day)).toEqual(["2027-02-01"]);
+ expect([...routineDates({...schedule,recurrenceData:{...schedule.recurrenceData,endDate:null}},"2027-02-02","2027-02-28",new Set())]).toEqual([]);
 });
