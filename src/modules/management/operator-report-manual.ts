@@ -1,3 +1,4 @@
+import {publishExecutiveReport} from "./executive-report-share";
 import "server-only";
 import {randomUUID} from "node:crypto";
 import {Prisma} from "@/generated/prisma/client";
@@ -17,7 +18,7 @@ type Delivery={requestId:string;requestedById:string;day:string;configRevision:s
 const failure=(phase="envio")=>new OperatorChatError("REPORT_DELIVERY_UNCONFIRMED",`Falha na etapa de ${phase} do relatório. Clique em Enviar agora para retomar a mesma tentativa com segurança.`,503);
 const allowedReport=(permissions:Awaited<ReturnType<typeof getRolePermissions>>,report:OperatorDayReport)=>
  permissions.MANAGEMENT.canView&&permissions.MANAGEMENT.canManage&&permissions.MANAGEMENT.canExport&&
- (!report.available.whatsapp||permissions.WHATSAPP.canView)&&(!report.available.operations||permissions.OPERATIONS.canView)&&(!report.available.daily||permissions.DAILY_ACTIVITIES.canView);
+ (!report.available.whatsapp||permissions.WHATSAPP.canView)&&(!report.available.operations||permissions.OPERATIONS.canView)&&(!report.available.daily||permissions.DAILY_ACTIVITIES.canView)&&(!report.available.meetings||permissions.MEETINGS?.canView===true);
 
 export async function sendManualOperatorReport(member:Member,input:{day:string;requestId:string;revision:string},now=new Date()){
  reportPeriod(input.day,now);
@@ -60,6 +61,12 @@ export async function sendManualOperatorReport(member:Member,input:{day:string;r
  let phase="autorização Google";
  try{
   if(!allowedReport(permissions,delivery.snapshot)||!allowedReport(senderPermissions,delivery.snapshot))throw new OperatorChatError("REPORT_PERMISSION_CHANGED","As permissões atuais não permitem enviar este relatório.",403);
+  if(delivery.snapshot.presentationVersion===2&&!delivery.messages.some(message=>message.includes('/relatorios/d/'))){
+   phase="publicação do dashboard";if(!await allowed())throw failure(phase);
+   const link=await publishExecutiveReport(member.organizationId,member.userId,'manual:'+input.requestId,delivery.snapshot,now);
+   delivery.messages=reportChatMessages(delivery.snapshot,link.url);
+   if(!await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET messages=${JSON.stringify(delivery.messages)}::jsonb WHERE ${liveLease}`))throw failure(phase);
+  }
   const token=await reportChatAccessToken(member.organizationId,config.configuredById);
   if(!delivery.pdfBase64){phase="geração do PDF";delivery.pdfBase64=Buffer.from(createOperatorReportPdf(delivery.snapshot).output("arraybuffer")).toString("base64");
    phase="registro do PDF";if(!await prisma.$executeRaw(Prisma.sql`UPDATE "OperatorReportManualDelivery" SET "pdfBase64"=${delivery.pdfBase64} WHERE ${liveLease}`))throw failure(phase);}

@@ -1,10 +1,11 @@
 import {beforeEach,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-const m=vi.hoisted(()=>({query:vi.fn(),execute:vi.fn(),member:vi.fn(),permissions:vi.fn(),build:vi.fn(),audit:vi.fn(),fetch:vi.fn(),token:vi.fn(),space:vi.fn(),status:vi.fn(),pdf:vi.fn()}));
+const m=vi.hoisted(()=>({query:vi.fn(),execute:vi.fn(),member:vi.fn(),permissions:vi.fn(),build:vi.fn(),audit:vi.fn(),fetch:vi.fn(),token:vi.fn(),space:vi.fn(),status:vi.fn(),pdf:vi.fn(),share:vi.fn()}));
 vi.mock("@/lib/prisma",()=>{const tx={$queryRaw:m.query,$executeRaw:m.execute,auditLog:{create:m.audit}};return {prisma:{...tx,organizationMember:{findFirst:m.member},$transaction:(fn:(t:typeof tx)=>unknown)=>fn(tx)}};});
 vi.mock("@/modules/permissions/permissions",()=>({getRolePermissions:m.permissions}));vi.mock("./operator-report-server",()=>({buildOperatorDayReport:m.build}));
 vi.mock("./operator-report-google",()=>({reportChatAccessToken:m.token,readReportSpace:m.space,reportGoogleStatus:m.status,validReportSpace:(value:string)=>/^spaces\/[A-Za-z0-9_-]+$/.test(value)}));
 vi.mock("./operator-report-pdf",()=>({createOperatorReportPdf:m.pdf,operatorPdfName:(day:string)=>`Fortuno-Relatorio-Diario-${day}.pdf`}));
+vi.mock("./executive-report-share",()=>({publishExecutiveReport:m.share}));
 import {chatRequestId,postReportPdf,uploadReportPdf,processDailyOperatorReports,saveReportConfig,reportSchedule} from "./operator-report-delivery";
 const config={organizationId:"org",revision:"revision",configuredById:"master",destinationName:"Gestores",spaceName:"spaces/managers",enabled:true,updatedAt:new Date("2026-11-23T12:00Z")};
 const snapshot={day:"2026-11-23",generatedAt:"2026-11-24T11:00Z",scope:"Todos",available:{whatsapp:true,operations:true,daily:true},warnings:[],rows:[]};
@@ -67,4 +68,11 @@ it("uses Brasília weekday schedules and keeps 08h and 13h delivery identities i
  expect(m.build).toHaveBeenCalledWith(expect.objectContaining({organizationId:"org"}),"2026-11-26",expect.any(Date),"SERVICE");
  expect(m.query.mock.calls[1][0].sql).toContain('"OperatorServiceReportDelivery"');
  expect(m.fetch.mock.calls[1][0].searchParams.get("requestId")).toBe(chatRequestId("org","service:2026-11-26"));
+});
+it("persists the isolated executive link before posting and does not rebuild an already frozen payload",async()=>{
+ m.share.mockResolvedValue({url:'https://app.hubsuporte.shop/relatorios/d/'+'a'.repeat(43)});
+ const v2={...delivery(),snapshot:{...snapshot,presentationVersion:2 as const}};
+ m.query.mockResolvedValueOnce([config]).mockResolvedValueOnce([]).mockResolvedValueOnce([v2]);await processDailyOperatorReports(new Date('2026-11-24T11:00Z'));
+ expect(m.share).toHaveBeenCalledWith('org','master','scheduled:GENERAL:2026-11-23:revision',v2.snapshot,expect.any(Date));expect(m.fetch.mock.calls[1][1].body).toContain('/relatorios/d/');expect(m.execute.mock.calls.some(c=>c[0].sql.includes('SET messages='))).toBe(true);
+ m.share.mockClear();m.fetch.mockClear();m.query.mockResolvedValueOnce([config]).mockResolvedValueOnce([{status:'FAILED',configRevision:'revision',snapshot:v2.snapshot}]).mockResolvedValueOnce([{...v2,pdfBase64:Buffer.from(pdfBytes).toString('base64'),attachmentRef:ref}]);await processDailyOperatorReports(new Date('2026-11-24T11:10Z'));expect(m.share).not.toHaveBeenCalled();expect(m.fetch.mock.calls[0][1].body).toContain('/relatorios/d/');
 });

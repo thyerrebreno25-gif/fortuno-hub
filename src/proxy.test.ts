@@ -134,3 +134,9 @@ it("lets only the exact public recovery endpoint handle its own origin and rate 
  expect((await proxy(new NextRequest("https://example.test/api/auth/password-recovery/complete/admin"))).headers.get("location")).toBe("https://example.test/login");
  expect((await proxy(new NextRequest("https://example.test/api/auth/password-recovery-admin"))).headers.get("location")).toBe("https://example.test/login");
 });
+it("only exposes exact report documents without opening any Hub API or subpath",async()=>{
+ const token="a".repeat(43);
+ const response=await proxy(new NextRequest("https://example.test/relatorios/d/"+token));expect(response.headers.get("x-middleware-next")).toBe("1");
+ for(const path of ["/relatorios/d/short","/relatorios/d/"+token+"/extra","/api/management/operator-report/share","/api/management/operator-report/html"]){expect((await proxy(new NextRequest("https://example.test"+path))).headers.get("location")).toBe("https://example.test/login");}
+ expect((await proxy(new NextRequest("https://example.test/relatorios/d/"+token,{method:"POST"}))).headers.get("location")).toBe("https://example.test/login");
+});

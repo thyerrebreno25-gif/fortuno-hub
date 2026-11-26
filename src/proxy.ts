@@ -35,6 +35,8 @@ function redirectTo(request: NextRequest, pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  // The isolated document validates its own read-only report link. No Hub/API path is made public.
+  if(request.method==="GET"||request.method==="HEAD")if(/^\/relatorios\/d\/[A-Za-z0-9_-]{43}$/.test(request.nextUrl.pathname))return NextResponse.next({request});
   const recoveryPath=recoveryReturnPath(request.url,request.cookies.get(RECOVERY_INTENT_COOKIE)?.value==="1");
   if(recoveryPath)return NextResponse.redirect(new URL(recoveryPath,request.url));
   if(["/api/auth/password-recovery","/api/auth/password-recovery/complete"].includes(request.nextUrl.pathname))return NextResponse.next({request});

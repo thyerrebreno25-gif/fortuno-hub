@@ -29,8 +29,8 @@ it("exports response delays and factual closure reviews with affected clients an
 it("places yesterday's pending work first and creates an independent service-only PDF",async()=>{
  const enriched:OperatorDayReport={...report,pendingWork:[{id:"pending",userId:"0",title:"Conciliação pendente prioritária",client:"Cliente Exemplo",dueAt:"2026-11-24T21:00Z",kind:"TASK",status:"OPEN"}],rows:report.rows.map((r,i)=>({...r,tasksPending:i===0?1:r.tasksPending})),serviceSnapshot:{open:14,clients:7,queue:3,averageQueueMinutes:18,longestQueueMinutes:41,averageResolutionMinutes:52,resolutionSamples:10,satisfaction:4.7,satisfactionSamples:6,byStatus:[{name:"NEW",count:3},{name:"IN_PROGRESS",count:11}],bySector:[{name:"Contas a pagar",count:14}],openClients:[{name:"Cliente Exemplo",count:2}]}};
  const general=createOperatorReportPdf(enriched),generalPages=await read(general),text=generalPages.join(" ");
- expect(generalPages[0]).toContain("Pendências até o dia de referência");expect(text.indexOf("Conciliação pendente prioritária")).toBeLessThan(text.indexOf("Atendimento por colaborador"));
- expect(generalPages[0]).toContain("Pendências por pessoa");expect(generalPages[1]).toContain("Produção e capacidade da equipe");
+ expect(generalPages[0]).toContain("Como a operação rodou.");expect(text.indexOf("Conciliação pendente prioritária")).toBeLessThan(text.indexOf("Atendimento por colaborador"));
+ expect(generalPages[0]).toContain("Execução por colaborador");expect(generalPages[1]).toContain("Atendimento, clientes e reuniões.");
  expect(generalPages.slice(0,2).join(" ")).not.toContain("Conciliação pendente prioritária");expect(generalPages.slice(2).join(" ")).toContain("Conciliação pendente prioritária");
  const service=createOperatorReportPdf({...enriched,kind:"SERVICE",available:{whatsapp:true,operations:false,daily:false}}),serviceText=(await read(service)).join(" ");
  for(const value of ["RELATÓRIO DE ATENDIMENTO","3 na fila","Contas a pagar","Cliente Exemplo"])expect(serviceText).toContain(value);

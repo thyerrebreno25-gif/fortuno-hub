@@ -1,3 +1,4 @@
+import {publishExecutiveReport} from "./executive-report-share";
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {Prisma} from "@/generated/prisma/client";
@@ -68,7 +69,7 @@ export async function processDailyOperatorReports(now=new Date(),kind:ReportKind
   const permission=await getRolePermissions(member.organizationId,member.role);if(!permission.MANAGEMENT.canView||!permission.MANAGEMENT.canManage||!permission.MANAGEMENT.canExport)continue;
   const [existing]=await prisma.$queryRaw<Array<{status:string;configRevision:string;snapshot:OperatorDayReport}>>(Prisma.sql`SELECT status,"configRevision",snapshot FROM ${table} WHERE "organizationId"=${config.organizationId} AND day=${day}`);
   if(existing?.status==="SENT"||existing&&existing.configRevision!==config.revision)continue;
-  if(existing&&((existing.snapshot.available.whatsapp&&!permission.WHATSAPP.canView)||(existing.snapshot.available.operations&&!permission.OPERATIONS.canView)||(existing.snapshot.available.daily&&!permission.DAILY_ACTIVITIES.canView)))continue;
+  if(existing&&((existing.snapshot.available.whatsapp&&!permission.WHATSAPP.canView)||(existing.snapshot.available.operations&&!permission.OPERATIONS.canView)||(existing.snapshot.available.daily&&!permission.DAILY_ACTIVITIES.canView)||(existing.snapshot.available.meetings&&!permission.MEETINGS?.canView)))continue;
   if(!existing){const snapshot=await buildOperatorDayReport(member,day,now,kind),messages=reportChatMessages(snapshot);await prisma.$executeRaw(Prisma.sql`INSERT INTO ${table} ("organizationId",day,"configRevision",snapshot,messages) VALUES (${config.organizationId},${day},${config.revision},${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(messages)}::jsonb) ON CONFLICT ("organizationId",day) DO NOTHING`);}
   leaseId=randomUUID();
   const [delivery]=await prisma.$queryRaw<Array<{messages:string[];snapshot:OperatorDayReport;pdfBase64:string|null;attachmentRef:AttachmentRef|null;sentParts:number}>>(Prisma.sql`UPDATE ${table} d SET status='SENDING',"leaseId"=${leaseId},"leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes',attempts=attempts+1
@@ -76,6 +77,12 @@ export async function processDailyOperatorReports(now=new Date(),kind:ReportKind
    AND ("leaseUntil" IS NULL OR "leaseUntil"<CURRENT_TIMESTAMP) AND ("retryAt" IS NULL OR "retryAt"<=CURRENT_TIMESTAMP)
    AND EXISTS(SELECT 1 FROM "OperatorReportConfig" c WHERE c."organizationId"=d."organizationId" AND c.enabled=true AND c.revision=d."configRevision") RETURNING messages,snapshot,"pdfBase64","attachmentRef","sentParts"`);if(!delivery)continue;
   const allowed=()=>prisma.$executeRaw(Prisma.sql`UPDATE ${table} d SET "leaseUntil"=CURRENT_TIMESTAMP+INTERVAL '2 minutes' WHERE d."organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId} AND EXISTS(SELECT 1 FROM "OperatorReportConfig" c WHERE c."organizationId"=d."organizationId" AND c.enabled=true AND c.revision=d."configRevision")`);
+  if(delivery.snapshot.presentationVersion===2&&!delivery.messages.some(message=>message.includes('/relatorios/d/'))){
+   if(!await allowed())throw new Error("Configuração alterada.");
+   const link=await publishExecutiveReport(config.organizationId,config.configuredById,'scheduled:'+kind+':'+day+':'+config.revision,delivery.snapshot,now);
+   delivery.messages=reportChatMessages(delivery.snapshot,link.url);
+   if(!await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET messages=${JSON.stringify(delivery.messages)}::jsonb WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`))throw new Error("Dashboard não confirmado.");
+  }
   const token=await reportChatAccessToken(config.organizationId,config.configuredById);
   if(!delivery.pdfBase64){delivery.pdfBase64=Buffer.from(createOperatorReportPdf(delivery.snapshot).output("arraybuffer")).toString("base64");const saved=await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET "pdfBase64"=${delivery.pdfBase64} WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);if(!saved)throw new Error("PDF não confirmado.");}
   if(!delivery.attachmentRef){if(!await allowed())throw new Error("Configuração alterada.");delivery.attachmentRef=await uploadReportPdf(token,config.spaceName,day,Buffer.from(delivery.pdfBase64,"base64"),kind);const saved=await prisma.$executeRaw(Prisma.sql`UPDATE ${table} SET "attachmentRef"=${JSON.stringify(delivery.attachmentRef)}::jsonb WHERE "organizationId"=${config.organizationId} AND day=${day} AND "leaseId"=${leaseId}`);if(!saved)throw new Error("Anexo não confirmado.");}

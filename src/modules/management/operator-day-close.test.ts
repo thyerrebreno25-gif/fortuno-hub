@@ -1,0 +1,7 @@
+import {expect,it} from "vitest";
+import {activityAtDayClose} from "./operator-day-close";
+const end=new Date("2026-11-26T03:00Z"),before=new Date("2026-11-25T15:00Z"),after=new Date("2026-11-26T12:00Z");
+const base={responsibleId:"new",status:"COMPLETED",completedAt:after,deletedAt:null,updatedAt:after,events:[{type:"CREATED",message:"",metadata:null,createdAt:before}]};
+it("does not count today's completion as yesterday's and reconstructs transfers after the cutoff",()=>{expect(activityAtDayClose({...base,events:[...base.events,{type:"ASSIGNED",message:"",metadata:{fromResponsibleId:"old",toResponsibleId:"new"},createdAt:after}]},end)).toEqual({status:"OPEN",responsibleId:"old"});});
+it("preserves legacy completion dates and subsequent reopen events",()=>{expect(activityAtDayClose({...base,completedAt:before},end).status).toBe("COMPLETED");expect(activityAtDayClose({...base,completedAt:before,events:[{type:"STATUS_CHANGED",message:"Ana alterou o status para OPEN.",metadata:null,createdAt:new Date(+before+1000)}]},end).status).toBe("OPEN");});
+it("ignores calendar-only changes and reports missing state history instead of guessing",()=>{expect(activityAtDayClose({...base,completedAt:null,events:[{type:"STATUS_CHANGED",message:"Calendário atualizado",metadata:null,createdAt:before}]},end).status).toBe("UNKNOWN");expect(activityAtDayClose({...base,deletedAt:before},end).status).toBe("REMOVED");});
