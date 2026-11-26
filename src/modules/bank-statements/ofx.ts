@@ -16,6 +16,7 @@ const institutionNames: Record<string, string> = {
   "001": "Banco do Brasil S.A.",
   "070": "BRB - Banco de Brasilia S.A.",
   "104": "Caixa Economica Federal",
+  "197": "Stone Instituicao de Pagamento S.A.",
   "102": "XP Investimentos CCTVM S.A.",
   "260": "Nu Pagamentos S.A.",
   "323": "Mercado Pago",
@@ -62,7 +63,7 @@ function transactionEntry(
     transaction.type === "CREDIT" ? absoluteAmount : -absoluteAmount;
   const reference = escapeOfx(transaction.document || String(index + 1));
   const fitId = escapeOfx(
-    `${postedDate.replace(/-/g, "")}-${reference}-${index + 1}-${absoluteAmount.toFixed(2)}`,
+    transaction.fitId || `${postedDate.replace(/-/g, "")}-${reference}-${index + 1}-${absoluteAmount.toFixed(2)}`,
   );
 
   return [
@@ -71,8 +72,10 @@ function transactionEntry(
     `<DTPOSTED>${dateOfx(postedDate)}</DTPOSTED>`,
     `<TRNAMT>${signedAmount.toFixed(2)}</TRNAMT>`,
     `<FITID>${fitId}</FITID>`,
-    `<CHECKNUM>${reference}</CHECKNUM>`,
-    `<REFNUM>${reference}</REFNUM>`,
+    ...(!transaction.fitId || transaction.document ? [
+      `<CHECKNUM>${reference}</CHECKNUM>`,
+      `<REFNUM>${reference}</REFNUM>`,
+    ] : []),
     `<MEMO>${escapeOfx(transaction.description)}</MEMO>`,
     "</STMTTRN>",
   ].join("\r\n");

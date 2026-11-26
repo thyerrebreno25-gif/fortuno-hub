@@ -36,5 +36,16 @@ export function columnsForRoutine(routine:ConfiguredRoutine,columns:RoutineColum
 }
 export function routineCellIndex(routines:ConfiguredRoutine[],columns:RoutineColumn[]){const index=new Map<string,ConfiguredRoutine[]>();for(const routine of routines)for(const columnId of columnsForRoutine(routine,columns)){const key=JSON.stringify([routine.clientId,columnId]);index.set(key,[...(index.get(key)||[]),routine]);}return index;}
 export const routineCellKey=(clientId:string,columnId:string)=>JSON.stringify([clientId,columnId]);
-export function routineColumnNeedsFrequency(column:RoutineColumn){return column.kind==="report"||column.kind==="process"&&!normalized(column.processName).includes("fatura");}
-export function routinePreset(column:RoutineColumn,day:string):Pick<RoutineEdit,"recurrenceType"|"recurrenceData">{const fortnight=column.kind==="fortnightAudit"||column.kind==="process"&&normalized(column.processName).includes("fatura"),monthly=["monthlyAudit","customAgenda"].includes(column.kind),weekday=new Date(day+"T12:00Z").getUTCDay();return {recurrenceType:column.kind==="agenda"?"WEEKLY":monthly?"MONTHLY":"DAILY",recurrenceData:{startDate:day,endDate:null,dueTime:"18:00",interval:fortnight?15:1,dailyMode:fortnight?"ALL_DAYS":"BUSINESS_DAYS",weekdays:column.weekday?[column.weekday]:[weekday],monthDays:monthly?[Number(day.slice(-2))]:[],holidayBehavior:"PREVIOUS_BUSINESS_DAY"}};}
+export type RoutineFrequency="DAILY"|"WEEKLY"|"FORTNIGHTLY"|"MONTHLY";
+export function routineFixedFrequency(column:RoutineColumn):RoutineFrequency|null {
+ const name=normalized(column.processName);
+ if(column.kind==="monthlyAudit"||column.kind==="process"&&name.includes("rendimento")&&name.includes("aplica"))return "MONTHLY";
+ if(column.kind==="fortnightAudit"||column.kind==="process"&&name.includes("fatura"))return "FORTNIGHTLY";
+ return null;
+}
+export function routineColumnNeedsFrequency(column:RoutineColumn){return column.kind==="report"||column.kind==="process"&&!routineFixedFrequency(column);}
+export function routinePreset(column:RoutineColumn,day:string,frequency?:RoutineFrequency|null):Pick<RoutineEdit,"recurrenceType"|"recurrenceData"> {
+ const cadence=routineFixedFrequency(column)||frequency;
+ const fortnight=cadence==="FORTNIGHTLY",monthly=cadence==="MONTHLY"||column.kind==="customAgenda",weekday=new Date(day+"T12:00Z").getUTCDay();
+ return {recurrenceType:column.kind==="agenda"?"WEEKLY":monthly?"MONTHLY":cadence==="WEEKLY"?"WEEKLY":"DAILY",recurrenceData:{startDate:day,endDate:null,dueTime:"18:00",interval:fortnight?15:1,dailyMode:fortnight?"ALL_DAYS":"BUSINESS_DAYS",weekdays:column.weekday?[column.weekday]:[weekday],monthDays:monthly?[Number(day.slice(-2))]:[],holidayBehavior:"PREVIOUS_BUSINESS_DAY"}};
+}

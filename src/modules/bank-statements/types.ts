@@ -5,6 +5,7 @@ export type StatementTransaction = {
   accountingDate?: string;
   description: string;
   document: string;
+  fitId?: string;
   sourceType?: string;
   type: "CREDIT" | "DEBIT";
   amount: number;

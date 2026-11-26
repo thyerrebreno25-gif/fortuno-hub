@@ -1,0 +1,598 @@
+[
+  {
+    "page": 1,
+    "y": 786,
+    "text": "Extrato de conta corrente",
+    "parts": [
+      {
+        "x": 77.00000146366648,
+        "text": "Extrato de conta corrente"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 770,
+    "text": "Emitido em 26 novembro 2026 às 15:53:24",
+    "parts": [
+      {
+        "x": 77.00000146366648,
+        "text": "Emitido em 26 novembro 2026 às 15:53:24"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 768,
+    "text": "Página 1 de 1",
+    "parts": [
+      {
+        "x": 523.9179839448334,
+        "text": "Página"
+      },
+      {
+        "x": 553.636734608552,
+        "text": "1"
+      },
+      {
+        "x": 560.9023712458179,
+        "text": "de"
+      },
+      {
+        "x": 572.9843875406495,
+        "text": "1"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 738,
+    "text": "Dados da conta",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "Dados da conta"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 702,
+    "text": "Nome Documento",
+    "parts": [
+      {
+        "x": 35.750000542416586,
+        "text": "Nome"
+      },
+      {
+        "x": 404.2929812732087,
+        "text": "Documento"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 686,
+    "text": "EMPRESA EXEMPLO LTDA 12.345.678/0001-95",
+    "parts": [
+      {
+        "x": 35.750000542416586,
+        "text": "EMPRESA EXEMPLO LTDA"
+      },
+      {
+        "x": 404.2929812732087,
+        "text": "12.345.678/0001-95"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 668,
+    "text": "Instituição Agência Conta",
+    "parts": [
+      {
+        "x": 35.750000542416586,
+        "text": "Instituição"
+      },
+      {
+        "x": 404.2929812732087,
+        "text": "Agência"
+      },
+      {
+        "x": 454.30860739022415,
+        "text": "Conta"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 654,
+    "text": "Stone Instituição de Pagamento S.A. 0001 12345678-9",
+    "parts": [
+      {
+        "x": 35.750000542416586,
+        "text": "Stone Instituição de Pagamento S.A."
+      },
+      {
+        "x": 404.2929812732087,
+        "text": "0001"
+      },
+      {
+        "x": 454.30860739022415,
+        "text": "12345678-9"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 616,
+    "text": "Período: de 11/11/2026 a 12/11/2026",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "Período: de 11/11/2026 a 12/11/2026"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 592,
+    "text": "DATA TIPO DESCRIÇÃO VALOR SALDO CONTRAPARTE",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "DATA"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "TIPO"
+      },
+      {
+        "x": 118.8945336493109,
+        "text": "DESCRIÇÃO"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "VALOR"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "SALDO"
+      },
+      {
+        "x": 427.7656342974312,
+        "text": "CONTRAPARTE"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 572,
+    "text": "PICPAY INSTITUIçãO DE",
+    "parts": [
+      {
+        "x": 427.7656342974312,
+        "text": "PICPAY INSTITUIçãO DE"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 566,
+    "text": "12/11/26 Saída Tarifa - R$ 10,00 R$ 3.014,46",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "12/11/26"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "Saída"
+      },
+      {
+        "x": 118.8945336493109,
+        "text": "Tarifa"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "- R$ 10,00"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "R$ 3.014,46"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 560,
+    "text": "PAGAMENTO S.A.",
+    "parts": [
+      {
+        "x": 427.7656342974312,
+        "text": "PAGAMENTO S.A."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 536,
+    "text": "CLIENTE TRES",
+    "parts": [
+      {
+        "x": 118.8945336493109,
+        "text": "CLIENTE TRES"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 530,
+    "text": "PICPAY INSTITUIçãO DE",
+    "parts": [
+      {
+        "x": 427.7656342974312,
+        "text": "PICPAY INSTITUIçãO DE"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 524,
+    "text": "12/11/26 Entrada EXEMPLO R$ 2.000,00 R$ 3.014,46",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "12/11/26"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "Entrada"
+      },
+      {
+        "x": 118.8945336493109,
+        "text": "EXEMPLO"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "R$ 2.000,00"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "R$ 3.014,46"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 518,
+    "text": "PAGAMENTO S.A.",
+    "parts": [
+      {
+        "x": 427.7656342974312,
+        "text": "PAGAMENTO S.A."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 512,
+    "text": "Pix | Maquininha",
+    "parts": [
+      {
+        "x": 118.8945336493109,
+        "text": "Pix | Maquininha"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 488,
+    "text": "12/11/26 Saída Tarifa - R$ 2,57 R$ 1.024,46 Banco do Brasil S.A.",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "12/11/26"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "Saída"
+      },
+      {
+        "x": 118.8945336493109,
+        "text": "Tarifa"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "- R$ 2,57"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "R$ 1.024,46"
+      },
+      {
+        "x": 427.7656342974312,
+        "text": "Banco do Brasil S.A."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 462,
+    "text": "CLIENTE DOIS",
+    "parts": [
+      {
+        "x": 118.8945336493109,
+        "text": "CLIENTE DOIS"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 456,
+    "text": "12/11/26 Entrada R$ 514,80 R$ 1.024,46 Banco do Brasil S.A.",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "12/11/26"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "Entrada"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "R$ 514,80"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "R$ 1.024,46"
+      },
+      {
+        "x": 427.7656342974312,
+        "text": "Banco do Brasil S.A."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 450,
+    "text": "Pix | Maquininha",
+    "parts": [
+      {
+        "x": 118.8945336493109,
+        "text": "Pix | Maquininha"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 426,
+    "text": "12/11/26 Saída Tarifa - R$ 2,57 R$ 512,23 Banco do Brasil S.A.",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "12/11/26"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "Saída"
+      },
+      {
+        "x": 118.8945336493109,
+        "text": "Tarifa"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "- R$ 2,57"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "R$ 512,23"
+      },
+      {
+        "x": 427.7656342974312,
+        "text": "Banco do Brasil S.A."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 402,
+    "text": "CLIENTE UM",
+    "parts": [
+      {
+        "x": 118.8945336493109,
+        "text": "CLIENTE UM"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 396,
+    "text": "12/11/26 Entrada R$ 514,80 R$ 512,23 Banco do Brasil S.A.",
+    "parts": [
+      {
+        "x": 26.00000032466661,
+        "text": "12/11/26"
+      },
+      {
+        "x": 73.03906387520554,
+        "text": "Entrada"
+      },
+      {
+        "x": 293.8671938070331,
+        "text": "R$ 514,80"
+      },
+      {
+        "x": 360.8164178022322,
+        "text": "R$ 512,23"
+      },
+      {
+        "x": 427.7656342974312,
+        "text": "Banco do Brasil S.A."
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 390,
+    "text": "Pix | Maquininha",
+    "parts": [
+      {
+        "x": 118.8945336493109,
+        "text": "Pix | Maquininha"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 326,
+    "text": "Informações do Comprovante",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "Informações do Comprovante"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 286,
+    "text": "Código da autenticação",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "Código da autenticação"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 272,
+    "text": "COMPROVANTE-EXEMPLO",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "COMPROVANTE-EXEMPLO"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 142,
+    "text": "Ouvidoria",
+    "parts": [
+      {
+        "x": 172.27344109143965,
+        "text": "Ouvidoria"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 126,
+    "text": "Se nosso atendimento não atendeu às suas expectativas, ligue para 0800-942-2174 em dias úteis, das",
+    "parts": [
+      {
+        "x": 172.27344109143965,
+        "text": "Se nosso atendimento não atendeu às suas expectativas, ligue para"
+      },
+      {
+        "x": 439.3437595560093,
+        "text": "0800-942-2174"
+      },
+      {
+        "x": 502.6367449445524,
+        "text": "em dias úteis, das"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 114,
+    "text": "9h às 18h, horário de Brasília. Você também pode enviar um e-mail para ouvidoria@stone.com.br",
+    "parts": [
+      {
+        "x": 172.27344109143965,
+        "text": "9h às 18h, horário de Brasília. Você também pode enviar um e-mail para"
+      },
+      {
+        "x": 455.7851699232007,
+        "text": "ouvidoria@stone.com.br"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 98,
+    "text": "CNPJ: 16.501.555/0001-57",
+    "parts": [
+      {
+        "x": 172.27344109143965,
+        "text": "CNPJ:"
+      },
+      {
+        "x": 201.53516424495137,
+        "text": "16.501.555/0001-57"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 60,
+    "text": "Dúvidas? Fale com a gente!",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "Dúvidas? Fale com a gente!"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 36,
+    "text": "Regiões Metropolitanas Envie um WhatsApp Outras regiões Envie um e-mail",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "Regiões Metropolitanas"
+      },
+      {
+        "x": 186.9453164191115,
+        "text": "Envie um WhatsApp"
+      },
+      {
+        "x": 341.0117298599276,
+        "text": "Outras regiões"
+      },
+      {
+        "x": 475.5429828644585,
+        "text": "Envie um e-mail"
+      }
+    ]
+  },
+  {
+    "page": 1,
+    "y": 24,
+    "text": "3004-9680 3004-9680 0800 326 0506 meajuda@stone.com.br",
+    "parts": [
+      {
+        "x": 20.000000190666626,
+        "text": "3004-9680"
+      },
+      {
+        "x": 186.9453164191115,
+        "text": "3004-9680"
+      },
+      {
+        "x": 341.0117298599276,
+        "text": "0800 326 0506"
+      },
+      {
+        "x": 475.5429828644585,
+        "text": "meajuda@stone.com.br"
+      }
+    ]
+  }
+]

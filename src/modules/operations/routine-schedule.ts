@@ -14,6 +14,7 @@ export function routineScheduleKey(type: string, value: unknown) {
 
 export function routineScheduleLabel(type: string, value: unknown) {
   const data = value && typeof value === "object" ? value as Schedule : {};
+  if(type==="DAILY"&&Number(data.interval)===15)return `Quinzenal · a cada 15 dias · ${String(data.dueTime||"18:00")}`;
   const names = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
   const weekdays = Array.isArray(data.weekdays) ? [...new Set(data.weekdays as number[])].sort().map(day=>names[day]).join(", ") : "";
   const label = type === "ONCE" ? "Uma vez" : type === "MONTHLY" ? "Mensal · dia(s) "+(Array.isArray(data.monthDays)&&data.monthDays.length?(data.monthDays as number[]).join(", "):String(data.startDate||"").slice(-2)||"do início") : type === "DAILY" && data.dailyMode === "BUSINESS_DAYS" ? "Dias úteis" : type === "DAILY" && data.dailyMode !== "CUSTOM_DAYS" ? "Diária" : weekdays || "Semanal";

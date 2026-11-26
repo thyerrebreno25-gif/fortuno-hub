@@ -6,6 +6,7 @@ import { operationTeamCatalog } from "@/modules/operations/team-catalog";
 import { operationClientTeam, canonicalTeam } from "@/modules/operations/teams";
 import { routineScheduleKey } from "@/modules/operations/routine-schedule";
 import { brazilDay } from "@/modules/operations/analytics";
+import {operationDayRange} from "@/modules/operations/activity-deadline";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canManageOperations, getOperationMember } from "@/modules/operations/auth";
@@ -30,7 +31,11 @@ export async function POST(request: Request) {
     const processId = String(body.processId || "");
     if (!clientId || !processId) return NextResponse.json({ error: "Selecione cliente e processo." }, { status: 400 });
 
-    const recurrence=body.recurrenceData as {weekdays?:unknown;monthDays?:unknown;startDate?:string;dailyMode?:string}|undefined;
+    const recurrence=body.recurrenceData as {weekdays?:unknown;monthDays?:unknown;startDate?:string;endDate?:string;dailyMode?:string;interval?:number}|undefined;
+    if(recurrence?.startDate!==undefined||body.recurrenceType==="MONTHLY"||body.recurrenceType==="DAILY"&&Number(recurrence?.interval)===15){
+      try{operationDayRange(recurrence?.startDate as string);}catch{return NextResponse.json({error:"Selecione uma data de início válida para a rotina."},{status:400});}
+    }
+    if(recurrence?.endDate){try{operationDayRange(recurrence.endDate);}catch{return NextResponse.json({error:"Selecione uma data final válida para a rotina."},{status:400});}if(recurrence.startDate&&recurrence.endDate<recurrence.startDate)return NextResponse.json({error:"O fim da rotina deve ser posterior ao início."},{status:400});}
     if((body.recurrenceType==="CUSTOM"||body.recurrenceType==="WEEKLY"||(body.recurrenceType==="DAILY"&&recurrence?.dailyMode==="CUSTOM_DAYS")) && (!Array.isArray(recurrence?.weekdays)||!recurrence.weekdays.length||recurrence.weekdays.some(day=>!Number.isInteger(day)||Number(day)<0||Number(day)>6)))return NextResponse.json({error:"Selecione dias da semana válidos para a recorrência."},{status:400});
     if(body.recurrenceType==="MONTHLY"&&(!Array.isArray(recurrence?.monthDays)||!recurrence.monthDays.length||recurrence.monthDays.some(day=>!Number.isInteger(day)||Number(day)<1||Number(day)>31)))return NextResponse.json({error:"Selecione dias do mês de 1 a 31 para a recorrência mensal."},{status:400});
     if(typeof body.responsibleId==="string"&&body.responsibleId){

@@ -5,6 +5,7 @@ import { ActionIcon, Alert, Badge, Button, Card, Center, Checkbox, Group, Number
 import { IconAlertTriangle, IconArrowDown, IconArrowUp, IconBuildingBank, IconCheck, IconChevronRight, IconDownload, IconFileAnalytics, IconPhoto, IconRefresh, IconTrash, IconUpload, IconX } from "@tabler/icons-react";
 import { extractPdfLines, extractPdfTextLines } from "@/modules/bank-statements/pdf-reader.client";
 import { extractCaixaPdfOcrLines } from "@/modules/bank-statements/caixa-reader.client";
+import {parseStoneStatement} from "@/modules/bank-statements/parsers/stone";
 import { parseBrbStatement, brbOfxAccount } from "@/modules/bank-statements/parsers/brb";
 import { parseSafraStatement } from "@/modules/bank-statements/parsers/safra";
 import { parseC6 } from "@/modules/bank-statements/parsers/c6";
@@ -18,7 +19,7 @@ import { generateOfx } from "@/modules/bank-statements/ofx";
 import type { ParsedStatement, StatementTransaction } from "@/modules/bank-statements/types";
 import { trackImport } from "@/modules/imports/import-tracker";
 
-const BANKS = [{ value: "BRB", label: "BRB – Banco de Brasília" }, { value: "SAFRA", label: "Safra" }, { value: "SICREDI", label: "Sicredi" }, { value: "C6", label: "C6 Bank" }, { value: "CAIXA", label: "Caixa" }, { value: "NUBANK", label: "Nubank" }, { value: "MERCADO_PAGO", label: "Mercado Pago" }, { value: "BB", label: "Banco do Brasil" }, { value: "XP", label: "XP" }, { value: "ITAU", label: "Itaú (em breve)" }, { value: "INTER", label: "Inter (em breve)" }];
+const BANKS = [{ value: "STONE", label: "Stone" }, { value: "BRB", label: "BRB – Banco de Brasília" }, { value: "SAFRA", label: "Safra" }, { value: "SICREDI", label: "Sicredi" }, { value: "C6", label: "C6 Bank" }, { value: "CAIXA", label: "Caixa" }, { value: "NUBANK", label: "Nubank" }, { value: "MERCADO_PAGO", label: "Mercado Pago" }, { value: "BB", label: "Banco do Brasil" }, { value: "XP", label: "XP" }, { value: "ITAU", label: "Itaú (em breve)" }, { value: "INTER", label: "Inter (em breve)" }];
 const money = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 const date = (v?: string) => v ? v.split("-").reverse().join("/") : "-";
 function download(name: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
@@ -48,15 +49,15 @@ export default function ExtratosPage() {
     if (!file || !bank) return;
     setProcessing(true); setError("");
     try {
-      if (!(["SICREDI", "C6", "CAIXA", "NUBANK", "MERCADO_PAGO", "BB", "XP", "SAFRA", "BRB"] as string[]).includes(bank)) throw new Error("Esse banco ainda não possui um leitor configurado.");
+      if (!(["SICREDI", "C6", "CAIXA", "NUBANK", "MERCADO_PAGO", "BB", "XP", "SAFRA", "BRB", "STONE"] as string[]).includes(bank)) throw new Error("Esse banco ainda não possui um leitor configurado.");
       if (file.type.startsWith("image/") || /\.(png|jpe?g)$/i.test(file.name)) throw new Error("A leitura de extratos por imagem ainda não está disponível. Envie o PDF original do banco.");
-      const structuredLines = bank === "NUBANK" || bank === "MERCADO_PAGO" || bank === "BB" || bank === "XP" || bank === "SAFRA" || bank === "BRB" ? await extractPdfTextLines(file, password) : null;
+      const structuredLines = bank === "NUBANK" || bank === "MERCADO_PAGO" || bank === "BB" || bank === "XP" || bank === "SAFRA" || bank === "BRB" || bank === "STONE" ? await extractPdfTextLines(file, password) : null;
       const lines = bank === "CAIXA"
         ? await extractCaixaPdfOcrLines(file, password)
         : structuredLines
           ? []
           : await extractPdfLines(file, password);
-      const parsed = bank === "BRB" ? parseBrbStatement(structuredLines ?? []) : bank === "C6"
+      const parsed = bank === "STONE" ? parseStoneStatement(structuredLines ?? []) : bank === "BRB" ? parseBrbStatement(structuredLines ?? []) : bank === "C6"
         ? parseC6(lines)
         : bank === "CAIXA"
           ? parseCaixaStatement(lines)
@@ -70,7 +71,7 @@ export default function ExtratosPage() {
                 ? parseXpStatement(structuredLines ?? [])
                 : bank === "SAFRA" ? parseSafraStatement(structuredLines ?? []) : parseSicredi(lines);
       setStatement(parsed); setTransactions(parsed.transactions);
-      setInitialBalance(bank === "C6" || bank === "CAIXA" || bank === "NUBANK" || bank === "MERCADO_PAGO" || bank === "BB" || bank === "XP" || bank === "SAFRA" || bank === "BRB" ? parsed.detectedOpeningBalance ?? "" : "");
+      setInitialBalance(bank === "C6" || bank === "CAIXA" || bank === "NUBANK" || bank === "MERCADO_PAGO" || bank === "BB" || bank === "XP" || bank === "SAFRA" || bank === "BRB" || bank === "STONE" ? parsed.detectedOpeningBalance ?? "" : "");
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível ler o arquivo."); }
     finally { setProcessing(false); }
   }
@@ -79,6 +80,7 @@ export default function ExtratosPage() {
   function remove(id: number) { setTransactions((c) => c.filter((t) => t.id !== id)); }
   async function exportOfx() {
     if (!statement || initialBalance === "" || !balanceValid) return;
+    const isStone = statement.bank === "Stone";
     const isBrb = statement.bank === "BRB";
     const isC6 = statement.bank === "C6 Bank";
     const isCaixa = statement.bank === "Caixa";
@@ -88,17 +90,17 @@ export default function ExtratosPage() {
     const isXp = statement.bank === "XP";
     const isSafra = statement.bank === "Safra";
     const isXpInvestments = isXp && statement.layout === "Investimentos";
-    const bankSlug = isBrb ? "brb" : isSafra ? "safra" : isC6 ? "c6" : isCaixa ? "caixa" : isNubank ? "nubank" : isMercadoPago ? "mercado_pago" : isBancoDoBrasil ? "banco_do_brasil" : isXp ? "xp" : "sicredi";
-    const bankId = isBrb ? "070" : isSafra ? "422" : isC6 ? "336" : isCaixa ? "104" : isNubank ? "260" : isMercadoPago ? "323" : isBancoDoBrasil ? "001" : isXpInvestments ? "102" : isXp ? "348" : "748";
-    const institutionName = isBrb ? "BRB - Banco de Brasilia S.A." : isNubank ? "Nu Pagamentos S.A." : isXpInvestments ? "XP Investimentos CCTVM S.A." : isXp ? "Banco XP S.A." : statement.bank;
-    const content = generateOfx({ bankId, institutionName, branch: statement.branch, account: isBrb ? brbOfxAccount(statement.account || "", statement.branch || "") : statement.account, periodStart: isBrb ? statement.periodStart : undefined, periodEnd: isBrb ? statement.periodEnd : undefined, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
+    const bankSlug = isStone ? "stone" : isBrb ? "brb" : isSafra ? "safra" : isC6 ? "c6" : isCaixa ? "caixa" : isNubank ? "nubank" : isMercadoPago ? "mercado_pago" : isBancoDoBrasil ? "banco_do_brasil" : isXp ? "xp" : "sicredi";
+    const bankId = isStone ? "197" : isBrb ? "070" : isSafra ? "422" : isC6 ? "336" : isCaixa ? "104" : isNubank ? "260" : isMercadoPago ? "323" : isBancoDoBrasil ? "001" : isXpInvestments ? "102" : isXp ? "348" : "748";
+    const institutionName = isStone ? "Stone Instituicao de Pagamento S.A." : isBrb ? "BRB - Banco de Brasilia S.A." : isNubank ? "Nu Pagamentos S.A." : isXpInvestments ? "XP Investimentos CCTVM S.A." : isXp ? "Banco XP S.A." : statement.bank;
+    const content = generateOfx({ bankId, institutionName, branch: statement.branch, account: isBrb ? brbOfxAccount(statement.account || "", statement.branch || "") : statement.account, periodStart: isBrb || isStone ? statement.periodStart : undefined, periodEnd: isBrb || isStone ? statement.periodEnd : undefined, initialBalance: Number(initialBalance), finalBalance: totals.calculated, transactions });
     download(`${bankSlug}_${statement.account || "extrato"}_${statement.periodStart || ""}.ofx`, content, "application/x-ofx");
     try {
       await trackImport({
         module: "BANK_STATEMENT",
         status: "EXPORTED",
         originalName: file?.name || `${bankSlug}_${statement.account || "extrato"}.pdf`,
-        parserId: isBrb ? "brb-conta-corrente-mensal" : isSafra ? "safra-conta-corrente-pj" : isC6 ? "c6-conta-corrente" : isCaixa ? "caixa-extrato-periodo-ocr" : isNubank ? "nubank-conta-pj" : isMercadoPago ? "mercado-pago-extrato-conta" : isBancoDoBrasil ? "banco-do-brasil-extrato-conta" : isXpInvestments ? "xp-investimentos-extrato" : isXp ? "xp-conta-digital-extrato" : "sicredi-conta-corrente",
+        parserId: isStone ? "stone-extrato-conta-corrente" : isBrb ? "brb-conta-corrente-mensal" : isSafra ? "safra-conta-corrente-pj" : isC6 ? "c6-conta-corrente" : isCaixa ? "caixa-extrato-periodo-ocr" : isNubank ? "nubank-conta-pj" : isMercadoPago ? "mercado-pago-extrato-conta" : isBancoDoBrasil ? "banco-do-brasil-extrato-conta" : isXpInvestments ? "xp-investimentos-extrato" : isXp ? "xp-conta-digital-extrato" : "sicredi-conta-corrente",
         parserVersion: "1.0.0",
         expectedTotal: totals.detected,
         parsedTotal: totals.calculated,
@@ -111,6 +113,7 @@ export default function ExtratosPage() {
           layout: statement.layout,
           openingBalance: Number(initialBalance),
           ...(isBrb ? { openingBalanceCalculated: statement.openingBalanceCalculated, reportedBalanceDate: statement.reportedBalanceDate, ofxAccount: brbOfxAccount(statement.account || "", statement.branch || ""), openingBalanceSource: Number(initialBalance) === statement.detectedOpeningBalance ? "CALCULATED" : "INFORMED" } : {}),
+          ...(isStone ? {openingBalanceCalculated:true,openingBalanceSource:Number(initialBalance)===statement.detectedOpeningBalance?"DERIVED_FROM_FIRST_SETTLEMENT":"INFORMED",reportedBalanceDate:statement.reportedBalanceDate} : {}),
           closingBalance: totals.calculated,
           transactionCount: totals.count,
           exportFormat: "OFX",
@@ -121,7 +124,7 @@ export default function ExtratosPage() {
           amount: item.amount,
           type: item.type,
           document: item.document,
-          metadata: { balance: item.balance, launchDate: item.date, sourceType: item.sourceType },
+          metadata: { balance: item.balance, launchDate: item.date, sourceType: item.sourceType, ...(item.fitId ? {fitId:item.fitId} : {}) },
         })),
       });
     } catch (trackingError) {
@@ -136,22 +139,22 @@ export default function ExtratosPage() {
       <Center><Stack align="center" gap="sm"><ThemeIcon size={68} radius="xl" variant="light"><IconUpload size={34}/></ThemeIcon><Title order={3}>Importe o extrato bancário</Title><Text c="dimmed" ta="center">O banco é selecionado manualmente. Cada opção utiliza uma lógica própria de leitura.</Text></Stack></Center>
       <Select label="Banco *" description="Escolha o banco antes de anexar o arquivo." data={BANKS} value={bank} onChange={setBank} searchable required maw={520}/>
       <PasswordInput label="Senha do PDF" description="Preencha somente quando o banco proteger o extrato com senha." placeholder="Digite a senha do arquivo" value={password} onChange={(event) => setPassword(event.currentTarget.value)} maw={520}/>
-      <Paper withBorder radius="xl" p={34} style={{ borderStyle: "dashed" }}><Stack align="center"><Group><Badge leftSection={<IconFileAnalytics size={13}/>}>PDF</Badge><Badge leftSection={<IconPhoto size={13}/>} variant="light">JPG / PNG</Badge></Group><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}/><Button leftSection={<IconUpload size={18}/>} onClick={() => fileInputRef.current?.click()}>Selecionar arquivo</Button><Text size="sm" c="dimmed">Layouts ativos: Sicredi, C6 Bank, Caixa, Nubank, Mercado Pago, Banco do Brasil, BRB, Safra e XP.</Text></Stack></Paper>
+      <Paper withBorder radius="xl" p={34} style={{ borderStyle: "dashed" }}><Stack align="center"><Group><Badge leftSection={<IconFileAnalytics size={13}/>}>PDF</Badge><Badge leftSection={<IconPhoto size={13}/>} variant="light">JPG / PNG</Badge></Group><input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}/><Button leftSection={<IconUpload size={18}/>} onClick={() => fileInputRef.current?.click()}>Selecionar arquivo</Button><Text size="sm" c="dimmed">Layouts ativos: Sicredi, C6 Bank, Caixa, Nubank, Mercado Pago, Banco do Brasil, BRB, Safra, Stone e XP.</Text></Stack></Paper>
       {file && <Card withBorder><Group justify="space-between"><Stack gap={0}><Text fw={700}>{file.name}</Text><Text size="sm" c="dimmed">{(file.size/1024/1024).toFixed(2)} MB</Text></Stack><ActionIcon color="red" variant="subtle" onClick={()=>{setFile(null);if (fileInputRef.current) fileInputRef.current.value = "";}}><IconX size={18}/></ActionIcon></Group></Card>}
       {error && <Alert color="red" icon={<IconAlertTriangle size={18}/>}>{error}</Alert>}
-      <Alert color="blue">O sistema somará entradas e subtrairá saídas para comparar o saldo final calculado com o saldo apresentado no extrato. No C6, na Caixa, no Nubank, no Mercado Pago, no Banco do Brasil, no Safra e na XP, o saldo inicial também é identificado automaticamente. No BRB, ele é calculado pelo saldo atual + saídas − entradas e fica identificado como calculado.</Alert>
+      <Alert color="blue">O sistema somará entradas e subtrairá saídas para comparar o saldo final calculado com o saldo apresentado no extrato. No C6, na Caixa, no Nubank, no Mercado Pago, no Banco do Brasil, no Safra e na XP, o saldo inicial também é identificado automaticamente. No BRB, ele é calculado pelo saldo atual + saídas − entradas. Na Stone, é calculado pelo grupo de movimentações mais antigo, com recebimentos e tarifas separados. Ambos ficam identificados como calculados.</Alert>
       <Group justify="flex-end"><Button disabled={!file || !bank} loading={processing} onClick={processFile} rightSection={<IconChevronRight size={18}/>}>Ler extrato</Button></Group>
     </Stack></Paper> : <>
       <SimpleGrid cols={{ base:1, sm:2, xl:4 }}>
         <Paper withBorder radius="lg" p="lg"><Group justify="space-between"><Stack gap={2}><Text size="sm" c="dimmed">Banco selecionado</Text><Text fw={800} fz={22}>{statement.bank}</Text><Badge color="green">{statement.layout ? `Layout ${statement.layout}` : "Layout validado"}</Badge></Stack><ThemeIcon variant="light" size={44}><IconBuildingBank size={23}/></ThemeIcon></Group></Paper>
         <Paper withBorder radius="lg" p="lg"><Stack gap={2}><Text size="sm" c="dimmed">Conta</Text><Text fw={800}>{statement.accountHolder || "-"}</Text><Text size="sm">Agência/Cooperativa {statement.branch || "-"} · Conta {statement.account || "-"}</Text></Stack></Paper>
         <Paper withBorder radius="lg" p="lg"><Stack gap={2}><Text size="sm" c="dimmed">Período</Text><Text fw={800}>{date(statement.periodStart)} a {date(statement.periodEnd)}</Text><Text size="sm" c="dimmed">{transactions.length} movimentações lidas</Text></Stack></Paper>
-        <Paper withBorder radius="lg" p="lg"><Stack gap={2}><Text size="sm" c="dimmed">{statement.openingBalanceCalculated ? "Saldo atual no PDF (referência)" : "Saldo final do extrato"}</Text><Text fw={800} fz={24}>{money(statement.detectedClosingBalance || 0)}</Text><Badge color={balanceValid ? "green" : "orange"}>{balanceValid ? statement.openingBalanceCalculated ? "Conferência matemática" : "Fechamento confirmado" : "Aguardando conferência"}</Badge></Stack></Paper>
+        <Paper withBorder radius="lg" p="lg"><Stack gap={2}><Text size="sm" c="dimmed">{statement.bank === "Stone" ? "Saldo final identificado nos lançamentos" : statement.openingBalanceCalculated ? "Saldo atual no PDF (referência)" : "Saldo final do extrato"}</Text><Text fw={800} fz={24}>{money(statement.detectedClosingBalance || 0)}</Text><Badge color={balanceValid ? "green" : "orange"}>{balanceValid ? statement.openingBalanceCalculated ? "Conferência matemática" : "Fechamento confirmado" : "Aguardando conferência"}</Badge></Stack></Paper>
       </SimpleGrid>
 
       {statement.balanceWarnings?.map((warning, index) => <Alert key={index} color="orange" icon={<IconAlertTriangle size={18}/>}>{warning} Os lançamentos foram mantidos com os valores originais.</Alert>)}
-      <Paper withBorder radius="lg" p="lg"><Stack gap="lg"><Group justify="space-between"><Stack gap={2}><Title order={4}>Conferência do saldo</Title><Text size="sm" c="dimmed">{statement.openingBalanceCalculated ? "O saldo inicial foi calculado pelo saldo atual + saídas − entradas. Você pode corrigi-lo se tiver o saldo anterior confirmado." : "Informe o saldo anterior para validar automaticamente o fechamento."}</Text></Stack><Badge color={balanceValid ? "green" : "orange"}>{balanceValid ? statement.openingBalanceCalculated ? "Conferência matemática" : "Saldo bateu" : "Saldo divergente ou não informado"}</Badge></Group>
-        <SimpleGrid cols={{base:1,md:3}}><NumberInput label={statement.openingBalanceCalculated ? "Saldo inicial calculado *" : "Saldo inicial informado *"} placeholder="R$ 0,00" value={initialBalance} onChange={setInitialBalance} prefix="R$ " decimalScale={2} fixedDecimalScale thousandSeparator="." decimalSeparator=","/><NumberInput label={statement.openingBalanceCalculated ? "Saldo inicial calculado (referência)" : "Saldo anterior detectado (referência)"} value={statement.detectedOpeningBalance || 0} readOnly prefix="R$ " decimalScale={2} fixedDecimalScale thousandSeparator="." decimalSeparator=","/><NumberInput label={statement.openingBalanceCalculated ? "Saldo atual informado no PDF" : "Saldo final identificado"} value={statement.detectedClosingBalance || 0} readOnly prefix="R$ " decimalScale={2} fixedDecimalScale thousandSeparator="." decimalSeparator=","/></SimpleGrid>
+      <Paper withBorder radius="lg" p="lg"><Stack gap="lg"><Group justify="space-between"><Stack gap={2}><Title order={4}>Conferência do saldo</Title><Text size="sm" c="dimmed">{statement.bank === "Stone" ? "O saldo inicial foi calculado pelo grupo mais antigo de movimentações, com conferência dos saldos intermediários. Você pode informar o saldo anterior confirmado." : statement.openingBalanceCalculated ? "O saldo inicial foi calculado pelo saldo atual + saídas − entradas. Você pode corrigi-lo se tiver o saldo anterior confirmado." : "Informe o saldo anterior para validar automaticamente o fechamento."}</Text></Stack><Badge color={balanceValid ? "green" : "orange"}>{balanceValid ? statement.openingBalanceCalculated ? "Conferência matemática" : "Saldo bateu" : "Saldo divergente ou não informado"}</Badge></Group>
+        <SimpleGrid cols={{base:1,md:3}}><NumberInput label={statement.openingBalanceCalculated ? "Saldo inicial calculado *" : "Saldo inicial informado *"} placeholder="R$ 0,00" value={initialBalance} onChange={setInitialBalance} prefix="R$ " decimalScale={2} fixedDecimalScale thousandSeparator="." decimalSeparator=","/><NumberInput label={statement.openingBalanceCalculated ? "Saldo inicial calculado (referência)" : "Saldo anterior detectado (referência)"} value={statement.detectedOpeningBalance || 0} readOnly prefix="R$ " decimalScale={2} fixedDecimalScale thousandSeparator="." decimalSeparator=","/><NumberInput label={statement.bank === "Stone" ? "Saldo final identificado" : statement.openingBalanceCalculated ? "Saldo atual informado no PDF" : "Saldo final identificado"} value={statement.detectedClosingBalance || 0} readOnly prefix="R$ " decimalScale={2} fixedDecimalScale thousandSeparator="." decimalSeparator=","/></SimpleGrid>
         <SimpleGrid cols={{base:2,md:5}}><Card withBorder><Group gap="xs"><IconArrowUp size={18}/><Stack gap={0}><Text size="xs">Entradas</Text><Text fw={800}>{money(totals.credits)}</Text></Stack></Group></Card><Card withBorder><Group gap="xs"><IconArrowDown size={18}/><Stack gap={0}><Text size="xs">Saídas</Text><Text fw={800}>{money(totals.debits)}</Text></Stack></Group></Card><Card withBorder><Stack gap={0}><Text size="xs">Saldo calculado</Text><Text fw={800}>{money(totals.calculated)}</Text></Stack></Card><Card withBorder><Stack gap={0}><Text size="xs">Saldo do extrato</Text><Text fw={800}>{money(totals.detected)}</Text></Stack></Card><Card withBorder><Stack gap={0}><Text size="xs">Diferença</Text><Text fw={800} c={balanceValid?"green":"orange"}>{money(totals.difference)}</Text></Stack></Card></SimpleGrid>
         <Progress value={balanceValid ? 100 : initialBalance === "" ? 0 : 60} color={balanceValid ? "green" : "orange"}/>
       </Stack></Paper>

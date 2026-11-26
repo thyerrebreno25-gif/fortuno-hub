@@ -1,4 +1,7 @@
 import {beforeEach,it,expect,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+vi.mock("@/modules/operations/routine-client-state",()=>({routineClientSuspended:async()=>false}));
+vi.mock("@/modules/operations/routine-ownership-server",()=>({inheritedOwner:async()=>null,propagateRoutineOwner:async()=>({transferred:0,pausedTimers:0})}));
 const m=vi.hoisted(()=>({member:vi.fn(),client:vi.fn(),process:vi.fn(),previous:vi.fn(),create:vi.fn(),upsert:vi.fn(),generate:vi.fn(),person:vi.fn(),detach:vi.fn(),transaction:vi.fn(),lock:vi.fn()}));
 vi.mock("@/modules/operations/auth",()=>({getOperationMember:m.member,canManageOperations:(role:string)=>["MASTER","ADMIN","MANAGER"].includes(role)}));
 vi.mock("@/modules/operations/team-catalog",()=>({operationTeamCatalog:async()=>({options:["Elite do Fluxo","Força Tática Financeira"]})}));
@@ -28,3 +31,14 @@ it("saves the canonical selected team and refuses arbitrary free-text team names
 it("creates Tuesday independently from an existing Monday routine without overwriting it",async()=>{m.previous.mockResolvedValue([{id:"monday",active:true,recurrenceType:"WEEKLY",recurrenceData:{startDate:"2027-01-05",weekdays:[1]}}]);const r=await POST(request({recurrenceType:"WEEKLY",recurrenceData:{startDate:"2027-01-05",weekdays:[2]}}));expect(r.status).toBe(201);expect(m.create).toHaveBeenCalledOnce();expect(m.create.mock.calls[0][0].data.recurrenceData.weekdays).toEqual([2]);expect(m.lock).toHaveBeenCalledTimes(2);expect(m.previous.mock.calls[0][0].where).toMatchObject({clientId:"client",processId:"process",active:true,client:{organizationId:"org"}});});
 it("inherits the client's team, fixes payment agendas at high priority and always anticipates off-days",async()=>{m.client.mockResolvedValue({id:"client",notionSquad:"Elite Do Fluxo"});m.process.mockResolvedValue({id:"process",name:"Agenda de Pagamentos",defaultPriority:"LOW"});expect((await POST(request({priority:"LOW"}))).status).toBe(201);expect(m.create.mock.calls[0][0].data).toMatchObject({priority:"HIGH",team:"Elite do Fluxo",recurrenceData:{holidayBehavior:"PREVIOUS_BUSINESS_DAY"}});});
 it("never enables completion emails for a reconciliation even if requested",async()=>{m.process.mockResolvedValue({id:"process",name:"Conciliação de Recebimentos",defaultPriority:"MEDIUM"});expect((await POST(request({notifyClient:true}))).status).toBe(201);expect(m.create.mock.calls[0][0].data.notifyClient).toBe(false);});
+it("requires a real start date for monthly and legacy 15-day schedules before writing anything",async()=>{
+ for(const recurrenceType of ["MONTHLY","DAILY"])for(const startDate of [undefined,"","2027-02-30","2027-13-01","amanhã"]){
+  expect((await POST(request({recurrenceType,recurrenceData:{startDate,monthDays:[1,16],interval:15}}))).status).toBe(400);
+ }
+ expect(m.create).not.toHaveBeenCalled();expect(m.generate).not.toHaveBeenCalled();
+});
+it("retains a historical calendar anchor while generating only today forward",async()=>{
+ const response=await POST(request({recurrenceType:"MONTHLY",recurrenceData:{startDate:"2026-01-01",monthDays:[1,16],interval:1}}));
+ expect(response.status).toBe(201);expect(m.create.mock.calls[0][0].data.recurrenceData.startDate).toBe("2026-01-01");
+ const {brazilDay}=await import("@/modules/operations/analytics");expect(m.generate.mock.calls[0][1].toISOString().slice(0,10)).toBe(brazilDay());
+});
