@@ -8,7 +8,7 @@ export const operatorPdfName=(day:string,kind:ReportKind="GENERAL")=>`Fortuno-Re
 export function createOperatorReportPdf(report:OperatorDayReport){
  const serviceOnly=report.kind==="SERVICE";
  const doc=new jsPDF({unit:"mm",format:"a4"}),width=210,height=297,left=16,usable=178;
- doc.setProperties({title:`Relatório diário | Fortuno | ${report.day}`,author:"Fortuno",creator:"Fortuno Hub"});doc.setCreationDate(new Date(report.generatedAt));
+ doc.setProperties({title:`${serviceOnly?"Relatório de atendimento":"Relatório diário"} | Fortuno | ${report.day}`,author:"Fortuno",creator:"Fortuno Hub"});doc.setCreationDate(new Date(report.generatedAt));
  const date=report.day.split("-").reverse().join("/"),sum=(key:"messages"|"tasksCompleted"|"dailyCompleted"|"seconds")=>report.rows.reduce((total,row)=>total+row[key],0);
  const header=()=>{doc.saveGraphicsState();doc.setFillColor(15,39,70);doc.rect(0,0,width,28,"F");doc.addImage(reportWordmark,"PNG",left,7,49,9.6,"fortuno-report-wordmark");doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(255);doc.text(serviceOnly?"RELATÓRIO DE ATENDIMENTO":"RELATÓRIO DIÁRIO",width-left,12,{align:"right"});doc.setFont("helvetica","normal");doc.setFontSize(9);doc.text(date+" | Brasília",width-left,19,{align:"right"});doc.restoreGraphicsState();};
  let y=39;header();
