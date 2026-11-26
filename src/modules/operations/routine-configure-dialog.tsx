@@ -27,7 +27,7 @@ export function RoutineConfigureDialog({client,column,members,onClose,onChanged}
   {custom&&<MultiSelect required label="Dias específicos do mês" data={Array.from({length:31},(_,i)=>({value:String(i+1),label:`Dia ${i+1}`}))} value={monthDays} onChange={setMonthDays} disabled={busy||Boolean(resume)}/>}
   {(!needsFrequency||frequency)&&(!custom||monthDays.length>0)&&<Text size="sm" c="dimmed">{routineScheduleLabel(preset.recurrenceType,preset.recurrenceData)}{column.kind==="agenda"?" · Prioridade alta":""}</Text>}
   {client.team&&<Text size="sm" c="dimmed">Equipe: {client.team}</Text>}
-  <Text size="xs" c="dimmed">Somente dias úteis. Fins de semana e feriados são antecipados para o dia útil anterior. A agenda de 90 dias será gerada ao confirmar.</Text>
+  <Text size="xs" c="dimmed">Sábados e domingos não geram atividades nem antecipações. Apenas feriados em dias de semana são antecipados para o dia útil anterior. A agenda de 90 dias será gerada ao confirmar.</Text>
   <Group justify="flex-end"><Button variant="default" disabled={busy} onClick={()=>{void onChanged();onClose();}}>Cancelar</Button><Button loading={busy} disabled={!responsibleId||needsFrequency&&!frequency||custom&&!monthDays.length} onClick={()=>void save()}>{resume?"Retomar":"Confirmar"}</Button></Group>
  </Stack></Modal>;
 }

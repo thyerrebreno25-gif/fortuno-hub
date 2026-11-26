@@ -1,4 +1,4 @@
-import {previousOperationBusinessDay} from "./business-days";
+import {operationOccurrenceDay,operationWeekend} from "./business-days";
 import {operationToday} from "./activity-deadline";
 import {routinePriority} from "./routine-policy";
 import { operationClientTeam, canonicalTeam } from "./teams";
@@ -22,7 +22,6 @@ export const startOfDay = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(
 export const dateKey = (date: Date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}-${String(date.getUTCDate()).padStart(2,"0")}`;
 const parseDate = (value?: string | null) => value ? new Date(`${value}T12:00:00Z`) : null;
 const addDays = (date: Date, days: number) => { const d=startOfDay(date); d.setUTCDate(d.getUTCDate()+days); return d; };
-const isWeekend = (date: Date) => date.getUTCDay()===0 || date.getUTCDay()===6;
 
 function withDueTime(date:Date,dueTime?:string){return new Date(dateKey(date)+"T"+(dueTime||"18:00")+":00-03:00");}
 
@@ -33,12 +32,12 @@ async function holidaySet(organizationId: string, from: Date, to: Date) {
 
 
 export function matchesRecurrence(type: string, data: RecurrenceData | null | undefined, date: Date) {
+  if(operationWeekend(dateKey(date)))return false;
   const cfg=data||{}; const current=startOfDay(date); const start=parseDate(cfg.startDate)||current; const end=parseDate(cfg.endDate);
   if(current<startOfDay(start)) return false; if(end&&current>startOfDay(end)) return false;
   if(type==="ONCE") return dateKey(current)===dateKey(start);
   if(type==="DAILY") {
     const mode=cfg.dailyMode||"ALL_DAYS";
-    if(mode==="BUSINESS_DAYS" && isWeekend(current)) return false;
     if(mode==="CUSTOM_DAYS" && !(cfg.weekdays||[]).includes(current.getUTCDay())) return false;
     const days=Math.floor((current.getTime()-startOfDay(start).getTime())/DAY);
     return days%Math.max(1,Number(cfg.interval||1))===0;
@@ -59,7 +58,7 @@ export function matchesRecurrence(type: string, data: RecurrenceData | null | un
   return false;
 }
 
-async function adjustedDate(original:Date,_organizationId:string,_cfg:RecurrenceData,holidays:Set<string>){const day=previousOperationBusinessDay(dateKey(original),holidays);return new Date(day+"T00:00:00Z");}
+function adjustedDate(original:Date,holidays:Set<string>){const day=operationOccurrenceDay(dateKey(original),holidays);return day?new Date(day+"T00:00:00Z"):null;}
 
 export async function generateActivityForConfiguration(configurationId: string, sourceDate: Date, actorUserId?: string, preloadedHolidays?: Set<string>) {
   const configuration=await prisma.operationClientProcess.findUnique({where:{id:configurationId},include:{client:true,process:{include:{checklistTemplates:{orderBy:{position:"asc"}}}},responsible:true}});
@@ -67,7 +66,7 @@ export async function generateActivityForConfiguration(configurationId: string, 
   if(!matchesRecurrence(configuration.recurrenceType,configuration.recurrenceData as RecurrenceData,sourceDate))return null;
   const cfg=(configuration.recurrenceData||{}) as RecurrenceData;
   const holidays=preloadedHolidays||await holidaySet(configuration.client.organizationId,addDays(sourceDate,-10),addDays(sourceDate,10));
-  const scheduledDate=await adjustedDate(startOfDay(sourceDate),configuration.client.organizationId,cfg,holidays);
+  const scheduledDate=adjustedDate(startOfDay(sourceDate),holidays);
   if(!scheduledDate||dateKey(scheduledDate)<operationToday()||(cfg.startDate&&dateKey(scheduledDate)<cfg.startDate)) return null;
   const existing=await prisma.operationActivity.findUnique({where:{clientProcessId_scheduledDate:{clientProcessId:configuration.id,scheduledDate}}});
   if(existing) return prisma.operationActivity.findUnique({where:{id:existing.id},include:activityInclude});
