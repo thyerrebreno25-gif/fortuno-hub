@@ -1,3 +1,4 @@
+import {BROADCAST_RECIPIENT_LIMIT} from "@/modules/whatsapp/broadcast-policy";
 import {randomUUID} from "node:crypto";
 import {NextResponse} from "next/server";
 import {z} from "zod";
@@ -7,7 +8,7 @@ import {getServiceCenterMember,getWhatsAppPermission} from "@/modules/atendiment
 import {currentWhatsAppAccount} from "@/modules/whatsapp/account-scope";
 import {batchAddress} from "@/modules/whatsapp/batch-recipients";
 import {resolveBroadcast,type BroadcastTarget} from "@/modules/whatsapp/broadcast-model";
-const schema=z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(100),recipients:z.array(z.object({clientId:z.string().min(1),ticketId:z.string().min(1)})).min(1).max(50)});
+const schema=z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(100),recipients:z.array(z.object({clientId:z.string().min(1),ticketId:z.string().min(1)})).min(1).max(BROADCAST_RECIPIENT_LIMIT)});
 async function access(){const member=await getServiceCenterMember();if(!member||member.role==="CLIENT")return null;const permission=await getWhatsAppPermission(member.organizationId,member.role);if(!permission.canView||!permission.canEdit)return null;const account=await currentWhatsAppAccount(member.organizationId);return account.recipient?{member,account}:null;}
 type List={id:string;name:string;recipients:BroadcastTarget[];createdById:string};
 export async function GET(request:Request){
@@ -20,7 +21,7 @@ export async function GET(request:Request){
 }
 export async function POST(request:Request){
  const viewer=await access();if(!viewer)return NextResponse.json({error:"Sem permissão de envio."},{status:403});
- const parsed=schema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:"Informe um nome e selecione de 1 a 50 clientes."},{status:400});
+ const parsed=schema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:"Informe um nome e selecione de 1 a 1.000 clientes."},{status:400});
  const {member,account}=viewer,input=parsed.data;
  const tickets=await prisma.serviceTicket.findMany({where:{...account.where,id:{in:input.recipients.map(t=>t.ticketId)},mergedIntoId:null,isSpam:false,status:{not:"SPAM"},client:{active:true}},select:{id:true,clientId:true,senderEmail:true}});
  const targets=input.recipients.map(t=>{const ticket=tickets.find(row=>row.id===t.ticketId&&row.clientId===t.clientId);return ticket?{clientId:t.clientId,address:batchAddress(ticket.senderEmail)}:null;});

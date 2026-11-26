@@ -1,3 +1,4 @@
+import {processScheduledBroadcasts} from "@/modules/whatsapp/broadcast-schedule-worker";
 import {processDailyOperatorReports} from "@/modules/management/operator-report-delivery";
 import {processDailyActivities} from "@/modules/meetings/daily-server";
 import {processPasswordRecoveryQueue} from "@/modules/auth/password-recovery";
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
   if (!secret || expected.length !== provided.length || !timingSafeEqual(expected, provided)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   after(async () => { await Promise.allSettled([
     processDailyActivities(),
+    processScheduledBroadcasts(),
     processDailyOperatorReports(),
     processDailyOperatorReports(new Date(),"SERVICE"),
     processPasswordRecoveryQueue(),
